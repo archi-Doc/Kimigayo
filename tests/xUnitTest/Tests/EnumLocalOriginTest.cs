@@ -27,7 +27,7 @@ public class EnumLocalOriginTest
     public void PublishedAndExplicitOriginsRemainFixed(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         Assert.False(c.Generate(TextWriter.Null));
     }
 

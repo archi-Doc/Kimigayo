@@ -32,11 +32,15 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         Assert.Equal("Unsupported_Kd", record.Code);
     }
 
-    [Fact]
-    public void AStaticAggregateWithNoBorrowRequirementDefaultsItsSlot()
+    // SPEC 15.4.2, 15.4.3 rule 3: a slot with no Loan requirement defaults to `static`, a slot only a stored Function Type's `uniq` layer
+    // states included (SPEC 15.2.4: a signature stores nothing; PLAN G1456).
+    [Theory]
+    [InlineData("struct Empty {source}\n", "Empty")]
+    [InlineData("struct Sink {source}\n    public let call: (uniq/i32 during source) -> i32\n", "Sink")]
+    public void AStaticAggregateWithNoBorrowRequirementDefaultsItsSlot(string declaration, string type)
     {
-        const string Source = "struct Empty {source}\ngroup Values\n    public let value: Empty = make()\n    func make() -> Empty => $abort(\"unused\")\nlet present = 1";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var source = declaration + "group Values\n    public let value: " + type + " = make()\n    func make() -> " + type + " => $abort(\"unused\")\nlet present = 1";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.SymbolOf()?.Name == "value");
         Assert.Same(BoundOrigin.Static, Assert.Single(field.TypeOf()!.OriginArguments));
@@ -50,7 +54,9 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(declarations + "group Values\n    public var view: " + type + "\nlet present = 1");
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Equal(code, Assert.Single(TestDiagnostics.Of(c)).Code);
+
+        // No initializer fits an exclusive static Type, so the missing one stays its own record (SPEC 11.8, 23.1.2).
+        Assert.Equal([code, "MissingSyntax_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -113,7 +119,8 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var code = exclusive ? "InvalidOriginBinding_Kd" : "Unsupported_Kd";
-        Assert.Equal([code, "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
+        string[] codes = exclusive ? [code, "MissingSyntax_Kd", "TypeMismatch_Kd"] : [code, "TypeMismatch_Kd"]; // The exclusive field has no initializer (SPEC 11.8).
+        Assert.Equal(codes, result.Diagnostics.Select(static x => x.Code));
         var record = result.Diagnostics[0];
         Assert.Equal(exclusive ? DiagnosticCategory.Language : DiagnosticCategory.Unsupported, record.Category);
         if (exclusive)

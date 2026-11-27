@@ -145,14 +145,16 @@ public class DivisionEmissionTest
         Assert.Equal("KIMI_E_FLOAT_CONVERSION: Floating conversion out of range", AbortReasons.All[AbortReasons.FloatingConversion].Text);
         Assert.Equal("KIMI_E_ARG_RANGE: Argument out of range", AbortReasons.All[AbortReasons.ArgumentRange].Text);
         Assert.Equal("KIMI_E_FORMAT: Formatting failed", AbortReasons.All[AbortReasons.Format].Text);
-        Assert.Equal(14, AbortReasons.MissingKey);
+        Assert.Equal(13, AbortReasons.MissingKey);
         Assert.Equal("KIMI_E_MISSING_KEY: Dictionary key was not found", AbortReasons.All[AbortReasons.MissingKey].Text);
-        Assert.Equal(15, AbortReasons.DuplicateKey);
+        Assert.Equal(14, AbortReasons.DuplicateKey);
         Assert.Equal("KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key", AbortReasons.All[AbortReasons.DuplicateKey].Text);
-        Assert.Equal(16, AbortReasons.ReferenceCount);
+        Assert.Equal(15, AbortReasons.ReferenceCount);
         Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", AbortReasons.All[AbortReasons.ReferenceCount].Text);
-        Assert.Equal(17, AbortReasons.StaticCycle);
+        Assert.Equal(16, AbortReasons.StaticCycle);
         Assert.Equal("KIMI_E_STATIC_CYCLE: Static initialization cycle", AbortReasons.All[AbortReasons.StaticCycle].Text);
+        Assert.Equal(17, AbortReasons.Clock);
+        Assert.Equal("KIMI_E_CLOCK: Elapsed-time counter failed", AbortReasons.All[AbortReasons.Clock].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }

@@ -11,7 +11,7 @@ Names are relative to `Kimi`. The default alias opens its root, but not nested g
 
 Tables omit `public` and may omit `func`. Each signature includes its receiver and result; `Self` denotes the containing Type. Properties are read-only unless stated otherwise. An argument Type written as `A or B` abbreviates two overloads, not a union Type. `during` annotations identify result dependencies; they never extend storage lifetimes.
 
-This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §9. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
+This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §10. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
 
 ## 1. Foundational Types and Contracts
 
@@ -514,6 +514,8 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 | `unsafe release<T>(storage: raw/T) -> ()` | Releases an `allocate` result at its start address without destroying any value. Null is ignored, and nothing is freed for a zero-byte result, which may be released again. Every Non-Copy value placed in the storage must already be destroyed, taken or relocated, whole or, if destroying it whole would only destroy its components, by its remaining Non-Copy components under the same rule (SPEC §5.6). |
 | `unsafe initialize<T>(storage: raw/T, value: T) -> ()` | Moves `value` into a Place of `T` at `storage`, an existing one or, in raw storage, a new one, destroying nothing. The write meets the raw access conditions: `storage` is live, aligned and writable, the Place lies within its provenance, and no live Loan conflicts. The Place holds no value, and no Initialized Place other than its ancestors holds any of its bytes (SPEC §5.2, §5.2.1). |
 | `unsafe slice<T>(storage: raw/T, length: isize) -> Slice<T> during s` | Forms a shared Slice of `length` elements at `storage` without reading them; `s` is fixed by the caller's expected Type, within the Origin the argument states, if any (SPEC §5.7). A positive length requires a nonnull, aligned `storage` with `length * stride(T)` fitting in `isize`, such that each `storage[i]` below `length` designates a distinct Place that holds a complete, valid value or belongs to a `noinit` array, and no element is written for `s`; a zero length accepts any storage. |
+| `unsafe readVolatile<T>(storage: raw/T) -> T`, where `T is PrimitiveInteger` | Reads the `T` at `storage` with one volatile access (two 8-byte accesses in an unspecified order for `i128` and `u128`), which the compiler never merges, removes, duplicates, splits further or reorders with another volatile access. The read meets the raw access conditions: `storage` is live, aligned for `T` and readable, it holds a valid, initialized value of `T` within its provenance, and no live Loan conflicts (SPEC §5.2.1, §5.6). |
+| `unsafe writeVolatile<T>(storage: raw/T, value: T) -> ()`, where `T is PrimitiveInteger` | Writes `value` to the Place of `T` at `storage` with a volatile access, ordered as `readVolatile`'s; the Place may hold a value or none. The write meets the raw access conditions: `storage` is live, aligned for `T` and writable, the Place lies within its provenance, and no live Loan conflicts (SPEC §5.2.1, §5.6). A volatile access is not atomic. |
 
 Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@move`). None of these operations is an environment effect: `allocate` is an allocation and the others are raw accesses.
 
@@ -521,7 +523,7 @@ Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@mov
 
 | Function | Guarantee | Specification |
 | --- | --- | --- |
-| `Console.writeLine(text: ref/string) -> ()` | Writes the exact UTF-8 bytes followed by one LF; no newline conversion. Output failure may leave partial output and Aborts. | [Console output](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
+| `Console.writeLine(text: ref/string) -> ()` | Writes the exact UTF-8 bytes followed by one LF; no newline conversion. Output failure may leave partial output and Aborts. | [Console output](spec/22-core-execution-and-foreign-functions.md#227-console-output) |
 | `Console.writeLine(text: Text.Utf8Slice) -> ()` | The same output behavior, borrowing the view's bytes without constructing a string. | [View output](spec/22-core-execution-and-foreign-functions.md#227-console-output) |
 | `Test.tempDirectory() -> string` | Returns an independently owned absolute path to the active test case's directory. Available only in test-only bodies; the directory remains available through case cleanup and is reclaimed by the parent afterward. | [Test profile](impl/20-compilation-configuration.md#2063-case-execution) |
 
@@ -529,14 +531,14 @@ Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@mov
 
 [Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#228-time).
 
-`Windows` groups Windows x64 native APIs. Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
+`Windows` groups Windows x64 native APIs and is declared where the Condition `windows` holds (on another target `Windows` is an unknown name). Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
 
 | Function | Guarantee |
 | --- | --- |
 | `Windows.queryPerformanceCounter(value: uniq/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
 | `Windows.queryPerformanceFrequency(value: uniq/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
 
-`Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation. Getters use shared receivers.
+`Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation: where `windows` holds it reads the `Windows` counter, elsewhere the platform's monotonic clock in nanoseconds. Getters use shared receivers.
 
 | Declaration | Guarantee |
 | --- | --- |
@@ -594,7 +596,33 @@ All names in this section belong to `Async`. Implementation of this entire secti
 
 Only the structured operations above request cancellation, for the children they started; no public operation makes a request. Only `sleep`, `checkpoint`, I/O waits, `send` and `receive` observe it, and `each` and `offloadEach` check before each pull. Worker computations run to completion and cannot be preempted by cancellation. Cancellation never interrupts, unwinds or destroys a task frame. Apart from their children's effects, the operations other than `run` have no environment effects and are usable in `confined` implementations. Apart from `run`, every Kimi operation that may wait takes the task slot; `Console.writeLine` stays synchronous.
 
-## 9. Current Source Differences
+## 9. Freestanding Platform
+
+[Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and [the platform](spec/22-core-execution-and-foreign-functions.md#2245-platform).
+
+`Platform` is the platform a freestanding program supplies (SPEC §22.4.5): a static Contract with `Self is Copy`, declared on every target. On a freestanding profile one root-level struct of the Application conforms; the runtime calls `start` once before the startup body and the other members as its platform operations, in the order below. A conforming struct's members are `public`.
+
+| Requirement | Guarantee |
+| --- | --- |
+| `start(boot: Boot) -> Self` | Called once by the runtime before the startup body, with what the loader described. |
+| `mapPages(self: uniq/Self, bytes: isize) -> raw/u8` | A page-aligned run of at least `bytes`, or null. |
+| `releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64` | Releases a whole run `mapPages` returned: 0, or a nonzero platform error. |
+| `write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64` | Writes every byte of `text` to stream 1 (Console) or 2 (the Abort report): 0, or a nonzero platform error. |
+| `clock(self: uniq/Self) -> i64` | Monotonic nanoseconds, or a negative value when there is no clock. |
+| `terminate(self: uniq/Self, status: i32) -> Never` | Ends the program: status 0 after the startup body and shutdown, 1 after an Abort's report. |
+
+`Boot` is what the loader described: a C-layout Copy struct created only by the runtime (it declares no constructor). `Boot.Region` is one memory map entry, a C-layout Copy struct.
+
+| Field | Guarantee |
+| --- | --- |
+| `Boot.directMapOffset: usize` | The higher-half direct map: physical address p is at p + directMapOffset. |
+| `Boot.regions: raw/raw/Boot.Region` | The loader's array of `regionCount` pointers to its memory map entries, read in `unsafe`. |
+| `Boot.regionCount: isize` | The number of entries. |
+| `Boot.Region.address: u64` | The entry's physical start address. |
+| `Boot.Region.length: u64` | The entry's length in bytes. |
+| `Boot.Region.kind: u64` | The loader's entry type: 0 usable, 1 reserved, ..., 5 bootloader reclaimable, ... |
+
+## 10. Current Source Differences
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 

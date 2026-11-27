@@ -1,35 +1,38 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the move paths of one MIR body (SPEC 15.1.3; DECISIONS R4-M21).
-// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor). Output:
+// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (_0's Receiver role); the
+// programs' TyCtxt (MirAnalysis's), whose instances' stored Types the paths read. Output:
 // the paths numbered in pre-order, so a subtree is the range [path, End), each with its step from its parent, and the path of each Place.
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and
-// argument; a constructor's _0 has a child per Field with a stored Type, the Fields it places (MirBuilder.Stored; SPEC 23.1.2), and its
-// base. A PairLayer step is transparent: it is the Place itself in the owner case, and the accesses of a reference case end before it
-// (MirInit). Deref and Index end a path: an access through them is an access of the prefix's path, and a Move through them has no Move
-// Path, except into a raw Place, a raw pointer's Deref however read or its TyCtxt.RawPart parts (an untracked Take; PLAN G672). Roots
-// whose events all lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and
-// numbered after the flow roots, so a head stores only the flow paths. A path admits one placement when its root is a let binding or it
-// lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
+// argument; a constructor's _0 has a child per Field it places (MirBuilder.Stored, by the one projection rule MirBody.SelectsPart: of no
+// Type where the Field's own slot failed; SPEC 6.3.5, 23.1.2) and its base. That relies on Binding's contract (DECISIONS BU-250): every
+// constructor write into an own Field whose slot failed is that Field Place, but an update's target, a derived write until PLAN G1340
+// that defines nothing, as A1's update of an Uninitialized typed Field defines nothing (PLAN G1114: the exit's record is the typed
+// twin's dependent second one). A PairLayer step is transparent: it is the Place itself in the owner case, and the accesses of a reference
+// case end before it (MirInit). Deref and Index end a path: an access through them is an access of the prefix's path, and a Move through
+// them has no Move Path, except into a raw Place, a raw pointer's Deref however read or its TyCtxt.RawPart parts (an untracked Take; PLAN
+// G672). Roots whose events all lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are
+// chain-local and numbered after the flow roots, so a head stores only the flow paths. A path admits one placement when its root is a let
+// binding or it lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
 // Each placing location's facts (SPEC 14.10.3; DECISIONS R4-M175), which A1 applies: an Assign's Never parts, the components of its
 // destination that its construction leaves unplaced, as their operand is the Never value, and its carries, the paths of a temp it takes
 // whose own state A1 copies onto the destination's counterpart on each path: the temp's tracked parts and, for a whole temp that may hold
-// nothing there (Absent), the temp itself (a Use's counterpart is its destination), a Fill's components being the elements a Place can
+// nothing there (Absent), the temp itself (a Use's counterpart is its destination, of whatever kind: A1 keeps its state, exact for a
+// first placement, and an overwrite's Use takes a MirLocalRole.Assigned temp, placed on every path), a Fill's components being the elements a Place can
 // name alone and, for the others, the destination's Unplaced lane (Elements); a Places Call's, at the construction it inserts into
 // (its entry not inserted, SPEC 12.4.3). Only Move Paths are numbered: a root, a constructor's Field or base, a path a Place of the body
 // resolves to, and on the source side of a carry the counterpart of the destination's nearest Move Path at or below the component
 // (closed upward and backward through the carries), so a source's parts whose counterparts lie under different Move Paths have
 // different owners. A fact on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part"
 // (A1's Unplaced lane); a fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking
-// entry. A published fact is a path's number, or its complement for the Unplaced lane. Invariant: a carry's source lies in a run
-// recorded before the carry's (a temp is defined at a location the walk visits before the one that takes it, and runs are appended) and
-// differs from its destination (MirValidator: no placing location takes its own destination temp, no insertion's value holds its
-// construction), so one reverse pass over the carries closes them.
+// entry. A published fact is a path's number, or its complement for the Unplaced lane.
+// Invariants: a carry's source lies in a run recorded before the carry's (a temp is defined at a location the walk visits before the
+// one that takes it, and runs are appended) and differs from its destination (MirValidator: no placing location takes its own
+// destination temp, no insertion's value holds its construction), so one reverse pass over the carries closes them.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
-
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
@@ -47,7 +50,8 @@ internal readonly record struct MirMovePath(int Local, int Parent, int End, bool
 /// <summary>The move paths of one body (SPEC 15.1.3, DECISIONS R4-M21), view-independent: <see cref="Build"/> collects them in one walk of
 /// the body's uses, and <see cref="Find"/> gives a Place's path and whether the Place is the path itself, a raw Place below it or a Place
 /// without a Move Path below it.</summary>
-internal sealed class MirMoveData
+/// <param name="types">The Type context of the programs, whose instances' stored Types the paths read.</param>
+internal sealed class MirMoveData(TyCtxt types)
 {
     /// <summary>The Place is its path.</summary>
     internal const int Direct = 0;
@@ -93,7 +97,8 @@ internal sealed class MirMoveData
     internal int FlowCount { get; private set; }
 
     /// <summary>Gets a value indicating whether a view decides an access of the body: a case-dependent access (a PairLayer step, a
-    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>).</summary>
+    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>) or a case branch, whose side the view selects (<see
+    /// cref="MirBody.CaseSwitches"/>; a side may hold only case-free accesses, a by-case call's borrows of its callee).</summary>
     internal bool ViewDependent { get; private set; }
 
     /// <summary>Gets a value indicating whether the body constructs its object in _0 from fresh storage (SPEC 6.3).</summary>
@@ -113,7 +118,7 @@ internal sealed class MirMoveData
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.indexCount) = (0, false, 0, 0, 0, -1);
+        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.indexCount) = (0, body.CaseSwitches > 0, 0, 0, 0, -1);
         this.children.Clear();
         this.places.Clear();
         this.nevers.Clear();
@@ -131,24 +136,28 @@ internal sealed class MirMoveData
             (this.once[root], this.named[root]) = (body.Locals[i] is { Kind: MirLocalKind.Var, Mutable: false }, true);
         }
 
-        this.Constructing = body.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(body.Key.Decl);
+        // A constructor's or a layer body's _0, its validated receiver role (MirValidator.Tables, DECISIONS R7-M115).
+        this.Constructing = body.Locals[0].Role == MirLocalRole.Receiver;
         if (this.Constructing)
         {
-            var self = body.Locals[0].Type;
+            var site = types.OpenSite(body.Locals[0].Source.Syntax); // PLAN G651 U2b R5 (D-C4): the local's node site.
+            var self = body.Locals[0].Type!; // A constructor's or layer body's object, its struct's Type (MirBuilder.Body), never of no Type.
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
-                if (AdtDef.FieldType(self, i) is not null)
+                if (MirBody.SelectsPart(types, self, MirProjectionKind.Field, i, out _))
                 {
                     var field = this.Child(0, MirProjectionKind.Field, i);
                     (this.once[field], this.named[field]) = (AdtDef.PlacedOnce(self, i), true);
                 }
             }
 
-            if (AdtDef.Base(self) is not null)
+            if (AdtDef.Base(types, self) is not null)
             {
                 var layer = this.Child(0, MirProjectionKind.Base, 1); // Adding grows the arrays first.
                 this.named[layer] = true;
             }
+
+            types.CloseSite(site);
         }
 
         var events = new Events(this, flow);
@@ -157,17 +166,20 @@ internal sealed class MirMoveData
             for (var i = 0; i <= body.Blocks[block].Count; i++)
             {
                 var index = body.Blocks[block].Start + i;
-                events.At(block, i < body.Blocks[block].Count ? body.Statements[index].Kind : MirStatementKind.Assign);
+                var statement = i < body.Blocks[block].Count;
+                var site = types.OpenSite((statement ? body.Statements[index].Source : body.Blocks[block].Terminator.Source).Syntax); // D-C4
+                events.At(block, statement ? body.Statements[index].Kind : MirStatementKind.Assign);
                 MirUses.ForEach(body, new(block, i), ref events);
-                if (i < body.Blocks[block].Count && body.Statements[index].Kind == MirStatementKind.Assign)
+                if (statement && body.Statements[index].Kind == MirStatementKind.Assign)
                 {
                     this.Nevers(index, flow.Head(block), body.Statements[index].Place, body.Statements[index].Rvalue);
                 }
-            }
+                else if (!statement && body.Blocks[block].Terminator.Places)
+                {
+                    this.Inserted(block, body.Blocks[block].Terminator);
+                }
 
-            if (body.Blocks[block].Terminator.Places)
-            {
-                this.Inserted(block, body.Blocks[block].Terminator);
+                types.CloseSite(site);
             }
         }
 
@@ -269,7 +281,7 @@ internal sealed class MirMoveData
         found = this.Resolve(prefix);
         found = row.Kind switch
         {
-            MirProjectionKind.Deref => (found & ~3) | (this.body.TypeOf(prefix)?.Semantics == SemanticsKind.Raw ? Raw : NoPath),
+            MirProjectionKind.Deref => (found & ~3) | (this.body.TypeOf(prefix) is { IsPointer: true } ? Raw : NoPath),
             _ when (found & 3) == Raw && row.Kind != MirProjectionKind.PairLayer && !TyCtxt.RawPart(this.body.TypeOf(prefix)) => (found & ~3) | NoPath,
             _ when (found & 3) != Direct || row.Kind == MirProjectionKind.PairLayer => found,
             MirProjectionKind.Index => found | NoPath,
@@ -299,9 +311,10 @@ internal sealed class MirMoveData
     // (Elements). A carry pairs each tracked path below the temp Place an operand or a Use takes (whole or a part) with the same path at
     // the component, so A1 copies the temp's state there on each path, and a whole temp that may hold nothing (Absent) with the component
     // itself: a form without a value on an assumed path places nothing, into every element of a Fill (SPEC 4.3.3). A Use's component is
-    // its destination, which then keeps its state (MirInit): one that takes one placement in its lifetime, a temp, which then may hold
-    // nothing too (so the Use does not place it for its chain), or a let binding; a Place a Use overwrites has its old value's Drop
-    // before the Use (MirBuilder.Overwrite), which that path must not take either (PLAN open issue). A temp's tracked paths are those its
+    // its destination, whatever it is, which then keeps its state (MirInit): a first placement's, a destination the value's construct
+    // cannot touch (a temp, which then may hold nothing too, so the Use does not place it for its chain, a let or var initialization or
+    // binding, the return local), as an overwrite's Use is reached only by the paths that placed its value (MirBuilder.Replace,
+    // MirLocalRole.Assigned, which MirInit checks); no kind of destination is read here. A temp's tracked paths are those its
     // Never parts and carries created below it (its runs): structure only; a Closure environment has no component path. An Array
     // literal's element has one, as a fixed array's, which no Place names (an Array's Index ends the path), so a whole use or an indexed
     // one sees it (SPEC 15.1.2, 15.1.3).
@@ -317,8 +330,6 @@ internal sealed class MirMoveData
 
         var fill = rvalue.Kind == MirRvalueKind.Aggregate && kind == MirAggregateKind.Fill;
         var whole = destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp;
-        var first = whole || (destination.Projection == 0 && this.once[destination.Root]); // A temp or a let binding: placed once.
-        var takes = rvalue.Kind == MirRvalueKind.Aggregate || first; // Whether a whole temp's own state has a component to go to.
         var copies = fill ? -1 : 1; // A Fill's components, listed where a fact first needs them (Elements).
         var parts = this.Open();
         for (var i = 0; i < rvalue.Count; i++)
@@ -338,7 +349,7 @@ internal sealed class MirMoveData
         {
             var taken = this.Taken(rvalue, i);
             var temp = taken < 0 ? -1 : this.body.Operands[rvalue.Start + i].Place.Root;
-            var absent = temp >= 0 && takes && this.Absent(temp, taken, chain);
+            var absent = temp >= 0 && this.Absent(temp, taken, chain);
             var carried = temp >= 0 && (absent || this.nevers.TryGetValue(~temp, out _));
             copies = carried && copies < 0 ? this.Elements(found >> 2, rvalue) : copies;
             for (var k = 0; carried && k < copies; k++)
@@ -581,7 +592,7 @@ internal sealed class MirMoveData
         MirAggregateKind.Tuple => this.Child(path, MirProjectionKind.Field, i),
         MirAggregateKind.FixedArray or MirAggregateKind.Array => this.Child(path, MirProjectionKind.ConstIndex, i),
         _ when AdtDef.IsEnum(aggregate.Type) => this.Child(this.Child(path, MirProjectionKind.Downcast, aggregate.Arg), MirProjectionKind.Field, i),
-        _ when AdtDef.Base(aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
+        _ when AdtDef.Base(types, aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
         _ => this.Child(path, MirProjectionKind.Field, i),
     };
 
@@ -715,7 +726,7 @@ internal sealed class MirMoveData
     }
 
     // The events of a body's locals in reverse postorder (their chain and whether the first is their StorageLive; a StorageDead is none),
-    // and its Places' paths.
+    // and its Places' paths, an Opaque site's undecided use's at its own Place, which A1 checks (DECISIONS Z17).
     private struct Events(MirMoveData data, MirDataflow flow) : IMirUses
     {
         private int chain;

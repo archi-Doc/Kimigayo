@@ -12,16 +12,52 @@ namespace Kimi.Compiler.Mir;
 // it gave (a call's given argument).
 internal sealed partial class MirBuilder
 {
-    private readonly List<(Koto Node, MirPlace Place)> located = []; // The Places the expansions being built located, innermost last.
+    // The Places the expansions being built located, innermost last.
+    private readonly List<(Koto Node, MirPlace Place)> located = [];
+
+    // The Type a call takes a node as: its receiver's or argument's adapted Type, else its parameter's.
+    private static BoundType? Input(CallPlan call, Koto node)
+    {
+        if (ReferenceEquals(call.Receiver, node))
+        {
+            return call.ReceiverOperation.AdaptedType ?? call.ReceiverOperation.ParameterType;
+        }
+
+        foreach (ref readonly var argument in call.ArgumentOperations)
+        {
+            if (ReferenceEquals(argument.Source, node))
+            {
+                return argument.AdaptedType ?? argument.ParameterType;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 11.3, 4.7.1 step 3 (DECISIONS R4-M109, R4-M145): a node that one of two calls takes as the HIR publishes that call's input: by
+    // the node's plan-row Adjust where the two calls' takes differ, else by its column's, at the Type the call takes it as (Input), a
+    // call's input. An update's getter and a selection by case's index (MirBuilder.Cases) take their receiver so.
+    private MirOperand Taken(CallPlan call, Koto node)
+    {
+        var adjust = HirTables.PlanOf(node).Adjust;
+        return this.Operand(node, adjust == default ? HirTables.AdjustOf(node) : adjust, Input(call, node), input: true);
+    }
 
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
     // match: Some binds the item for the body, None completes the loop with Unit. The body end and a continue clean the iteration up and call
-    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject.
+    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject. A Subject borrowed in place is first held
+    // in its Subject Place as a match's is (SPEC 15.1.6), the entry's input (its receiver, or a requirement call's first argument).
     private void For(MirPlace destination, ForKoto loop)
     {
-        var plan = BoundMatch.Of(loop)!;
-        var entry = CallPlan.Of(loop)!;
-        var step = CallPlan.Of(loop, 1)!;
+        var plan = BoundMatch.Of(compilation.Binding, loop)!;
+        var entry = CallPlan.Of(compilation.Binding, loop)!;
+        var step = CallPlan.Of(compilation.Binding, loop, 1)!;
+        var input = entry.Receiver ?? entry.ArgumentOperations[0].Source;
+        if (ReferenceEquals(input, loop.Iteration!.Subject))
+        {
+            this.locals[HirTables.Symbol(input)!] = this.HoldSubject(plan, loop.Iterable).Root;
+        }
+
         var iterator = this.Hold(entry.ReturnType, loop);
         this.Call(iterator, entry, loop, first: null);
         this.locals[HirTables.Symbol(step.Receiver!)!] = this.Made(iterator).Root;
@@ -66,14 +102,16 @@ internal sealed partial class MirBuilder
     // once. Reading and writing are selected independently: a Property's custom getter (First) and setter (Second, taking the result as its
     // Evaluated argument) are called on its receiver, located once, and a standard accessor reads or writes its storage, as a Place target is
     // read and written in place. The old value is read by a built-in operation, or by a user arithmetic call (CallPlan.Of) with the secured
-    // operand, whose result replaces it. A destination written in place is reserved once located and read and written through that
-    // reservation, which the write activates (writeback protection). A compound assignment gives Unit; an increment or decrement its old
-    // value (postfix) or its result (prefix), SPEC 13.2, the Property not read again.
+    // operand, whose result replaces it. Writeback protection: a destination written in place is reserved once located and read and written
+    // through that reservation, which the write activates; a setter's receiver is reserved once located, as the setter takes it (its
+    // TwoPhaseUniq), and taken by the setter, whose call activates it, while the getter and the standard get read the receiver beside it, a
+    // shared access whose Loans must end before that activation (a getter result's dependency is met there, SPEC 13.7.2). A compound
+    // assignment gives Unit; an increment or decrement its old value (postfix) or its result (prefix), SPEC 13.2, the Property not read again.
     private void Update(MirPlace destination, Koto node)
     {
         var (target, right) = node is BinaryKoto update ? (update.Left, update.Right) : (((UnaryKoto)node).Operand, null);
-        var plan = ExpansionPlan.Of(node)!.Value;
-        var arithmetic = CallPlan.Of(node);
+        var plan = ExpansionPlan.Of(compilation.Binding, node)!.Value;
+        var arithmetic = CallPlan.Of(compilation.Binding, node);
         var mark = this.located.Count;
         var value = right is null ? default : this.Secure(this.Operand(right, expected: null), right);
         // A Property's accessors take its receiver, located once; a static Property's have none. Binding designates the Property through
@@ -86,6 +124,9 @@ internal sealed partial class MirBuilder
         {
             this.located.Add((receiver, this.Place(receiver)));
         }
+
+        // SPEC 13.7.2: a setter's receiver reserved where it is located, as the setter takes it.
+        var reservation = receiver is null || plan.Second is null ? default : this.Operand(receiver, Input(plan.Second, receiver), input: true);
 
         if (accessor is not null && (plan.First is null || plan.Second is null))
         {
@@ -108,18 +149,7 @@ internal sealed partial class MirBuilder
             // A receiver both accessors take is taken by each as the HIR publishes: the setter by the column's Adjust, the getter by the
             // receiver's plan-row Adjust where the two differ (SPEC 11.3: shared), else by the column's (DECISIONS R4-M109).
             var given = plan.Second is null ? null : receiver;
-            var operand = default(MirOperand);
-            foreach (ref readonly var argument in getter.ArgumentOperations)
-            {
-                if (given is not null && ReferenceEquals(argument.Source, given))
-                {
-                    var adjust = HirTables.PlanOf(given).Adjust;
-                    operand = this.Operand(
-                        given, adjust == default ? HirTables.AdjustOf(given) : adjust, argument.AdaptedType ?? argument.ParameterType, input: true);
-                }
-            }
-
-            this.Call(read, getter, target, null, given, operand);
+            this.Call(read, getter, target, null, (given, given is null ? default : this.Taken(getter, given)));
             this.Made(read);
         }
 
@@ -133,7 +163,7 @@ internal sealed partial class MirBuilder
         if (arithmetic is not null)
         {
             this.located.Add((target, read));
-            this.Call(result, arithmetic, node, null, right, value);
+            this.Call(result, arithmetic, node, null, (right, value));
         }
         else
         {
@@ -166,7 +196,7 @@ internal sealed partial class MirBuilder
         if (plan.Second is { } setter)
         {
             var unit = right is null ? this.Hold(BoundType.Unit, node) : destination;
-            this.Call(unit, setter, node, null, setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result));
+            this.Call(unit, setter, node, null, (setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result)), (receiver, reservation));
             if (unit != destination)
             {
                 this.Made(unit);
@@ -189,10 +219,10 @@ internal sealed partial class MirBuilder
     // through it, which the update reads and writes; the write activates it.
     private MirPlace Writeback(MirPlace destination, Koto node)
     {
-        var reference = compilation.Types.Reference(SemanticsKind.Uniq, this.body.TypeOf(destination) ?? BoundType.Unit);
+        var reference = this.Reference(SemanticsKind.Uniq, destination);
         var reservation = this.Temp(reference, node);
         this.Set(reservation, this.Ref(destination, reference, input: true), node);
-        return this.body.Project(reservation, MirProjectionKind.Deref, 0);
+        return this.body.Project(compilation.Types, reservation, MirProjectionKind.Deref, 0);
     }
 
     // A check's comparison into a bool: building goes on where it holds, else at the failure.
@@ -248,7 +278,7 @@ internal sealed partial class MirBuilder
     // failing with KIMI_E_DUPLICATE_KEY before the value is evaluated, located at the key.
     private void Absent(DictionaryLiteralKoto dictionary, MirPlace built, MirPlace key, Koto node)
     {
-        var find = CallPlan.Of(dictionary)!;
+        var find = CallPlan.Of(compilation.Binding, dictionary)!;
         var link = this.Hold(BoundType.ISize, node);
         var test = this.Hold(BoundType.Boolean, node);
         var fail = this.body.AddBlock();

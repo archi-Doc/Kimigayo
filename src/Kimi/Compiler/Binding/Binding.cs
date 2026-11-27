@@ -15,9 +15,10 @@ namespace Kimi.Compiler;
 //   (Semantics; the HIR tables and Plans), and the diagnostics ReportDiagnostics records (Binding.Diagnostics.Report.cs).
 // - Invariants: a pass is never reentered; a pass that does not finish leaves no Result, and the later phases' facts are discarded
 //   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The published per-pass lists (nodes, issues,
-//   derived issues, obligations, imports and the effect obligations' sources) are parts (PassPart, Binding.Passes.cs): a pass writes
-//   the part the driver hands it, Binding's own until the library pass (PLAN G949 S1-r1b) is handed LibraryLayer.Part, and a reader
-//   outside a pass reads the composed views, both parts.
+//   derived issues, obligations, imports, the effect obligations' sources, the Contract shapes, the effect bounds and the import
+//   declarations) and the slots' keepers are parts (PassPart, Binding.Passes.cs): a pass writes the part the driver hands it, the
+//   library pass LibraryLayer.Part and the program pass Binding's own (PLAN G949 S1-r1b), and a reader outside a pass reads the
+//   composed views, both parts.
 // - Prohibitions: no read of Mir or the Backend (COMPILER_ARCHITECTURE "Dependency rules"); readers outside Binding use its published
 //   facts, never its private state.
 
@@ -36,18 +37,23 @@ public sealed partial class Binding
     private List<BindingIssue> issues;
     private List<LibraryImport> libraryImports;
     private List<BindingObligation> obligations;
-    private HashSet<BindingObligation> obligationSet;
+    private HashSet<ObligationKey> obligationSet;
+    private List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> foreignFailures;
     private bool running;
 
     // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across
     // passes and reads absent after an edit until its first write.
     private ulong edit;
 
-    internal Binding(Compilation compilation)
+    internal Binding(Compilation compilation, KimiLibrary library)
     {
+        if (library.Target != compilation.TargetTriple)
+        {
+            throw new InvalidOperationException($"A Binding for `{compilation.TargetTriple.Value}` is given the library of `{library.Target.Value}` (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+
         this.compilation = compilation;
-        this.indexer = new(this);
-        this.Library = new(compilation);
+        this.Library = library;
         this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
         this.symbols = new(this);
@@ -57,6 +63,7 @@ public sealed partial class Binding
         this.associatedOrigins = new(this);
         this.shapeContractHeads = new(this);
         this.objectErasures = new(this);
+        this.deferredDefaults = new(this);
         this.enumConstructions = new(this);
         this.copyDeclarations = new(this);
         this.copyByType = new(this);
@@ -82,13 +89,35 @@ public sealed partial class Binding
         this.viewRangeCalls = new(this);
         this.rangeCalls = new(this);
         this.resolvedKeys = new(this);
+        this.aliasTargets = new(this);
+        this.importedContainers = new(this);
+        this.qualificationFailures = new(this);
+        this.pairFollows = new(this);
+        this.implicitPairFollows = new(this);
+        this.effectBoundRejections = new(this);
+        this.receiverOperations = new(this);
+        this.reachedThroughBorrow = new(this);
+        this.inferredArrayLengths = new(this);
+        this.arrayInferenceShapes = new(this);
+        this.resultContexts = new(this);
+        this.uniqIndexing = new(this);
+        this.requirementGroups = new(this);
+        this.memberSelections = new(this);
+        this.inferredConstructionTargets = new(this);
+        this.qualificationStops = new(this);
+        this.formationCauses = new(this);
+        this.judgedOccurrences = new(this);
+        this.knownBases = new(this);
+        this.earlyReads = new(this);
+        this.resolvedSlices = new(this);
         this.matchPlans = new(this);
-        this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
-        foreach (var symbol in this.Library.RegisteredSymbols)
-        {
-            this.symbols.Add(symbol.Declaration, symbol);
-        }
-
+        this.indexedPatterns = new(this);
+        this.prerequisites = new(this);
+        this.partPrerequisites = new(this);
+        this.prerequisiteVisits = new(this);
+        this.duplicateDeclarations = new(this);
+        this.resolvingTypes = new(this);
+        this.synthesizedCalls = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);
@@ -97,8 +126,11 @@ public sealed partial class Binding
         this.libraryImportsView = new(own.Imports, layer.Imports);
         this.virtualDeclarationsView = new(own.VirtualDeclarations, layer.VirtualDeclarations);
         this.callableEffectUsesView = new(own.CallableEffectUses, layer.CallableEffectUses);
-        this.callableEffectClausesView = new(own.CallableEffectClauses, layer.CallableEffectClauses);
+        this.contractShapesView = new(own.ContractShapes, layer.ContractShapes);
+        this.boundedRequirementsView = new(own.BoundedRequirements, layer.BoundedRequirements);
+        this.importDeclarationsView = new(own.ImportDeclarations, layer.ImportDeclarations);
         (this.Issues, this.Obligations, this.LibraryImports, this.DerivedIssues) = (this.issuesView, this.obligationsView, this.libraryImportsView, this.derivedIssuesView);
+        this.ImportDeclarations = this.importDeclarationsView;
         this.EnterPass(this.ProgramPass);
     }
 
@@ -123,78 +155,6 @@ public sealed partial class Binding
     /// <summary>Gets the Type context: interned Types and substitutions.</summary>
     internal TyCtxt Types => this.types;
 
-    /// <summary>Gets the entries of the tables KimiLibrarySize sizes, as the latest pass left them.</summary>
-    internal KimiLibrarySize.Tables TableCounts
-        => new(
-            this.nodesView.Count,
-            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
-            this.types.KeyCount,
-            this.constraints.Count,
-            this.pendingAssociatedTypes.Count,
-            this.memberSelections.Count,
-            this.memberSides.Count,
-            this.capabilityNodes.Count,
-            this.substitutedParts.Count);
-
-    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
-    /// (symbols, their parameters, scopes, Origin atoms, open regions, associated Origins, special receivers) its arena's slots no page
-    /// holds.</summary>
-    internal KimiLibrarySize.Tables TableFree
-        => new(
-            this.programPart.Nodes.Capacity + this.Library.Layer.Part.Nodes.Capacity - this.nodesView.Count,
-            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Free,
-            this.types.KeyFree,
-            this.constraints.Capacity - this.constraints.Count,
-            this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
-            this.memberSelections.Capacity - this.memberSelections.Count,
-            this.memberSides.Capacity - this.memberSides.Count,
-            this.capabilityNodes.Capacity - this.capabilityNodes.Count,
-            this.substitutedParts.Free);
-
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
     public BindingResult CheckBound()
@@ -209,8 +169,8 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
-        // The program pass's Check publishes both kinds of failure again (until PLAN G949 S1-r1b the one pass's), on the part the
-        // fields hold between Binds, Binding's own.
+        // The program pass's Check publishes both kinds of failure again, on the part the fields hold between Binds, Binding's own; the
+        // library pass's records stay in the layer's part.
         this.issues.Clear();
         this.derivedIssues.Clear();
         this.Check(BindingMode.Final);
@@ -236,25 +196,33 @@ public sealed partial class Binding
         try
         {
             this.BeginBind(mode);
-            this.Run(mode);
-            this.Result = this.ComposeResult();
-            if (mode == BindingMode.Final)
+            if (this.Run(mode))
             {
-                this.WalkLints();
+                this.Result = this.ComposeResult();
+                if (mode == BindingMode.Final)
+                {
+                    this.WalkLints();
+                }
+
+                this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             }
 
+            // A refused library pass (Run false; PLAN G949 Stage 2 U2a, C2) leaves no Result, as a pass that does not finish.
             this.impls.Sweep(); // No identity or path an edit removed is kept (PLAN G949, DECISIONS BU-220).
-            this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             return this.Result;
         }
         finally
         {
             this.EnterPass(this.ProgramPass); // Between Binds, and after a throw, the fields hold Binding's own part.
             this.running = false;
+            this.producing = false; // A pass that did not finish produced none.
         }
     }
 
     internal bool IsRunning => this.running;
+
+    // Whether a node's plans are the current pass's: the node resolved by the running or the last completed pass, not an earlier one.
+    internal bool IsCurrent(Koto node) => HirTables.State(node) == BindingState.Resolved && (this.running || this.Result != default);
 
     internal void Invalidate()
     {
@@ -264,7 +232,9 @@ public sealed partial class Binding
             return;
         }
 
-        // An edit revokes the whole pass, exactly as the next Bind discards it, unless no pass has finished since the last revocation.
+        // An edit revokes the program pass of the latest Bind, exactly as the next Bind discards it, unless no pass has finished since the
+        // last revocation; the frozen library is never revoked (PLAN G949 S1-1: a source edit never reaches it). Between Binds the
+        // fields hold the program pass's part.
         if (this.Result != default)
         {
             this.Result = default;
@@ -274,11 +244,14 @@ public sealed partial class Binding
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
         // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
-        // module's edit columns stale, StampedColumn), local regions, item contexts and the Type context's view memos.
+        // module's edit columns stale, StampedColumn), local regions, member paths (keyed by SyntaxIds the edit renumbers), item contexts
+        // with the atoms their plans hold at library binders (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
         this.edit++;
-        this.knownBases?.Clear();
+        this.knownBases.Empty();
         this.localRegions.Clear();
+        this.memberPaths.Clear();
         this.functionItemContexts.Clear();
+        this.programAtoms.Empty();
         this.types.ResetViews();
     }
 
@@ -288,7 +261,6 @@ public sealed partial class Binding
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
         this.PruneCandidateScopes();
-        this.ValidateDefaultAliases();
         this.PrepareOriginDeclarations();
         this.BindSchemas();
         this.PrepareAssociatedOrigins();
@@ -299,6 +271,7 @@ public sealed partial class Binding
         this.PublishInheritedOptOuts();
         this.VerifyEarlyObjectForms();
         this.RegisterInheritedConformances();
+        this.PrepareInheritedScopes(); // SPEC 8.8.2, PLAN G651 a2 (form M): the heir scopes at the end of the registrations.
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
         this.PrepareCases();
@@ -322,7 +295,6 @@ public sealed partial class Binding
         this.PrepareStorage();
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
-        this.PrepareInheritedScopes(); // SPEC 8.8.2: the heir scopes before their readers (inline layouts, verification).
         this.ValidateInlineLayouts();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();
@@ -332,16 +304,13 @@ public sealed partial class Binding
         this.capabilitiesReady = true;
         this.ValidateConformances(mode, false);
         this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
-        this.ValidateConstraintEnvironments(mode);
+        this.SettleVirtualOverridePremises(); // R7-C2c2 c2-4: a refuted inherited condition fails the override (SPEC 6.4.3).
+        this.SettlePremiseFailures(mode);
         this.PrepareSpecializations();
+        this.RecordDuplicateGroups(); // After PrepareSpecializations, the pass's last pairwise duplicate check (Index declared every scope).
         this.CompleteImplicitConstructors();
         this.MakeLibraryAccessorFunctions(); // The library's facts a program may demand, complete before any body (PLAN G949 S1-e).
         this.FormLibrarySignatures();
-        if (this.CaptureOmittedBaseQueries)
-        {
-            this.CaptureOmittedBases();
-        }
-
         return true;
     }
 

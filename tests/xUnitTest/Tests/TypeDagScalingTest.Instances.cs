@@ -17,7 +17,8 @@ public partial class TypeDagScalingTest
     // callee's atom walk); a comparison of the Tuple tree (ComparisonProof), a Copy requirement on it (DependentType), a called closure
     // capturing it (LacksImage). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
     // candidates' and results' Origin tests (the Origin summary), the published result and a Closure with two captures, one of which names
-    // the result's Origin.
+    // the result's Origin; and a `match` and a `for` decomposition reached through a reference, whose `let` bindings each own the region of
+    // the layer the reach adds (PLAN G922), carried by a Closure.
     [Theory]
     [InlineData("tuple", 40)]
     [InlineData("array", 40)]
@@ -40,12 +41,30 @@ public partial class TypeDagScalingTest
                 }
 
                 var function = (FunctionKoto)definition;
-                Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), function.SymbolOf()));
+                Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), function.SymbolOf(), []));
                 calls.Add($"{function.Name} {call.Target.Name}");
             }
         }
 
         Assert.Equal(form == "enum" ? "g f" : "g f, k h, copies cp", string.Join(", ", calls));
+    }
+
+    // PLAN G922 U1 (the owner's O-534 (a) interim): the `ref` chain's last instance read into a `let` local, whose opening merges each
+    // Tuple level met on its two paths (MarkMerged, each distinct part walked once), and a `match` of its copy whose bindings at the
+    // leftmost and rightmost leaf a nested signature names: each name is the located limit, within the chain's bound.
+    [Theory]
+    [InlineData(40)]
+    public void AMergedLeafNamedInANestedSignatureIsTheLimit(int size)
+    {
+        var (left, right) = ("let l", "let r");
+        for (var i = 0; i < size - 2; i++)
+        {
+            (left, right) = ($"({left}, _)", $"(_, {right})");
+        }
+
+        var c = MirBuildTest.Compile(InstanceChain("ref", size) + $"func merged(d: ref/D1<ref/i32 during a>) -> ()\n    let v = d{string.Concat(Enumerable.Repeat(".x", size))}\n" +
+            $"    match v@copy\n        ({left}, {right})\n            func inner(x: ref/i32 during l) -> ref/i32 during r => x\n            return\n    return\n");
+        Assert.Equal("Unsupported_Kd l|Unsupported_Kd r", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {(x.Node as IdentifierNameKoto)?.IdentifierName}").Order(StringComparer.Ordinal)));
     }
 
     // DECISIONS BU-113: a generic callee's declared input is the chain over its own Type parameter, `fg<T>(d: uniq/D1<T>, …)`, so the
@@ -61,7 +80,43 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var gg = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gg");
         var call = KotoTree.Walk(gg).OfType<InvocationKoto>().Single().CallOf()!;
-        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gg.SymbolOf()));
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gg.SymbolOf(), []));
+    }
+
+    // PLAN G935 (blocker 1; DECISIONS Q20 B1): Writes' walk (WrittenThrough, its reach set by WriteReach) over a handed writer's parameter,
+    // a diamond chain `N_i { a: N_(i+1), b: N_(i+1) }` of 2^30 paths within StorageBound, past an exclusive layer (reach Exclusive) and
+    // past an owning handle (reach Own, FreshBelow); the kept Type T (abstract in both functions, so y's Loan may reach its storage and
+    // Filled asks whether `set` writes T) lies nowhere in it, so the walk reads every part, each (part, reach) once at its shallowest depth
+    // (retentionReaches). Without the memo the row does not finish (a probe with Enters' test disabled ran past 150 s).
+    [Theory]
+    [InlineData("uniq/N0", 30)]
+    [InlineData("uniq/(rc/N0)", 30)]
+    public void AHandedWritersParameterIsWalkedOncePerPartAndReach(string slot, int size)
+    {
+        var chain = string.Concat(Enumerable.Range(0, size).Select(static i => $"struct N{i}\n    public var a: N{i + 1}\n    public var b: N{i + 1}\n"));
+        var c = MirBuildTest.Compile(chain + $"struct N{size}\n    public var v: i32\npublic func main() => ()\n" +
+            $"func fw<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: ({slot} during u, E) -> ()) -> ()\n    return\n" +
+            $"func gw<T>(x: uniq/T, y: uniq/i32 during o, ku: ref/i32 during u, set: ({slot} during u, uniq/i32 during o) -> ()) => fw<T, uniq/i32 during o>(x, y, ku, set@move)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var gw = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gw");
+        var call = KotoTree.Walk(gw).OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gw.SymbolOf(), []));
+    }
+
+    // D-933 (DECISIONS Q20 B1): the raw-source walk of a struct's stored parts (Binding.StoredRawSources) over a diamond chain `N_i { a:
+    // N_(i+1), b: N_(i+1) }` of 2^30 paths within StorageBound, whose leaf holds a raw Field, reached past the input's exclusive layer:
+    // each part once per position (retentionStored), so the contract finishes. Without the memo the walk reads every path.
+    [Fact]
+    public void AStoredDagIsWalkedOncePerPartForItsRawSources()
+    {
+        const int Size = 30;
+        var chain = string.Concat(Enumerable.Range(0, Size).Select(static i => $"struct N{i}\n    public var a: N{i + 1}\n    public var b: N{i + 1}\n"));
+        var c = MirBuildTest.Compile(chain + $"struct N{Size}\n    public var q: raw/u8\npublic func main() => ()\n" +
+            "func keepN(s: raw/u8, v: uniq/N0) => ()\nfunc gn(v: uniq/N0) => keepN(null, v)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var gn = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gn");
+        var call = KotoTree.Walk(gn).OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gn.SymbolOf(), []));
     }
 
     // SPEC 8.2: a projection chain over a Type parameter, `Dup<…Dup<T>.Item…>.Item`, normalizes to a Tuple DAG of T in a generic body: each
@@ -129,6 +184,32 @@ public partial class TypeDagScalingTest
         Assert.Equal(Enumerable.Range(1, size).Select(static i => $"D{i}").Order(StringComparer.Ordinal), diagnosed.Order(StringComparer.Ordinal));
     }
 
+    // DECISIONS BU-12 (R7-T1, C-406's C2): the storage verdict (Binding.PrepareTypeStorage, the one storage query) decides each distinct Type of a
+    // storage once per pass, so an inline Box and a fixed array nested N deep cost linear in N: Prepared within the height bound (64),
+    // Limit past it, and the pass's memo gives the same verdict again; a walk that stalls fails at the deadline, never hangs.
+    [Theory]
+    [InlineData(30, "Prepared")]
+    [InlineData(60, "Prepared")]
+    [InlineData(120, "Limit")]
+    public async Task AStorageVerdictIsLinearInItsNesting(int depth, string expected)
+    {
+        var boxes = string.Concat(Enumerable.Repeat("Box<", depth)) + "i32" + new string('>', depth);
+        var arrays = string.Concat(Enumerable.Repeat("[1 of ", depth)) + "i32" + new string(']', depth);
+        var source = $"struct Box<T>\n    public var value: T\nfunc f(b: {boxes}, a: {arrays}) -> ()\n    return\npublic func main() => ()\n";
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(
+            () =>
+            {
+                var c = MirBuildTest.Compile(source);
+                var types = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters
+                    .Select(static x => x.Type.TypeOf()!).ToArray();
+                return types.Select(c.Binding.PrepareTypeStorage).Concat(types.Select(c.Binding.PrepareTypeStorage)).ToArray();
+            },
+            cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+        Assert.Equal(Enumerable.Repeat(expected, 4), (await run).Select(static x => x.ToString()));
+    }
+
     // D1 to Dn (structs, or enums whose Case A holds the part), each storing the next at its Type argument doubled (a Tuple, or a Tuple of
     // two fixed arrays), the last storing the argument; D1 at i32, at `raw/i32` for `raw`, or at `ref/i32 during a` for `ref`, whose
     // Closure with two captures also takes a second chain `during b`. A struct chain's functions read the path to Dn's argument.
@@ -157,7 +238,10 @@ public partial class TypeDagScalingTest
         {
             "tuple" => text.Append($"func equal(a: ref/{root}, b: ref/{root}) -> bool => a{path} == b{path}\n").ToString(),
             "ref" => text.Append($"func both(d: ref/{root}, e: ref/D1<ref/i32 during b>) -> ()\n    let v = d{path}\n    let u = e{path}\n")
-                .Append("    let f = func [v, u] () => v\n    let w = f()\n    return\n").ToString(),
+                .Append("    let f = func [v, u] () => v\n    let w = f()\n    return\n")
+                .Append($"func patterns(d: ref/{root}) -> ()\n    match d{path}\n        (let a, let b)\n            let f = func [a, b] () => a\n")
+                .Append($"            let w = f()\n            return\n    return\nfunc loops(d: ref/Array<({root}, {root})>) -> ()\n    for (u, v) in d\n")
+                .Append($"        let g = func [u, v] () => u{path}\n        let z = g()\n    return\n").ToString(),
             _ => text.ToString(),
         };
     }

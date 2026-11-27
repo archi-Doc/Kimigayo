@@ -181,13 +181,16 @@ public class ConstraintBindingTest
 
     // The owner's O-44: a conformance reads no signature's formation, so a declaration that fails after the bodies keeps its own record and fails
     // no conformance naming it. LateAssociated's goes through the binding's own formation (R7-V5's S3). DECISIONS Q13 for the removed records.
+    // PLAN G464 (SPEC 15.6.4 step 3, 8.2.3, 23.1.2; DECISIONS Q13, dependent): a call no longer forms its instantiated inputs, so a failed
+    // declaration named only in a call's input gives the call no record (LateClause, LateAfterItsReaders, LateThroughAClosedClause); one
+    // named in its result keeps its dependent record through the result's formation (LateWithUses, LateAssociated).
     [Theory]
-    [InlineData(LateClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateClauseValid, "clean")]
-    [InlineData(LateAfterItsReaders, "3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateThroughAClosedClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAfterItsReaders, "2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateThroughAClosedClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateWithUses, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateAssociated, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAssociated, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the user's record reads S's failed closed clause and rests (SPEC 23.1.2)
     public void ALateFailureStaysAtItsDeclaration(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // PLAN G375: a requirement's call is proven under its reference, not as its declaration, so it neither reads nor writes the kept Proven: `P<i32>`'s
@@ -235,6 +238,21 @@ public class ConstraintBindingTest
         var actual = output.Diagnostics.Select(x => $"{x.Code}@{source.Substring(x.Span!.Value.Start, x.Span.Value.Length)} " +
             $"[{string.Join("; ", (x.Reason ?? []).Select(static y => $"{y.Name}={y.Value}"))}]");
         Assert.Equal((records == "clean", records), (output.Accepted, output.Diagnostics.Length == 0 ? "clean" : string.Join(" | ", actual)));
+    }
+
+    // R7-E2 E2-5b (C5 (a), the Front's k4; SPEC 8.3, 6.3.6): a synthesized constructor's clause is its structure's, so `K<string>.init()`
+    // refutes it at the formation, whose record names no call, and the synthesized candidate is rejected by it: no clause record names the
+    // constructor as its called declaration (a called declaration's name is read from the declaration, whatever it is: BindingTest's D-850
+    // clause row). The formation's record is the same with `K<U>` in a generic function, where it is unproven.
+    [Theory]
+    [InlineData("func make() -> i32\n    let k = K<string>.init()\n", "UnsatisfiedConstraint_Kd", "K<string>")]
+    [InlineData("func make<U>() -> i32\n    let k = K<U>.init()\n", "UnprovenConstraint_Kd", "K<U>")]
+    public void ASynthesizedConstructorsClauseIsItsStructuresAtTheFormation(string function, string code, string formed)
+    {
+        var source = "struct K<T>\n    T is Copy\n    public let n: i32 = 0\n" + function + "    return 0\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Contains(records, x => x.Code == code && source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == formed && (x.Related ?? []).Length == 0);
+        Assert.DoesNotContain(records, static x => (x.Related ?? []).Any(static r => r.Role == "declaration"));
     }
 
     // PLAN G375: a kept Proven is valid in its pass (Binding.DeclQuery), so an edit that fails the signature's Type is seen by the next pass's call.
@@ -392,8 +410,8 @@ public class ConstraintBindingTest
     [InlineData(NestedSubjects + "    public init() => ()\ncontract C2\n    W<Self>.Inner is K", "1*InvalidConstraint_Kd")] // a8, Contract-wide
     [InlineData(NestedSubjects + "    W<Z>.Inner is not K\n    public init() => ()", "1*InvalidConstraint_Kd")] // a5: the clause's record alone, none at S
     [InlineData(NestedSubjects + "    W<Z>.Inner is W<i32>.Inner\n    public init() => ()\nfunc use() => S<i64>.init()", "1*InvalidConstraint_Kd")] // s3use: the use rests on the clause
-    [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v1
-    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v2
+    [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "2*InvalidConstraint_Kd")] // v1: O-344 (a), Inner declares no K
+    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "3*InvalidConstraint_Kd")] // v2: O-344 (a); the third record repeats a line: a duplicate pinned until its PLAN line (record selection, ruling 130) is fixed
     [InlineData(NestedSubjects + "    N.Inner is K\n    public init() => ()", "clean")] // v3
     [InlineData(NestedSubjects + "    D<i32>.Item is Copy\n    public init() => ()", "clean")] // p5, a projection whose value is known
     [InlineData(NestedSubjects + "    D<W<Z>.Inner>.Item is K\n    public init() => ()", "clean")] // p8
@@ -404,6 +422,9 @@ public class ConstraintBindingTest
 
     // PLAN G615 (the owner's O-141 (a)): invalid by SPEC 8.2.3 "Premise errors" (a Refuted identity between two premises). R7-C3a's identity
     // classes make the class a Conflict: one premise error at f in either order, and a body using both adds no record resting on it.
+    // PLAN G1356 (B's ruling 7; SPEC 8.2.3, 23.1.2 rule W): so does every single-requirement operator decision over T, whose Error proof
+    // read the conflict: the integer row (`%`), Negatable's `-`, a shift count and a non-composite comparison (fail-before: their own
+    // InvalidConstraint_Kd at the operation).
     [Theory]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is i32\n    ()")]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is string\n    ()")]
@@ -411,6 +432,10 @@ public class ConstraintBindingTest
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is ()\n    ()")]
     [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a + 1")] // A body using both (review 1's g4r, c5; O-147 (c)).
     [InlineData("func f<T>(a: T) -> i32\n    T is i32\n    T is Never\n    return a + 1")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a % 1")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return -a")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return 1 << a")]
+    [InlineData("func f<T>(a: T) -> bool\n    T is Never\n    T is i32\n    return a < a")]
     public void NeverWithAConflictingIdentityPremiseIsAPremiseError(string source)
         => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
 
@@ -548,9 +573,9 @@ public class ConstraintBindingTest
     // declaration that states it (an id<K<string>> row was InternalInvariant_Kd before); a callee's signature, proven again at each use,
     // explains none while PLAN G375's sigref1 stays open (null Note).
     [Theory]
-    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", null)] // G572 U2a (Q13): the Final record without the clause fact (U2a-2)
+    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", "Call init requires T is Owned; this condition cannot be proven for ref/i32")] // G1278-A (Q13; F's G1278-4): the inferring construction is its Type's site; its Final record names the clause (BU-136)
     [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "g@move", "F is Callable<(ref/i32) -> i32> compares whole contracts and is not proven: the 1st parameter requires the omitted Origin of ref/i32 outlives static; its Origin part is judged from the premises alone (SPEC 8.10, 10.7, 15.6.1)")] // G572 U2a (Q13): the Callable record at its argument (U2a-2)
-    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "InvalidConstraint_Kd", "H.init(t: u@move)", null)] // G572 U2a (Q13): the call rests on mk's failed H<U>
+    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: u@move)", "Call init requires T is Owned; this condition cannot be proven for U")] // G1278-A (Q13; F's G1278-4): the inferring construction is a site of its own and proves its own clause; mk's result carries H<U>
     [InlineData(CallableHolder + "func use(g: i32) -> i32\n    let h = H.init(f: g)\n    return 0", "NoApplicableOverload_Kd", "H.init(f: g)", "init requires F is Callable<(ref/i32) -> i32>; this condition is refuted for i32")]
     [InlineData(OwnedHolder + "func id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<H<ref/i32>>\n    return 0", "UnprovenConstraint_Kd", "id<H<ref/i32>>", "Function Item id: H requires T is Owned; this condition cannot be proven for ref/i32")]
     [InlineData("struct H<T>\n    T is Copy\n    public let t: T\nstruct K<T>\n    T is Copy\n    public let t: T\nfunc id2<U, V>(u: U, v: V) -> i32 => 0\nfunc use() -> i32\n    let f = id2<H<string>, K<Array<i32>>>\n    return 0", "UnsatisfiedConstraint_Kd", "id2<H<string>, K<Array<i32>>>", "Function Item id2: H requires T is Copy; this condition is refuted for string")]
@@ -577,6 +602,90 @@ public class ConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues));
     }
+
+    // SPEC 8.6.3, 23.1.2 (R7-V1c, PLAN G373): a written Type's failing clause is one record at its occurrence wherever the Type is
+    // written (a parameter, a Function Type's result in a Field, a Field, a result, a local's annotation, a nested argument); two
+    // occurrences are two records. A transparent wrapper and the Type it wraps are one occurrence: dev recorded the clause at both.
+    // Parentheses are transparent (SPEC 8.3.1): `(Box<S>)`, `((Box<S>))` and a one-parameter Function Type's `(Box<S>) -> i32` are one
+    // occurrence each, recorded at the Type they hold (dev: one record per layer). Records of the declarations that carry the Type (at
+    // other spans) are not counted here.
+    [Theory]
+    [InlineData("func g(x: Box<S>) => ()", "7:11")]
+    [InlineData("struct H\n    public var f: (i32) -> Box<S>", "8:28")]
+    [InlineData("struct H\n    public var x: Box<S>", "8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")", "7:13")]
+    [InlineData("func g()\n    let b: Option<Box<S>> = .None", "8:19")]
+    [InlineData("func g(x: Array<Option<Box<S>>>) => ()", "7:24")]
+    [InlineData("func g(x: Box<S>, y: Box<S>) => ()", "7:11 7:22")]
+    [InlineData("func g(x: (Box<S>)) => ()", "7:12")]
+    [InlineData("func g(x: ((Box<S>))) => ()", "7:13")]
+    [InlineData("func g(f: (Box<S>) -> i32) => ()", "7:12")]
+    [InlineData("struct H\n    public var f: (Box<S>) -> i32", "8:20")]
+    [InlineData("func g(f: (Box<S>, i32) -> i32) => ()", "7:12")]
+    [InlineData("func g(x: Array<Option<Box<K>>>) => ()", "")]
+    [InlineData("func g(x: (Box<K>)) => ()", "")]
+    [InlineData("struct H\n    public var f: (i32) -> Box<K>", "")]
+    public void AWrittenTypesFailingClauseIsOneRecordAtItsOccurrence(string declaration, string occurrences)
+    {
+        var records = DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n");
+        Assert.Equal(occurrences, string.Join(' ', records.Select(static x => x.Split(' ', 4)).Where(static x => x.Length > 2 && x[2].TrimStart('(').StartsWith("Box<", StringComparison.Ordinal)).Select(static x => x[1])));
+        Assert.All(records, static x => Assert.StartsWith("UnsatisfiedConstraint_Kd ", x, StringComparison.Ordinal));
+    }
+
+    // SPEC 8.6.3, 23.1.2 (PLAN G1278): a constructed Type with clauses is judged once, at its formation site; a node that carries it (a
+    // Function at its result, a Field, a local or a parameter and their reads, a call result, an acquisition or a `let` at its expected
+    // Type) is neither judged nor rested (Q13: their restating records are gone). Guards keep their independent records: a Type written
+    // in an expression, a call's own clause (8.3.1), a literal and an acquisition that infer their Type (12.4, 10.8), a body's own
+    // failure. `struct H`'s 8:12 is ValidateAccessor's (PLAN G1278-B); dictann's literal 8:33, a carrier still judged, is named open.
+    [Theory]
+    [InlineData("struct H\n    public var x: Box<S>", "UnsatisfiedConstraint_Kd 8:12 | UnsatisfiedConstraint_Kd 8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")", "UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("func g()\n    let b: Option<Box<S>> = .None", "UnsatisfiedConstraint_Kd 8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")\nfunc h() -> i32\n    let v = g()\n    return v.nope", "NoApplicableOverload_Kd 9:13 | UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("func g(b: Box<S>) -> i32\n    return b.nope", "UnresolvedBinding_Kd 8:12 | UnsatisfiedConstraint_Kd 7:11")]
+    [InlineData("func g(p: Box<S>) -> i32\n    let b: Box<S> = p@move\n    return b.nope", "UnresolvedBinding_Kd 9:12 | UnsatisfiedConstraint_Kd 7:11 | UnsatisfiedConstraint_Kd 8:12")]
+    [InlineData("func g(s: S)\n    let d: Dictionary<S, i32> = [s@move: 1]", "UnsatisfiedConstraint_Kd 8:12 | UnsatisfiedConstraint_Kd 8:33")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g()\n    let e: E<S> = .B", "UnsatisfiedConstraint_Kd 12:12")]
+    [InlineData("func make<T>() -> T => $abort(\"no\")\nfunc g()\n    let o = make<Box<S>>()", "NoApplicableOverload_Kd 9:13 | UnsatisfiedConstraint_Kd 9:18")]
+    [InlineData("func wrap<T>(x: T) -> Box<T>\n    T is C\n    return $abort(\"no\")\nfunc g(s: S)\n    let b = wrap(s@move)", "NoApplicableOverload_Kd 11:13")]
+    [InlineData("func g(s: S)\n    let d = [s@move: 1]", "UnsatisfiedConstraint_Kd 8:13")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g(s: S)\n    let e = E.A(s@move)", "UnsatisfiedConstraint_Kd 12:13")]
+    [InlineData("func g() -> Box<S> => 1", "TypeMismatch_Kd 7:23 | UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g()\n    let e: E<K> = .B", "")]
+    public void AFormedTypeIsJudgedAtItsFormationSiteOnly(string declaration, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n").Select(static x => string.Join(' ', x.Split(' ', 3).Take(2))).Order(StringComparer.Ordinal)));
+
+    // SPEC 23.1.2, 15.3.1 (R7-V1c, F's V1c ruling 3): the walk judges a written occurrence once, at the outermost layer of it whose Type is
+    // formed. A wrapper whose `during` binds no slot (Box has none) forms no Type, so the occurrence is judged at the Type below it and
+    // both independent failures are reported, the Origin's and `S is C`'s (ee393bf26 judged nothing there); with a slot the wrapper's
+    // Type, its Origin arguments included, is judged and recorded at the Type node.
+    [Theory]
+    [InlineData("struct Box<T>\n    T is C", "InvalidOriginBinding_Kd 5:28 Box<S> during r | UnsatisfiedConstraint_Kd 5:28 Box<S>")]
+    [InlineData("struct Box<T> {h}\n    T is C\n    public let w: ref/i32 during h", "UnsatisfiedConstraint_Kd 6:28 Box<S>")]
+    public void AnOccurrenceIsJudgedAtItsOutermostFormedLayer(string box, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\n" + box + "\nstruct S\nfunc g(r: ref/i32, x: ref/(Box<S> during r)) -> i32 => 0\npublic func main() => ()\n").Order(StringComparer.Ordinal)));
+
+    // SPEC 8.3.1, 23.1.2 (R7-V1c, F's V1c ruling 4): a layer whose formed Type is its operand's is that occurrence, by the Type it forms,
+    // not by its syntax: an explicit `owner/` (a Type's own Semantics) over `Box<S>` is one occurrence, recorded at the Type it holds
+    // (c75ca8729 and dev: `owner/Box<S>` and `Box<S>` both); `ref/` forms another Type, so `Box<S>` below it is its own occurrence.
+    [Theory]
+    [InlineData("func g(x: owner/Box<S>) => ()", "UnsatisfiedConstraint_Kd 7:17 Box<S>")]
+    [InlineData("func g(x: owner/Box<K>) => ()", "")]
+    [InlineData("func g(x: ref/Box<S>) => ()", "UnsatisfiedConstraint_Kd 7:15 Box<S>")]
+    public void ALayerFormingItsOperandsTypeIsThatOccurrence(string declaration, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n").Order(StringComparer.Ordinal)));
+
+    // PLAN G464 (SPEC 23.1.2, 8.3, 15.3.4; the Front's C-535 t1, t1f, t2, t3): the layers over a failed written occurrence rest on it
+    // (RestLayersOnType), and an outer occurrence's own failure, a borrow layer's relation and a nested result's relation stay
+    // independent records (t1, t1f: `Box<string> is i32` and `() -> Box<string> is i32` are Refuted at the outer Box too; t2: the
+    // Field's own record stays beside them); only a Field's record restating its written occurrence goes (t3, DECISIONS Q13, rule W).
+    [Theory]
+    [InlineData("func f(b: Box<Box<string>>) -> i32 => 0\n", "2*UnsatisfiedConstraint_Kd")] // t1
+    [InlineData("func f(b: Box<() -> Box<string>>) -> i32 => 0\n", "2*UnsatisfiedConstraint_Kd")] // t1f
+    [InlineData("struct H {q}\n    public let g: ref/(Box<string>, ref/i32 during q) during static\n", "1*UnprovenOriginRelation_Kd 2*UnsatisfiedConstraint_Kd")] // t2
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let g: () -> (Box<string>, Option<T during q>)\n", "1*UnprovenOriginRelation_Kd 1*UnsatisfiedConstraint_Kd")] // t3
+    public void ALayerOverAFailedOccurrenceKeepsTheIndependentRecords(string declaration, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("struct Box<T>\n    T is i32\n" + declaration));
 
     // SPEC 7.5: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
@@ -658,25 +767,66 @@ public class ConstraintBindingTest
         Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf());
     }
 
-    // SPEC 10.1, 8.3.3 (DECISIONS: G572 U2a): a field's Type that holds with a judgment held pending does not depend on it. The unproven
-    // tagOf<Entry>() is selected and its result i32 holds, so Entry is Owned is then proven from tag: i32 (entry, and entry-i-two, whose
-    // unproven candidate is strictly best). Entry<T> is Owned needs T is Owned, unproven, so that obligation fails after selection. The
-    // first row was MirBuildTest.ValuesBindingDidNotFormAreDerived's (Q13: a valid program rejected before, a corrected label).
+    // SPEC 11.6 (DECISIONS BU-267; G1220-1 C9, C10): an inferred Property whose initializer's typing needs a fact (Copy, Owned, layout)
+    // about a Type that contains it is CyclicBinding_Kd at its declaration: the request demands the headers of the stored Properties its
+    // Type contains, through a field, a Case payload, a Tuple component, a fixed-array element, an unused Type argument, a base, a
+    // conditional opt-in's premise under its own kind (c5, a5, k1, q2: SPEC 8.8.2) or Option, and through another inferred Property (p1,
+    // p1r). e1-e3 were DECISIONS BU-136's `Entry` and `entry-i-two`, labelled valid (SPEC 11.6's own example: a corrected label, Q13). A
+    // Type that does not contain it (n1, f1, f2, f7), a Type argument no premise names (v4, q1), a fact the leaf rule decides (f3, f4, n2,
+    // c4's unconditional opt-in), an annotation (e1a, r1), a callee's own declaration check (f6) and a body's request (n3) demand nothing;
+    // r2's annotated re-entry keeps its records. A Copy opt-in's proof and a Property reading the failed one record their own Unproven
+    // (c1, c5, q2, x6, p1r: PLAN G1181's remainder, readers of the Type only).
     [Theory]
-    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", null)]
-    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func tagOf<T>(extra: i32 = 0) -> i64\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", null)]
-    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry<T>\n    var tag = Tags.tagOf<Entry<T>>()\n    public let v: T\n", "Tags.tagOf<Entry<T>>()")]
-    public void AFieldTypeHoldingWithItsObligationPendingIsNoCycle(string source, string? rejectedAt)
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "CyclicBinding_Kd 6:5")] // e1
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag: i32 = Tags.tagOf<Entry>()\n", "")] // e1a
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func tagOf<T>(extra: i32 = 0) -> i64\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "CyclicBinding_Kd 8:5")] // e2
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry<T>\n    var tag = Tags.tagOf<Entry<T>>()\n    public let v: T\n", "CyclicBinding_Kd 6:5; UnprovenConstraint_Kd 6:15")] // e3
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Entry>()\n", "UnprovenConstraint_Kd 6:5; CyclicBinding_Kd 7:5; UnprovenConstraint_Kd 7:15")] // c1
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Tag<U>\n    Self is Copy\n    var n: i32 = 0\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Tag<Entry>>()\n", "")] // c4
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Tag<U>\n    Self is Copy when U is Copy\n    var n: i32 = 0\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Tag<Entry>>()\n", "UnprovenConstraint_Kd 15:5; CyclicBinding_Kd 16:5; UnprovenConstraint_Kd 16:15")] // c5
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Pair<A, B>\n    Self is Copy when A is Copy\n    var a: A\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Pair<i32, Entry>>()\n", "")] // v4
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Pair<A, B>\n    Self is Copy when A is Copy\n    var a: A\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Pair<Pair<i32, Entry>, i32>>()\n", "")] // q1
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Pair<A, B>\n    Self is Copy when A is Copy\n    var a: A\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Pair<Pair<Entry, i32>, i32>>()\n", "UnprovenConstraint_Kd 9:5; CyclicBinding_Kd 10:5; UnprovenConstraint_Kd 10:15")] // q2
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Tag<U>\n    Self is Copy when U is Owned\n    var n: i32 = 0\nstruct Entry\n    var tag = Tags.dupOf<Tag<Entry>>()\n", "CyclicBinding_Kd 9:5")] // a5
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Tag<U>\n    Self is Copy when U is Owned\n    var n: i32 = 0\nstruct Outer\n    var e: Entry\nstruct Entry\n    var tag = Tags.dupOf<Tag<Outer>>()\n", "CyclicBinding_Kd 11:5")] // k1
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Outer\n    var e: Entry\nstruct Entry\n    var tag = Tags.tagOf<Outer>()\n", "CyclicBinding_Kd 8:5")] // t1
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Box<U>\n    var u: U\nstruct Entry\n    var tag = Tags.tagOf<Box<Entry>>()\n", "CyclicBinding_Kd 8:5")] // t2
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = G2.k\ngroup G2\n    public let k = Tags.tagOf<Entry>()\n", "CyclicBinding_Kd 6:5")] // p1
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\ngroup G2\n    public let k = Tags.tagOf<Entry>()\nstruct Entry\n    var tag = G2.k\n", "CyclicBinding_Kd 12:12; UnprovenConstraint_Kd 14:5")] // p1r
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nenum Wrap\n    One(Entry)\n    None\nstruct Entry\n    var tag = Tags.tagOf<Wrap>()\n", "CyclicBinding_Kd 15:5")] // x1
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<(Entry, i32)>()\n", "CyclicBinding_Kd 12:5")] // x2
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<[2 of Entry]>()\n", "CyclicBinding_Kd 12:5")] // x3
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Tag<U>\n    var n: i32 = 0\nstruct Entry\n    var tag = Tags.tagOf<Tag<Entry>>()\n", "CyclicBinding_Kd 14:5")] // x4
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nopen struct Base\n    var tag = Tags.tagOf<Derived>()\nstruct Derived : Base\n    var z: i32 = 0\n", "CyclicBinding_Kd 12:5")] // x5
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<(Entry, i32)>()\n", "UnprovenConstraint_Kd 12:5; CyclicBinding_Kd 13:5; UnprovenConstraint_Kd 13:15")] // x6
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry?>()\n", "CyclicBinding_Kd 12:5")] // x7
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Other\n    var x: i32\nstruct Entry\n    var tag = Tags.tagOf<Other>()\n", "")] // n1
+    [InlineData("group Tags\n    public func sealedOf<T>() -> i32\n        T is Sealed\n        return 0\nstruct Entry\n    var tag = Tags.sealedOf<Entry>()\n", "")] // n2
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = 0\n    public func make() -> i32\n        return Tags.tagOf<Entry>()\n", "")] // n3
+    [InlineData("struct Holder<T>\n    T is Owned\n    var items: Array<T>\nstruct Entry\n    var h: Holder<Entry>\n", "")] // r1
+    [InlineData("group G\n    public let n: [G.n of u8] = [0]\n", "CyclicBinding_Kd 2:12; InvalidTypeFormation_Kd 2:20")] // r2
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Other\n    var x = 0\nstruct Entry\n    var tag = Tags.tagOf<Other>()\n", "")] // f1
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct A\n    var a = Tags.tagOf<B>()\nstruct B\n    var b = Tags.tagOf<C>()\nstruct C\n    var c = 0\n", "")] // f2
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Entry\n    var tag = Tags.dupOf<raw/Entry>()\n", "")] // f3
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Entry\n    var tag = Tags.payOf<Entry>()\n", "")] // f4
+    [InlineData("struct Holder<T>\n    T is Owned\n    var items: Array<T>\ngroup G2\n    public func f(h: Holder<Entry>? = .None) -> i32 => 0\nstruct Entry\n    var tag = G2.f()\n", "")] // f6
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Holder<T>\n    T is Owned\n    var items: Array<T>\nstruct Entry2\n    var h: Holder<Entry2>\nstruct Entry\n    var tag = Tags.tagOf<Entry2>()\n", "")] // f7
+    public void AFactAboutATypeContainingAnInferredPropertyIsACycle(string source, string records)
     {
-        var check = DiagnosticCorpus.Check(source + "public func main() => ()\n");
-        if (rejectedAt is null)
-        {
-            Assert.True(check.Accepted, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
-            return;
-        }
+        var located = DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n");
+        Assert.Equal(records, string.Join("; ", located.Select(static x => string.Join(' ', x.Split(' ', 3)[..2]))));
+    }
 
-        var error = Assert.Single(check.Diagnostics);
-        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+    // SPEC 3.5.2 "only by opt-in", 10.1 (G1220-1 O2): Copy of a struct without a Copy declaration is Refuted from the declaration alone,
+    // also while an inferred Property's header types its initializer, so the refuted candidate is inapplicable: c3 selects the fallback
+    // (tag: i64; it was rejected, an acceptance mover), and c2's one candidate leaves the call's own record alone (no cycle: no Field read).
+    [Theory]
+    [InlineData("    public func dupOf<T>(extra: i32 = 0) -> i64\n        return 0\n", "")] // c3
+    [InlineData("", "NoApplicableOverload_Kd 6:15 Tags.dupOf<Entry>()")] // c2
+    public void ACopyRequestWithoutTheOptInIsRefutedByTheDeclaration(string fallback, string records)
+    {
+        var source = "group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n" + fallback + "struct Entry\n    var tag = Tags.dupOf<Entry>()\npublic func main() => ()\n";
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.LocatedRecords(source).Select(static x => x.Split(", ")[0])));
     }
 
     // SPEC 23.1.2, 14.6.2, 10.1 (DECISIONS: G572 U2a): a loop over a conditional IntoIterable whose condition no premise proves selects its
@@ -709,10 +859,10 @@ public class ConstraintBindingTest
     [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Item>\n    public let p: ref/i32 during w\n", "Unsupported_Kd@(Cursor during w).Item")] // k9
     [InlineData("struct W\n    Self is Sink<Src.Item>\n", "Unsupported_Kd@Src.Item")] // u1
     [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@(Cursor during y).Nope")] // k2
-    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item UnresolvedBinding_Kd@(Cursor during y).Nope")] // k4
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Sink<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@(Cursor during y).Nope")] // k4 // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the subject's record resting on the unresolved name goes
     [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T is Sink<Nosuch>\n    return 0\n", "InvalidConstraint_Kd UnresolvedBinding_Kd@Nosuch")] // t6
-    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n1
-    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Nope> or Marker\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@T.(Source).Item InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n2
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is not Zbox<(Cursor during y).Nope>\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n1 // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the subject's record resting on the unresolved name goes
+    [InlineData("func peek<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is Zbox<(Cursor during y).Nope> or Marker\n    return 0\n", "InvalidConstraint_Kd InvalidConstraint_Kd@Zbox<(Cursor during y).Nope> UnresolvedBinding_Kd@(Cursor during y).Nope")] // n2 // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the subject's record resting on the unresolved name goes
     [InlineData("struct Window {w}\n    Self is Sink<(Cursor during w).Nope>\n    public let p: ref/i32 during w\n", "UnresolvedBinding_Kd@(Cursor during w).Nope")] // k9n
     [InlineData("struct W\n    Self is Sink<Src.Nope>\n", "UnresolvedBinding_Kd@Src.Nope")] // u1n
     public void AProjectionInARequirementWaitsUnlessItsClauseDeclaresConformance(string declaration, string expected)
@@ -742,7 +892,7 @@ public class ConstraintBindingTest
     [InlineData("func f<U>(value: U)\n    Box<Nope>.(C).X is Copy\n    U is D\n    ()\n", "UnresolvedBinding_Kd@Nope")]
     [InlineData("struct W<U>\n    Box<Nope>.(C).X is Copy\n    U is D\n    public var item: i32\n", "UnresolvedBinding_Kd@Nope")]
     [InlineData("struct W<U>\n    Box<U>.(C).X is Copy\n    U is D\n    public var item: i32\n", "")]
-    [InlineData("func f<U>(value: U)\n    S.(C).X is U.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is U.(C).X InvalidConstraint_Kd@U.(C).X")]
+    [InlineData("func f<U>(value: U)\n    S.(C).X is U.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is U.(C).X UnprovenConstraint_Kd@U.(C).X")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, code): `U.(C).X`'s input `U is C` is unproven, its own record (ruling 255)
     [InlineData("func f<U>(value: U)\n    S.(C).X is Box<U>.(C).X\n    ()\n", "InvalidConstraint_Kd@S.(C).X is Box<U>.(C).X InvalidConstraint_Kd@Box<U>.(C).X")]
     [InlineData("func f<U>(value: U)\n    (U, i32).(C).X is Copy\n    U is D\n    ()\n", "ExpectedSyntax_Kd@i32")] // G507: the expression parser's record (Q13)
     [InlineData("func f<U>(value: U)\n    ().(C).X is Copy\n    U is D\n    ()\n", "UnresolvedBinding_Kd@()")] // G507: Binding forms no Unit-head Type (Q13)

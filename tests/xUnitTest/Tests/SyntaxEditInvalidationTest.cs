@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -62,6 +63,52 @@ public class SyntaxEditInvalidationTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(c.Binding.IndexerCall(index, false));
         Assert.Null(c.Binding.IndexerCall(index, true));
+    }
+
+    // A pattern node indexed by an earlier pass keeps no pattern row once an edit moves it into an expression: after `1 => 5`
+    // becomes `2 => 1`, the old pattern `1` now the arm's body, the body binds as in a fresh compilation (ResetMatches empties the
+    // IndexedPatterns family; a stale row would trip BindNodeCore's pattern guard).
+    [Fact]
+    public void AnEditedRoleLeavesNoStalePatternRow()
+    {
+        const string Matched = "func pick(v: i32) -> i32\n    return match v\n        1 => 5\n        _ => 0\n";
+        var c = MinimalEmissionTest.Analyze(Matched);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var match = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>().Single();
+        var (pattern, body) = (match.Arms[0].Pattern, match.Arms[0].Body);
+        var donor = KotoTree.Walk(ParseTestHelper.ParseSuccess(Matched.Replace("1 => 5", "2 => 5", StringComparison.Ordinal)).RootKoto).OfType<MatchKoto>().Single().Arms[0].Pattern;
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(match, pattern, donor));
+        Assert.True(KotoHelper.Replace(match, body, pattern));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // PLAN G1278 (G1278-A review N6): a construction qualifier whose path formed its Type in an earlier pass keeps no FormedTypes row
+    // once an edit makes it a carrier. `O.In` (no own parameters) forms its Type; after `O.In.A` becomes `P.In.A`, the qualifier's own
+    // list is omitted and `P.In<S>` supplies it (SPEC 6.5.2 steps 2-3, 9.7), so the written `P.In<S>` is the one site and its
+    // UnsatisfiedConstraint_Kd the one record (SPEC 8.6.3, 23.1.2), as in a fresh compilation of the edited source (ResetPass empties
+    // the FormedTypes family; a stale row would judge the qualifier as a second site).
+    [Fact]
+    public void AnEditedQualifierLeavesNoStaleFormationRow()
+    {
+        const string Before = "contract C\nstruct S\nstruct O\n    public enum In\n        A\nstruct P\n    public enum In<T>\n        T is C\n        A\n" +
+            "let v: P.In<S> = O.In.A\n";
+        var after = Before.Replace("= O.In.A", "= P.In.A", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(Before);
+        Assert.False(c.Binding.Result.IsComplete); // `O.In` is not `P.In<S>`.
+        var qualifier = Qualifier(c.Kotonoha.RootKoto);
+        var path = Qualifier(ParseTestHelper.ParseSuccess(after).RootKoto).Left;
+        ParseTestHelper.Detach(path, new CodeBlockKoto(path.CodeContext));
+        Assert.True(KotoHelper.Replace(qualifier, qualifier.Left, path));
+        Assert.False(c.Bind().IsComplete);
+        var fresh = MinimalEmissionTest.Analyze(after);
+        Assert.Single(fresh.Binding.Issues, static x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
+        Assert.Equal(Records(fresh), Records(c));
+
+        static MemberAccessKoto Qualifier(Koto root)
+            => (MemberAccessKoto)KotoTree.Walk(root).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == "A").Left;
+
+        static string Records(Compilation c) => string.Join("\n", c.Binding.Issues.Select(static x => x.Code.ToString()).Order());
     }
 
     [Theory]

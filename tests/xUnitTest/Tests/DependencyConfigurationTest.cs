@@ -12,6 +12,8 @@ namespace XunitTest;
 
 public class DependencyConfigurationTest
 {
+    private const string LlvmBinRemoved = "LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting.";
+
     [Theory]
     [InlineData("PackageId=\"Example.math\" PackageVersion=\"1\"")]
     [InlineData("PackageId=\"example..math\" PackageVersion=\"1\"")]
@@ -71,28 +73,68 @@ public class DependencyConfigurationTest
     public void InvalidDependencyDeclarationsCannotBeSilentlyLoaded(string source)
         => Assert.True(Record.Exception(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))) is TinyhandException or ProjectConfigurationException);
 
-    // The project's kernel32 entry names its migration (NativeConfiguration; publication does not repeat the check, DECISIONS R5-M165).
-    [Fact]
-    public void LoadingAnExplicitKernel32EntryNamesItsMigration()
-    {
-        var source = Encoding.UTF8.GetBytes("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}");
-        Assert.Contains("Remove the kernel32 entry", Assert.Single(Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(source)).Failures));
-    }
-
+    // IMPL 20.4 (Tatara B6a and G1211, decision 20; B7b5, R2): kernel32, kimi_backend and c, every target row's supplies, are the
+    // compiler's, so a project's entry for any of them, a requirement or a supply, its own or for a package, under any target key, fails at
+    // the load with one note naming it and its record, each entry its own (SPEC 23.1.2; NativeConfiguration; publication does not repeat
+    // the check, DECISIONS R5-M165). Each expected entry is "<record>.<name>".
     [Theory]
-    [InlineData("NativeBindings={}")]
-    [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}")]
-    public void SupersededNativeBindingsRequireMigration(string source)
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\" Input=\"sdk/kernel32.lib\"}}}", "NativeLibraries.kernel32")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\" Input=\"vendor/kimi_backend.lib\"}}}", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeLibraries={\"x86_64-unknown-linux-gnu\"={kimi_backend={Kind=\"static\" Input=\"a.lib\"}}}", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={kernel32={Kind=\"import\"}}}", "NativeRequirements.kernel32")]
+    [InlineData("NativeRequirements={\"x86_64-unknown-linux-gnu\"={kimi_backend={Kind=\"static\"}}}", "NativeRequirements.kimi_backend")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={kimi_backend={Kind=\"static\"} kernel32={Kind=\"import\"}}}", "NativeRequirements.kimi_backend", "NativeRequirements.kernel32")]
+    [InlineData("NativeRequirements={t={kernel32={Kind=\"import\"}}} NativeLibraries={t={kernel32={Input=\"k.lib\"}}}", "NativeRequirements.kernel32", "NativeLibraries.kernel32")]
+    [InlineData("NativeRequirements={t={kimi_backend={Kind=\"static\"}}} NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"kimi_backend\" Input=\"a.lib\"}}}", "NativeRequirements.kimi_backend", "NativeLibraries.kimi_backend")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={c={Kind=\"static\" Input=\"c.lib\"}}}", "NativeLibraries.c")]
+    [InlineData("NativeLibraries={\"x86_64-unknown-linux-musl\"={c={Kind=\"static\" Input=\"c.a\"}}}", "NativeLibraries.c")]
+    [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1\"} Name=\"c\" Input=\"c.a\"}}}", "NativeLibraries.c")]
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={c={Kind=\"static\"}}}", "NativeRequirements.c")]
+    [InlineData("NativeRequirements={\"x86_64-unknown-linux-musl\"={c={Kind=\"static\"}}}", "NativeRequirements.c")]
+    [InlineData("NativeRequirements={t={c={Kind=\"static\"}}} NativeLibraries={t={c={Input=\"c.a\"}}}", "NativeRequirements.c", "NativeLibraries.c")]
+    public void AReservedSupplysEntryFailsAtTheLoad(string source, params string[] entries)
     {
         var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures;
-        Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Single(failures));
+        var expected = entries.Select(static x => x.Split('.')).Select(static x => $"{x[1]} is supplied by the compiler. Remove the {x[1]} entry from {x[0]}.");
+        Assert.Equal(expected.Order(StringComparer.Ordinal), failures.Order(StringComparer.Ordinal));
+    }
+
+    // ProjectFile's removed settings (Tatara B6b5, decision 20): each, whatever its value, fails the load with its own note, one per
+    // setting (SPEC 23.1.2: they are independent).
+    [Theory]
+    [InlineData("NativeBindings={}", new[] { NativeConfiguration.SupersededBindings })]
+    [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}", new[] { NativeConfiguration.SupersededBindings })]
+    [InlineData("LlvmBin=\"C:/llvm/bin\"", new[] { LlvmBinRemoved })]
+    [InlineData("Targets={\"x86_64-pc-windows-msvc\"} LlvmBin=\"C:/llvm/bin\" NativeBindings={}", new[] { LlvmBinRemoved, NativeConfiguration.SupersededBindings })]
+    public void ARemovedSettingFailsTheLoad(string source, string[] notes)
+    {
+        Assert.Equal(notes, Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures);
+    }
+
+    // IMPL 20.1 (PLAN G1010, R9 part B's Revision 2): a key that is not a name, at each position the map checks read, is the
+    // configuration's failure with its own note naming its map (SPEC 23.1.2), never a reader exception; the map is then unreadable, so the
+    // deserializer's failure is kept too.
+    [Theory]
+    [InlineData("2=\"a\"", "the project file")]
+    [InlineData("Dependencies={1={}}", "Dependencies")]
+    [InlineData("Test={1=2}", "Test")]
+    [InlineData("Test={Environment={1=\"a\"}}", "Test.Environment")]
+    [InlineData("NativeLibraries={1=2}", "NativeLibraries")]
+    [InlineData("NativeRequirements={1=2}", "NativeRequirements")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={1=2}}", "NativeLibraries")]
+    public void ASettingNameThatIsNotANameFailsTheLoad(string source, string map)
+    {
+        Assert.Equal(
+            new[] { $"A setting name in {map} must be a name.", "Failed to deserialize Kimi.ProjectFile value." },
+            Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures);
     }
 
     [Fact]
     public void IndentedNativeRequirementIsRead()
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeRequirements=\n  \"x86_64-pc-windows-msvc\"=\n    codec={ Kind=\"static\" ContractId=\"example.codec.v1\" }\n"))!;
-        var requirement = file.NativeRequirements[WindowsProfile.Target]["codec"];
+        var requirement = file.NativeRequirements[TargetProfile.Windows.Target]["codec"];
         Assert.Equal(("static", "example.codec.v1", (string?)null), (requirement.Kind, requirement.ContractId, requirement.Sha256));
     }
 
@@ -100,7 +142,7 @@ public class DependencyConfigurationTest
     public void NativeLibraryRecordArraysSeparateSelfAndPackageTargets()
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeLibraries=\n  \"x86_64-pc-windows-msvc\"=\n    {\n      Package={ PackageId=\"example.codec\" PackageVersion=\"1.0.0\" }\n      Name=\"codec\"\n      ContractId=\"example.codec.v1\"\n      Input=\"native/codec.lib\"\n    }\n    { Name=\"observer\" Kind=\"static\" Input=\"native/observer.lib\" }\n"))!;
-        var supplies = file.NativeLibraries[WindowsProfile.Target];
+        var supplies = file.NativeLibraries[TargetProfile.Windows.Target];
         var observer = Assert.Single(supplies);
         Assert.Equal(("observer", "static", (NativePackageTarget?)null), (observer.Key, observer.Value.Kind, observer.Value.Package));
         var codec = Assert.Single(supplies.Packaged);
@@ -111,7 +153,7 @@ public class DependencyConfigurationTest
         Assert.Equal("codec", shorthand.NativeLibraries["t"]["codec"].Name);
         Assert.Contains("codec", Encoding.UTF8.GetString(TinyhandSerializer.SerializeToUtf8(shorthand)));
         Assert.Equal(file, ProjectFile.Load(TinyhandSerializer.SerializeToUtf8(file)), NativeSuppliesComparer.Instance);
-        var clone = TinyhandSerializer.Clone(file)!.NativeLibraries[WindowsProfile.Target].Packaged[0];
+        var clone = TinyhandSerializer.Clone(file)!.NativeLibraries[TargetProfile.Windows.Target].Packaged[0];
         Assert.Equal(codec, clone);
         Assert.NotSame(codec.Package, clone.Package);
     }
@@ -130,22 +172,22 @@ public class DependencyConfigurationTest
         var c = Compilation.CreateForTest();
         var root = c.Project.ProjectFile;
         root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
-        root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = name, Package = new() { PackageId = "library", PackageVersion = version }, ContractId = contractId, Sha256 = hashDigit is null ? null : new string(hashDigit[0], 64), Input = "codec.lib" }] };
+        root.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = name, Package = new() { PackageId = "library", PackageVersion = version }, ContractId = contractId, Sha256 = hashDigit is null ? null : new string(hashDigit[0], 64), Input = "codec.lib" }] };
         var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
         var sha256 = new string('a', 64);
         if (combined)
         {
-            library.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Input = "own.lib" } };
+            library.NativeLibraries[TargetProfile.Windows.Target] = new() { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Input = "own.lib" } };
         }
         else
         {
-            library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = sha256 } };
+            library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = sha256 } };
         }
 
         var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
         var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
         rootNode.Edges.Add("Lib", libraryNode.Key);
-        Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
+        Assert.Equal(valid, c.Prepare(TargetProfile.Windows.Target, new([rootNode, libraryNode])));
         Assert.Equal(!valid, TestDiagnostics.Of(c).Any(x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)));
     }
 
@@ -160,16 +202,16 @@ public class DependencyConfigurationTest
         var c = Compilation.CreateForTest();
         var root = c.Project.ProjectFile;
         root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
-        root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = rootContract, Input = "root.lib" }] };
+        root.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = rootContract, Input = "root.lib" }] };
         var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
         var other = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "other", PackageVersion = "1" };
-        other.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = otherContract, Input = "other.lib" }] };
+        other.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "extra", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = otherContract, Input = "other.lib" }] };
         var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
         var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
         var otherNode = new DependencyNode("other@1", new("other.kimiproj", other, [], []), 1, "Other");
         rootNode.Edges.Add("Lib", libraryNode.Key);
         libraryNode.Edges.Add("Other", otherNode.Key);
-        Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode, otherNode])));
+        Assert.Equal(valid, c.Prepare(TargetProfile.Windows.Target, new([rootNode, libraryNode, otherNode])));
     }
 
     // IMPL A.4, 21.3.2: a Compilation has at most 65,535 modules, the ordinals below SyntaxTable.LibraryModule. One more is refused by
@@ -190,7 +232,7 @@ public class DependencyConfigurationTest
             nodes[i] = new($"library@{i}", input, 0, string.Empty);
         }
 
-        Assert.True(c.Prepare(WindowsProfile.Target, new(nodes)));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target, new(nodes)));
         Assert.Equal(supported ? count : 0, c.SourceModules.Length);
         Assert.Equal((!supported, supported ? TestPresence.No : TestPresence.Unknown), (c.AnalyzesNoModule, CheckService.ScanTestPresence(c)));
         if (supported)
@@ -221,8 +263,8 @@ public class DependencyConfigurationTest
     public void InvalidProgrammaticNativeRequirementsCannotPrepare()
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() };
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() };
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
@@ -235,8 +277,8 @@ public class DependencyConfigurationTest
         file.PackageId = "Bad";
         file.PackageVersion = "1";
         file.Alias = [" "];
-        file.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["a"] = new(), ["b"] = new() };
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        file.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["a"] = new(), ["b"] = new() };
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         var notes = ConfigurationNotes(c);
         Assert.Equal(4, notes.Length);
         Assert.All(new[] { "PackageId", "entry 'a'", "entry 'b'", "Alias" }, x => Assert.Single(notes, n => n.Contains(x, StringComparison.Ordinal)));
@@ -248,7 +290,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.Dependencies = null!;
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Equal("Dependency maps and source lists must not be null.", Assert.Single(ConfigurationNotes(c)));
     }
 
@@ -261,7 +303,7 @@ public class DependencyConfigurationTest
         var root = c.Project.ProjectFile;
         root.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = "library.kimiproj" });
         var package = new NativePackageTarget { PackageId = "library", PackageVersion = "1" };
-        root.NativeLibraries[WindowsProfile.Target] = new()
+        root.NativeLibraries[TargetProfile.Windows.Target] = new()
         {
             Packaged =
             [
@@ -270,7 +312,7 @@ public class DependencyConfigurationTest
             ],
         };
         var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
-        library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal)
         {
             ["codec"] = new() { Kind = "static", ContractId = "c.v1", Sha256 = new string('a', 64) },
             ["observer"] = new() { Kind = "static", ContractId = "o.v1" },
@@ -280,7 +322,7 @@ public class DependencyConfigurationTest
         var rootNode = new DependencyNode("root", new("root.kimiproj", root, [], []), -1, string.Empty);
         var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
         rootNode.Edges.Add("Lib", libraryNode.Key);
-        Assert.False(c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target, new([rootNode, libraryNode])));
         var records = TestDiagnostics.Of(c);
         Assert.Equal(2, records.Count(static x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd)));
         Assert.Equal(3, ConfigurationNotes(c).Length);
@@ -313,8 +355,8 @@ public class DependencyConfigurationTest
         }
         else if (graphFailure == DiagnosticCode.InvalidDependencyConfiguration_Kd)
         {
-            root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = "other", Input = "codec.lib" }] };
-            library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1" } };
+            root.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = "other", Input = "codec.lib" }] };
+            library.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1" } };
         }
 
         var nodes = new DependencyNode[graphFailure == DiagnosticCode.ModuleCountLimit_Kd ? 65_536 : 2];
@@ -325,7 +367,7 @@ public class DependencyConfigurationTest
             nodes[i] = new($"library@{i}", input, 0, string.Empty);
         }
 
-        Assert.False(c.Prepare(rootFailure == DiagnosticCode.UnsupportedTarget_Kd ? "unknown-none-elf" : WindowsProfile.Target, new(nodes)));
+        Assert.False(c.Prepare(rootFailure == DiagnosticCode.UnsupportedTarget_Kd ? "unknown-none-elf" : TargetProfile.Windows.Target, new(nodes)));
         Assert.Null(c.BuildMetadata);
         Assert.Equal(new[] { rootFailure.ToString(), graphFailure.ToString() }.Order(StringComparer.Ordinal), TestDiagnostics.Of(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
@@ -354,7 +396,7 @@ public class DependencyConfigurationTest
             new() { Name = "kernel32", Package = package, Kind = "static", Input = "k.lib" },
             new() { Package = package, Kind = "static", Input = "x.lib" });
         Assert.Equal(3, notes.Length);
-        Assert.Single(notes, static x => x.StartsWith("kernel32 is generated", StringComparison.Ordinal));
+        Assert.Single(notes, static x => x.StartsWith("kernel32 is supplied by the compiler", StringComparison.Ordinal));
         Assert.Single(notes, static x => x.StartsWith("NativeLibraries record 'kernel32'", StringComparison.Ordinal));
         Assert.Single(notes, static x => x.StartsWith("NativeLibraries records targeting a Package", StringComparison.Ordinal));
     }
@@ -364,7 +406,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.KotonohaArray = [new() { Name = "Math", Version = "1" }];
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
@@ -402,6 +444,9 @@ public class DependencyConfigurationTest
     [InlineData("NativeLibraries={t={{Package={PackageId=\"example.codec\" PackageVersion=\"1.0.0\"} Name=\"codec\" ContractId=\"example.codec.v1\" Input=\"native/codec.lib\"} {Name=\"observer\" Kind=\"import\" Input=\"observer.lib\"}}}")]
     [InlineData("NativeLibraries={t={}}")]
     [InlineData("NativeLibraries={t={{Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" ContractId=\"a\" Input=\"a.lib\"} {Package={PackageId=\"p\" PackageVersion=\"2\"} Name=\"codec\" ContractId=\"b\" Input=\"b.lib\"} {Package={PackageId=\"p\" PackageVersion=\"1\"} Name=\"codec\" Input=\"c.lib\"}}}")]
+
+    // The boundary of the reserved names' check (IMPL 20.4: names compare case-sensitively): another spelling is not reserved.
+    [InlineData("NativeRequirements={\"x86_64-pc-windows-msvc\"={Kimi_backend={Kind=\"static\"} Kernel32={Kind=\"import\"}}}")]
     public void ConfigurationRoundTripsWithoutReadingSources(string source)
     {
         var file = ProjectFile.Load(Encoding.UTF8.GetBytes(source));
@@ -416,7 +461,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.Dependencies.Add("Math", new() { PackageId = "example.math", PackageVersion = "1", Project = "Math.kimiproj" });
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.UnresolvedDependencyGraph_Kd));
         Assert.Null(c.BuildMetadata);
     }
@@ -435,7 +480,7 @@ public class DependencyConfigurationTest
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.TestDependencies.Add("Math", new() { PackageId = "example.math", PackageVersion = "1", Project = "missing.kimiproj" });
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
     }
 
     [Fact]
@@ -475,8 +520,8 @@ public class DependencyConfigurationTest
     private static string[] PackagedNotes(params NativeLibraryInput[] packaged)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { Packaged = packaged };
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = packaged };
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         return ConfigurationNotes(c);
     }
 }

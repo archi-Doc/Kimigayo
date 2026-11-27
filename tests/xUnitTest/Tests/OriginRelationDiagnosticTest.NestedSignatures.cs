@@ -61,6 +61,13 @@ public partial class OriginRelationDiagnosticTest
 
     private const string PickHead = "func pick(q: ref/i32, r: ref/i32) -> ref/i32 during r\n    origin q outlives r\n    return q\n";
 
+    // ClauseStruct without its clause.
+    private const string FreeStruct = "struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\n";
+
+    private const string LiteralHead = "func k(p: ref/i32) -> i32\n";
+
+    private const string StaticApp = "func app(f: (ref/i32, U during static) -> i32) -> i32 => 0\n\n";
+
     // Nested inputs (the owner's (A); SPEC 15.6.4 step 3): each call proves its callee's input well-formedness for the instantiated Types,
     // at the argument whose Type it is (DIAGNOSTICS: an instantiated parameter Type's well-formedness is judged at its argument), also
     // for a nested named function, a method relating its struct's slots and a contextually typed `.None`; the enclosing definition
@@ -103,23 +110,83 @@ public partial class OriginRelationDiagnosticTest
     public void AContextualNoneArgumentHasItsInstantiatedWellFormednessJudged(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 
-    // G216 (a) T2: PLAN G277's (3) and (4) (e1c, G277 (2), is CallableOriginForwardingTest's U2.1 row). s4, decided by the owner
-    // (2026-10-31, 「すべて推奨の内容でお願いします」, PLAN 7f3e61b1b): a written result Type's own clause is a body obligation (SPEC 15.6.1,
-    // 15.3.2, 15.6.4 step 3), as n4u's, and G277 (3) is no defect; so the Closure body's `.None` keeps dev's record (s4u), and a call of it
-    // adds none (s4c; DECISIONS R4-M162: a nested signature's result is judged where it is written). h4: a call whose contextual `E.init()` needs q outlives r is valid
+    // G216 (a) T2: PLAN G277's (3) and (4) (e1c, G277 (2), is CallableOriginForwardingTest's U2.1 row). s4u: the written result
+    // `Option<T during q>` is formed where it is written, as a Function Type's is (FormNestedResult; the owner's O-397 (A), 2026-11-17,
+    // PLAN G962), and T's clause `a outlives static` is not proven for q: one UnprovenOriginRelation_Kd there. The Closure body's `.None`
+    // carries that Type and restates nothing (DECISIONS R7-M80 as amended by G1278-A; SPEC 9.7, 23.1.2), and a call of the Closure adds
+    // none (s4c; DECISIONS R4-M162: a nested signature's result is judged where it is written). The owner's answer to G1278-A's s4
+    // question (2026-11-25, 「1 2 3は推奨通り」, item 1 = option (b)) supersedes in part s4 (2026-10-31, PLAN 7f3e61b1b), which kept the
+    // body's record while the written result had none of its own. h4: a call whose contextual `E.init()` needs q outlives r is valid
     // when the result is read while `long` lives (dev no longer reports G277 (4)'s Loan conflict). Its twin h4_n reads the result after
     // `short` ends: the call proves q outlives r for its instantiated Origins (SPEC 15.6.1, 15.6.4), so `short`'s Borrow must reach the
     // `return` through `keep`, which no choice of regions allows: the Loan conflict at `short` (SPEC 15.6.6; rejected since R6-check H5,
     // when the MIR decides acceptance). h6 declares the relation with `origin q outlives r`, and h9 assigns the result to another local.
     [Theory]
-    [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenConstraint_Kd .None")]
-    [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None")]
+    [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenOriginRelation_Kd Option<T during q>")]
+    [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("U2.2", "h4", H4Head + "func ok(b: ref/i32) -> i32\n    let long = 1\n    let x = h4(long@ref, b, E.init())\n    return x@follow\n", "")]
     [InlineData("U2.2", "h4_n", H4Head + "func bad() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        keep = h4(short@ref, keep, E.init())\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     [InlineData("U2.2", "h6", PickHead + "func bad() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        keep = pick(short@ref, keep)\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     [InlineData("U2.2", "h9", PickHead + "func bad() -> i32\n    let long = 1\n    let keep = long@ref\n    var out = long@ref\n    if true\n        let short = 2\n        out = pick(short@ref, keep)\n    return out@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     public void APlanG277FormHasItsVerdict(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // PLAN G972 (SPEC 15.3.4 "Nested signatures", 8.10, 3; the owner's O-403 (b)): no written Origin in a nested signature's input names
+    // that signature's per-call Origin, an anonymous function's (its direct borrowed input's omitted Origin, named through the input) or
+    // a Function Type's: not in an aggregate slot (n1, n2, n3, r6, in a meet's operand n9, in any order n10), not in a nested or written
+    // direct borrow layer (g216: G216's OriginRowsTest row; n5, n6), not in a Function Type inside an input (n7, n7r), also under a local
+    // annotation (n8), a header probe (n11b), a generic body (n15, once), with a local clause (loc: LocalOriginClauseTest's row) and in
+    // a converted literal (g905: PLAN G905's f2v, labelled valid before (b); a15 at a call argument). One InvalidOriginBinding_Kd at the
+    // written Origin; it stays bound, so independent records stay. The conversion's comparison solves the literal's per-call Origin
+    // (SPEC 15.3.6-15.3.7, board D-822) and holds for n8, g905 and a15, so G972's record is their only one (F's G972 ruling 6 (1) (i):
+    // their UnprovenOriginContract_Kd came from the old instantiation; DECISIONS supersedes R4-M212's parenthetical on the conversion
+    // record). Valid: an outer Origin (v1; v1t, whose clause is a premise of
+    // the literal), x's own slot, a body variable (v4), and the per-call Origin where it is visible: the literal's result (r1), its body
+    // (r14, v10's inner literal), a named signature (v7); v12b is n11b's twin, h2 a Function Type's sibling input over a set fixed by
+    // equality to an outer Origin (8.10).
+    [Theory]
+    [InlineData("n1", ClauseStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: T during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n2", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n3", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: Option<U during x>) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("r6", FreeStruct + LiteralHead + "    let c = func [] (x: ref/U, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n9", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: U during (x and p)) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n10", FreeStruct + LiteralHead + "    let c = func [] (y: U during x, x: ref/i32) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("g216", "func g() -> i32\n    let h = func [] (p: ref/i32, r: ref/(ref/i32 during p)) -> i32 => 1\n    return 0\n", "InvalidOriginBinding_Kd p")]
+    [InlineData("n5", LiteralHead + "    let c = func [] (x: ref/i32, y: Option<ref/i32 during x>) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n6", LiteralHead + "    let c = func [] (x: ref/i32, y: ref/i32 during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n7", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, f: (U during x) -> i32) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n7r", LiteralHead + "    let c = func [] (x: ref/i32, f: () -> ref/i32 during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n8", FreeStruct + LiteralHead + "    let c: (ref/i32, U) -> i32 = func [] (x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")] // G972's record alone: the comparison holds under the solve (F's G972 ruling 6 (1) (i); board D-822)
+    [InlineData("n11b", FreeStruct + StaticApp + LiteralHead + "    let r = app(func [] (x: ref/i32, y: U during x) -> i32 => 0)\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n15", FreeStruct + "func mk<V>(v: ref/V) -> i32\n    let c = func [] (x: ref/V, y: U during x) -> i32 => 0\n    return 0\n\n" + LiteralHead + "    let a = mk(p)\n    let bv: bool = true\n    let b = mk(bv@ref)\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("loc", "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\nfunc f() -> i32\n    let g = func (a: ref/i32 during b, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return h.item@follow\n    return 0\n", "InvalidOriginBinding_Kd b")]
+    [InlineData("g905", "func f(c: ref/i32) -> i32\n    let k: (ref/i32 during c, uniq/((ref/i32 during c) -> i32)) -> i32 = func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0\n    return 0\n", "InvalidOriginBinding_Kd b")] // G972's record alone: the comparison holds under the solve (F's G972 ruling 6 (1) (i); board D-822)
+    [InlineData("a15", FreeStruct + "func apply(q: ref/i32, f: (ref/i32, U during q) -> i32) -> i32 => 0\n\n" + LiteralHead + "    return apply(p, func [] (x: ref/i32, y: U during x) -> i32 => 0)\n", "InvalidOriginBinding_Kd x")] // G972's record alone: the comparison holds under the solve (F's G972 ruling 6 (1) (i); board D-822)
+    [InlineData("v1", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: U during p) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("v1t", ClauseStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: T during p) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("v4", FreeStruct + LiteralHead + "    let c = func [] (x: ref/U, y: U during x.a) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("r1", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32) -> ((U during x) -> i32) => $abort(\"no\")\n    return 0\n", "")]
+    [InlineData("r14", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32) -> i32\n        let g: Option<(U during x) -> i32> = .None\n        return 0\n    return 0\n", "")]
+    [InlineData("v10", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32) -> i32\n        let d = func [] (y: U during x) -> i32 => 0\n        return 0\n    return 0\n", "")]
+    [InlineData("v7", FreeStruct + LiteralHead + "    func inner(x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("v12b", FreeStruct + StaticApp + LiteralHead + "    let r = app(func [] (x: ref/i32, y: U during static) -> i32 => 0)\n    return 0\n", "")]
+    [InlineData("h2", FreeStruct + "func h2(x: ref/i32, cb: (U{c}, ref/i32 during c.a) -> ())\n    origin c.a == x\n    return\n\n" + LiteralHead + "    return 0\n", "")]
+    public void ANestedSignaturesInputNamesNoPerCallOriginOfItsSignature(string form, string body, string records)
+        => AssertRecords(form, body, records, null);
+
+    // R7-SP1's T4 (SPEC 15.3.7 "Compatibility", 15.6.1, as D-1042 states them; R7-P1's T rows): in a whole-contract comparison a body
+    // inference variable (15.3.4 "Nested signatures") is solved on either side, never judged from premises. t4-short, the text's
+    // example, converts a literal whose aggregate input's inner Origin w is one on the implementation's side (p outlives w: w is
+    // solved); dev judges it from premises, so the row is Explicit until P4's T4 lands (no existing row pins its form). Its twins hold
+    // on dev: g's omitted Origin on the required side (t4-long), two separate variables (t4-two), and fixed Origins (t4-fixed: q
+    // outlives p is not proven).
+    [Theory]
+    [InlineData("P4", "t4-short", "func use(p: ref/i32) -> i32\n    let h = func [] (o: Option<ref/i32>) -> i32 => 0\n    let k: (Option<ref/i32 during p>) -> i32 = h@move\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "t4-long", "func use(p: ref/i32) -> i32\n    let f = func [] (o: Option<ref/i32 during p>) -> i32 => 0\n    let g: (Option<ref/i32>) -> i32 = f@move\n    return 0\n", "")]
+    [InlineData("guard", "t4-two", "func use(p: ref/i32, q: ref/i32) -> i32\n    let f = func [] (o: Option<ref/i32 during p>, r: Option<ref/i32 during q>) -> i32 => 0\n    let g: (Option<ref/i32>, Option<ref/i32>) -> i32 = f@move\n    return 0\n", "")]
+    [InlineData("guard", "t4-fixed", "func use(p: ref/i32, q: ref/i32) -> i32\n    let s: (Option<ref/i32 during q>) -> i32 = func [] (o: Option<ref/i32 during p>) -> i32 => 0\n    return 0\n", "UnprovenOriginContract_Kd: let s: (Option<ref/i32 during q>) -> i32 = func [] (o: Option<ref/i32 during p>) -> i32 => 0")]
+    public void ABodyInferenceVariableIsSolvedOnEitherSideOfAContractComparison(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // The G216 (a) acceptance check: the program parses without a record, and its Error records are exactly `records` (each `Code text`,
     // ordinal order, "; " between them; empty for a valid program), one of them labelled `label` when it is given.

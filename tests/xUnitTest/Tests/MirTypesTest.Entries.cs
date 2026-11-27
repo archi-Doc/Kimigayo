@@ -2,7 +2,6 @@
 
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -62,27 +61,7 @@ public sealed partial class MirTypesTest
         Assert.Empty(members);
         Assert.Empty(entries);
 
-        string Guard(BoundType type) => MirTypes.HoldsLoans(type, c.Types, seen, members, entries, out var writes) ? writes.ToString() : "-";
-    }
-
-    // Q2's condition 4, fact.md §1: a form with no row is one Unsupported entry, the walk's undecided outcome wherever a mode reads the write
-    // fact, never the write fact and never nothing. No valid form reaches it, so the row asks with a nominal Type of a function's symbol, no
-    // struct, enum or Contract: in the value's own storage, past an exclusive reference, and as a Type argument, which reads Loans only.
-    [Fact]
-    public void AnUnsupportedEntryIsTheGuardsLimit()
-    {
-        var (body, c) = Probe(EntryForms + "func probe(e: E0<i32>)\n    return\n");
-        var unlisted = c.Types.Intern(BoundTypeKind.Nominal, body.Key.Decl, SemanticsKind.Owner, []);
-        var phantom = Parameters(body).Single().Type;
-        var (seen, members, entries) = (new Dictionary<MirHoldingKey, MirModeDepths>(), new List<RawMember>(), new List<Hold>());
-        Assert.Equal(
-            ["Limit", "Limit", "None"],
-            new[]
-            {
-                unlisted,
-                c.Types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [unlisted]),
-                c.Types.Intern(BoundTypeKind.Constructed, phantom.Symbol, SemanticsKind.Owner, [unlisted]),
-            }.Select(x => MirTypes.HoldsLoans(x, c.Types, seen, members, entries, out var writes) ? writes.ToString() : "-"));
+        string Guard(BoundType type) => MirTypes.HoldsLoans(type, c.Types, seen, members, entries) is { Loan: true, Writes: var writes } ? writes.ToString() : "-";
     }
 
     // IMPL 21.3.2 (the limit is implementation-defined; fact.md §1, row 9; PLAN G416 U2): a level is one entry. A Case's payload component
@@ -105,7 +84,7 @@ public sealed partial class MirTypesTest
         var (seen, entries) = (new Dictionary<MirHoldingKey, MirModeDepths>(), new List<Hold>());
         Assert.Equal(
             [("x", "Through"), ("eb", enumBorrow), ("ei", enumInteger), ("db", dictionaryBorrow), ("di", dictionaryInteger)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], entries, out var writes) ? writes.ToString() : "-")));
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], entries) is { Loan: true, Writes: var writes } ? writes.ToString() : "-")));
 
         static string Nested(string open, string close, string inner, int levels)
             => string.Concat(Enumerable.Repeat(open, levels)) + inner + string.Concat(Enumerable.Repeat(close, levels));

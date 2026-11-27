@@ -16,14 +16,17 @@ namespace Kimi.Compiler;
 // - Outputs: a row (LibraryWitnessGroup); the witness, the group's one function named as the requirement, explicit specializations aside;
 //   the receiver a group's functions state (WitnessReceiver); the requirement call at the witness (InstantiateLibraryWitness); the
 //   arguments TyCtxt.LibraryInstance interns.
-// - Invariants: a row's Contract declares one function requirement of its own, which the group names. A row proves its conformance
-//   (ResolveConformance) and selects its requirements (ResolveRequirementWitness) whatever the group holds; a missing witness is None.
+// - Invariants: a row's Contract declares one function requirement of its own, which the group names. A row is a Library built-in row
+//   (ImplTable.Builtin, R7-V2c), which proves its conformance (ResolveConformance) and selects its requirements
+//   (ResolveRequirementWitness) whatever the group holds; a missing witness is None.
 // - Prohibitions: no second statement of which Contract a built-in Type conforms to through a group; a receiver's Type (WitnessReceiver) and
 //   the fixed array's member lookup are other facts. A new built-in Type's conformance adds a row, never a witness kind, a proof arm or a
 //   name switch: a WitnessMembers value, a WitnessGroup arm, a WitnessReceiver arm, a KimiLibrary.Members arm and the group's property,
 //   read by its `#Lang`, and a catalog entry for its `#CallerLocation` function when its witness can Abort on its caller's behalf (SPEC 22.5.1).
 //   A receiver-only group (the fixed array's members, SPEC 22.1) adds a value, a WitnessReceiver arm, a Members arm and its property, and
 //   no WitnessGroup arm: a built-in conformance adds no member (PLAN G776-b). No member lookup, diagnostic or written state beyond interning.
+//   No row for an arithmetic Contract, nor an Equatable or Comparable row for a Type the operator table or the composition compares:
+//   ImplTable.Builtin reads those rows first, so such a row would never be read.
 
 /// <summary>The internal Kimi groups of built-in receiver functions: the witness table's groups and the fixed array's member group
 /// (SPEC 22.1).</summary>
@@ -186,12 +189,12 @@ public sealed partial class Binding
             return false;
         }
 
-        if (group.TypeParameter is { } typeName && scope.Types.TryGetValue(typeName, out var parameter))
+        if (group.TypeParameter is { } typeName && scope.Parameters?.Types.GetValueOrDefault(typeName) is { } parameter)
         {
             type = parameter.Slot;
         }
 
-        if (group.LengthParameter is { } lengthName && scope.Values.TryGetValue(lengthName, out var extent))
+        if (group.LengthParameter is { } lengthName && scope.Parameters?.Values?.GetValueOrDefault(lengthName) is { } extent)
         {
             length = extent.Slot;
         }
@@ -211,7 +214,7 @@ public sealed partial class Binding
         try
         {
             var resolved = destination ?? new CallPlan();
-            resolved.Set(target, call.ReturnType, call.Receiver, call.ArgumentToParameter, types.AsSpan(0, count), origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, defaults: call.DefaultArguments, lengthArguments: lengths.AsSpan(0, count));
+            resolved.Set(this, target, call.ReturnType, call.Receiver, call.ArgumentToParameter, types.AsSpan(0, count), origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, defaults: call.DefaultArguments, lengthArguments: lengths.AsSpan(0, count));
             return resolved;
         }
         finally

@@ -6,17 +6,29 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
-    // assigned to it names that mode and the spellings that bind or update a value instead. A binding whose stored Type
-    // is itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that
-    // grants Read only (SPEC 14.8.3).
-    private static BindingFailure? ReferenceBindingAssignment(Koto target)
-        => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
-            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
-                (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
-            ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
+    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference. The one decision of a write's code there, from the
+    // binding, the target's Type and the operation (R7-E4 rulings 8, 9, 15), read alike by a plain write, the destination check and an
+    // update's route operand (BindBinary, CheckDestination, UpdateOperand): through a target whose Type has a safe layer, an update, and an
+    // `=` unless the binding is reassignable, names that mode and the spellings that bind or update a value instead, whatever the value's
+    // form; an `=` to a reassignable one (`var`: on a borrowed path a reassignable reference) is a rebind, judged as any `=`: its value fits
+    // the binding's Type (a borrow, or an owner temporary at `ref/U`, SPEC 10.2) or is the value's mismatch. A binding whose stored Type is
+    // itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that grants Read only (SPEC
+    // 14.8.3).
+    private static BindingFailure? ReferenceBindingAssignment(Koto target, BoundType? targetType, Koto operation)
+    {
+        if (targetType?.SafeReferent is null)
+        {
+            return null;
+        }
 
-    private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
+        var (mode, symbol) = KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.PatternCandidate } candidate }
+            ? (BindingFailure.SharedPathAccess, candidate)
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } local } &&
+                (local.BindsReference || local.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
+            ? (type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment, local)
+            : (BindingFailure.None, (BindingSymbol?)null);
+        return symbol is null || (operation is BinaryKoto { Akind: KotoKind.Equals } && Reassignable(symbol)) ? null : mode;
+    }
 
     // SPEC 7.6, 22.6: the functions that support direct calls only: an unsafe function and a #LibraryImport function, the latter by
     // its Attribute whatever the Attribute's verdict. A requirement is never an import, so a requirement's Item is a value whatever
@@ -125,31 +137,45 @@ public sealed partial class Binding
     {
         if (type.IsFloatingPoint)
         {
-            return ScalarTypes.TryFloatLiteral(literal, type, negative, out _);
+            return TryFloatLiteral(literal, type, negative, out _);
         }
 
-        return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
+        return literal.TryGetIntegerMagnitude(out var magnitude) && TryLiteral(type, magnitude, negative, out _);
     }
-
-    // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
-    // operations of its concrete Type.
-    // A shared literal argument constructs an owner temporary before acquiring its borrow.
-    private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
 
     private static BoundType? Complete(Koto node, BoundType? type)
     {
         node.BoundType = type;
         if (node.BindingState != BindingState.Invalid)
         {
-            node.BindingState = type is null ? BindingState.Unresolved : BindingState.Resolved;
+            node.BindingState = CompletedState(node.BindingState, type);
         }
 
         return type;
     }
 
+    // The state Complete gives: an invalid node stays invalid, any other is resolved with a Type and unresolved without one; the
+    // recorder gives it to a dependent of a module the pass does not bind in its entry (CompleteDependent).
+    private static BindingState CompletedState(BindingState state, BoundType? type)
+        => state == BindingState.Invalid ? state : type is null ? BindingState.Unresolved : BindingState.Resolved;
+
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; rule W): an unbound part other than an anonymous function at a position a split
+    // binding decides as a whole: every check of it reads the position, so it rests, unbound, as a part awaiting its position does,
+    // and is bound on its own once its call ends (CompleteUnselected). A typed part there holds (the relation holds at a mark); an
+    // anonymous function reads the mark (BindClosure: every part open).
+    private static bool RestsAtOpenPosition(Koto node, BoundType? expected)
+        => expected is { Kind: BoundTypeKind.Open } && node.BoundType is null && KotoHelper.UnwrapParentheses(node) is not FunctionKoto { IsAnonymous: true };
+
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; rule W; G812 ruling 151): a node bound at a position holding a mark that forms
+    // no Type and has no failure cause (no record of its own, no failed or resting input: HasFailureCauses) formed none because a part
+    // of it rests at its open position (RestsAtOpenPosition), the split's own limit. It rests there as that part does, so its reader
+    // does not take it as a failed input (SPEC 23.1.2: a rest has a reported cause): a Tuple whose element rests so, a Case whose
+    // payload does, and every form above them.
+    private bool RestsBelowOpenPosition(Koto node, BoundType? type, BoundType? expected)
+        => type is null && expected is { ContainsOpen: true } && !this.HasFailureCauses(node);
+
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
-    private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
+    private bool TakesGenericLiterals(BoundType? type, BindingScope scope, QuerySite site) => this.IsGenericInteger(type, scope, site) || this.IsGenericWrapping(type, scope, site);
 
     // SPEC 12.3.2, 8.7.4: whether a direct integer literal (its number and sign) fits an integer or wrapping integer Type, concrete or
     // generic, and its constant (DECISIONS BU-133): a Type with a width holds its N-bit sign-extended payload; a Type whose literals are
@@ -163,13 +189,13 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.TakesGenericLiterals(type, scope))
+        if (this.TakesGenericLiterals(type, scope, number))
         {
             bits = (Int128)magnitude;
             return FitsGenericInteger(number, negative);
         }
 
-        return ScalarTypes.TryLiteral(type, magnitude, negative, out bits);
+        return TryLiteral(type, magnitude, negative, out bits);
     }
 
     // SPEC 12.3: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
@@ -199,11 +225,11 @@ public sealed partial class Binding
         {
             // SPEC 12.3: every literal fits the Type its operator propagates and every operator is defined for that Type;
             // a shift count is typed independently of the candidate. A wrapping integer Type has unary - for every argument.
-            var integer = this.IsArithmeticInteger(type, scope);
+            var integer = this.IsArithmeticInteger(type, scope, node);
             var numeric = integer || type.IsFloatingPoint;
             return node switch
             {
-                UnaryKoto { Akind: KotoKind.PrefixMinus } negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
+                UnaryKoto { Akind: KotoKind.PrefixMinus } negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope, node) && this.FitsInputLiteral(negated.Operand, type, scope),
                 UnaryKoto { Akind: KotoKind.PrefixPlus } plus => numeric && this.FitsInputLiteral(plus.Operand, type, scope),
                 BinaryKoto { Akind: KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } shifted => integer && this.FitsInputLiteral(shifted.Left, type, scope),
                 BinaryKoto binary => numeric && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
@@ -216,41 +242,66 @@ public sealed partial class Binding
             return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative);
         }
 
-        return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        return node is not NullLiteralKoto || type is { IsPointer: true };
     }
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected))
+        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, scope, expected) || RestsAtOpenPosition(node, expected))
         {
             return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later, a result for its call.
         }
 
-        // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
+        // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2), its rest below an open position
+        // none (RestsBelowOpenPosition).
         var parent = this.BeginConsultation(node);
         var type = this.HeightChecked(node, this.BindAndAdaptNode(node, scope, expected));
+        if (this.FormsBorrows)
+        {
+            this.OwnBorrows(node, this.borrows); // The node's own borrow facts (Binding.RawOrigins.Borrows).
+        }
+
+        // SPEC 23.1.2 (E3e Revision 2): a decision that read a written Type whose occurrence's judgment fails rests on it where it
+        // is made, so its readers, bound after it, rest by their own binding; a decision deferred without a Type too (ruling 18 P1: a
+        // reference awaiting its call is completed outside BindNode, PrepareArgument). A decision is a use, bound in an executable body
+        // (formingBody); a declaration's own syntax, bound with no body (a clause, a declared Property Type), asks nothing here: its
+        // occurrences are judged after the declaration checks they read (ValidateConstraintUses), a Property's at its certificate.
+        if (this.formingBody.IsBody && node.BindingFailure == BindingFailure.None && this.FailedWrittenType(node) is { } failedType)
+        {
+            type = this.CompleteDependent(node, failedType);
+        }
+
         this.EndConsultation(node, parent);
-        this.Consulted(node);
+        if (!this.RestsBelowOpenPosition(node, type, expected))
+        {
+            this.Consulted(node);
+        }
+
         return type;
     }
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (expected is { ContainsParameter: true })
+        // DECISIONS BU-240 (temporary with BoundTypeKind.Open): an anonymous function reads the marks of its expected signature (BindClosure)
+        // and is then adapted at the unmarked one, the erasure's signature having been judged case by case.
+        var closure = KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true };
+        if (expected is not null)
         {
-            expected = this.SubstituteIdentityPremises(expected, scope);
+            expected = this.ClassForm(expected, scope, out _); // SPEC 8.2.3: the binding input's form (a literal at T under `T is i32` is i32)
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
-        // SPEC 10.2 row 2: a literal at ref/U is bound as its owner temporary at U, which the common adaptation below borrows. Its Type is
-        // U also where it rests on a failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still
-        // takes the borrow its position needs.
+        // SPEC 10.2 row 2, 14.9.2 step 3 (PLAN G924 rule B): a value at ref/U (Materialization: a literal, or a value join waited or not)
+        // is bound as its owner temporary at U, which the common adaptation below borrows once. Its Type is U also where it rests on a
+        // failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still takes the borrow its
+        // position needs.
         BoundType? actual;
+        var temporary = this.Materialization(node, expected, scope);
         if (this.WaitedResult(node) is { } waited)
         {
-            actual = this.DecideWaiting(node, waited, expected);
+            actual = this.DecideWaiting(node, waited, temporary ?? expected);
         }
-        else if (this.TemporaryTarget(node, expected, scope) is { } temporary)
+        else if (temporary is not null)
         {
             actual = this.BindNodeCore(node, scope, temporary);
             if (actual is null && node.BindingFailure == BindingFailure.None && this.prerequisites.ContainsKey(node))
@@ -263,12 +314,17 @@ public sealed partial class Binding
             actual = this.BindNodeCore(node, scope, expected);
         }
 
+        if (closure && expected is { ContainsOpen: true })
+        {
+            expected = this.Unmarked(expected);
+        }
+
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);
         }
 
-        if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
+        if (actual is not null && this.ClassForm(actual, scope, out _) is var substituted && !ReferenceEquals(substituted, actual))
         {
             // SPEC 8.2: the expression has the one Type that the identity premises of its scope make of its Types.
             if (ReferenceEquals(node.BoundType, actual))
@@ -299,33 +355,30 @@ public sealed partial class Binding
             return expected;
         }
 
-        if (expected is not null && actual is not null && this.FailsFunctionConversion(node, actual, expected))
+        if (expected is not null && actual is not null)
         {
-            return null;
+            actual = this.ConvertFunctionValue(node, actual, expected);
+            if (actual is null)
+            {
+                return null;
+            }
         }
 
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
         // reference is Reborrowed (SPEC 3.5.1, 10.2.2), as at a bare acquisition position.
         if (expected is not null && actual is not null && node.ErasedFunctionType is null &&
-            (!Compatible(actual, expected) || StoresExclusiveReference(node, actual)) &&
-            this.ExpectedAdaptation(node, actual, expected) is { } adaptation)
+            (!this.FitsType(actual, expected) || this.StoresExclusiveReference(node, actual)))
         {
-            this.adaptations[node] = adaptation;
-            return adaptation.Type;
+            return this.ExpectedAdaptation(node, actual, expected);
         }
 
         // SPEC 3.5: without a fixed expected Type, the bare acquisition of a Place storing an exclusive reference Reborrows it.
-        if (expected is null && this.StoredReborrow(node, actual) is { } reborrowed)
-        {
-            return reborrowed;
-        }
-
-        return node.ErasedFunctionType ?? actual;
+        return expected is null ? this.StoredReborrow(node, actual) : node.ErasedFunctionType ?? actual;
     }
 
     private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (this.patternNodes.Contains(node))
+        if (this.indexedPatterns[node].Pattern)
         {
             throw new InvalidOperationException("Pattern syntax must be handled by the positional Pattern binder.");
         }
@@ -355,7 +408,7 @@ public sealed partial class Binding
             return node.BoundType;
         }
 
-        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(testDefinition))
+        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(this.compilation, testDefinition))
         {
             return testDefinition.BoundType;
         }
@@ -398,7 +451,7 @@ public sealed partial class Binding
                 return Complete(enumeration, BoundType.Unit);
             case ParenthesizedTypeKoto:
                 // Grouped Types are bound by Type/qualifier entry points, never as runtime values.
-                return this.Fail(node, BindingFailure.InvalidTypeFormation);
+                return this.Record(node, BindingFailure.InvalidTypeFormation, []);
             case SyntaxFormKoto { Akind: KotoKind.ConstructorReference } constructorReference:
                 return this.BindBaseConstructor(constructorReference, scope);
             case TypeKoto:
@@ -467,9 +520,11 @@ public sealed partial class Binding
             case InterpolatedStringKoto interpolation:
                 return this.BindInterpolation(interpolation, scope);
             case NumberLiteralKoto number:
-                if (this.TakesGenericLiterals(expected, scope))
+                if (this.TakesGenericLiterals(expected, scope, node))
                 {
-                    return !number.IsInteger ? this.Fail(node, BindingFailure.TypeMismatch) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Fail(node, BindingFailure.InvalidLiteral);
+                    // SPEC 12.3.1, 8.7.4: a generic literal position takes integer literals only (a floating-point literal adopts only an
+                    // expected f32 or f64); the mismatch names both sides.
+                    return !number.IsInteger ? this.RecordTypeMismatch(node, node, new(null, MismatchForm.FloatingPointLiteral), expected!) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Record(node, BindingFailure.InvalidLiteral, []);
                 }
 
                 var numberType = DefaultLiteralType(number, expected);
@@ -480,9 +535,9 @@ public sealed partial class Binding
                     return this.RecordMismatch(node, node, new(null, found), numberType, ComparisonFailure.Shape);
                 }
 
-                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
+                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Record(node, BindingFailure.InvalidLiteral, []);
             case NullLiteralKoto:
-                return expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
+                return expected is { IsPointer: true } ? Complete(node, expected) : this.Record(node, BindingFailure.MissingType, [], unresolved: true);
             case BaseReferenceKoto baseReference:
                 return this.BindBaseReference(baseReference, scope);
             case IdentifierNameKoto identifier:
@@ -493,7 +548,7 @@ public sealed partial class Binding
                 return called;
             case SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred:
                 var inferredSymbol = this.InferredCase(inferred, scope, expected);
-                return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, inferredSymbol, null, scope, expected);
+                return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, this.PublishedTarget(inferred, inferredSymbol, expected), null, scope, expected);
             case IndexKoto index:
                 return this.BindElement(index, scope);
             case RangeKoto range:
@@ -514,7 +569,7 @@ public sealed partial class Binding
                     return this.FailMissing(member, scope, BindingFailure.MissingName);
                 }
 
-                return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, memberSymbol, null, scope, expected) : this.BindReference(member, memberSymbol, scope);
+                return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, this.PublishedTarget(member, memberSymbol, expected), null, scope, expected) : this.BindReference(member, memberSymbol, scope);
             case ParenthesizedKoto parent:
                 return Complete(node, this.BindNode(parent.Operand, scope, expected));
             case UnaryKoto unary:
@@ -574,11 +629,6 @@ public sealed partial class Binding
                     resultType = BoundType.Unit;
                 }
 
-                if (resultType is { ContainsParameter: true })
-                {
-                    resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.2
-                }
-
                 var actual = jump.Expression is { } operand ? this.BindExpected(operand, scope, resultType, (target as FunctionKoto)?.ReturnType) : BoundType.Unit;
                 if (jump.Parent is TryKoto propagation && actual?.Symbol != propagation.Expression.BoundType?.Symbol)
                 {
@@ -623,7 +673,7 @@ public sealed partial class Binding
                 return this.CompleteDependent(array, holeCause);
             case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
                 return this.CompleteDependent(array, arrayCause);
-            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
+            case ArrayLiteralKoto array when this.TypedByPlaceRule(array, expected):
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
@@ -636,12 +686,15 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.Unsupported, true);
     }
 
+    // The node bound at `expected` and fitted to it. SPEC 23.1.2: a node whose fit failed supplies no Type: its record is its own, and
+    // what reads the result rests on it instead of judging the misfitting Type once more.
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
         if (expected is not null && actual is not null && !this.FitsValueAt(actual, expected, node, node, out var failure))
         {
             this.FailMismatch(node, node, actual, expected, failure);
+            return null;
         }
 
         return actual;
@@ -658,10 +711,23 @@ public sealed partial class Binding
         visitor.Scope = previous;
     }
 
+    // The children of a form bound without its meaning (a recovery or an unsupported form), each on its own; a name the form declares (its
+    // symbol's declaration, such as a recovered loop's binding) is no operand, so it rests on the form, whose record explains it (SPEC
+    // 23.1.2, DIAGNOSTICS 4.3).
     private sealed class ChildBinder(Binding binding) : KotoVisitor
     {
         internal BindingScope Scope { get; set; } = null!;
 
-        public override void Visit(Koto node) => binding.BindNode(node, this.Scope);
+        public override void Visit(Koto node)
+        {
+            if (node is IdentifierNameKoto { BoundSymbol: { } declared } && ReferenceEquals(declared.Declaration, node) && node.Parent is { } form)
+            {
+                binding.CompleteDependent(node, form);
+            }
+            else
+            {
+                binding.BindNode(node, this.Scope);
+            }
+        }
     }
 }

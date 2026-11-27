@@ -51,7 +51,7 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     public void EachDocumentIsBoundedByItsOwnParse()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("a.kimi", Source("parentheses", LevelsWithin("parentheses") + 1)));
         c.Kotonoha.AddSource(new SourceDocument("b.kimi", Source("plus", LevelsWithin("plus") + 1).Replace("func f", "func g", StringComparison.Ordinal)));
         var records = c.Diagnostics.Finalize(rejected: true).Diagnostics;
@@ -62,7 +62,7 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     public void AGeneratedSourceIsBoundedByItsParse()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Source("parentheses", LevelsWithin("parentheses") + 1));
         Assert.Equal(nameof(DiagnosticCode.NestingLimit_Kd), Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics).Code);
         Assert.True(Depth(c.Kotonoha.RootKoto) <= L);
@@ -95,7 +95,7 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.DoesNotContain(this.Compile(Source("groups", levels)).Records, static x => x.Code == nameof(DiagnosticCode.NestingLimit_Kd));
 
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("a.kimi", Groups(L))); // Group G1023 lies at depth L and has a child.
         if (secondDocument)
         {
@@ -136,6 +136,10 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         return deepest;
     }
 
+    // The most levels whose tree lies within L.
+    internal static int LevelsWithin(string shape)
+        => (L - Offset(shape)) / PerLevel(shape);
+
     private static string Source(string shape, int levels)
         => shape switch
         {
@@ -169,14 +173,10 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     private static int Offset(string shape)
         => Depth(Parsed(Source(shape, 1))) - PerLevel(shape);
 
-    // The most levels whose tree lies within L.
-    private static int LevelsWithin(string shape)
-        => (L - Offset(shape)) / PerLevel(shape);
-
     private static Koto Parsed(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Deep.kimi", source));
         return c.Kotonoha.RootKoto;
     }
@@ -185,7 +185,7 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     private (int Depth, DiagnosticEntryView[] Records, bool Accepted) Compile(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Deep.kimi", source));
         var depth = Depth(c.Kotonoha.RootKoto);
         var checkedAll = c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Library).IsComplete && c.Analyze().IsVerified;

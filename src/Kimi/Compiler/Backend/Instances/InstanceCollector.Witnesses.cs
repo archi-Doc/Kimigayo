@@ -27,8 +27,8 @@ internal sealed partial class InstanceCollector
     /// else on its representative Self, under source operators for an operator mode, else the Contract's mapping; its parts' Types in the
     /// instance are the representative Self's components.</summary>
     /// <param name="item">The Builtin item of an Equatable or Comparable shim.</param>
-    /// <returns>The node; null for a Self whose storage does not complete (Witness's Limit).</returns>
-    internal ComparisonNode? Comparison(int item)
+    /// <returns>The node.</returns>
+    internal ComparisonNode Comparison(int item)
     {
         var entry = this.Set.Items[item];
         var self = entry.Key.Type!.ContainsParameter ? entry.Key.Type : entry.RepresentativeType!;
@@ -42,10 +42,10 @@ internal sealed partial class InstanceCollector
     // erased Self and its operation (X14, X28), whose key's signature agrees with the requirement's in the instance; a shim item represented
     // by the call's substitution, a Builtin's and a Storage witness's, whose bound reference instantiates the requirement's signature (one
     // Abi for every call of a key: its Self erases to one Type, references are pointers, SPEC 13.3.3 fixes a built-in numeric Type's
-    // counterpart and Output; DECISIONS R5-M126). OCC-X's refusal, a Self whose storage does not complete and an arithmetic shim whose
-    // operation the capability table refuses (ArithmeticGap; IMPL 21.3.3) are capability gaps at the call, each requesting site's, and
-    // refuse the edge; None, no answer for the closed Self of an accepted program, and a Storage witness whose signature disagrees are
-    // broken contracts; a kind without a row is a fault.
+    // counterpart and Output; DECISIONS R5-M126). OCC-X's refusal and an arithmetic shim whose operation the capability table refuses
+    // (ArithmeticGap; IMPL 21.3.3) are capability gaps at the call, each requesting site's, and refuse the edge; None, no answer for the
+    // closed Self of an accepted program, and a Storage witness whose signature disagrees are broken contracts; a kind without a row is a
+    // fault. The target's resolution formed: its caller read its cause where it called Witness (Formed, R7-T1 c4).
     private int Requirement(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
         DiagnosticCode? refused = target.Kind switch
@@ -55,7 +55,6 @@ internal sealed partial class InstanceCollector
             RequirementTargetKind.Storage when this.Agrees(requirement, target) => null,
             RequirementTargetKind.Storage or RequirementTargetKind.None => DiagnosticCode.InternalInvariant_Kd,
             RequirementTargetKind.Refused => Capability.Code(CapabilityGap.ExclusiveInheritedWitness),
-            RequirementTargetKind.Limit => Capability.Code(CapabilityGap.StorageNesting),
             _ => throw new InvalidOperationException($"The witness kind {target.Kind} has no edge row."),
         };
 
@@ -93,13 +92,13 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 row 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
-    // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (an intrinsic's argument In or
-    // Edge's Compose).
+    // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose formation its caller read (an intrinsic's argument In or
+    // Edge's composition); the resolution's cause is read here, keyed by the site (Formed).
     private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType self)
     {
         var contract = TyCtxt.Contract(requirement);
-        var call = this.types.Synthesized(requirement, self, contract.Type!);
-        return this.Requirement(program, item, subject, requirement, this.types.Witness(requirement, contract, call));
+        var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, self, contract.Type!));
+        return this.Formed(target.Cause, item, subject, subject) ? this.Requirement(program, item, subject, requirement, target) : -1;
     }
 
     // F 4.5, X14: the signature a property-witness key fixes, the one statement of it, which K6's agreement (Agrees) and the shim's function
@@ -111,7 +110,7 @@ internal sealed partial class InstanceCollector
     {
         var set = access == PropertyWitnessKind.StorageSet;
         count = set ? 2 : 1;
-        if (!AdtDef.FindField(self, field, out var stored, out _))
+        if (!AdtDef.FindField(this.types, self, field, out var stored, out _))
         {
             return null;
         }
@@ -139,11 +138,11 @@ internal sealed partial class InstanceCollector
         var subst = target.Subst!;
         var field = target.Target;
         var access = target.Access;
-        var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
+        var agrees = Same(this.types.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
             count == slots;
         for (var slot = 0; agrees && slot < count; slot++)
         {
-            agrees = Same(TyCtxt.Signature(requirement, subst, slot, out _), this.StorageSignature(subst.Self!, field, access, slot, out _));
+            agrees = Same(this.types.Signature(requirement, subst, slot, out _), this.StorageSignature(subst.Self!, field, access, slot, out _));
         }
 
         return agrees;
@@ -153,7 +152,7 @@ internal sealed partial class InstanceCollector
 
     // K 4.3: a shim's targets, at its default site, by its function's Contract (TyCtxt.ShimContract; Binding.PrepareBuiltinTargets): a
     // comparison item's (Equatable, Comparable) are its direct parts' (Parts); an arithmetic shim's scalar Self
-    // calls no witness (ArithmeticContracts.Supports); a setter's property witness drops the Field's
+    // calls no witness (TyCtxt.HasBuiltinArithmetic); a setter's property witness drops the Field's
     // old value (its glue), the Field Agrees found in the representative Self at admission, so a Self without it is a broken contract.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
@@ -164,7 +163,7 @@ internal sealed partial class InstanceCollector
                 return;
             }
 
-            if (!AdtDef.FindField(self, key.Symbol, out var field, out _))
+            if (!AdtDef.FindField(this.types, self, key.Symbol, out var field, out _))
             {
                 this.Report(DiagnosticCode.InternalInvariant_Kd, site);
                 return;
@@ -179,7 +178,7 @@ internal sealed partial class InstanceCollector
             case KimiDeclarationId.Equatable or KimiDeclarationId.Comparable:
                 this.Parts(program, item, site, key, self);
                 return;
-            case var contract when ArithmeticContracts.IsArithmetic(contract):
+            case var contract when KimiLibraryCatalog.IsArithmeticContract(contract):
                 return;
             default:
                 throw new InvalidOperationException($"The shim {key.Symbol!.Name} has no target row.");
@@ -190,14 +189,14 @@ internal sealed partial class InstanceCollector
     // Builtin target its requirement selects for a composite Self, keyed by the erased Self at the template and, when that has a parameter,
     // the calling item's erased instance (SPEC 13.4's generic rule: the template decides which leaves run a Contract mapping), represented
     // by the target's substitution (one Abi per key, R5-M126); the call is a use of each Tuple it compares past its operands' storage
-    // (Uses). A Limit is the storage-nesting gap at the call; any other target a broken contract.
+    // (Uses); any other target is a broken contract.
     private int Compared(int item, SourceRef subject, in MirCallee callee, in RequirementTarget target)
     {
         var template = callee.Subst!.Self!;
         if (target.Kind == RequirementTargetKind.Builtin)
         {
             this.uses.Clear();
-            this.Uses(item, subject, this.types.Comparison(TyCtxt.Contract(callee.Symbol!), template, operators: true)!, target.Subst!.Self!, past: true);
+            this.Uses(item, subject, this.types.Comparison(TyCtxt.Contract(callee.Symbol!), template, operators: true), target.Subst!.Self!, past: true);
         }
 
         return this.Comparing(item, subject, target, template, new(default, this.Set.Items[item].Key.Body.Erased), (byte)callee.Arg);
@@ -205,14 +204,13 @@ internal sealed partial class InstanceCollector
 
     // DECISIONS R5-M166: the comparison item of a composite node's Type under a mode, requested at a site with the Builtin target its
     // requirement selects on the instance Self: keyed by the target's compiler function, the mode and the node's erased Type, which is at
-    // the template, with the requesting instance, when it has a parameter; represented by the target's substitution and its Self. A Limit
-    // target is the storage-nesting gap at the site; any other a broken contract. -1 when refused.
+    // the template, with the requesting instance, when it has a parameter; represented by the target's substitution and its Self. Any
+    // other target is a broken contract. The target's resolution formed (its caller read the cause, Formed). -1 when refused.
     private int Comparing(int item, SourceRef subject, in RequirementTarget target, BoundType node, Instantiation instance, byte mode)
     {
         if (target.Kind != RequirementTargetKind.Builtin)
         {
-            var limit = target.Kind == RequirementTargetKind.Limit;
-            this.Report(limit ? Capability.Code(CapabilityGap.StorageNesting) : DiagnosticCode.InternalInvariant_Kd, subject);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
             return -1;
         }
 
@@ -254,16 +252,11 @@ internal sealed partial class InstanceCollector
     // SPEC 13.4, 13.4.1 (DECISIONS R5-M166): a comparison item's targets, one per direct part of its node (Comparison) that is not a
     // Builtin leaf, in order, each at the part's instance Type (the representative's component): a Composite part's own item (the same
     // function and mode, keyed at the template while the part's Type has a parameter, as Compared), a Witness leaf's body under its
-    // substitution, a Requirement leaf's witness on the instance part (Runs: a body or a Mapping item). No node, a Self whose storage does
-    // not complete, is the storage-nesting gap at the item's site, and a None leaf a broken contract.
+    // substitution, a Requirement leaf's witness on the instance part (Runs: a body or a Mapping item); a None leaf is a broken contract. A
+    // Composite part's witness resolution that formed a Type past the height is the item's site's TypeHeightLimit_Kd (Formed).
     private void Parts(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
-        if (this.Comparison(item) is not { } node)
-        {
-            this.Report(Capability.Code(CapabilityGap.StorageNesting), site);
-            return;
-        }
-
+        var node = this.Comparison(item);
         var contract = TyCtxt.Contract(key.Symbol!);
         var requirement = contract.Contract!.OwnRequirement()!;
         for (var i = 0; i < node.Parts.Length; i++)
@@ -272,7 +265,7 @@ internal sealed partial class InstanceCollector
             if (part.Kind == ComparisonKind.Composite)
             {
                 var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, type, contract.Type!));
-                this.Target(item, this.Comparing(item, site, target, part.Type, key.Body, key.Variant));
+                this.Target(item, this.Formed(target.Cause, item, site, site) ? this.Comparing(item, site, target, part.Type, key.Body, key.Variant) : -1);
             }
             else if (part.Kind == ComparisonKind.Witness)
             {

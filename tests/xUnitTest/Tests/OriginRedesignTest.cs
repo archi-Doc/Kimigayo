@@ -56,7 +56,7 @@ public class OriginRedesignTest
     public void CompletesDeclarationOriginContracts(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var prefix = source.StartsWith("struct V", StringComparison.Ordinal) ? string.Empty : "struct V<T> {source}\n    public let value: ref/T during source\n";
         c.Kotonoha.AddSource(new SourceDocument("redesign.kimi", prefix + source));
         Assert.Empty(TestDiagnostics.Of(c));
@@ -87,10 +87,14 @@ public class OriginRedesignTest
     public void RejectsInvalidOriginDeclarations(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("invalid.kimi", "struct V<T> {source}\n    let value: ref/T during source\n" + source));
         Assert.Empty(TestDiagnostics.Of(c));
-        Assert.False(c.Bind().IsComplete);
+        c.Project.ProjectFile.OutputKind = OutputKind.Library;
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Library);
+        c.Analyze();
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 
     [Theory]
@@ -273,18 +277,18 @@ public class OriginRedesignTest
     [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    public func get<U>(self: ref/Self, u: ref/U) -> i32\n        U is Source\n        U.(Source).Item is ref/i32 during h\n        return 0\nfunc g<V>(b: ref/(Box<i32> during m), v: ref/V) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during m\n    return b.get(v)", "")]
     [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    Self is Marker when T is Source, T.(Source).Item is ref/i32 during h\nfunc need<M>(m: ref/M) -> i32\n    M is Marker\n    return 0\nfunc g<V>(b: ref/(Box<V> during m)) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during m\n    return need(b)", "")]
     [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d} : Base<T> during d\n    T is Source", "InvalidConstraint_Kd InvalidTypeFormation_Kd UnprovenConstraint_Kd")]
-    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d, e} : Base<T> during d\n    T is Source\n    T.(Source).Item is ref/i32 during e", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd UnprovenConstraint_Kd")]
-    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\nstruct Holder<T> {d, e}\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    public let b: Box<T> during e", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d, e} : Base<T> during d\n    T is Source\n    T.(Source).Item is ref/i32 during e", "InvalidConstraint_Kd InvalidTypeFormation_Kd UnprovenConstraint_Kd")] // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): one failure, the unproven agreement of `during e` with `during d`, stays reported at the base clause; Derived's second record of it goes
+    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\nstruct Holder<T> {d, e}\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    public let b: Box<T> during e", "UnprovenConstraint_Kd UnprovenConstraint_Kd")] // the Field name `b` carries its written Type: its restating record goes (G1278-A, Q13; F's G1278-3)
     [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nfunc f<T>(b: ref/Base<T> during d) -> i32\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    return 0", "UnprovenConstraint_Kd")]
-    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public func other(self: ref/Self, b: ref/(Box<T> during x)) -> i32 => 0", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public func other(self: ref/Self, b: ref/(Box<T> during x)) -> i32 => 0", "UnprovenConstraint_Kd")] // R7-V1c (F's V1c ruling 3, SPEC 8.3.1, DECISIONS Q13): the parenthesized parameter Type and the Type it holds are one written occurrence, one record (ee393bf26: one at each)
     [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    public func get<U>(self: ref/Self, u: ref/U) -> i32\n        U is Source\n        U.(Source).Item is ref/i32 during h\n        return 0\nfunc g<V>(b: ref/(Box<i32> during m), v: ref/V, z: ref/i32 during n) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during n\n    return b.get(v)", "UnprovenConstraint_Kd")]
     [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    Self is Marker when T is Source, T.(Source).Item is ref/i32 during h\nfunc need<M>(m: ref/M) -> i32\n    M is Marker\n    return 0\nfunc g<V>(b: ref/(Box<V> during m), z: ref/i32 during n) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during n\n    return need(b)", "UnprovenConstraint_Kd")]
     [InlineData("struct P2<T> {h, k}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public let v: ref/i32 during k\n    public func other(self: ref/Self, b: ref/(P2<Cursor during k>{q})) -> i32\n        origin q.h == k\n        origin q.k == h\n        return 0", "")]
     [InlineData("struct Box2<T> {h}\n    public let t: ref/T during h\n    public func get(self: ref/Self, b: ref/(Box2<Cursor during h> during x)) -> ref/(Cursor during h) during x => b.t", "")]
     [InlineData("open struct Base<T> {h}\n    public let w: ref/i32 during h\n    Self is Marker when T is Source, T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d} : Base<T> during d\nfunc need<M>(m: ref/M) -> i32\n    M is Marker\n    return 0\nfunc g<V>(b: ref/(Derived<V> during m)) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during m\n    return need(b)", "")]
     [InlineData("struct Outer<T> {o}\n    T is Source\n    T.(Source).Item is ref/i32 during o\n    public let w: ref/i32 during o\n    public struct Inner\n        public let v: ref/i32 during o\nfunc g<V>(x: ref/((Outer<V> during m).Inner)) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during m\n    return 0", "")]
-    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public func other(self: ref/Self, b: ref/(Box<Cursor during h> during x)) -> i32 => 0", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
-    [InlineData("struct P2<T> {h, k}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public let v: ref/i32 during k\n    public func other(self: ref/Self, b: ref/(P2<Cursor during h>{q})) -> i32\n        origin q.h == k\n        origin q.k == h\n        return 0", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public func other(self: ref/Self, b: ref/(Box<Cursor during h> during x)) -> i32 => 0", "UnprovenConstraint_Kd")] // R7-V1c (F's V1c ruling 3, SPEC 8.3.1, DECISIONS Q13): the parenthesized parameter Type and the Type it holds are one written occurrence, one record (ee393bf26: one at each)
+    [InlineData("struct P2<T> {h, k}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public let v: ref/i32 during k\n    public func other(self: ref/Self, b: ref/(P2<Cursor during h>{q})) -> i32\n        origin q.h == k\n        origin q.k == h\n        return 0", "UnprovenConstraint_Kd")] // R7-V1c (F's V1c ruling 3, SPEC 8.3.1, DECISIONS Q13): the parenthesized parameter Type and the Type it holds are one written occurrence, one record (ee393bf26: one at each)
     [InlineData("struct Box2<T> {h}\n    public let t: ref/T during h\n    public func get(self: ref/Self, b: ref/(Box2<Cursor during h> during x)) -> ref/(Cursor during x) during x => b.t", "UnprovenOriginRelation_Kd")]
     [InlineData("struct Holder<F> {h}\n    origin s.at == h\n    F is Callable<(Cursor{s}) -> i32>\n        effect confined\n    public let w: ref/i32 during h\nfunc g<G>(x: ref/(Holder<G> during m)) -> i32\n    origin t.at == m\n    G is Callable<(Cursor{t}) -> i32>\n        effect confined\n    return 0", "")]
     [InlineData("struct Holder<F> {h}\n    origin s.at == h\n    F is Callable<(Cursor{s}) -> i32>\n        effect confined\n    public let w: ref/i32 during h\nfunc g<G>(x: ref/(Holder<G> during m)) -> i32\n    origin t.at == m\n    G is Callable<(Cursor{t}) -> i32>\n    return 0", "UnsatisfiedEffectBound_Kd")]

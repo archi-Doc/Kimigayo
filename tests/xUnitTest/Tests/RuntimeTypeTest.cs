@@ -11,6 +11,27 @@ namespace XunitTest;
 
 public class RuntimeTypeTest
 {
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 13.6.4, 13.6.5 row 1): a runtime test's operand Type holding a Function Type is formed without
+    // the nested signature, whose input is its premise (dev: UnprovenConstraint_Kd at the test); its control with `i32`.
+    [Theory]
+    [InlineData("open struct Animal\nstruct Dog<U>: Animal\nstruct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc host(s: ref/i32, x: objref/Dog<(Option<T during s>) -> i32>) -> bool => x is Animal\n", "clean")] // c1is
+    [InlineData("open struct Animal\nstruct Dog<U>: Animal\nfunc host(s: ref/i32, x: objref/Dog<i32>) -> bool => x is Animal\n", "clean")] // c1isd
+    public void ANestedSignatureInATestedTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G464, E3e ruling 14 (SPEC 23.1.2, 8.3; Appendix F's NamedCoreType): a runtime test whose written target holds a failed
+    // occurrence inside a Function Type rests on it and records only the written `Box<string>`'s UnsatisfiedConstraint_Kd (t11; DECISIONS
+    // Q13, rule W: dev's restating UnsatisfiedConstraint_Kd at the test goes); its control is accepted (t11v).
+    [Theory]
+    [InlineData("D<() -> Box<string>>", "1*UnsatisfiedConstraint_Kd")] // t11
+    [InlineData("D<() -> Box<i32>>", "clean")] // t11v
+    public void AFailedOccurrenceInATestedTargetRestsTheTest(string target, string records)
+    {
+        var source = "struct Box<T>\n    T is i32\nopen struct Animal\nstruct D<U>: Animal\nfunc host(x: objref/Animal) -> bool => x is " + target + "\n";
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        var test = KotoTree.Walk(MinimalEmissionTest.Analyze(source).Kotonoha.RootKoto).OfType<IsKoto>().Last(); // Box's clause comes first.
+        Assert.Equal(records == "clean", test.StateOf() == BindingState.Resolved);
+    }
+
     [Theory]
     [InlineData("obj")]
     [InlineData("rc")]
@@ -168,10 +189,14 @@ public class RuntimeTypeTest
         var test = Test(c);
         var original = test.RuntimeTestOf()!.Value.TargetType;
         var alias = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<AliasKoto>().Single();
-        alias.QualifiedName[0] = "B";
+        var targetA = alias.TargetSyntax;
+        var donor = CompilationTestHelper.ParseSuccess(Source.Replace("alias A", "alias B", StringComparison.Ordinal));
+        var targetB = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<AliasKoto>().Single().TargetSyntax;
+        ParseTestHelper.Detach(targetB, new CodeBlockKoto(targetB.CodeContext));
+        Assert.True(KotoHelper.Replace(alias, targetA, targetB));
         AssertBound(c);
         Assert.NotSame(original, test.RuntimeTestOf()!.Value.TargetType);
-        alias.QualifiedName[0] = "A";
+        Assert.True(KotoHelper.Replace(alias, targetB, targetA));
         AssertBound(c);
         Assert.Same(original, test.RuntimeTestOf()!.Value.TargetType);
 

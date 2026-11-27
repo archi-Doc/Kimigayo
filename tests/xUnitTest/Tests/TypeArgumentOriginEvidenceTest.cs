@@ -35,7 +35,10 @@ public class TypeArgumentOriginEvidenceTest
     }
 
     // q12: the first invariant binding is kept, so only the second argument fails, as one `==` record that relates the first; it was a
-    // meet `(x and y)` reported at both arguments.
+    // meet `(x and y)` reported at both arguments. Since R7-O1 b1 the second argument's instantiated parameter Type, `uniq/(ref/i32 during
+    // x)` over b's per-call Origin, is judged well formed at q too (SPEC 15.6.4 step 3), an independent relation (SPEC 23.1.2; the Middle's
+    // ruling of 2026-11-19). Since PLAN G1115 that relation, `x outlives` b's per-call Origin, is also an upper bound of that Origin in
+    // the call's solve (SPEC 15.3.6: the meet of all upper bounds, `(q and x)`), so it holds and the `==` is the program's one record.
     [Fact]
     public void TheFirstInvariantBindingIsKept()
     {
@@ -64,6 +67,44 @@ public class TypeArgumentOriginEvidenceTest
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives x, which is false"), (error.Code, Text(source, error.Span), error.Label));
     }
 
+    // SPEC 10.8, 6.5.2 step 2: a Case construction solves its own slots, so an earlier construction's invariant binding, in the same
+    // body or another, is no binding of a later one's slot that its expected Type leaves open (in a let initializer, an independently
+    // typable argument or a closure body). The later one read the earlier's invariant mark and took its first binding as invariant:
+    // `Two.Both(x, y)` kept `x` ("requires y outlives x" at `y`) where its covariant bindings meet; `Four.Last(y, slot2@uniq)` kept `y`
+    // ("requires x == y" at `slot2@uniq`) where its invariant binding `x` is the solution, so only `y` fails, as without the mark. Within
+    // one construction the invariant binding is kept over the covariant one in either payload order.
+    [Theory]
+    [InlineData("func use(x: ref/i32, y: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    let m = One.Mark(slot@uniq)\n    let e = Two.Both(x, y)\n", null)]
+    [InlineData("func mark(x: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    let m = One.Mark(slot@uniq)\nfunc use(x: ref/i32, y: ref/i32) -> ()\n    let e = Two.Both(x, y)\n", null)]
+    [InlineData("func use(x: ref/i32, y: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    let m = One.Mark(slot@uniq)\n    consume(Two.Both(x, y))\n", null)]
+    [InlineData("func use(x: ref/i32, y: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    let m = One.Mark(slot@uniq)\n    run(func (p: ref/i32, q: ref/i32) -> () => consume(Two.Both(p, q)))\n", null)]
+    [InlineData("func use(x: ref/i32, y: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    let t = Three.Put(slot@uniq, y)\n", "y")]
+    [InlineData("func use(x: ref/i32, y: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    let m = One.Mark(slot@uniq)\n    var slot2: ref/i32 during x = x\n    let f = Four.Last(y, slot2@uniq)\n", "y")]
+    [InlineData("func use(x: ref/i32, y: ref/i32) -> ()\n    var slot2: ref/i32 during x = x\n    let f = Four.Last(y, slot2@uniq)\n", "y")]
+    public void ACaseConstructionSolvesItsOwnSlots(string body, string? failed)
+    {
+        var source = "enum One<T> {a}\n    Mark(uniq/T during a)\nenum Two<T>\n    Both(T, T)\nenum Three<T> {a}\n    Put(uniq/T during a, T)\nenum Four<T> {a}\n    Last(T, uniq/T during a)\n" +
+            "func consume<T>(e: Two<T>) -> () => ()\nfunc run(action: (ref/i32, ref/i32) -> ()) -> () => ()\n" + body + Main;
+        (string Code, string At, string? Label)[] expected = failed is null ? [] : [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), failed, "requires y outlives x, which is not proven")];
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span), x.Label)));
+    }
+
+    // SPEC 10.8 Solving, 15.6.1, 10.2.1: the selected candidate's re-trial (CheckDefaulted's, after U takes its default) starts without
+    // its trial's invariant marks (ClearTypes clears them with the Types), so the invariant binding `slot@uniq` is T's solution in either
+    // argument order and only the covariant `y` fails. The guard of the re-trial rule: were ClearTypes to keep the marks, `put2`'s re-trial
+    // would keep y's covariant binding and report "requires x == y" at `slot@uniq`.
+    [Theory]
+    [InlineData("put2(y, slot@uniq, 1)", "y")]
+    [InlineData("put3(slot@uniq, y, 1)", "y")]
+    [InlineData("put2(x, slot@uniq, 1)", null)]
+    public void ARetrialStartsWithoutItsTrialsMarks(string call, string? failed)
+    {
+        var source = "func put2<T, U>(v: T, s: uniq/T, n: U) -> () => ()\nfunc put3<T, U>(s: uniq/T, v: T, n: U) -> () => ()\n" +
+            "func use(x: ref/i32, y: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    " + call + "\n" + Main;
+        (string Code, string At, string? Label)[] expected = failed is null ? [] : [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), failed, "requires y outlives x, which is not proven")];
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span), x.Label)));
+    }
+
     // q20: either argument order stores the new Borrow into the same local region.
     [Theory]
     [InlineData(Put, "put(slot@uniq, b@ref)")]
@@ -86,13 +127,15 @@ public class TypeArgumentOriginEvidenceTest
     }
 
     // SPEC 10.8, 15.6.1: Constraints still take part in applicability with the solution: the first equality (static) satisfies Owned,
-    // and the second argument's `==` is the judged relation.
+    // and the second argument's `==` is the judged relation. Since R7-O1 b1 it is A5's row: one record for the one Equality problem
+    // (BU-28), naming the direction that fails, `x outlives static` (`static outlives x` holds), the precise cause (a Q13 record-text move,
+    // the Middle's ruling of 2026-11-19; Binding's record read `x == static`).
     [Fact]
     public void ConstraintsUseTheFirstInvariantBinding()
     {
         var source = "func pin<T>(a: uniq/T, b: uniq/T) -> i32\n    T is Owned\n    return 1\nfunc caller(s: uniq/(ref/i32 during static), p: uniq/(ref/i32 during x), x: ref/i32) -> i32 => pin(s, p)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires x == static, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires x outlives static, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal(("relation", "s"), (Assert.Single(error.Related!).Role, Text(source, error.Related![0].Span)));
     }
 

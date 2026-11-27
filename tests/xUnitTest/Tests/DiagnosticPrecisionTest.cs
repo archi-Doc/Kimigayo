@@ -1,12 +1,20 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 public class DiagnosticPrecisionTest
 {
+    // The test-only `#Unsupported` library declarations the handed-on rows read (AnUnsupportedDeclarationIsRefusedWhereItIsHandedOn).
+    private const string UnsupportedProbe = "#Unsupported\npublic struct ZProbe\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n\n        public struct Deep\n            public let z: i32\n" +
+        "public group ZG\n    #Unsupported\n    public struct ZM\n        public let x: i32\n\n        public struct Inner\n            public let y: i32\n" +
+        "public struct ZPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+        "public open struct ZOpenPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+        "#Unsupported\npublic struct ZDer : ZOpenPlain\n    public let w: i32\n";
+
     private const string Payload = "struct P\n    public var v: i32\n    public init(v: i32) => self.v = v\n";
 
     public static TheoryData<string> MutationNames => [.. DiagnosticCorpus.Mutations.Select(static x => x.Name)];
@@ -87,6 +95,22 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    let t: (f64, f64) = 2.5", "2.5", "expected (f64, f64), found floating-point literal")]
     [InlineData("public func main()\n    let x: i32 = func () => 1", "func () => 1", "expected i32, found an anonymous function")]
     [InlineData("public func main()\n    let counter = 1\n    counter += 1", "counter", "counter cannot be written")]
+
+    // A check that compares no Types still names the two sides it holds (R7-E3 E3a-2): a `not` operand, a signed literal, a typed
+    // borrow's referent, a pointer conversion's target and a `get` result against its Property's Type.
+    [InlineData("public func main()\n    let n = 1\n    let b = not n", "not n", "expected bool, found i32")]
+    [InlineData("public func main()\n    let x: i32 = -1.5", "-1.5", "expected i32, found floating-point literal")]
+    [InlineData("public func main()\n    let v: i32 = 1\n    let r = v@ref/i64", "v@ref/i64", "expected i64, found i32")]
+    [InlineData("unsafe func f(p: raw/i32) -> f64 => p@f64\npublic func main() => ()", "p@f64", "expected f64, found raw/i32")]
+    [InlineData("struct S\n    public computed item: i32\n        get(self: ref/Self) -> bool => true\npublic func main() => ()", "get(self: ref/Self) -> bool => true", "expected i32, found bool")]
+
+    // R7-E3 E3c-2: a guard's Type, a construction at its expected Type and a floating-point literal at a generic integer position, plain
+    // and signed, name the two sides they compared.
+    [InlineData("func f(x: i32) -> i32 => match x\n    _ if x => 0\n    _ => 1\npublic func main() => ()", "x", "expected bool, found i32")]
+    [InlineData("enum E<T>\n    A(T)\npublic func main()\n    let x: E<i32> = E<bool>.A(true)", "E<bool>.A(true)", "expected E<i32>, found E<bool>")]
+    [InlineData("func f<T>(v: T) -> T\n    T is PrimitiveInteger\n    return 1.5\npublic func main() => ()", "1.5", "expected T, found floating-point literal")]
+    [InlineData("func f<T>(v: T) -> T\n    T is PrimitiveInteger\n    return -1.5\npublic func main() => ()", "-1.5", "expected T, found floating-point literal")]
+    [InlineData("struct B\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nenum E\n    A(B)\nfunc f(b: ref/B) -> i32\n    let x = E.A(b)\n    return 0\npublic func main() => ()", "E.A(b)", "expected B, found ref/B")]
     public void TargetChecksShowTheirLocationAndFacts(string source, string text, string label)
     {
         var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
@@ -120,6 +144,27 @@ public class DiagnosticPrecisionTest
     [InlineData("func f(a: i32) -> string\n    if a == 1 => return \"x\"\nfunc g()\n    let text = \"a\"\n    let first = text@move\n    let second = text@move\npublic func main() => ()", "FunctionFallthrough_Kd,MovedPlace_Kd")]
     [InlineData("func f(a: i32) -> i32\n    let s: string\n    Console.writeLine(s)\n    if a == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UninitializedPlace_Kd")]
     [InlineData("public func main()\n    let g = func (a: i32) -> i32\n        if a == 1 => return 1\n    _ = g", "FunctionFallthrough_Kd")]
+    // SPEC 14.9.3: an exit to an outer target leaves the inner target that receives its own exit, in either order, so the outer loop
+    // completes and the body falls through; with only a continue to it, the outer loop never completes.
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label inner: loop\n            if flag => exit to outer\n            exit to inner\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label inner: loop\n            if flag => exit to inner\n            exit to outer\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    let wrong: i32 = true\n    label outer: loop\n        label inner: loop\n            if flag => exit to inner\n            continue to outer\npublic func main() => ()", "TypeMismatch_Kd")]
+    // SPEC 14.1, 14.3, 14.5.2, 14.7, 14.8 (the Front's B6a coverage): an unlabeled exit skips a `do` it is not addressed to; an exit to a
+    // `do` and a yield to a selection pass through a loop; a labeled selection or match receives its own yield; an exit to the outer loop
+    // leaves a selection receiving its own yield (with a continue instead, the loop never completes); three levels close a target two
+    // cells below the chain's head (with a continue to the outermost, it never completes); an unlabeled yield in Discard Context goes to
+    // none. Rows UnlabeledExitSkipsDo, DoThroughLoop, IfYield, MatchYield, YieldThroughLoop, ExitThroughSelection,
+    // ContinueThroughSelection, ThreeLevels, ThreeLevelsContinue, UnlabeledYieldDiscard.
+    [InlineData("func f() -> i32\n    loop\n        do\n            exit\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f() -> i32\n    label d: do\n        loop\n            exit to d\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label s: if flag\n        yield to s\n    else => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(value: Option<i32>) -> i32\n    label m: match value\n        .Some(_) => yield to m\n        .None => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label s: if flag\n        loop\n            yield to s\n    else => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label s: if flag\n            if flag => exit to outer\n            yield to s\n        else => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label outer: loop\n        label s: if flag\n            if flag => continue to outer\n            yield to s\n        else => return 1\npublic func main() => ()", "")]
+    [InlineData("func f(flag: bool) -> i32\n    label a: loop\n        label b: loop\n            label c: loop\n                if flag => exit to c\n                if flag => exit to a\n                exit to b\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    label a: loop\n        label b: loop\n            label c: loop\n                if flag => exit to c\n                if flag => continue to a\n                exit to b\npublic func main() => ()", "")]
+    [InlineData("func f(flag: bool) -> i32\n    if flag\n        yield\n    else => return 1\npublic func main() => ()", "UnlabeledYieldTarget_Kd")]
     [InlineData("struct S\n    public var v: i32 = 0\n    public computed w: i32\n        get(self: ref/Self) -> i32\n            if self.v == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
     // A fallthrough that written syntax reaches beside an unresolved condition is direct; one only past an unresolved expression is
     // derived from it (Binding.GuessedCompletion), so the failure alone is published.
@@ -432,8 +477,8 @@ public class DiagnosticPrecisionTest
     [InlineData("i12v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func makeRcCyclic(build: (i32) -> i32) -> i32 => build(1)\nlet n = makeRcCyclic(func [] (x: i32) -> i32 => x)\nConsole.writeLine(\"ok\")\n")]
     // Invalid by another rule, where no `#Unsupported` declaration is selected: the records are that rule's.
     [InlineData("g10x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 2:9")]
-    [InlineData("g13x", "alias W => Weak\nfunc f(w: ref/W<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:1", "UnresolvedBinding_Kd 2:15")]
-    [InlineData("g14x", "alias D => Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:1")]
+    [InlineData("g13x", "alias W => Weak\nfunc f(w: ref/W<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12 x4", "UnresolvedBinding_Kd 2:15 x1")]
+    [InlineData("g14x", "alias D => Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:12 x25")]
     // Moved by R8-G1-3b-2 to `ParameterShapeMismatch_Kd` at the use: the library's declared `downgrade<s/T>(value: ref/(s/T))` and
     // Mine's `downgrade(value: i32)` gathered at the alias stage fail SPEC 9.5.1's check (7.4.3: an original s/T overlaps every key;
     // 7.4.4 step 3), so every use is an error and no candidate is selected. R8's mixed groups are i09x-i12v and the hook's u rows.
@@ -473,16 +518,16 @@ public class DiagnosticPrecisionTest
     // two arity-1 candidates, Kimi.Weak and Mine.Weak); 9.7's arity filter keeps an arity-0 `Weak` valid (tw19v).
     [InlineData("tw18x", "alias Kimi\nalias Mine\ngroup Mine\n    public struct Weak<T>\n        public let x: i32\nfunc f(w: ref/Weak<i32>) -> i32 => w.x\nConsole.writeLine(\"ok\")\n", "AmbiguousBinding_Kd 6:15")]
     [InlineData("tw19v", "alias Kimi\nalias Mine\ngroup Mine\n    public struct Weak\n        public let x: i32\nfunc f(w: ref/Weak) -> i32 => w.x\nConsole.writeLine(\"ok\")\n")]
-    // Moved by R8-G1-3b-2 to `Unsupported_Kd` at the use from a Language record on the miss (q03x at the `Kimi.Weak` member 1:13; h03x
-    // keeps the alias's `InvalidTypeFormation_Kd` 1:1 beside the target's 1:7: open issue O4; g15x's alias walk has the alias as its
-    // only node, so its record is at 1:1).
+    // Moved by R8-G1-3b-2 to `Unsupported_Kd` at the use from a Language record on the miss (q03x at the `Kimi.Weak` member 1:13). An
+    // alias target's walk records where it fails, as every Type use's does, and the alias rests on that record (F's rulings N1-5 (4),
+    // N1-7 (2), (3)): g15x at the target 1:12, h03x the target's 1:7 alone, g13x and g14x at their missing component.
     [InlineData("r12x", "func f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:15")]
     [InlineData("g08x", "struct Weak\n    public let x: i32\nfunc f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:15")]
     [InlineData("g09x", "func f(w: ref/::Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:17")]
-    [InlineData("g15x", "alias W => Kimi.Weak\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:1")]
+    [InlineData("g15x", "alias W => Kimi.Weak\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:12 x9")]
     [InlineData("h01x", "alias Kimi.Intrinsics\nlet r = makeRc(1)\nlet w = downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:9")]
     [InlineData("h02x", "alias Kimi.Intrinsics\nlet f = downgrade\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
-    [InlineData("h03x", "alias Kimi.Weak<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:7", "InvalidTypeFormation_Kd 1:1")]
+    [InlineData("h03x", "alias Kimi.Weak<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:7")]
     [InlineData("h04x", "let w = Weak<rc/i32>.init()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:9")]
     [InlineData("h11x", "alias Kimi.Intrinsics\nlet f = downgrade<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
     [InlineData("i09x", "alias Kimi.Intrinsics\nalias Mine\nstruct Node\n    public let v: i32\ngroup Mine\n    public func makeRcCyclic(build: (i32, i32) -> i32) -> i32 => build(1, 2)\nlet node = makeRcCyclic(func [] (weak) -> Node => Node.init(v: 1))\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 7:12")]
@@ -502,8 +547,11 @@ public class DiagnosticPrecisionTest
     [InlineData("h12x", "func ident<T>(x: T) -> T => x\nlet n = Kimi.Intrinsics.makeRcCyclic(ident)\n", "TransferRequired_Kd 1:29", "Unsupported_Kd 2:9", "UnboundTypeArgument_Kd 2:38")]
     public void UnsupportedDeclarationUsesAreLocated(string row, string source, params string[] expected)
     {
+        // A row naming a record's span (` xN`, F's ruling N1-13 C1) is compared with it.
         var output = DiagnosticCorpus.Check(source);
-        Assert.Equal(expected.Order(StringComparer.Ordinal), ErrorsAt(source, output).Order(StringComparer.Ordinal));
+        var errors = output.Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)
+            .Select(x => At(source, x.Span!.Value.Start, x.Code) is var at && expected.Contains($"{at} x{x.Span!.Value.Length}") ? $"{at} x{x.Span!.Value.Length}" : at);
+        Assert.Equal(expected.Order(StringComparer.Ordinal), errors.Order(StringComparer.Ordinal));
         Assert.True(output.Accepted == (expected.Length == 0), row);
     }
 
@@ -512,8 +560,9 @@ public class DiagnosticPrecisionTest
     // R8-G1-3b-2. Each use outside them is one Unsupported_Kd at the Name that names one, whether the Name ends the path, qualifies a
     // member (no later step republishes it; deeper members, a group member, an inherited member Type) or is a `::` path's root name, and
     // independent uses each have their own; a mention inside an `#Unsupported` declaration is no use. The valid twins open a plain struct
-    // (t14v, SPEC 18.2.1) and inherit a member Type from a plain open base (t18v, SPEC 6.2.2, 9.6). A record in the library text is "L"
-    // with its position there; the rows also pin that the hook adds no record of its own (G1-2 binds library Attributes). The u rows'
+    // (t14v, SPEC 18.2.1) and inherit a member Type from a plain open base (t18v, SPEC 6.2.2, 9.6). A use in the library text is a
+    // broken build (ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild); the rows also pin that the hook adds no record of its own
+    // (G1-2 binds library Attributes). The u rows'
     // group ZF is wholly `#Unsupported`, as every library group is: alone it fails the Name (u01x, u02x); gathered beside a user group
     // (SPEC 9.5.1, R8) only its selection is a use, by a call's winner (u05x, u06x) or a function item (u07x), in either alias order.
     [Theory]
@@ -523,8 +572,6 @@ public class DiagnosticPrecisionTest
     [InlineData("z04x", "", "func f(v: ref/::Kimi.ZProbe.Inner) => ()\n", "Unsupported_Kd 1:17")]
     [InlineData("z05x", "", "func f(v: ref/::Kimi.ZProbe) => ()\n", "Unsupported_Kd 1:17")]
     [InlineData("z06v", "", "func f(v: ref/i32) => ()\n")]
-    [InlineData("z07x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
-    [InlineData("z08x", "public group ZUses\n    public func zuse(v: ref/::ZProbe) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
     [InlineData("z09v", "#Unsupported\npublic group ZOwn\n    public func zown(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n")]
     [InlineData("t01x", "", "func f(v: ref/ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
     [InlineData("t02x", "", "func f(v: ref/Kimi.ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
@@ -534,7 +581,6 @@ public class DiagnosticPrecisionTest
     [InlineData("t14v", "", "alias Kimi.ZPlain\nfunc f(v: ref/Inner) => ()\n")]
     [InlineData("t18v", "", "struct D : ZOpenPlain\n    let a: i32\nfunc f(v: ref/D.Inner) => ()\n")]
     [InlineData("t19x", "", "func f(v: ref/ZDer.Inner) => ()\n", "Unsupported_Kd 1:15")]
-    [InlineData("t23x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner.Deep) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
     [InlineData("u01x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nlet n = zf(1)\n", "Unsupported_Kd 2:9")]
     [InlineData("u02x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "let n = Kimi.ZF.zf(1)\n", "Unsupported_Kd 1:9")]
     [InlineData("u03v", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nalias Mine\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet n = zf(true)\n")]
@@ -543,24 +589,44 @@ public class DiagnosticPrecisionTest
     [InlineData("u06x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Mine\nalias Kimi.ZF\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet n = zf(1)\n", "Unsupported_Kd 5:9")]
     [InlineData("u07x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nalias Mine\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet f: (i32) -> i32 = zf\n", "Unsupported_Kd 5:23")]
     [InlineData("u08v", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nalias Mine\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet f: (bool) -> i32 = zf\n")]
-    [InlineData("u09x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\npublic group ZF2\n    public func zu() -> i32 => ZF.zf(1)\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 34:32")]
     [InlineData("u10v", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n    #Unsupported\n    public func zu() -> i32 => zf(1)\n", "func f(v: ref/i32) => ()\n")]
     public void AnUnsupportedDeclarationIsRefusedWhereItIsHandedOn(string row, string library, string source, params string[] expected)
     {
-        var probe = "#Unsupported\npublic struct ZProbe\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n\n        public struct Deep\n            public let z: i32\n" +
-            "public group ZG\n    #Unsupported\n    public struct ZM\n        public let x: i32\n\n        public struct Inner\n            public let y: i32\n" +
-            "public struct ZPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
-            "public open struct ZOpenPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
-            "#Unsupported\npublic struct ZDer : ZOpenPlain\n    public let w: i32\n" + library;
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, probe);
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + library));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         c.Bind();
-        var records = c.Binding.Issues.Select(x =>
-            ReferenceEquals(x.Node.Kotonoha, c.Library.Kotonoha) ? "L " + At(probe, x.Node.Span.Start, x.Code)
-            : ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
+        var records = c.Binding.Issues.Select(x => ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
         Assert.True(expected.Order(StringComparer.Ordinal).SequenceEqual(records.Order(StringComparer.Ordinal)), $"{row}: {string.Join(", ", records)}");
+    }
+
+    // DECISIONS BU-219 (PLAN G949 S1-1's freeze): the Kimi library is a compiler-build constant, so a library whose pass has a record is a
+    // broken build, refused before anything is frozen. From PLAN G949 Stage 2 U2a the refusal is a value, not a thrown fault (B's ruling 6;
+    // the Front's C-380 16:55 consent, (d)): the Bind leaves no result and binds no program, and the check publishes the library's record
+    // as InternalInvariant_Kd at its library location, `ZProbe` in `zuse`'s `::ZProbe.Inner`, beside the refusal's own InternalInvariant_Kd
+    // at the same place, the first record the freeze counted (B's ruling 40 (i)), and nothing else.
+    // The former rows z07x, z08x, t23x and u09x (a library declaration naming an `#Unsupported` library declaration, "L Unsupported_Kd")
+    // are this row, z07x's library; the same uses in a program keep their located records (z01x-z05x, t01x-t19x and the u rows).
+    [Fact]
+    public void ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n"));
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
+        Assert.Equal(default, c.Bind());
+        Assert.False(c.Check());
+        var library = UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n";
+        var use = new SourceSpan(library.IndexOf("::ZProbe.Inner", StringComparison.Ordinal) + 2, "ZProbe".Length);
+        var records = TestDiagnostics.Of(c);
+        Assert.Equal(2, records.Length);
+        Assert.All(records, x =>
+        {
+            Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code);
+            Assert.Equal(c.Library.Kotonoha.Name, x.Path); // The probe's library document, not the program's.
+            Assert.Equal(use, x.Span); // The use's location, as the program rows' Unsupported_Kd (z01x-z05x) has it.
+        });
     }
 
     // SPEC 6.7, 19.4 (R8-G1 row A6): excluded syntax is checked syntactically only, so an implementation Attribute there is not

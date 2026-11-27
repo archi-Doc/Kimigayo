@@ -17,7 +17,8 @@ internal enum MirStatementKind : byte
     Assign, // Place = Rvalue.
     StorageLive, // The storage of a Var or Temp local begins; its value is uninitialized.
     StorageDead, // The storage of a Var or Temp local ends.
-    FakeRead, // The Place is read for the analyses only (a match subject, a discarded value); nothing is generated.
+    FakeRead, // The Place is read for the analyses only (a guard's Subject, a constructor's exit request, a part a rejected form reads,
+    // DECISIONS R4-M21, Z17); nothing is generated.
     EndBorrow, // A use of a reference local, after which its carrying ends (an abandoned comparison or reservation, which ends unactivated);
     // at a guard candidate's cleanup its guard-local Origin ends, so no value used afterwards may keep it (design A3 E7).
 }
@@ -49,6 +50,7 @@ internal enum MirTerminatorKind : byte
     Drop,
     Return, // The value of local 0.
     Unreachable,
+    CaseSwitch, // A case branch (SPEC 8.14, 4.7.1): the successor each Semantics case view selects by its decider (MirCases.Branch).
 }
 
 /// <summary>A step of a Place (plan 5.4): what the Type of the Place it applies to admits.</summary>
@@ -155,7 +157,7 @@ internal enum MirAggregateKind : byte
 internal enum MirConstKind : byte
 {
     // Type: one of MirTypes.HoldsIntegerConstant's family. Bits: an integer Type's value as its N-bit payload, sign-extended
-    // (ScalarTypes.Normalize), the one encoding of each value (G620); else a char's Unicode scalar value, a raw pointer's null (0) or
+    // (TyCtxt.Normalize), the one encoding of each value (G620); else a char's Unicode scalar value, a raw pointer's null (0) or
     // a generic literal, 0 through 127, of a Type whose instance decides it (MirValidator.Holds).
     Integer,
     Float, // Bits: the IEEE bits.
@@ -188,7 +190,8 @@ internal enum MirLocalRole : byte
     GuardCandidate, // A match guard's candidate binding: its value carries γ, which its EndBorrow ends (SPEC 14.8.3, err(ended)).
     Subject, // A match subject.
     Result, // The body's result in transit: the temp a transfer delivers whole into _0 after the Scope Exit (SPEC 16.2.2, R5-M50).
-    Receiver, // A constructor's _0 or a destructor's _1: its construction or destruction receiver (SPEC 6.3.4, 16.3.1), storage made elsewhere.
+    Receiver, // A constructor's _0 or a destructor's _1, or a layer body's _0: its construction or destruction receiver (SPEC 6.3.4, 16.3.1), storage made elsewhere.
+    Assigned, // An assignment's value in transit: the temp its Use moves into the target, which every path into that Use placed (SPEC 13.7.1, 14.10.3).
 }
 
 internal enum MirScopeKind : byte
@@ -210,4 +213,6 @@ internal enum MirBodyKind : byte
     StaticInit,
     DefaultTemplate, // The template of the index-th parameter's default (plan 5.6.2).
     Test, // A #Test function's, which only the test entry calls.
+    Layer, // SPEC 6.3.3: a struct's Field initializers where no constructor of it is Published, keyed by the struct (its Body the layer
+    // key): _0 the struct's object, which they are placed into as a constructor's step; checked only, never generated (DECISIONS R7-M115).
 }

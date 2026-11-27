@@ -24,9 +24,30 @@ internal static class CheckJsonOutput
         var stdout = Console.Out;
         Console.SetOut(Console.Error);
         var document = Create(options, args, cancellationToken);
-        stdout.WriteLine(JsonSerializer.Serialize(document, DiagnosticJsonContext.Default.CheckDocument));
-        stdout.Flush();
+        Publish(stdout, document, cancellationToken);
         return document.Accepted ? 0 : 1;
+    }
+
+    /// <summary>Publishes the document (SPEC 23.2.3): holds the process's Ctrl+C action empty, checks the token once more (a cancellation
+    /// before publication writes no JSON: the command's 130), then writes and flushes the document without observing cancellation, a
+    /// press included, and restores the action.</summary>
+    /// <param name="output">Standard output.</param>
+    /// <param name="document">The command's document.</param>
+    /// <param name="cancellationToken">The command's cancellation, observed before publication only.</param>
+    internal static void Publish(TextWriter output, CheckDocument document, CancellationToken cancellationToken)
+    {
+        var previous = Program.CancelKey;
+        Program.CancelKey = static () => { };
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            output.WriteLine(JsonSerializer.Serialize(document, DiagnosticJsonContext.Default.CheckDocument));
+            output.Flush();
+        }
+        finally
+        {
+            Program.CancelKey = previous;
+        }
     }
 
     /// <summary>Checks one unit and forms its document.</summary>
@@ -47,7 +68,7 @@ internal static class CheckJsonOutput
             return CheckDocument.Create(missing, input ?? string.Empty, target, CheckMode.Product, options.Debug, inputs.Hashes);
         }
 
-        Project project;
+        Project? project;
         if (input.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
         {
             try
@@ -61,15 +82,14 @@ internal static class CheckJsonOutput
 
             target = project.ProjectFile.Targets[0];
         }
-        else if (!Project.TryCreate(kimigayo, null, input, inputs, out project!, out var failures))
+        else if (CheckService.Load(kimigayo, SourceIdentity.FromPath(input), inputs, out project) is { } failed)
         {
-            var blocked = CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, SourceIdentity.FromPath(input), failures);
-            return CheckDocument.Create(blocked, input, target, CheckMode.Product, options.Debug, inputs.Hashes);
+            return CheckDocument.Create(failed, input, target, CheckMode.Product, options.Debug, inputs.Hashes);
         }
         else if (target.Length == 0)
         {
             // SPEC 23.2.1: one unit has one target; a project with several needs --Target.
-            var targets = project.ProjectFile.Targets;
+            var targets = project!.ProjectFile.Targets;
             if (targets.Length != 1)
             {
                 return CheckDocument.Create(CheckOutput.Blocked(DiagnosticCode.TargetSelectionRequired_Kd, SourceIdentity.FromPath(input)), input, target, CheckMode.Product, options.Debug, inputs.Hashes);
@@ -78,7 +98,7 @@ internal static class CheckJsonOutput
             target = targets[0];
         }
 
-        var output = CheckService.Run(project, target, CheckMode.Product, options.Debug, inputs, cancellationToken);
+        var output = CheckService.Run(project!, target, CheckMode.Product, options.Debug, inputs, cancellationToken);
         return CheckDocument.Create(output, input, target, CheckMode.Product, options.Debug, inputs.Hashes);
     }
 
@@ -124,7 +144,7 @@ internal static class CheckJsonOutput
 
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             // Input discovery belongs to the same Blocked outcome as a failed project read. Cancellation and
             // internal failures still escape; neither is a claim that a user input is unreadable.

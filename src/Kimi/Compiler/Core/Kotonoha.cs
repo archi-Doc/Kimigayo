@@ -13,7 +13,8 @@
 // (creation, OnDeserialized, a new Project.Directory value, which the getter detects by reference); a root module whose project has
 // no directory takes the current directory its compilation captured when created; names are memoized until Base is recomputed or
 // the source analysis is revoked, so a warm read allocates nothing. Must not read the process's current directory itself, and no
-// Path call it makes for a name throws.
+// Path call it makes for a name throws. A frozen library module is detached (Detach): its Compilation and DiagnosticCollection throw
+// the internal-invariant form.
 
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
@@ -37,16 +38,16 @@ namespace Kimi.Compiler;
 public sealed partial class Kotonoha
 {
     /// <summary>
-    /// Gets the diagnostics associated with this source unit.
+    /// Gets the diagnostics associated with this source unit; a detached frozen library module has none (the internal-invariant form).
     /// </summary>
     [IgnoreMember]
-    public DiagnosticCollection DiagnosticCollection { get; private set; }
+    public DiagnosticCollection DiagnosticCollection { get => this.diagnosticCollection ?? throw Detached("diagnostic collection"); private set => this.diagnosticCollection = value; }
 
     /// <summary>
-    /// Gets the compilation that owns this source unit.
+    /// Gets the compilation that owns this source unit; a detached frozen library module has none (the internal-invariant form).
     /// </summary>
     [IgnoreMember]
-    public Compilation Compilation { get; private set; }
+    public Compilation Compilation { get => this.compilation ?? throw Detached("compilation"); private set => this.compilation = value; }
 
     /// <summary>
     /// Gets the stable identifier derived from the source unit name.
@@ -209,12 +210,23 @@ public sealed partial class Kotonoha
 
     private List<DocumentationSource>? documentationSources;
 
+    // The compilation and collection; both null once the frozen library is detached (Detach).
+    [IgnoreMember]
+    private Compilation? compilation;
+
+    [IgnoreMember]
+    private DiagnosticCollection? diagnosticCollection;
+
     [IgnoreMember]
     private List<DiagnosticKey>? omittedDeclarations;
 
     /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
     [IgnoreMember]
     public IReadOnlyList<DocumentationSource> DocumentationSources => (IReadOnlyList<DocumentationSource>?)this.documentationSources ?? [];
+
+    /// <summary>Detaches the frozen library's module from its freeze compilation (PLAN G949 Stage 2 U2b; design 5.2): a later read of its
+    /// compilation or collection, so a library node's, is the internal-invariant form.</summary>
+    internal void Detach() => (this.compilation, this.diagnosticCollection) = (null, null);
 
     internal void RecordDocumentation(DocumentationSource? documentation)
     {
@@ -415,6 +427,9 @@ public sealed partial class Kotonoha
     /// <summary>Removes the generated function, if present.</summary>
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
+
+    // A detached frozen library module's refusal of a read of the fact it no longer holds (its compilation or its diagnostic collection).
+    private static InvalidOperationException Detached(string fact) => new($"A node of the frozen Kimi library has no {fact} (InternalInvariant; PLAN G949 Stage 2 U2b).");
 
     // A fully qualified, NUL-free directory is normalized once; any other value is used as given, so no Path call throws (an
     // API value: Project.TryCreate never produces one), and such a base matches only paths with its exact text.

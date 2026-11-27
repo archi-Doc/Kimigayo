@@ -1,16 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
     private readonly Dictionary<(BindingScope Parent, BindingSymbol Left, BindingSymbol Right), BindingScope> contractOverlapScopes = new();
+    private readonly Dictionary<BindingScope, BindingScope> collisionScopes = new(ReferenceEqualityComparer.Instance); // CollisionScope's, per overlap scope
     private readonly List<(BoundConstraint A, BoundConstraint B)> associatedOverlapPairs = new();
-    private Dictionary<Koto, ContractAgreementFailure>? contractAgreementFailures;
-
-    private readonly record struct ContractAgreementFailure(BindingSymbol Left, BindingSymbol Right, BoundType? AssociatedLeft = null, BoundType? AssociatedRight = null, BindingSymbol? Associated = null);
 
     // SPEC 8.9.2: these equalities describe the intersection where two references coincide, not new declaration
     // premises. The ordinary bounded prover must establish consistency there; a residual term is never disjointness.
@@ -39,11 +38,21 @@ public sealed partial class Binding
         return scope;
     }
 
-    private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap)
+    // R7-C3 (B2'; SPEC 8.9.1 step 1, 8.9.2): the collision conditions are the collision substitution together with all the Type's inputs,
+    // never the specifications (CollisionScope). The inputs rule the intersection out when the judge finds that view contradictory: an
+    // identity class in Conflict, or an input the view's closed world refutes (Refuted, or Error: a premise against its closed world),
+    // alike for every input kind.
+    private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap, QuerySite site)
     {
+        var collision = this.CollisionScope(original, overlap);
+        if (this.ClassesOf(collision, out _) is { Worst: IdentityClasses.Conflict })
+        {
+            return true;
+        }
+
         for (var scope = original; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } environment)
+            if (scope.Constraints is not { } environment)
             {
                 continue;
             }
@@ -54,7 +63,7 @@ public sealed partial class Binding
                 // the overlap. Only independently valid generic inputs can rule the intersection out.
                 var subject = fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject;
                 if (subject is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } && !IsContractSelf(subject) &&
-                    this.ProveConstraint(this.ContractConstraint(fact, overlap, null), overlap) == ConstraintProof.Refuted)
+                    this.ProveConstraint(this.ContractConstraint(fact, collision, null), collision, site) is ConstraintProof.Refuted or ConstraintProof.Error)
                 {
                     return true;
                 }
@@ -64,12 +73,49 @@ public sealed partial class Binding
         return false;
     }
 
+    // The collision conditions in a view of their own, no parent: the overlap's own identities (the collision substitution and the two
+    // references made one) and the Type's inputs, the facts RefutedOverlapInputs reads (a generic input's, never a specification).
+    private BindingScope CollisionScope(BindingScope original, BindingScope overlap)
+    {
+        if (!this.collisionScopes.TryGetValue(overlap, out var scope))
+        {
+            this.collisionScopes.Add(overlap, scope = new(overlap.Owner));
+        }
+
+        scope.Reset();
+        scope.Parent = null;
+        var environment = scope.Constraints ??= new();
+        foreach (var fact in overlap.Constraints!.DirectFacts)
+        {
+            this.AddConstraintFact(environment, fact);
+        }
+
+        for (var current = original; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { } inputs)
+            {
+                continue;
+            }
+
+            foreach (var fact in inputs.DirectFacts)
+            {
+                if ((fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject) is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } subject &&
+                    !IsContractSelf(subject))
+                {
+                    this.AddConstraintFact(environment, fact);
+                }
+            }
+        }
+
+        return scope;
+    }
+
     private void AddOverlapFacts(BindingScope target, BindingScope source)
     {
         var environment = target.Constraints ??= new();
         for (var scope = source; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } other)
+            if (scope.Constraints is not { } other)
             {
                 continue;
             }
@@ -82,14 +128,14 @@ public sealed partial class Binding
             for (var i = 0; i < other.DerivedFacts.Count; i++)
             {
                 var derived = other.DerivedFacts[i];
-                this.AddConstraintFact(environment, derived.Fact, derived.Source);
+                this.AddConstraintFact(environment, derived.Fact, derived.Source, derived.Origin);
             }
         }
     }
 
     private void ValidateAssociatedOverlapAgreement(BindingScope scope)
     {
-        if (scope.Constraints is not { Invalid: false } environment)
+        if (scope.Constraints is not { } environment)
         {
             return;
         }
@@ -132,15 +178,27 @@ public sealed partial class Binding
             var (x, y) = (a.Subject!, b.Subject!);
             if (!((BoundOrigin[])x.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])y.OriginArguments) ||
                 this.AssociatedIdentity(x) is not { } left || this.AssociatedIdentity(y) is not { } right ||
-                this.ContractOverlapScope(scope, left.Contract, right.Contract) is not { } overlap || this.RefutedOverlapInputs(scope, overlap))
+                this.ContractOverlapScope(scope, left.Contract, right.Contract) is not { } overlap || this.RefutedOverlapInputs(scope, overlap, scope.Owner))
             {
                 continue;
             }
 
-            if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
+            if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap, scope.Owner))
             {
-                environment.Fail(scope.Owner);
-                this.FailExplained(ref this.contractAgreementFailures, scope.Owner, BindingFailure.InvalidAssociatedType, new(left.Contract, right.Contract, a.RequiredType, b.RequiredType, x.Symbol));
+                this.FailPremise(environment, a, scope.Owner); // R7-C3 gate 2: the disagreeing specifications fail (b where it is this one's)
+                this.FailPremise(environment, b, scope.Owner);
+                var (l, r, item) = (this.FactSite(left.Contract.Declaration), this.FactSite(right.Contract.Declaration), this.FactSite(left.Symbol.Declaration));
+                this.RecordNumbered(
+                    scope.Owner,
+                    BindingFailure.InvalidAssociatedType,
+                    [
+                        new(ProblemFactKind.Related, l, 0),
+                        new(ProblemFactKind.Instance, l, this.report.Keep(left.Contract.Type!)),
+                        new(ProblemFactKind.Instance, item, this.report.Keep(a.RequiredType!)),
+                        new(ProblemFactKind.Related, r, 0),
+                        new(ProblemFactKind.Instance, r, this.report.Keep(right.Contract.Type!)),
+                        new(ProblemFactKind.Instance, item, this.report.Keep(b.RequiredType!)),
+                    ]);
             }
         }
     }
@@ -160,9 +218,9 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    foreach (var a in left.PathStorage)
+                    foreach (var a in this.impls.PathsOf(left))
                     {
-                        foreach (var b in right.PathStorage)
+                        foreach (var b in this.impls.PathsOf(right))
                         {
                             if (!a.IsVerified || !b.IsVerified || this.ContractOverlapScope(a.Scope, left.Contract, right.Contract) is not { } scope)
                             {
@@ -170,18 +228,27 @@ public sealed partial class Binding
                             }
 
                             var self = this.SelfType(left.Type);
-                            if (this.DisjointConformanceFacts(a.Scope, b.Scope) || this.RefutedOverlapInputs(a.Scope, scope) || this.RefutedOverlapInputs(b.Scope, scope) ||
-                                this.ProveConformanceConditions(a, self, scope) == ConstraintProof.Refuted || this.ProveConformanceConditions(b, self, scope) == ConstraintProof.Refuted)
+                            if (this.DisjointConformanceFacts(a.Scope, b.Scope) || this.RefutedOverlapInputs(a.Scope, scope, a.Use) || this.RefutedOverlapInputs(b.Scope, scope, a.Use) ||
+                                this.ProveConformanceConditions(a, self, scope, a.Use) == ConstraintProof.Refuted || this.ProveConformanceConditions(b, self, scope, a.Use) == ConstraintProof.Refuted)
                             {
                                 continue;
                             }
 
                             this.AddOverlapFacts(scope, b.Scope);
-                            if (!this.SameNormalizedMappings(a, b, scope) || !this.SameNormalizedMappings(b, a, scope))
+                            if (!this.SameNormalizedMappings(a, b, scope, a.Use) || !this.SameNormalizedMappings(b, a, scope, a.Use))
                             {
                                 left.Invalid = right.Invalid = true;
                                 left.IsVerified = right.IsVerified = false;
-                                this.FailExplained(ref this.contractAgreementFailures, a.Use, BindingFailure.IncompatibleImplementation, new(left.Contract, right.Contract));
+                                var (l, r) = (this.FactSite(left.Contract.Declaration), this.FactSite(right.Contract.Declaration));
+                                this.RecordNumbered(
+                                    a.Use,
+                                    BindingFailure.IncompatibleImplementation,
+                                    [
+                                        new(ProblemFactKind.Related, l, 0),
+                                        new(ProblemFactKind.Instance, l, this.report.Keep(left.Contract.Type!)),
+                                        new(ProblemFactKind.Related, r, 0),
+                                        new(ProblemFactKind.Instance, r, this.report.Keep(right.Contract.Type!)),
+                                    ]);
                             }
                         }
                     }
@@ -190,22 +257,47 @@ public sealed partial class Binding
         }
     }
 
-    private bool SameNormalizedRequirement(BoundRequirement a, BoundRequirement b, BindingScope scope)
-        => ReferenceEquals(a.Symbol, b.Symbol) && (ReferenceEquals(a.Contract, b.Contract) || this.SameConformanceType(a.Contract.Type, b.Contract.Type, scope));
+    // SPEC 8.9.2: two coinciding instances of one Contract that disagree, one problem per disagreeing pair (RecordNumbered): each instance's
+    // Contract declaration (Related, role 0, shared by both) with the instance (Instance) and, for an associated Type they bind to Types
+    // not proven equal, the Type each binds it to at its declaration (a second Instance); otherwise their effective implementation
+    // mappings disagree.
+    private void ReportDisagreement(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var associated = (BindingFailure)problem.Requirement.Kind == BindingFailure.InvalidAssociatedType;
+        var right = associated ? 3 : 2;
+        var first = DiagnosticTypeName(this.report.Value(facts[1]));
+        var second = DiagnosticTypeName(this.report.Value(facts[right + 1]));
+        object[] evidence = associated
+            ? [first, second, this.AssociatedName(this.compilation.SyntaxOf(facts[2].Site)), DiagnosticTypeName(this.report.Value(facts[2])), DiagnosticTypeName(this.report.Value(facts[5]))]
+            : [$"At {first} = {second}, effective implementation mappings do not agree"];
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            evidence: evidence,
+            related: [("contract", this.compilation.SyntaxOf(facts[0].Site), first), ("contract", this.compilation.SyntaxOf(facts[right].Site), second)],
+            condition: problem.Condition);
+    }
 
-    private bool SameNormalizedMappings(BoundConformancePath a, BoundConformancePath b, BindingScope scope)
+    // SPEC 8.2.3, 8.6.1: one requirement reached through two references that are one Type (SameConformanceType: J1's reading, then
+    // the judge). Its readers: the agreement checks (SameNormalizedMappings) and RequirementMember's candidate dedup (Identified).
+    private bool SameNormalizedRequirement(BoundRequirement a, BoundRequirement b, BindingScope scope, QuerySite site)
+        => ReferenceEquals(a.Symbol, b.Symbol) && (ReferenceEquals(a.Contract, b.Contract) || this.SameConformanceType(a.Contract.Type, b.Contract.Type, scope, site));
+
+    private bool SameNormalizedMappings(BoundConformancePath a, BoundConformancePath b, BindingScope scope, QuerySite site)
     {
         foreach (var x in a.WitnessStorage)
         {
             var found = false;
             foreach (var y in b.WitnessStorage)
             {
-                if (!this.SameNormalizedRequirement(x.Identity, y.Identity, scope))
+                if (!this.SameNormalizedRequirement(x.Identity, y.Identity, scope, site))
                 {
                     continue;
                 }
 
-                if (!ReferenceEquals(x.Implementation, y.Implementation) || !this.SameFunctionWitness(x.Function, y.Function, scope))
+                if (!ReferenceEquals(x.Implementation, y.Implementation) || !this.SameFunctionWitness(x.Function, y.Function, scope, site))
                 {
                     return false;
                 }
@@ -224,12 +316,12 @@ public sealed partial class Binding
             var found = false;
             foreach (var y in b.AssociatedStorage)
             {
-                if (!this.SameNormalizedRequirement(x.Key, y.Key, scope))
+                if (!this.SameNormalizedRequirement(x.Key, y.Key, scope, site))
                 {
                     continue;
                 }
 
-                if (!this.SameConformanceType(x.Value, y.Value, scope))
+                if (!this.SameConformanceType(x.Value, y.Value, scope, site))
                 {
                     return false;
                 }
@@ -248,12 +340,12 @@ public sealed partial class Binding
             var found = false;
             foreach (var y in b.PropertyWitnessStorage)
             {
-                if (x.Requirement.Kind != y.Requirement.Kind || !this.SameNormalizedRequirement(x.Identity, y.Identity, scope))
+                if (x.Requirement.Kind != y.Requirement.Kind || !this.SameNormalizedRequirement(x.Identity, y.Identity, scope, site))
                 {
                     continue;
                 }
 
-                if (!this.SamePropertyWitness(x, y, scope))
+                if (!this.SamePropertyWitness(x, y, scope, site))
                 {
                     return false;
                 }
@@ -270,11 +362,11 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool SamePropertyWitness(BoundPropertyWitness x, BoundPropertyWitness y, BindingScope scope)
+    private bool SamePropertyWitness(BoundPropertyWitness x, BoundPropertyWitness y, BindingScope scope, QuerySite site)
     {
-        if (!ReferenceEquals(x.Requirement, y.Requirement) || !ReferenceEquals(x.Implementation, y.Implementation) || x.Kind != y.Kind || !this.SameMemberPath(x.BasePath, y.BasePath, scope) || x.ObjectCompatibility != y.ObjectCompatibility ||
-            !this.SameConformanceType(x.ReceiverType, y.ReceiverType, scope) || !this.SameConformanceType(x.InputType, y.InputType, scope) ||
-            !this.SameConformanceType(x.ResultType, y.ResultType, scope) || !this.SameConformanceType(x.ImplementationType, y.ImplementationType, scope) || x.InputOrigins.Count != y.InputOrigins.Count)
+        if (!ReferenceEquals(x.Requirement, y.Requirement) || !ReferenceEquals(x.Implementation, y.Implementation) || x.Kind != y.Kind || !this.SameMemberPath(x.BasePath, y.BasePath, scope, site) || x.ObjectCompatibility != y.ObjectCompatibility ||
+            !this.SameConformanceType(x.ReceiverType, y.ReceiverType, scope, site) || !this.SameConformanceType(x.InputType, y.InputType, scope, site) ||
+            !this.SameConformanceType(x.ResultType, y.ResultType, scope, site) || !this.SameConformanceType(x.ImplementationType, y.ImplementationType, scope, site) || x.InputOrigins.Count != y.InputOrigins.Count)
         {
             return false;
         }

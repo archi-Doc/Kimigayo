@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Checking;
@@ -116,9 +117,6 @@ internal sealed class WorkspaceCheck
         this.start = start;
         this.openByDirectory = CheckInputs.GroupOpenPaths(start.Documents.Select(static x => x.Identity.Value));
     }
-
-    /// <summary>Gets the host target for implicit projects, or empty when the host has none.</summary>
-    public static string HostTarget { get; } = OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 ? WindowsProfile.Target : string.Empty;
 
     /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4), each URI's list in display-range and result order.</summary>
     /// <param name="output">The check output.</param>
@@ -513,6 +511,11 @@ internal sealed class WorkspaceCheck
         return false;
     }
 
+    // SPEC 23.4 (PLAN G1010): the one reuse rule of a loaded project and a unit's result: kept while every input it read is valid, unless
+    // its output is Faulted, which is produced again at the next check.
+    private static bool Reusable(CheckInputs inputs, [NotNullWhen(true)] DerivedItem? previous, CheckOutput? output)
+        => previous is not null && inputs.Snapshot.Valid.Contains(previous.Id) && output?.Outcome != CheckOutcome.Faulted;
+
     // SPEC 23.4: compare marked inputs, disk inputs whose stamp changed, and unestablished inputs.
     private List<(InputKey Key, InputState State)> Revalidate()
     {
@@ -695,7 +698,7 @@ internal sealed class WorkspaceCheck
                 var members = item.Members.ToArray();
                 var targets = item.Project.ProjectFile.Targets;
                 var productTargets = settings.AllTargets ? targets : settings.Target is { } target ? [target] :
-                    targets.Length == 1 ? [targets[0]] : targets.Contains(HostTarget, StringComparer.Ordinal) && HostTarget.Length != 0 ? [HostTarget] : [];
+                    targets.Length == 1 ? [targets[0]] : TargetProfile.Host is { } host && targets.Contains(host.Target, StringComparer.Ordinal) ? [host.Target] : [];
                 if (productTargets.Length == 0)
                 {
                     var key = new UnitKey(path, UnitKind.Product, string.Empty);
@@ -711,7 +714,7 @@ internal sealed class WorkspaceCheck
                     plans.Add(new(key, item, path, CheckMode.Product, members));
                 }
 
-                var testKey = new UnitKey(path, UnitKind.Test, productTargets.Contains(WindowsProfile.Target, StringComparer.Ordinal) ? WindowsProfile.Target : string.Empty);
+                var testKey = new UnitKey(path, UnitKind.Test, Array.Find(productTargets, static x => TargetProfile.Find(x) is not null) ?? string.Empty);
                 plans.Add(new(testKey, item, path, CheckMode.Test, members));
                 if (item.HasTestSources)
                 {
@@ -735,11 +738,11 @@ internal sealed class WorkspaceCheck
                 continue;
             }
 
-            var target = settings.Target ?? HostTarget;
+            var target = settings.Target ?? TargetProfile.Host?.Target ?? string.Empty;
             var product = new UnitKey(document, UnitKind.Product, target);
             required.Add(product);
             plans.Add(new(product, null, document, CheckMode.Product, [document]));
-            plans.Add(new(new(document, UnitKind.Test, target == WindowsProfile.Target ? target : string.Empty), null, document, CheckMode.Test, [document]));
+            plans.Add(new(new(document, UnitKind.Test, TargetProfile.Find(target) is not null ? target : string.Empty), null, document, CheckMode.Test, [document]));
         }
 
         this.start.Post(new DerivationDone
@@ -792,7 +795,7 @@ internal sealed class WorkspaceCheck
             return;
         }
 
-        if (previous is not null && inputs.Snapshot.Valid.Contains(previous.Id))
+        if (Reusable(inputs, previous, previous?.Failed))
         {
             loaded.Add(path, previous);
             return;
@@ -802,9 +805,8 @@ internal sealed class WorkspaceCheck
         LoadedProject item;
         try
         {
-            item = Project.TryCreate(this.start.Kimigayo, null, path.Value, source, out var project, out var failures)
-                ? CreateLoaded(path, project, source)
-                : new LoadedProject { Path = path, Failures = failures, Inputs = source.GetRecorded() };
+            var failed = CheckService.Load(this.start.Kimigayo, path, source, out var project);
+            item = project is not null ? CreateLoaded(path, project, source) : new LoadedProject { Path = path, Failed = failed, Inputs = source.GetRecorded() };
         }
         catch (PendingInputException)
         {
@@ -877,7 +879,7 @@ internal sealed class WorkspaceCheck
             return null;
         }
 
-        if (previous is not null && inputs.Snapshot.Valid.Contains(previous.Id) && previous.Output.Outcome != CheckOutcome.Faulted)
+        if (Reusable(inputs, previous, previous?.Output))
         {
             return previous.Output.Presence;
         }
@@ -909,10 +911,9 @@ internal sealed class WorkspaceCheck
 
     private CheckOutput Check(CheckInputs inputs, UnitPlan plan, SnapshotInputSource source)
     {
-        if (plan.Key.Kind == UnitKind.FailedRoot || plan.Project is { Project: null })
+        if (plan.Project?.Failed is { } failed)
         {
-            var failures = plan.Project is { Failures.Count: > 0 } failed ? failed.Failures : ["The project could not be loaded."];
-            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, failures);
+            return failed; // A failed root's unit and each earlier unit of a project that no longer loads (SPEC 23.2.3).
         }
 
         if (plan.Key.Target.Length == 0)

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -12,7 +13,7 @@ public sealed partial class Binding
     {
         if (this.MemberSideOf((MemberAccessKoto)ReferenceName(use)) != MemberSide.Type)
         {
-            return this.Fail(use, BindingFailure.BoundMethodValue);
+            return this.FailBoundMethodValue(use, KotoHelper.UnwrapParentheses(use).BoundSymbol?.Declaration); // The group holds no symbol: the use's.
         }
 
         BoundType? selected = null;
@@ -36,12 +37,12 @@ public sealed partial class Binding
                 var item = this.types.Intern(BoundTypeKind.FunctionItem, member, SemanticsKind.Owner, [group.Self, contract.Type!]);
                 var signature = this.FunctionItemSignature(item);
                 signatures[i] = signature is null ? null : this.ContractType(signature, scope);
-                if (required is not null && (signatures[i] is not { } bound || !this.ItemContractFits(item, bound, required, use, out _)))
+                if (required is not null && (signatures[i] is null || !this.DefinitionContractFits(item, required, use, null, out _)))
                 {
                     continue;
                 }
 
-                var proof = this.ProveConformance(group.Self, contract, scope);
+                var proof = this.ProveConformance(group.Self, contract, scope, use);
                 if (proof == ConstraintProof.Error)
                 {
                     return this.Fail(use, BindingFailure.InvalidConstraint);
@@ -58,17 +59,20 @@ public sealed partial class Binding
 
             if (pending || matches != 1)
             {
-                var start = this.rejectedRows.Count;
-                for (var i = 0; i < count; i++)
+                // A reference use, no call: each earlier failure returns, so the record is always written (R7-E3 E3b delta 2.4); a Pending
+                // outcome records no candidate (R7-M62).
+                var flags = required is not null ? CandidateFlags.CallableSignature | CandidateFlags.ReferenceSignature : CandidateFlags.UnfixedReference;
+                for (var i = 0; !pending && i < count; i++)
                 {
                     if (matches == 0 || applicable[i])
                     {
-                        this.rejectedRows.Add(new((FunctionKoto)group.Members[i].Declaration, signatures[i], required, CallableSignature: required is not null, ReferenceSignature: required is not null, UnfixedReference: required is null));
+                        this.CandidateFacts((FunctionKoto)group.Members[i].Declaration, null, flags, signatures[i] is { } signature ? (use, signature, required) : null);
                     }
                 }
 
-                this.RecordRejected(use, start);
-                return this.Fail(use, pending ? BindingFailure.UnprovenConstraint : matches == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+                this.Record(use, pending ? BindingFailure.UnprovenConstraint : matches == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous, CollectionsMarshal.AsSpan(this.candidateFacts));
+                this.candidateFacts.Clear();
+                return null;
             }
         }
         finally
@@ -79,7 +83,7 @@ public sealed partial class Binding
 
         if (DirectCallOnly((FunctionKoto)selected!.Symbol!.Declaration))
         {
-            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
+            return this.Record(use, BindingFailure.DirectCallFunctionValue, []);
         }
 
         if (this.CompleteFunctionItem(use, selected) is null)
@@ -126,9 +130,9 @@ public sealed partial class Binding
             }
 
             var context = new CallPlan();
-            context.Set(item.Symbol!, result, null, [], [], conformingType: self, inputOrigins: inputs.AsSpan(0, InputOriginCount(function)), operations: operations);
+            context.Set(this, item.Symbol!, result, null, [], [], conformingType: self, inputOrigins: inputs.AsSpan(0, InputOriginCount(function)), operations: operations);
             context.RequirementContract = contract;
-            return item.ContainsParameter ? context : this.InstantiateRequirementCall(context, context);
+            return item.ContainsParameter ? context : this.InstantiateRequirementCall(context, context, function);
         }
         finally
         {

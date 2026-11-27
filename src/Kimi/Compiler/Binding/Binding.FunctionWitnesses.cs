@@ -71,7 +71,7 @@ public sealed partial class Binding
     }
 
     private BoundType? ProjectRequirementReceiver(BoundType required, BoundType self, BoundType? declaringType)
-        => declaringType is not null && required is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && SameType(required.Components[0], self)
+        => declaringType is not null && required.SafeReferent is { } referent && ReferenceEquals(referent, self)
             ? this.types.Intern(BoundTypeKind.Semantics, null, required.Semantics, [declaringType], origin: required.Origin) : null;
 
     // A requirement's correspondence on its path, kept with the path (BoundConformancePath.FunctionWitnesses).
@@ -91,14 +91,14 @@ public sealed partial class Binding
         return witness;
     }
 
-    private bool SameFunctionWitness(BoundFunctionWitness? a, BoundFunctionWitness? b, BindingScope scope)
+    private bool SameFunctionWitness(BoundFunctionWitness? a, BoundFunctionWitness? b, BindingScope scope, QuerySite site)
     {
         if (a is null || b is null)
         {
             return a is null && b is null;
         }
 
-        if (!this.SameMemberPath(a.BasePath, b.BasePath, scope) || a.ObjectCompatibility != b.ObjectCompatibility || !this.SameConformanceType(a.DeclaringType, b.DeclaringType, scope) || !this.SameConformanceType(a.RequirementReceiver, b.RequirementReceiver, scope) || !this.SameConformanceType(a.ImplementationReceiver, b.ImplementationReceiver, scope) || a.Origins.Length != b.Origins.Length || a.InputOrigins.Length != b.InputOrigins.Length)
+        if (!this.SameMemberPath(a.BasePath, b.BasePath, scope, site) || a.ObjectCompatibility != b.ObjectCompatibility || !this.SameConformanceType(a.DeclaringType, b.DeclaringType, scope, site) || !this.SameConformanceType(a.RequirementReceiver, b.RequirementReceiver, scope, site) || !this.SameConformanceType(a.ImplementationReceiver, b.ImplementationReceiver, scope, site) || a.Origins.Length != b.Origins.Length || a.InputOrigins.Length != b.InputOrigins.Length)
         {
             return false;
         }
@@ -122,11 +122,11 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool SameMemberPath(BoundMemberPath? a, BoundMemberPath? b, BindingScope scope)
+    private bool SameMemberPath(BoundMemberPath? a, BoundMemberPath? b, BindingScope scope, QuerySite site)
     {
         while (!ReferenceEquals(a, b))
         {
-            if (a is null || b is null || !ReferenceEquals(a.Declaration, b.Declaration) || !this.SameConformanceType(a.Type, b.Type, scope))
+            if (a is null || b is null || !ReferenceEquals(a.Declaration, b.Declaration) || !this.SameConformanceType(a.Type, b.Type, scope, site))
             {
                 return false;
             }

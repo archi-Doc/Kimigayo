@@ -209,6 +209,11 @@ public enum BindingObligationKind : byte
     OriginInference,
     TypeRole,
     TypeFormation,
+
+    /// <summary>An erasure's Owned condition at <c>Use</c>, the converted value, whose proof read a region with no answer yet while a body
+    /// is bound; <c>Type</c> is its subject, judged under Finality at the Final pass (SPEC 7.7.4, 15.8.1, 15.2.3, 8.3.3). With
+    /// <see cref="OriginDischarge.ResultDefault"/>, a result slot's default at <c>Use</c>, the slot, with no <c>Type</c>.</summary>
+    Owned,
 }
 
 public enum BindingDeadline : byte
@@ -228,6 +233,36 @@ public enum OriginDischarge : byte
     /// <summary>The well-formedness of a direct borrowed input: its stored Origins outlive the borrow at each call, which judges the
     /// instantiated input's well-formedness (SPEC 8.1.2, 15.6.4 step 3).</summary>
     CallBorrows,
+
+    /// <summary>A result slot's default (SPEC 15.4.3 rule 3) whose inputs' Owned its last resolution deferred while a body was bound: an
+    /// Owned obligation at the slot with no Type, judged at Final over the slot's deferred inputs (SPEC 15.4.4, 8.3.3).</summary>
+    ResultDefault,
+
+    /// <summary>The well-formedness walk's state at a borrow layer of a definition's assumed result Type (SPEC 15.6.1, R3; AssumesResult):
+    /// its rows are Judgment rows, which the result premise proves, and a held Function Type below the layer forms HeldResult rows. Never
+    /// stored on an obligation: RetainInnerOutlives, the one writer of the rows it reaches, stores Judgment or HeldResult in its place. It
+    /// goes with HeldResult (PLAN's O3-B2 issue).</summary>
+    AssumedResult,
+
+    /// <summary>A fixed Origin of a Function Type held below a borrow layer of a definition's assumed result Type (SPEC 15.2.3, 15.6.1):
+    /// the result premise assumes it (StoredPremisePart, R3's held part: OriginPremiseRule.HeldResult) but no call carries that part yet
+    /// (WellFormedPremises.EnterStored), so the definition proves it from its premises without that part; where they do not, the row is
+    /// the located Unsupported_Kd at its use, the written borrow layer (CollectDeclarationRows, PublishedPremise). It goes when EnterStored
+    /// carries a held Function Type's fixed Origins to each call and the whole-contract comparison discharges them over the
+    /// implementation's solvable call Origins (SPEC 15.3.7; PLAN's O3-B2 issue).</summary>
+    HeldResult,
+}
+
+/// <summary>The requirement fixed point's walk state at a part of a declaration's stored Type (RequirementPart; PLAN G1456): it changes
+/// at a Function Type's components, as polarity does.</summary>
+public enum StoragePosition : byte
+{
+    /// <summary>Stored content: a borrow, pair or nested layer there is a use of its slot (SPEC 15.3.5).</summary>
+    Stored,
+
+    /// <summary>A stored Function Type's signature, its parameters and result: a variance position and no use, since a callable signature
+    /// alone stores nothing (SPEC 15.2.4), so a slot reached there is marked (OriginParameter.InStoredSignature).</summary>
+    Signature,
 }
 
 /// <summary>A declared slot; a pair consumes one argument and retains its whole type.</summary>
@@ -256,6 +291,11 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
     public OriginVariance Variance { get; internal set; }
 
     public SlotRequirement Requirement { get; internal set; }
+
+    // SPEC 15.3.5: a chain reaches the slot in a stored Function Type's signature, directly or through a nested Type's slot bound to it,
+    // so a slot Phantom in every admitted case keeps its variance from storage (StoragePosition.Signature); the fixed point's, reset with
+    // Variance.
+    public bool InStoredSignature { get; internal set; }
 
     // Joins a use into Requirement (SPEC 15.3.5: the stronger unconditional part, every binder), the requirement fixed point being its one
     // writer; whether it changed.
@@ -328,6 +368,13 @@ public sealed class BoundOrigin
     // Its binder and slot give stable identity; local constraints and value flow determine the actual Loans.
     internal bool Open { get; init; }
 
+    // An open stand-in, which later evidence or the body's solve fills (a call's region, an argument's per-call stand-in): Open and
+    // not a local input, which is fixed in its enclosing body (SPEC 15 Nested signatures). Its readers (PLAN G1127 R1): the display
+    // of an omitted Origin (OmittedAt), J2's opening (OpensAsSlotRegion), which keeps only a stand-in, and the fill of open positions
+    // by another argument's Origin (FillOpenOrigins), which fills only a stand-in. `HasOpenOrigin` and Fill's `supplied.Open` ask about
+    // any open Origin (a pre-gate, an inferred value no identity refutes, two open positions keeping the earlier region).
+    internal bool IsOpenStandIn => this.Open && !this.IsLocalInput;
+
     internal BindingSymbol? BorrowCondition { get; set; }
 
     // The body whose binding first formed the atom (Binding.ExecutableBodies.cs; DECISIONS R4-M101 E5): defined for a non-declaration
@@ -340,14 +387,21 @@ public sealed class BoundOrigin
 /// <c>Clause</c> is a substituted declaration clause at its supplying argument or Type occurrence <c>Use</c> (SPEC 15.3.3, 15.6.1); one with
 /// <c>WellFormed</c> is the well-formedness of the Type occurrence <c>Use</c> (SPEC 15.6.1), a callee's result premise substituted at the
 /// call <c>Use</c>, the well-formedness of its result, or the intrinsic relation of an input's instantiated Type at that input (SPEC 15.3.7,
-/// 15.6.4 step 3); one with neither is a fit (<see cref="Binding.IsFitObligation"/>), the producer's statement every consumer reads for the
+/// 15.6.4 step 3); one with neither is a fit, the producer's statement every consumer reads for the
 /// record's source. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
 /// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
-/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Body</c> is the executable
-/// body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its identity.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0)
+/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Site</c> (H11b D5,
+/// DECISIONS R4-M113) is its record's location when that is not <c>Use</c>: a local annotation's fit at the local's initializer, a local
+/// clause at the initializer that supplies one of its ends (DIAGNOSTICS); <c>Use</c> still resolves the ends and gives the premises and the
+/// case mask. <c>Body</c> is the executable body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its
+/// identity.</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0, Koto? FixedBy = null, Koto? Site = null)
 {
     internal ExecutableBody Body { get; init; }
+
+    // A Callable comparison's row (Binding.LeavesBodyRows, PLAN G492-a (ii)): its ends are read as the comparison reads them, a `let`
+    // region of the use's body as the region (Binding.OriginAtUse with an obligation; the owner's O-363 (a)).
+    internal bool Compared { get; init; }
 }
 
 internal enum TypePosition : byte
@@ -374,7 +428,9 @@ internal sealed class ComparisonPremises(BoundType required, ComparisonPremises?
 // comparisons Outer names. The Origins that the implementation binds per call are instantiated at the required inputs in the same
 // positions; the required per-call Origins are rigid symbols of the comparison, related only through the required signatures' own
 // well-formedness, and every other Origin is compared as written. A comparison without an implementation signature (ContractFits
-// solves the implementation's Origins itself) only carries the premises.
+// solves the implementation's Origins itself) only carries the premises. Rows is the comparison's row sink (DECISIONS <G492-a (iii)>,
+// SPEC 15.6.1 under the owner's O-261 Q2 (a)): the reader that built the query takes the region conjuncts its premises leave unproven
+// (Binding.LeavesBodyRows) and forms or drops them; null: no reader, so such a conjunct is not proven. A nested comparison inherits it.
 internal readonly struct CallableInstance
 {
     private readonly BoundType? actual;
@@ -403,13 +459,16 @@ internal readonly struct CallableInstance
     // premises; null: the scope of the use it is made at (Binding.RelationScope).
     internal BindingScope? Scope { get; init; }
 
+    // The row sink of the reader that built the query (see the type's contract); a nested comparison and an exchanged one carry it.
+    internal List<BindingObligation>? Rows { get; init; }
+
     // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.
     // A signature that carries no Origin has no well-formedness, so it adds no node.
     internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
 
     // The comparison with its sides exchanged, nested in the same comparisons and judged in the same scope: the second half of an
     // invariant position's two-way relation (SPEC 3.8, 15.3.5; RelationWalk.Fits).
-    internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope };
+    internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope, Rows = this.Rows };
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
@@ -511,12 +570,13 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   inference, a function's inherited contract), made only through `Forming` in the formation's files (ArchitectureRulesTest). An
 //   occurrence of that name forms the declaration it names: it reads no other declaration and answers no other component.
 // - Outputs: `Resolves`, `Substitution`, `Substitutions` and `SubstitutionPairs` (ResolveOrigin follows them; a function's inherited
-//   contract copies its original's); `Completed`, `Relations` and `Body`; `Failure`, `PendingCause` and `FailedClauses`; `Set`;
+//   contract copies its original's); `Completed`, `Relations` and `Body`; `PendingCause`; `Set`;
 //   `InferredVariance`. Each is the state as the formation left it, with no judgment.
 // - A failed clause's answers (SPEC 15.3.3, 23.1.2; H11b-0 B1): a clause that does not bind fails itself, never its owner or the
-//   declaration's other clauses. `Failure` is the first failed clause and `FailedClauses` each failed clause with the Origins it bound;
-//   neither is a premise or an obligation anywhere, and only the dependence query reads them (DependenceCause's repairs). Every other
-//   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s,
+//   declaration's other clauses. A failed clause's bound Origins (the formation's FailedClauses)
+//   are no premise or obligation anywhere and name only the slots it leaves Unbound (RestsOnFailedClause). Every other
+//   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s
+//   (a local's slot by its region valued by the other end, FixedRegion: its clauses assume nothing, SPEC 15.3.3, 15.3.6),
 //   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
 //   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
 //   before completion (RestPendingOn).
@@ -539,17 +599,15 @@ public sealed partial class Binding
 
         // 0: not begun. 1: begun, its pending slots collected. 2: its pending slots completing. 3: completed.
         private int state;
-        private Koto? failure;
 
         // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
         // failed before completion. Written for every owner and read only for a declaration's rows (UnboundCause): a local's pending
         // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
         private Koto? pendingFailure;
 
-        // Each clause that failed with its bound Origins, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
-        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68), and the dependence query repairs it (DECISIONS
-        // BU-69). Kept across binds.
-        private List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
+        // The bound Origins of each clause that failed, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
+        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68). Kept across binds.
+        private List<(BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
 
         // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
         // allocated only for a local that has such Origins and kept across binds.
@@ -581,13 +639,8 @@ public sealed partial class Binding
         // The clauses that bound, in order, each failed one aside: empty before completion, which adds them one by one.
         internal ReadOnlySpan<OriginRelation> Relations => CollectionsMarshal.AsSpan(this.relations);
 
-        // The first failed clause, or null. The declaration goes on without it.
-        internal Koto? Failure => this.failure;
-
         // The failed part its Unbound pending Origins rest on (RestPendingOn), or null.
         internal Koto? PendingCause => this.pendingFailure;
-
-        internal ReadOnlySpan<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)> FailedClauses => CollectionsMarshal.AsSpan(this.failedClauses);
 
         // One step of ResolveOrigin: the Origin an equality, a completed pending slot or an inferred bound substitutes for `origin`.
         internal BoundOrigin? Substitution(BoundOrigin origin) => this.replacements.GetValueOrDefault(origin);
@@ -602,7 +655,6 @@ public sealed partial class Binding
         internal void Reset()
         {
             this.state = 0;
-            this.failure = null;
             this.pendingFailure = null;
             this.failedClauses?.Clear();
             this.scope = null;
@@ -622,11 +674,9 @@ public sealed partial class Binding
 
             internal ref int State => ref declaration.state;
 
-            internal ref Koto? Failure => ref declaration.failure;
-
             internal ref Koto? PendingFailure => ref declaration.pendingFailure;
 
-            internal ref List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
+            internal ref List<(BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
 
             internal ref Dictionary<BoundOrigin, OriginVariance>? Inferred => ref declaration.inferred;
 

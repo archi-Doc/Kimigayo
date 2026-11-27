@@ -135,6 +135,19 @@ public sealed class BoundConformance
 
     internal List<BoundConformancePath> PathStorage { get; } = new();
 
+    // ImplTable's row (R7-N5 B8): every path its store keeps for the identity, named and not swept, across passes; ImplTable.NamedPath
+    // finds one by its declaring clause and root Contract, ImplTable.Sweep compacts it.
+    internal List<BoundConformancePath> NamedPaths { get; } = new();
+
+    // Rule (a) (ImplTable): the point of the identity's first path and of its last, and, for a base identity, its paths before the last
+    // later point's join (its paths at point 1 while every base row registers at point 1 or 2: ImplTable's premise); written by the pass
+    // that registers it.
+    internal ImplTable.AdmissionPoint Point { get; private set; }
+
+    internal ImplTable.AdmissionPoint LastPoint { get; private set; }
+
+    internal List<BoundConformancePath>? PointOnePaths { get; private set; }
+
     internal IsKoto? DirectClause { get; set; }
 
     internal bool Invalid { get; set; }
@@ -169,6 +182,9 @@ public sealed class BoundConformance
 
     public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind) => this.UnconditionalPath?.GetPropertyWitness(requirement, kind);
 
+    // The base store's freeze (ImplTable.Freeze): the identity's state is current in every later pass.
+    internal void Freeze() => this.Stamp = Binding.Frozen;
+
     // The identity's state at the start of a pass, made current for it.
     internal void ResetPass(ulong pass)
     {
@@ -178,6 +194,25 @@ public sealed class BoundConformance
         this.DirectClause = null;
         this.PathStorage.Clear();
         this.Listed = false;
+        (this.Point, this.LastPoint) = (ImplTable.AdmissionPoint.PassStart, ImplTable.AdmissionPoint.PassStart);
+        this.PointOnePaths?.Clear();
+    }
+
+    // A path joins the identity at its registration (ImplTable.Register), at its registrar step's point (rule (a)).
+    internal void AddPath(BoundConformancePath path, ImplTable.AdmissionPoint point)
+    {
+        if (this.PathStorage.Count == 0)
+        {
+            this.Point = point;
+        }
+        else if (point > this.LastPoint && this.store.IsBase)
+        {
+            (this.PointOnePaths ??= new()).Clear(); // Only a pass without the library reads it (ImplTable.PathsOf), and only for a base row.
+            this.PointOnePaths.AddRange(this.PathStorage);
+        }
+
+        this.LastPoint = point;
+        this.PathStorage.Add(path);
     }
 
     // A pooled identity taken for a new key; stale, so its first access resets the rest.
@@ -186,6 +221,7 @@ public sealed class BoundConformance
         this.Type = type;
         this.Contract = contract;
         this.Stamp = 0;
+        this.NamedPaths.Clear(); // Already empty: Sweep pools an identity once its row is.
         return this;
     }
 }
@@ -298,11 +334,8 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal bool Active { get; set; }
 
-    internal bool Checking { get; set; }
-
-    // The requests that reached it while it is being verified (Binding.ReentryRead), until its verification ends. Temporary carrier
-    // with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
-    internal int Reentries { get; set; }
+    // Rule (a) (ImplTable): the registrar step's point at the path's registration.
+    internal ImplTable.AdmissionPoint Point { get; set; }
 
     internal bool Invalid { get; set; }
 
@@ -310,6 +343,10 @@ public sealed class BoundConformancePath : ICheckCause
     internal ulong Stamp { get; private set; }
 
     internal bool Current => this.Stamp == this.store.Pass;
+
+    // Whether the path is the program part's (ImplTable's overlay, by its store rule), the part ValidateConformances' final pass judges
+    // again (Binding.ResolveConformance reads it, R7-E3 E3e ruling 20).
+    internal bool InProgram => !this.store.IsBase;
 
     // The facts a component keeps by this path and a second key (DECISIONS BU-220), each a small list on the path, kept with it across
     // passes as ImplTable keeps the path, null until its first entry; the owning component's accessor is the list's one reader and writer.
@@ -359,10 +396,20 @@ public sealed class BoundConformancePath : ICheckCause
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
 
     // SPEC 23.1.2: a check resting on a conformance resting on its specification derives its record from Use; one resting on its OCC-X
-    // limit needs that limit published.
-    void ICheckCause.Rest() => this.Needed |= this.Unsupported;
+    // limit needs that limit published. Stored only on a change, so a frozen path, never Unsupported, is never written (PLAN G949 Stage 2
+    // U3).
+    void ICheckCause.Rest()
+    {
+        if (this.Unsupported)
+        {
+            this.Needed = true;
+        }
+    }
 
     internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
+
+    // The base store's freeze (ImplTable.Freeze): the path's state is current in every later pass.
+    internal void Freeze() => this.Stamp = Binding.Frozen;
 
     // The path's state at the start of a pass, made current for it: the verification flags, witnesses and their maps, associated and
     // inference storage, the per-pass satellites (requirement matches, published inference, the associated bindings' state) and the
@@ -372,8 +419,6 @@ public sealed class BoundConformancePath : ICheckCause
         this.Stamp = pass;
         this.Active = false;
         this.IsVerified = false;
-        this.Checking = false;
-        this.Reentries = 0;
         this.RejectedSelfSignature = null;
         this.Invalid = false;
         this.WitnessStorage.Clear();
@@ -395,6 +440,7 @@ public sealed class BoundConformancePath : ICheckCause
         }
 
         this.Scope.Reset();
+        this.Point = ImplTable.AdmissionPoint.PassStart;
     }
 
     // The Front's RR2: a pooled path taken for a new key, emptied of every fact of its earlier conformance (the kept satellites, the

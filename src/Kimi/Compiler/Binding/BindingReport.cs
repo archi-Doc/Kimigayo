@@ -2,7 +2,8 @@
 
 // Owns the problems of one Binding pass (DIAGNOSTICS 4.1; R7-E1): Binding's record beside MirReport, over the same fact vocabulary
 // (ProblemFact), one problem per check key (Subject, Requirement, Condition).
-// Input: Add calls of Binding's recorder (Binding.Problems.cs), each a problem and its facts; Keep calls, each a Type-valued fact's value;
+// Input: Add calls of Binding's recorder (Binding.Problems.cs), each a problem and its facts; Keep calls, each a Type-, length- or Origin-valued fact's value
+// (KeepChecked a Checked fact's packed one);
 // Unlink and Restore calls of a retried or abandoned attempt.
 // Output: a subject's problems in recording order, a problem by its key, its facts, a fact's kept value.
 // Invariants: a linked subject's rows and the key index agree, Unlink and Restore keeping them in step; a report of a linked key equals the
@@ -26,6 +27,7 @@ internal enum MismatchForm : byte
     IntegerLiteral,
     FloatingPointLiteral,
     PositionType, // A Type proven Position or PositionRange.
+    FixedArray, // A fixed array a local annotation requires (SPEC 4.3.1).
 }
 
 /// <summary>A problem Binding found: its check key (DIAGNOSTICS 4.1) and code; its facts are in the report.</summary>
@@ -55,7 +57,7 @@ internal sealed class BindingReport
     private readonly List<BindingProblem> problems = [];
     private readonly List<(int Start, int Count, int Next)> rows = []; // Each problem's facts and the next problem of its subject.
     private readonly List<ProblemFact> facts = [];
-    private readonly List<BoundType> types = [];
+    private readonly List<object> sides = []; // Each kept Type, length or Origin (a mismatch side, an operator's Type, an Owned record's inherited Origin: the kind's value).
     private readonly List<BoundConstraint> constraints = [];
     private readonly List<OriginRecord> origins = [];
 
@@ -99,8 +101,26 @@ internal sealed class BindingReport
     /// <returns>Its index, the fact's Value.</returns>
     internal long Keep(BoundType type)
     {
-        this.types.Add(type);
-        return this.types.Count - 1;
+        this.sides.Add(type);
+        return this.sides.Count - 1;
+    }
+
+    /// <summary>Keeps a length-valued side of a mismatch, as <see cref="Keep(BoundType)"/> a Type.</summary>
+    /// <param name="length">The length.</param>
+    /// <returns>Its index, the fact's Value.</returns>
+    internal long Keep(BoundLength length)
+    {
+        this.sides.Add(length);
+        return this.sides.Count - 1;
+    }
+
+    /// <summary>Keeps an Origin-valued side, as <see cref="Keep(BoundType)"/> a Type: an Owned record's inherited Origin (R7-E4 E4e).</summary>
+    /// <param name="origin">The Origin.</param>
+    /// <returns>Its index, the fact's Value.</returns>
+    internal long Keep(BoundOrigin origin)
+    {
+        this.sides.Add(origin);
+        return this.sides.Count - 1;
     }
 
     /// <summary>Keeps a Constraint fact's proposition: an interned reference.</summary>
@@ -112,20 +132,42 @@ internal sealed class BindingReport
         return this.constraints.Count - 1;
     }
 
-    /// <summary>Keeps an Origin record, whose fields are no facts of their own until E4's relation fact.</summary>
+    /// <summary>Keeps an Origin record, an OriginRecord fact's value (the kept Origin record store, as the kept sides; DECISIONS R7-M95
+    /// E4d).</summary>
     /// <param name="record">The record.</param>
     /// <returns>Its index, the fact's Value.</returns>
-    [Transitional("R7", Reason = "An Origin record's row, until E4's relation fact takes both phases' records.")]
     internal long Keep(in OriginRecord record)
     {
         this.origins.Add(record);
         return this.origins.Count - 1;
     }
 
+    /// <summary>Keeps a Checked fact's value (ProblemFact.cs; the packing's one writer): its expected Type, kept as a side, times two, plus
+    /// one where the part's resolution there is ambiguous.</summary>
+    /// <param name="expected">The Type the part was checked against.</param>
+    /// <param name="ambiguous">Whether its resolution there is ambiguous (else none applies).</param>
+    /// <returns>The fact's Value.</returns>
+    internal long KeepChecked(BoundType expected, bool ambiguous) => (this.Keep(expected) << 1) | (ambiguous ? 1L : 0L);
+
     /// <summary>Gets a Type-valued fact's Type.</summary>
     /// <param name="fact">The fact.</param>
     /// <returns>The Type.</returns>
-    internal BoundType Value(in ProblemFact fact) => this.types[(int)fact.Value];
+    internal BoundType Value(in ProblemFact fact) => (BoundType)this.sides[(int)fact.Value];
+
+    /// <summary>Gets a Checked fact's expected Type and its part's outcome there (the packing's one reader, KeepChecked's).</summary>
+    /// <param name="fact">The fact.</param>
+    /// <returns>The Type, and whether the part's resolution there is ambiguous (else none applies).</returns>
+    internal (BoundType Expected, bool Ambiguous) Checked(in ProblemFact fact) => ((BoundType)this.sides[(int)(fact.Value >> 1)], (fact.Value & 1) != 0);
+
+    /// <summary>Gets a length-valued side's length.</summary>
+    /// <param name="fact">The fact.</param>
+    /// <returns>The length.</returns>
+    internal BoundLength Length(in ProblemFact fact) => (BoundLength)this.sides[(int)fact.Value];
+
+    /// <summary>Gets an Origin-valued side's Origin.</summary>
+    /// <param name="fact">The fact.</param>
+    /// <returns>The Origin.</returns>
+    internal BoundOrigin OriginSide(in ProblemFact fact) => (BoundOrigin)this.sides[(int)fact.Value];
 
     /// <summary>Gets a Constraint fact's proposition.</summary>
     /// <param name="fact">The fact.</param>
@@ -137,27 +179,33 @@ internal sealed class BindingReport
     /// <returns>The record.</returns>
     internal OriginRecord Origin(in ProblemFact fact) => this.origins[(int)fact.Value];
 
-    /// <summary>Numbers an Origin record of a subject beyond its first: the condition after the subject's, in recording order.</summary>
-    /// <param name="subject">The subject.</param>
-    /// <param name="record">The record.</param>
-    /// <returns>Its condition, or 0 when the subject has the record.</returns>
-    internal ushort OriginCondition(SourceRef subject, in OriginRecord record)
+    /// <summary>Numbers a problem of a subject that may hold several of its requirement (DIAGNOSTICS 3, 4.1; one rule for a further
+    /// problem at one key): an equal problem's condition, else the problem's own condition (its check's ordinal) or, when the subject
+    /// has recorded one of the same requirement at or after it, the condition after that requirement's last, in recording order, so new
+    /// facts take a new key. Other requirements' problems never move it: the key and the semantic order compare the requirement before
+    /// the condition, and a requirement's first problem stays at its check's condition, where its slot's reads find it.</summary>
+    /// <param name="problem">The problem, at its check's condition: an Origin record and a refining Contract's conflict at 0.</param>
+    /// <param name="facts">Its facts.</param>
+    /// <returns>Its condition.</returns>
+    internal ushort Condition(in BindingProblem problem, ReadOnlySpan<ProblemFact> facts)
     {
-        ushort last = 0;
-        for (var i = this.First(subject); i >= 0; i = this.Next(i))
+        var next = (int)problem.Condition;
+        for (var i = this.First(problem.Subject); i >= 0; i = this.Next(i))
         {
-            foreach (ref readonly var fact in this.Facts(i))
+            if (this.problems[i].Requirement != problem.Requirement)
             {
-                if (fact.Kind == ProblemFactKind.OriginRecord && this.Origin(fact) == record)
-                {
-                    return 0;
-                }
+                continue;
             }
 
-            last = Math.Max(last, this.problems[i].Condition);
+            if (this.Equal(i, problem.Code, facts))
+            {
+                return this.problems[i].Condition;
+            }
+
+            next = Math.Max(next, this.problems[i].Condition + 1);
         }
 
-        return (ushort)(last + 1);
+        return (ushort)next;
     }
 
     /// <summary>Adds a problem with its facts. A second report of a linked key must equal the first (DIAGNOSTICS 4.3).</summary>
@@ -238,7 +286,7 @@ internal sealed class BindingReport
         this.problems.Clear();
         this.rows.Clear();
         this.facts.Clear();
-        this.types.Clear();
+        this.sides.Clear();
         this.constraints.Clear();
         this.origins.Clear();
         this.IdlessSites = 0;
@@ -265,9 +313,11 @@ internal sealed class BindingReport
 
     private bool EqualValue(in ProblemFact kept, in ProblemFact reported) => kept.Kind switch
     {
-        ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal
-            => Equals(this.Value(kept), this.Value(reported)),
+        ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal or ProblemFactKind.Key or ProblemFactKind.Instance
+            => Equals(this.sides[(int)kept.Value], this.sides[(int)reported.Value]),
+        ProblemFactKind.Checked => this.Checked(kept).Equals(this.Checked(reported)),
         ProblemFactKind.Constraint => ReferenceEquals(this.Constraint(kept), this.Constraint(reported)),
+        ProblemFactKind.OriginRecord => this.Origin(kept) == this.Origin(reported),
         _ => kept.Value == reported.Value,
     };
 

@@ -6,17 +6,18 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private ConstraintProof CompareCallableContracts(CallableContract requirement, CallableContract implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
+    private ConstraintProof CompareCallableContracts(FnSig requirement, FnSig implementation, BindingScope scope, QuerySite site, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
     {
         if (requirement.InputCount != implementation.InputCount)
         {
             return ConstraintProof.Refuted;
         }
 
-        var inference = this.BeginOriginInference(requirement.Binder, implementation.Binder);
+        var inference = this.BeginOriginInference(this.RentInference(requirement.Binder, implementation.Binder));
         var demanded = this.RentTypes(requirement.InputCount);
         var written = this.RentTypes(requirement.InputCount);
         var count = 0;
+        var session = this.OpenPremiseSession(); // PLAN G1082: the comparison's proof requests share its premise environment.
         try
         {
             for (var i = 0; i < requirement.InputCount; i++)
@@ -67,18 +68,18 @@ public sealed partial class Binding
             for (var i = 0; i < count; i++)
             {
                 this.MatchInputOrigins(written[i], demanded[i], implementation.Binder, origins, inputs);
-                this.CollectOriginInference(written[i], demanded[i], inference);
+                this.CollectOriginInference(written[i], demanded[i], inference, site);
             }
 
             if (implementation.Result is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
             {
-                this.CollectOriginInference(projected, expected, inference, result: true);
+                this.CollectOriginInference(projected, expected, inference, site, result: true);
             }
 
             // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
-            if (!(implementation.Binder is FunctionKoto solved
-                ? this.SolveCallOriginInference(solved, inference, origins, inputs, declaringType)
-                : this.SolveOriginInference(inference, origins, inputs, declaringType)))
+            if (!(implementation.Binder is FunctionKoto
+                ? this.SolveCallOriginInference(inference, origins, inputs, [], declaringType)
+                : this.SolveOriginInference(inference, origins, inputs, [], declaringType)))
             {
                 return ConstraintProof.Refuted;
             }
@@ -92,7 +93,7 @@ public sealed partial class Binding
 
                 var required = demanded[j++];
                 var actual = Translate(implementation.Input(i)!);
-                if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder, comparison) ||
+                if (actual is null || !this.IsSubtypeAt(this.ClassForm(required, scope, out _), this.ClassForm(actual, scope, out _), requirement.Binder, comparison) ||
                     !this.ProvesInputPremises(actual, required, requirement.Binder, comparison))
                 {
                     return ConstraintProof.Refuted;
@@ -116,13 +117,19 @@ public sealed partial class Binding
                 return ConstraintProof.Unknown;
             }
 
-            var fits = this.IsSubtypeAt(result, CompatibleResult(result, expected), requirement.Binder, comparison);
+            // R7-C3 (C-f4; design §3, J3; SPEC 8.2.3, 8.6.3): each relation of the whole-contract comparison reads its pair in the comparison's
+            // one view, the requirement's premises at this conformance (`scope`), each side in its form there; the slots' correspondence
+            // above and the Origin inference read the Types as given.
+            var (formedResult, formedExpected) = (this.ClassForm(result, scope, out _), this.ClassForm(expected, scope, out _));
+            var fits = this.IsSubtypeAt(formedResult, CompatibleResult(formedResult, formedExpected), requirement.Binder, comparison);
             return fits ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
         finally
         {
+            session?.Close();
             this.typeScratch.Return(written, clearArray: true);
             this.typeScratch.Return(demanded, clearArray: true);
+            this.ReturnInference(inference);
         }
 
         // An implementation Type with the requirement's slots for its own and its declaring Type's arguments projected.
@@ -145,6 +152,7 @@ public sealed partial class Binding
     // `result`, judged in the conformance scope `scope` of D, P and the requirement's premises, which gives its relations their
     // premises and its pair binders their admitted sets (Binding.RelationScope; PLAN G801). The one producer of a comparison's scope:
     // a callable implementation's comparison (CompareCallableContracts) and a stored Field's bridge (MatchPropertyOperation) form theirs here.
+    // It has no row sink (CallableInstance.Rows): a contract match is no reader of region conjuncts, so its premises alone decide (B-3).
     private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder, BindingScope scope)
     {
         var demanded = inputs.Length == 0 ? BoundType.Unit : this.types.Tuple(inputs);
@@ -154,29 +162,4 @@ public sealed partial class Binding
 
     private BoundType? ProjectCallableType(BoundType type, BoundType? declaringType)
         => declaringType is null ? type : this.StoredType(type, declaringType);
-
-    // A view over existing declarations: no temporary FunctionKoto or copied parameter lists.
-    private readonly struct CallableContract
-    {
-        private readonly FunctionKoto? function;
-        private readonly BoundAccessor? accessor;
-
-        internal CallableContract(FunctionKoto function) => this.function = function;
-
-        internal CallableContract(BoundAccessor accessor) => this.accessor = accessor;
-
-        internal Koto Binder => (Koto?)this.function ?? this.accessor!.Binder;
-
-        internal int GenericCount => this.function?.GenericArguments.Count ?? 0;
-
-        internal int OriginCount => this.function?.Origins.Count ?? this.accessor?.Declaration?.Origins.Count ?? 0;
-
-        internal int InputCount => this.function?.Parameters.Count ?? 2;
-
-        internal int ReceiverIndex => this.function is { } f ? f.BoundSymbol!.ReceiverIndex : this.accessor!.Receiver is null ? -1 : 0;
-
-        internal BoundType? Result => this.function is { } f ? f.BoundSymbol?.Type : this.accessor!.Result;
-
-        internal BoundType? Input(int index) => this.function is { } f ? f.Parameters[index].Type.BoundType : index == 0 ? this.accessor!.Receiver : this.accessor!.Input;
-    }
 }

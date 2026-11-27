@@ -58,13 +58,16 @@ internal sealed class TestCatalog
     internal static string ProjectIdOf(Project project)
         => TryProjectIdOf(project) ?? throw new InvalidDataException(InvalidProjectId);
 
-    /// <summary>Gets a project's test identity, or null when it is empty or contains NUL (test preparation reports it).</summary>
+    /// <summary>Gets a project's test identity, or null when it is empty or contains NUL (test preparation reports it): IMPL 20.6.2's
+    /// <c>TestProjectId</c>, else <c>PackageId</c>, else the file name of the project's input (the project file, or an implicit project's
+    /// source file) as its path spells it; a project without an input (made in memory with no or several kimi files) takes <c>Name</c>
+    /// + ".kimi".</summary>
     /// <param name="project">The project.</param>
     /// <returns>The identity, or null.</returns>
     internal static string? TryProjectIdOf(Project project)
     {
         var id = (project.ProjectFile.TestProjectId ?? project.ProjectFile.PackageId ??
-            (project.FilePath is { } file ? Path.GetFileName(file) : project.Name + ".kimi")).Normalize(NormalizationForm.FormC);
+            (project.Input is { } input ? Path.GetFileName(input) : project.Name + ".kimi")).Normalize(NormalizationForm.FormC);
         return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? null : id;
     }
 
@@ -97,7 +100,7 @@ internal sealed class TestCatalog
         var project = compilation.Project;
         this.ProjectId = ProjectIdOf(project);
 
-        new Collector(this).Visit(compilation.Kotonoha.RootKoto);
+        new Collector(this, compilation).Visit(compilation.Kotonoha.RootKoto);
         this.Cases.Sort(static (a, b) => Compare(a.Name, a.File, a.CaseId, b.Name, b.File, b.CaseId));
         this.Sites.Sort(static (a, b) =>
         {
@@ -242,14 +245,14 @@ internal sealed class TestCatalog
         return order == 0 ? string.CompareOrdinal(c, z) : order;
     }
 
-    private sealed class Collector(TestCatalog catalog) : KotoVisitor
+    private sealed class Collector(TestCatalog catalog, Compilation compilation) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
             var source = node.CodeContext.SourceDocument;
             if (node is FunctionKoto function && TestDefinition.Marker(function) is not null)
             {
-                if (!TestDefinition.IsIncluded(function))
+                if (!TestDefinition.IsIncluded(compilation, function))
                 {
                     return;
                 }

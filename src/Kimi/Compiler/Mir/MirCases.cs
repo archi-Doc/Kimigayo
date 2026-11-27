@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Semantics-case views of a MIR body.
-// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition and adaptation views; a pair layer's binder and
-// whether a call's input of a Type is reserved.
+// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition, adaptation and case branch views, a decider's
+// decision; a pair layer's binder and whether a call's input of a Type is reserved.
 // Case order is stable; views share the body and reuse their storage.
 // Must not copy the body per case or re-bind source syntax.
 
@@ -14,8 +14,8 @@ namespace Kimi.Compiler.Mir;
 /// <summary>The Semantics cases of a MIR body (plan 5.6.1, SPEC 8.15) as views of the one body, which is never copied per case: a view
 /// gives each pair binder of <see cref="MirBody.Binders"/> one of its admitted Semantics, and under it a Type is its case Type
 /// (<see cref="Type"/>), a PairLayer step the Place itself or the referent of its case's reference or handle (<see cref="Layer"/>), a
-/// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>) and an Adapt the operation its case selects (<see cref="Adapt"/>), the only
-/// case-dependent forms. The analyses that depend on the case (R4:
+/// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>), an Adapt the operation its case selects (<see cref="Adapt"/>) and a
+/// CaseSwitch the side its decider selects (<see cref="Branch"/>), the only case-dependent forms. The analyses that depend on the case (R4:
 /// A1, A4's local facts, A5) run once per view. Views are numbered with the last binder advancing fastest, each through its admitted
 /// set in SemanticsMask order, so view i is its case bit i. The selected view is kept in reused
 /// storage, so selecting views allocates nothing once it has held the widest body's binders.</summary>
@@ -27,6 +27,10 @@ internal sealed class MirCases(TyCtxt types)
 
     /// <summary>Gets the body of the selected view.</summary>
     internal MirBody Body { get; private set; } = null!;
+
+    /// <summary>Gets the selected view's cases, the case of each binder by the binder's index (<see cref="Select"/>), none once
+    /// deselected: the data <see cref="TyCtxt.CaseType"/> and a direct call's contract (TyCtxt.Retains) read a view by.</summary>
+    internal ReadOnlySpan<PairCase> View => this.view.AsSpan(0, this.width);
 
     /// <summary>Gets the number of views of a body: the product of its binders' admitted sets (<see cref="PairBinder.CaseProduct"/>), 1
     /// without a binder, from 1 to <see cref="PairBinder.CaseBound"/>: Binding decides the cases once per definition and publishes no part
@@ -108,7 +112,7 @@ internal sealed class MirCases(TyCtxt types)
             this.view[b] = new(binders[b].Target, (SemanticsKind)BitOperations.TrailingZeroCount(admitted)); // Mask bit i is SemanticsKind i.
         }
 
-        return this.view.AsSpan(0, this.width);
+        return this.View;
     }
 
     /// <summary>Selects no view: every pair layer keeps its declared Type, so a Type of a use no view of which is known admits every case
@@ -171,14 +175,46 @@ internal sealed class MirCases(TyCtxt types)
     /// (<see cref="TyCtxt.CaseType"/>), as a Place's, a local's or a projection's Type is in that case.</summary>
     /// <param name="type">The Type.</param>
     /// <returns>The case Type.</returns>
-    internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
+    internal BoundType Type(BoundType type) => types.CaseType(type, this.View);
+
+    /// <summary>Gets the case Type (<see cref="Type"/>) of a Type that may be unknown: none for none, a local or static of no Type (a slot
+    /// Binding failed, <see cref="MirLocal"/>; PLAN G1073) and a temp of no Type derived from one, accessed only as MirValidator's Bounded
+    /// admits. The case readers of each such access take it (rule W: a Type of no Type holds, points and encloses nothing): of every local,
+    /// the holder test, the walk's guard and the raw-holding test of a body's inputs; of a whole write, a store's receiving part and the
+    /// pointer test of its destination; of the delivery into <c>_0</c> and of a read by an rvalue that takes its Type from its operands, the
+    /// enclosed-layer test of a read operand, the pointer test of a read input and the whole-value test of a Use (A5's Whole, the write
+    /// slots), and of that rvalue's first operand the raw-displacement test (A5's Keeps). No case reader reads a storage's beginning or end,
+    /// an EndBorrow, the Return's Move of <c>_0</c> or an Opaque site's root.</summary>
+    /// <param name="type">The Type, or none.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownType(BoundType? type) => type is null ? null : this.Type(type);
+
+    /// <summary>Gets the case Type (<see cref="KnownType(BoundType?)"/>) of a Place of the selected body: none for a Place of no Type.</summary>
+    /// <param name="place">A Place of the selected body.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownTypeOf(MirPlace place) => this.KnownType(this.Body.TypeOf(place));
+
+    /// <summary>Gets the case Type (<see cref="KnownType(BoundType?)"/>) of an operand of the selected body: its constant's, or its Place's
+    /// (<see cref="KnownTypeOf(MirPlace)"/>), none for a Place of no Type.</summary>
+    /// <param name="operand">An operand of the selected body.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownTypeOf(in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const ? this.Type(this.Body.Consts[operand.Arg].Type) : this.KnownTypeOf(operand.Place);
 
     /// <summary>Gets the Type a Place of the selected body has under the selected view: its Type (<see cref="MirBody.TypeOf"/>), which a
-    /// validated body states for every Place (<see cref="MirValidator"/> checks each Place a location names, a diverging Call's
-    /// destination included), as a case Type (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
+    /// validated body states for every Place a location reads, borrows, drops or projects (<see cref="MirValidator"/> checks each Place a
+    /// location names, a diverging Call's destination included; a Place of no Type, a failed slot or a temp derived from one, is only
+    /// written whole, begun, ended, returned, delivered into <c>_0</c>, an Opaque site's root or read by an rvalue that takes its Type from
+    /// its operands, and a Field step of no Type, a stored Field whose slot failed, only written (PLAN G1184), as MirValidator's Bounded
+    /// admits, whose readers take <see cref="KnownTypeOf(MirPlace)"/>: a case reader of a written Place takes it (rule W: A5's Store and
+    /// its pun rule), and every other reads a Place the validator states typed, a step's prefix or the storage below a layer
+    /// (<see cref="Layer"/>'s included) or a read, moved, borrowed, dropped or called Place (<see cref="Reborrows"/>' included); Binding's
+    /// key walk gives such a Field's key no Type, a part Binding did not bind, PlaceKeys.Select, BU-36), as a case Type
+    /// (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
     /// <param name="place">A Place of the selected body.</param>
     /// <returns>The case Type.</returns>
-    internal BoundType TypeOf(MirPlace place) => this.Type(this.Body.TypeOf(place)!);
+    internal BoundType TypeOf(MirPlace place)
+        => this.Type(this.Body.TypeOf(place) ?? throw new InvalidOperationException($"A case reader read {place} of no Type (InternalInvariant)."));
 
     /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's Type as a case Type
     /// (<see cref="Type"/>) or its Place's (<see cref="TypeOf(MirPlace)"/>), the one form every case reader of an operand takes.</summary>
@@ -204,6 +240,33 @@ internal sealed class MirCases(TyCtxt types)
     /// <param name="acquire">A PairAcquire operand.</param>
     /// <returns>Whether it Reborrows.</returns>
     internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.TypeOf(acquire));
+
+    /// <summary>Gets whether a CaseSwitch of the selected body takes its exclusive side under the selected view, where its decider's case
+    /// acquires exclusively: a reference decider's case Type is an exclusive reference (SPEC 8.14, 4.7.1 step 3; <see
+    /// cref="MirTypes.IsExclusive"/>, the rule <see cref="Reborrows"/> applies), the case in which the take it decides Reborrows; a
+    /// Closure Type decider's case receiver (<see cref="TyCtxt.ClosureReceiverIn"/>) is Exclusive (SPEC 7.7.3, PLAN G13), the case in
+    /// which the call it decides borrows its callee exclusively; else its shared side. A case-free decider (a default's copy) is its own
+    /// case Type, so it selects one side in every view.</summary>
+    /// <param name="branch">A CaseSwitch of the selected body.</param>
+    /// <returns>Whether the exclusive side is taken.</returns>
+    internal bool Branch(in MirTerminator branch) => this.Exclusive(this.Body.Consts[branch.Operand.Arg].Type);
+
+    /// <summary>Gets the views of a body in which a decider selects a CaseSwitch's exclusive side (<see cref="Branch"/>'s rule, evaluated
+    /// per view, stored nothing): the builder's decision of where a case branch splits the views. The selected view is not kept.</summary>
+    /// <param name="body">A body whose binders are collected.</param>
+    /// <param name="decider">The decider.</param>
+    /// <returns>The views, bit i for view i.</returns>
+    internal ulong Decision(MirBody body, BoundType decider)
+    {
+        var bits = 0UL;
+        for (var view = 0L; view < Count(body); view++)
+        {
+            _ = this.Select(body, view);
+            bits |= this.Exclusive(decider) ? 1UL << (int)view : 0;
+        }
+
+        return bits;
+    }
 
     /// <summary>Gets what an Adapt of the selected body is under the selected view (SPEC 8.14, 13.5.3): the operation Binding selects
     /// (<see cref="TyCtxt.Adaptation"/>) from the case Type of its source token to the case Type of its target, as that operation's
@@ -232,5 +295,13 @@ internal sealed class MirCases(TyCtxt types)
                 target.IsObjectBorrow ? adapt.Place : operands[adapt.Start].Place,
                 target),
         };
+    }
+
+    // Branch's rule under the selected view, the receiver a decider's case acquires: a Closure Type's case receiver, another Type's own
+    // Semantics.
+    private bool Exclusive(BoundType decider)
+    {
+        var type = this.Type(decider);
+        return type.Kind == BoundTypeKind.Closure ? types.ClosureReceiverIn(type) == SemanticsKind.Uniq : MirTypes.IsExclusive(type);
     }
 }

@@ -16,6 +16,25 @@ public class BorrowAcquisitionTest
 
     private const string Link = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
 
+    // A `confined` witness whose body calls a Closure `g` (SPEC 8.11.4).
+    private const string Work = "contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\nstruct W\n    Self is Work\n    public init() => ()\n" +
+        "    public func run(self: ref/Self) -> i32\n        let g = func () -> i32 => 2\n";
+
+    // R7-E4 E4a-3's preludes: a struct with an exclusive method and an exclusive input; a getter of it; an object handle's exclusive
+    // borrow; a Node whose object borrows an object pair layer adapts to (PLAN G762).
+    private const string Lent = "struct H\n    public var n: i32\n    public init()\n        self.n = 0\n    public func bump(self: uniq/Self) -> () => self.n = 1\n" +
+        "    public func absorb(self: ref/Self, other: uniq/H) -> () => ()\nfunc take(x: uniq/i32) -> () => ()\n";
+
+    private const string Getter = "struct G\n    public init() => ()\n    public computed p: H\n        get() -> H => H.init()\n";
+
+    private const string Lender = "struct P\n    public var x: i32 = 0\n    public init() => ()\nfunc t(x: objuniq/P) -> () => ()\n";
+
+    private const string Layer = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func peek(self: objref/Self) -> i32 => self.n\n" +
+        "func take(x: objref/Node) -> i32 => x.n\nfunc f<s/T>(m: s/T, y: s/Node) -> i32\n    s is objref or objuniq\n";
+
+    // A group whose stored property is a static root (its own Unsupported_Kd stands in every row).
+    private const string Totals = "group Totals\n    public var count: i32 = 0\n";
+
     [Theory]
     [InlineData("Initializer", "var number: i32 = 1\nlet r = number@uniq\nlet first = r\nfirst@follow += 1\nlet second: uniq/i32 = r\nsecond@follow += 1\nr@follow += 1\nrequire number == 4 else => $abort(\"initializer\")")]
     [InlineData("Discard", "var number: i32 = 1\nlet r = number@uniq\n_ = r\nr@follow += 1\nlet moved = r@move\nmoved@follow += 1\nrequire number == 3 else => $abort(\"discard\")")]
@@ -74,14 +93,16 @@ public class BorrowAcquisitionTest
     [Fact]
     public void ACaptureEntryExplainsOnlyItsOwnFailure()
     {
-        // The closure already failed for its duplicate parameter, so the rejected entry records nothing: the duplicate is not
-        // reported at the capture entry as if it were the entry's problem.
+        // SPEC 23.1.2, 15.1.5 (F's R7-E4 ruling 40): the entry fails on its own, since "Storage rooted in a `let` binding or an
+        // owned-Type parameter ... cannot be exclusively acquired", and its check reads no failed input (the duplicate parameter is
+        // not its input). So each record stands at its own site: the duplicate at the literal, never at the entry.
         const string Source = "let n: i32 = 1\nlet f = func [n@uniq] (a: i32, a: i32) -> i32 => a";
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
-        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
-        Assert.Equal(nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), error.Code);
-        Assert.NotEqual("n@uniq", error.Text);
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
+        Assert.Equal([nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd)], errors.Select(static x => x.Code));
+        Assert.Equal("func [n@uniq] (a: i32, a: i32) -> i32 => a", errors[0].Text);
+        Assert.Equal("n@uniq", errors[1].Text);
     }
 
     [Theory]
@@ -139,27 +160,28 @@ public class BorrowAcquisitionTest
     public void APairLayersReborrowThroughExclusiveLayersIsAccepted(string parameters, string use)
         => Assert.Empty(DiagnosticCorpus.Check($"func f<s/T>({parameters})\n    s is ref or uniq\n    {use}\npublic func main() => ()\n").Diagnostics);
 
-    // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
-    // through `ref` in the uniq case, a stored `uniq/i32` through `ref`, an owned `q` at `uniq/i32`) whose Origin also misfits has both
-    // records, each twin one of them; a misfit only in Origins is the relation at the payload, a structural one the construction's mismatch
-    // with no acquisition record. A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: Binding's errors.
+    // SPEC 23.1.2, 15.6.1, 7.3.3 (R7-M95 E4a-4, superseding PLAN G262's reading): a payload's refused acquisition (`x@follow` through `ref`
+    // in the uniq case, a stored `uniq/i32` through `ref`, an owned `q` at `uniq/i32`) fails it, its lent Type read for structure only, so
+    // a misfit of its Origin, which reads that Type, records nothing (rule W); a misfit only in Origins is the relation at the payload, a
+    // structural one the construction's mismatch with no acquisition record. A value call's are
+    // AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: the published Errors (R7-O1 H: the relation is A5's record, Binding's
+    // twin gone).
     [Theory]
-    [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
-    [InlineData("x: ref/(uniq/i32 during a) during b, y: ref/i32 during c", "s is ref", "let o: Option<uniq/i32 during c> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
+    [InlineData("x: ref/(uniq/i32 during a) during b, y: ref/i32 during c", "s is ref", "let o: Option<uniq/i32 during c> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
     [InlineData("x: ref/(uniq/i32 during a) during b", "s is ref", "let o = Option<uniq/i32 during a>.Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
     [InlineData("x: ref/(s/T during a) during b", "s is ref", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o = Option<s/T during b>.Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
-    [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q)\n    _ = o@move", "ExclusiveBorrowRequired_Kd q; UnsatisfiedOriginRelation_Kd q")]
+    [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q)\n    _ = o@move", "ExclusiveBorrowRequired_Kd q")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q@uniq)\n    _ = o@move", "UnsatisfiedOriginRelation_Kd q@uniq")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i64> = .Some(q)\n    _ = o@move", "TypeMismatch_Kd .Some(q)")]
     [InlineData("x: s/(s/T during a) during b", "s is ref or uniq", "let o = Option<s/T during a>.Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     [InlineData("x: uniq/(uniq/T during a) during b", "s is ref", "let o = Option<uniq/T during a>.Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     public void APayloadsAcquisitionAndFitAreEachRecorded(string parameters, string constraints, string use, string errors)
     {
-        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\n";
-        var c = CompilationTestHelper.ParseSuccess(source);
-        c.Bind();
-        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.PublishedErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
     // SPEC 10.1 step 5, 23.1.2 (PLAN G453): a construction of an Origin-carrying structure is a named call, so a bare Place without its
@@ -180,22 +202,24 @@ public class BorrowAcquisitionTest
     }
 
     // SPEC 3.8, 10, 23.1.2 (PLAN G421, DECISIONS BU-96): a value call selects no callee, so an argument's failed acquisition (a bare Place
-    // without `@move` or `@uniq`, in some or every Semantics case) stops none of its other judgments: each argument's Origin relation,
-    // A5's record, stays beside the acquisition record, before or after it, and the program stays rejected; a twin with the spelling has
-    // the relation alone, one without a relation problem the acquisition alone. A failed callee (a Consuming call's missing `c@move`, a
-    // payload callee through a reference) stops the call, so its own record rests on no argument. A named function or method call is no
-    // value call: a bare Place's Copy proof is its candidate's applicability (SPEC 10.1 step 5), so the relations judged after selection
-    // rest on it. Rule W (DECISIONS BU-79; PLAN G421 (ii), G494 unit 2): a failed or misfitting part, before or after the others, one
-    // or two, at a Function-typed parameter or a Closure value, is a wildcard: every other part is still fitted and its relation
-    // recorded (ab15 `g(p, undefinedName)`). Each row: the published records in order; an accepted program has none.
+    // without `@move` or `@uniq`, in some or every Semantics case) stops none of its other judgments: every other argument's Origin
+    // relation, A5's record, stays beside the acquisition record, before or after it, and the program stays rejected; the refused part, its
+    // lent Type read for structure only, takes no operation, so its own relation records nothing (R7-M95 E4a-4, superseding BU-96 in part);
+    // a twin with the spelling has the relation alone, one without a relation problem the acquisition alone. A failed callee (a Consuming
+    // call's missing `c@move`, a payload callee through a reference) stops the call, so its own record rests on no argument. A named
+    // function or method call is no value call: a bare Place's Copy proof is its candidate's applicability (SPEC 10.1 step 5), so the
+    // relations judged after selection rest on it. Rule W (DECISIONS BU-79; PLAN G421 (ii), G494 unit 2): a failed or misfitting part,
+    // before or after the others, one or two, at a Function-typed parameter or a Closure value, is a wildcard: every other part is still
+    // fitted and its relation recorded (ab15 `g(p, undefinedName)`). Each row: the published records in order; an accepted program has
+    // none.
     [Theory]
-    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
-    [InlineData("func f(x: ref/(uniq/i32 during a) during b, y: ref/i32 during c, g: (uniq/i32 during c) -> ()) -> ()\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
-    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (s/T, ref/i32 during static) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd p")]
-    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (ref/i32 during static, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(p, x@follow)\n", "UnprovenOriginRelation_Kd p; TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
-    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, y: ref/(s/T during a) during b, g: (s/T, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, y@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd y@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("func f(x: ref/(uniq/i32 during a) during b, y: ref/i32 during c, g: (uniq/i32 during c) -> ()) -> ()\n    g(x@follow)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (s/T, ref/i32 during static) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (ref/i32 during static, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(p, x@follow)\n", "UnprovenOriginRelation_Kd p; TransferRequired_Kd x@follow")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, y: ref/(s/T during a) during b, g: (s/T, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, y@follow)\n", "TransferRequired_Kd x@follow; TransferRequired_Kd y@follow")]
     [InlineData("func f(x: string, p: ref/i32, g: (string, ref/i32 during static) -> ()) -> ()\n    g(x, p)\n", "TransferRequired_Kd x; UnprovenOriginRelation_Kd p")]
-    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    let h = func (v: s/T, w: ref/i32 during static) => ()\n    h(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    let h = func (v: s/T, w: ref/i32 during static) => ()\n    h(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd p")]
     [InlineData("func f(x: i32, p: ref/i32, g: (uniq/i32, ref/i32 during static) -> ()) -> ()\n    var y: i32 = x\n    g(y, p)\n", "ExclusiveBorrowRequired_Kd y; UnprovenOriginRelation_Kd p")]
     [InlineData("func f(p: ref/i32) -> ()\n    let t: string = \"a\"\n    let c = func [t@move] (w: ref/i32 during static) -> ()\n        let u = t@move\n        return\n    c(p)\n", "TransferRequired_Kd c")]
     [InlineData("group State\n    public var counter: i32 = 0\nfunc call(r: ref/(rc/((ref/i32) -> ()))) -> () => r@follow(State.counter)\n", "Unsupported_Kd var counter: i32 = 0; Unsupported_Kd r@follow")]
@@ -219,6 +243,149 @@ public class BorrowAcquisitionTest
         Assert.Equal(records, string.Join("; ", check.Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
         Assert.Equal(records.Length == 0, check.Accepted);
     }
+
+    // SPEC 7.7.3, 7.3.3, 3.4.3, 8.10, 13.5.5 (PLAN G1120, D-888): a value call acquires its callee like a method receiver, on the path
+    // that continues below every ref and uniq layer to the Callable (a Closure, a Function value, a function item, a Callable F) or to a
+    // handle's View Target: through any number of layers, also in a `confined` witness, with arguments and a result over its input;
+    // exclusively only where every layer and the path grant exclusive capability (`uniq/ref/F` and `ref/uniq/F` supply no Exclusive
+    // call). A Shared call reads an `obj` or `rc` payload through the layers; an Exclusive one through them is the located limit. A raw
+    // pointer is no layer the path follows, so `p()` calls nothing. A result naming the call receiver through the layers keeps the Loan
+    // of the Callable (SPEC 15.8.2, 15.6.3), so moving it while the result is used is a conflict. Fail-before (dev 7979e3a56):
+    // NotCallable_Kd or Unsupported_Kd on the valid forms, `ur()` and `p()` accepted (InternalInvariant_Kd at build), that Move accepted;
+    // on 11974eb35, Unsupported_Kd at `ro`, `uo` and `ur`. Each row: the published records in order; an accepted program has none.
+    [Theory]
+    [InlineData("func f() -> i32\n    let g = func () -> i32 => 2\n    let r = g@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr()\n", "")]
+    [InlineData("func f() -> i32\n    let g = func (x: ref/i32) -> ref/i32 => x\n    let r = g@ref\n    let rr = r@ref\n    let v: i32 = 5\n    let got = rr(v@ref)\n    return got\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var u = next@uniq\n    var uu = u@uniq\n    let uuu = uu@uniq\n    return uuu()\n", "")]
+    [InlineData("func f(g: (i32) -> i32) -> i32\n    let r = g@ref\n    let rr = r@ref\n    return rr(4)\n", "")]
+    [InlineData("func helper(a: i32, b: i32) -> i32 => a + b\nfunc f() -> i32\n    let h = helper\n    let r = h@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr(2, 3)\n", "")]
+    [InlineData("func f<F>(g: ref/F) -> i32\n    F is Callable<() -> i32>\n    let r = g@ref\n    let rr = r@ref\n    return rr()\n", "")]
+    [InlineData("func f<F>(g: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    var u = g\n    let uu = u@uniq\n    return uu()\n", "")]
+    [InlineData(Work + "        let r = g@ref\n        let rr = r@ref\n        return rr()\n", "")]
+    [InlineData(Work + "        let r = g@ref\n        let rr = r@ref\n        let rrr = rr@ref\n        return rrr()\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var r = next@ref\n    let ur = r@uniq\n    return ur()\n", "InvalidAssignment_Kd ur")]
+    [InlineData("func f<F>(g: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    let r = g@ref\n    return r()\n", "InvalidAssignment_Kd r")]
+    [InlineData("func f() -> i32\n    var g = func () -> i32 => 2\n    let p = g@raw\n    return p()\n", "NotCallable_Kd p()")]
+    [InlineData("func f() -> i32\n    let o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let ro = o@ref\n    return ro()\n", "")]
+    [InlineData("func f() -> i32\n    var o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let uo = o@uniq\n    return uo()\n", "")]
+    [InlineData("func f() -> i32\n    var r = Kimi.Intrinsics.makeRc(func () -> i32 => 2)\n    let ur = r@uniq\n    return ur()\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var o = Kimi.Intrinsics.makeObj(next@move)\n    let uo = o@uniq\n    return uo()\n", "Unsupported_Kd uo")]
+    [InlineData("func f() -> i32\n    let n: i32 = 7\n    let g = func [n] () => n@ref\n    let r = g@ref\n    let rr = r@ref\n    let v = rr()\n    let moved = g@move\n    return v\n", "ComparisonLoanConflict_Kd g")]
+    public void AValueCalleeIsAcquiredThroughEveryReferenceLayer(string body, string records)
+        => this.AValueCallsAcquisitionAndRelationsAreEachRecorded(body, records);
+
+    // SPEC 7.3.3, 15.1.5, 15.6.2, 10.2 (PLAN G453, R7-E4 E4a-3; each row labelled from SPEC before its run): an implicit exclusive
+    // acquisition the lending rule denies, a Receiver Expression's (7.3.3: as if the table's operation were written on it) or a bare
+    // argument's at `uniq/U` or `objuniq/U`, a payload's or a value call's input, records what its written twin records, at the Place
+    // (a `let` root or an owned parameter InvalidAssignment_Kd, a shared layer on the path or below the receiver SharedPathAccess_Kd),
+    // not NoApplicableOverload_Kd; a lendable Place without its spelling keeps ExclusiveBorrowRequired_Kd. A construction receiver's
+    // Field (6.3.4, valid) is BU-15's limit located at the Place, while a bare argument's missing `@uniq` stays its error (ruling 12 B1),
+    // and an object pair layer at a fixed object borrow is PLAN G762's limit, located at the Place. The named remainder keeps
+    // NoApplicableOverload_Kd: a pair-layer receiver (13.5.5) and a getter result (11.5). Each row: the published records in order; an
+    // accepted program has none.
+    [Theory]
+    [InlineData(Lent + "func k() -> ()\n    var p = H.init()\n    p.bump()\n", "")]
+    [InlineData(Lent + "func k() -> ()\n    let p = H.init()\n    p.bump()\n", "InvalidAssignment_Kd p")]
+    [InlineData(Lent + "func k() -> ()\n    let p = H.init()\n    p@uniq.bump()\n", "InvalidAssignment_Kd p")]
+    [InlineData(Lent + "func k(p: H) -> ()\n    p.bump()\n", "InvalidAssignment_Kd p")]
+    [InlineData(Lent + "func k(h: ref/H) -> ()\n    h.bump()\n", "SharedPathAccess_Kd h")]
+    [InlineData(Lent + "func k(h: uniq/H) -> ()\n    h.bump()\n", "")]
+    [InlineData(Lent + "func k(h: ref/H) -> ()\n    h@follow.bump()\n", "SharedPathAccess_Kd h@follow")]
+    [InlineData(Lent + "func k(h: ref/H) -> ()\n    h@follow@uniq.bump()\n", "SharedPathAccess_Kd h@follow")]
+    [InlineData(Lent + "func k(x: ref/(uniq/H during a) during b) -> ()\n    origin a outlives b\n    x.bump()\n", "SharedPathAccess_Kd x")]
+    [InlineData(Lent + "func k(x: uniq/(ref/H during a) during b) -> ()\n    origin a outlives b\n    x.bump()\n", "SharedPathAccess_Kd x")]
+    [InlineData(Lent + "struct W\n    public var h: H\n    public init()\n        self.h = H.init()\n        self.h.bump()\n", "Unsupported_Kd self.h")]
+    [InlineData(Lent + "struct W\n    public var h: H\n    public init()\n        self.h = H.init()\n        self.h@uniq.bump()\n", "Unsupported_Kd self.h@uniq")]
+    [InlineData(Lent + "func k<s/T>(x: s/H) -> ()\n    s is ref or uniq\n    x.bump()\n", "NoApplicableOverload_Kd x.bump()")]
+    [InlineData(Lent + Getter + "func k(g: G) -> ()\n    g.p.bump()\n", "NoApplicableOverload_Kd g.p.bump()")]
+    [InlineData(Lent + Getter + "func k(g: G) -> ()\n    g.p@uniq.bump()\n", "InvalidAssignment_Kd g.p")]
+    [InlineData(Lent + "func k(h: ref/H) -> ()\n    take(h.n)\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "func k(h: ref/H) -> ()\n    take(h.n@uniq)\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "func k() -> ()\n    let q: i32 = 1\n    take(q)\n", "InvalidAssignment_Kd q")]
+    [InlineData(Lent + "func k() -> ()\n    var q: i32 = 1\n    take(q)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Lent + "func k() -> ()\n    var q: i32 = 1\n    take(q@uniq)\n", "")]
+    [InlineData(Lent + "func g<T>(x: uniq/T) -> () => ()\nfunc k(h: ref/H) -> ()\n    g(h.n)\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "func use(o: Option<uniq/i32 during a>) -> () => ()\nfunc k(h: ref/H) -> ()\n    use(.Some(h.n))\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "func k(h: ref/H, f: (uniq/i32) -> ()) -> ()\n    f(h.n)\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "struct W\n    public var h: H\n    public init()\n        self.h = H.init()\n        let k = H.init()\n        k.absorb(self.h)\n", "ExclusiveBorrowRequired_Kd self.h")]
+    [InlineData(Lent + "struct W\n    public var h: H\n    public init()\n        self.h = H.init()\n        let k = H.init()\n        k.absorb(self.h@uniq)\n", "Unsupported_Kd self.h@uniq")]
+    [InlineData(Lender + "func k(o: obj/P) -> ()\n    t(o)\n", "InvalidAssignment_Kd o")]
+    [InlineData(Lender + "func k(o: obj/P) -> ()\n    t(o@objuniq)\n", "InvalidAssignment_Kd o")]
+    [InlineData(Lender + "func k(o: obj/P) -> ()\n    var v = o@move\n    t(v)\n", "ExclusiveBorrowRequired_Kd v")]
+    [InlineData(Layer + "    let v = take(y)\n    return 0\n", "Unsupported_Kd y")]
+    [InlineData(Layer + "    let v = y.peek()\n    return 0\n", "Unsupported_Kd y")]
+    public void ADeniedImplicitAcquisitionRecordsItsWrittenTwinsFailureAtThePlace(string body, string records)
+        => this.AValueCallsAcquisitionAndRelationsAreEachRecorded(body, records);
+
+    // SPEC 10.2, 7.3.3, 15.1.5, 15.6.1, 23.1.2 (R7-M95 E4a-4, PLAN G486): a fixed destination (an annotated `let` or `var`, an
+    // assignment, a Tuple part, a `return` or an expression body, a branch, a default argument, a payload, a value call's argument)
+    // defers its implicit acquisition, and a refused one fails the Place with what its written twin records: a lendable Place without its
+    // spelling ExclusiveBorrowRequired_Kd, a `let` root, an owned parameter or a capture by value InvalidAssignment_Kd, a shared layer
+    // SharedPathAccess_Kd, a stored exclusive reference through a shared layer TransferRequired_Kd, an object pair layer PLAN G762's
+    // limit. The Place delivers no Type: its lent Type is read for structure only, so the operation's limits (P42's static root) and the
+    // Origin relations reading it record nothing, while a later use of the binding takes no record and an independent failure keeps its
+    // own (rule W). A structural misfit stays the value's TypeMismatch_Kd. Each row: the published records in order.
+    [Theory]
+    [InlineData("func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i32 = q\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("func k() -> ()\n    let q: i32 = 1\n    let y: uniq/i32 = q\n", "InvalidAssignment_Kd q")]
+    [InlineData(Lent + "func k(h: ref/H) -> ()\n    let y: uniq/i32 = h.n\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lender + "func k(o: obj/P) -> ()\n    let y: objuniq/P = o\n", "InvalidAssignment_Kd o")]
+    [InlineData(Lender + "func k(o: obj/P) -> ()\n    var v = o@move\n    let y: objuniq/P = v\n", "ExclusiveBorrowRequired_Kd v")]
+    [InlineData(Lent + "func k() -> ()\n    var h = H.init()\n    let y: uniq/i32 = h.n\n", "ExclusiveBorrowRequired_Kd h.n")]
+    [InlineData(Lent + "func k() -> ()\n    let h = H.init()\n    let y: uniq/i32 = h.n\n", "InvalidAssignment_Kd h.n")]
+    [InlineData("func k() -> ()\n    let xs: [2 of i32] = [1, 2]\n    let y: uniq/i32 = xs[0]\n", "InvalidAssignment_Kd xs[0]")]
+    [InlineData(Lent + "func k(x: uniq/(ref/H during a) during b) -> ()\n    origin a outlives b\n    let y: uniq/i32 = x.n\n", "SharedPathAccess_Kd x.n")]
+    [InlineData("func k(xs: ref/Array<i32>) -> ()\n    let y: uniq/i32 = xs[0]\n", "SharedPathAccess_Kd xs[0]")]
+    [InlineData("func k() -> ()\n    var xs: Array<i32> = [1, 2]\n    let y: uniq/i32 = xs[0]\n", "ExclusiveBorrowRequired_Kd xs[0]")]
+    [InlineData("func k() -> ()\n    var d: Dictionary<i64, i32> = [:]\n    let y: uniq/i32 = d[1]\n", "ExclusiveBorrowRequired_Kd d[1]")]
+    [InlineData("func k() -> ()\n    let xs: Array<i32> = [1, 2]\n    let y: uniq/i32 = xs[0]\n", "InvalidAssignment_Kd xs[0]")]
+    [InlineData("func k(d: ref/Dictionary<i64, i32>) -> ()\n    let y: uniq/i32 = d[1]\n", "SharedPathAccess_Kd d[1]")]
+    [InlineData("func k() -> ()\n    var q: i32 = 1\n    let t: (uniq/i32, i32) = (q, 1)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("func k() -> ()\n    var q: i32 = 1\n    var w: i32 = 2\n    var y: uniq/i32 = w@uniq\n    y = q\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Lent + "func k(h: ref/H) -> ()\n    var w: i32 = 1\n    var y: uniq/i32 = w@uniq\n    y = h.n\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "func k(h: uniq/H) -> uniq/i32 during h\n    return h.n\n", "ExclusiveBorrowRequired_Kd h.n")]
+    [InlineData(Lent + "func k(h: ref/H) -> uniq/i32 during h\n    return h.n\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "func k(h: uniq/H) -> uniq/H during h\n    return h@follow\n", "ExclusiveBorrowRequired_Kd h@follow")]
+    [InlineData(Lent + "func k(h: uniq/H) -> uniq/i32 during h => h.n\n", "ExclusiveBorrowRequired_Kd h.n")]
+    [InlineData(Lent + "func k(h: ref/H) -> uniq/i32 during h => h.n\n", "SharedPathAccess_Kd h.n")]
+    [InlineData(Lent + "func k(h: uniq/H, c: bool) -> uniq/i32 during h\n    return if c => h.n@uniq else => h.n\n", "ExclusiveBorrowRequired_Kd h.n")]
+    [InlineData("func k(c: bool) -> ()\n    var q: i32 = 1\n    var w: i32 = 2\n    let y: uniq/i32 = if c => w@uniq else => q\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Totals + "func f(x: uniq/i32 = Totals.count) -> () => ()\n", "Unsupported_Kd var count: i32 = 0; ExclusiveBorrowRequired_Kd Totals.count")]
+    [InlineData("func f(a: i32, b: uniq/i32 = a) -> () => ()\n", "InvalidAssignment_Kd a")]
+    [InlineData(Lent + "func f(h: ref/H, x: uniq/i32 = h.n) -> () => ()\n", "SharedPathAccess_Kd h.n")]
+    [InlineData("struct C\n    public var n: i32\n    public init()\n        self.n = 0\n        let y: uniq/i32 = self.n\n", "ExclusiveBorrowRequired_Kd self.n")]
+    [InlineData("func k() -> ()\n    var c: i32 = 1\n    let f = func [var c] () -> ()\n        let y: uniq/i32 = c\n", "ExclusiveBorrowRequired_Kd c")]
+    [InlineData("func k() -> ()\n    let c: i32 = 1\n    let f = func [c] () -> ()\n        let y: uniq/i32 = c\n", "InvalidAssignment_Kd c")]
+    [InlineData(Totals + "func k() -> ()\n    let y: uniq/i32 = Totals.count\n", "Unsupported_Kd var count: i32 = 0; ExclusiveBorrowRequired_Kd Totals.count")]
+    [InlineData(Layer + "    let v: objref/Node = y\n    return 0\n", "Unsupported_Kd y")]
+    [InlineData(Layer + "    let t: (objref/Node, i32) = (y, 1)\n    return 0\n", "Unsupported_Kd y")]
+    [InlineData("struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f<s/T>(m: s/T, y: s/Node during a) -> objref/Node during a\n    s is objref or objuniq\n    return y\n", "Unsupported_Kd y")]
+    [InlineData("struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f<s/T>(m: s/T, y: s/Node during a) -> objref/Node during a\n    s is objref\n    return y\n", "Unsupported_Kd y")]
+    [InlineData("func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i32 = q\n    let z: uniq/i32 = q\n", "ExclusiveBorrowRequired_Kd q; ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Lent + "func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i32 = q\n    take(y)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Lent + "func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i32 = q\n    let z: uniq/i32 = q@uniq\n    take(y)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i32 = q\n    let b: bool = 1\n", "ExclusiveBorrowRequired_Kd q; TypeMismatch_Kd 1")]
+    [InlineData(Lent + "func k() -> ()\n    var h = H.init()\n    let y: uniq/i32 = h.n\n    h.bump()\n    take(y)\n", "ExclusiveBorrowRequired_Kd h.n")]
+    [InlineData(Lent + "func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i32 = q\n    q = 2\n    take(y)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i32 = q\n    let z: uniq/i64 = q\n", "ExclusiveBorrowRequired_Kd q; TypeMismatch_Kd q")]
+    [InlineData(Lent + "func k(h: uniq/H) -> uniq/i32 during h\n    var q: i32 = 1\n    return q\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Lent + "func k(h: uniq/H) -> Option<uniq/i32 during h>\n    var q: i32 = 1\n    return .Some(q)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Totals + "func k() -> ()\n    let o: Option<uniq/i32> = .Some(Totals.count)\n", "Unsupported_Kd var count: i32 = 0; ExclusiveBorrowRequired_Kd Totals.count")]
+    [InlineData(Totals + Lent + "func k() -> ()\n    take(Totals.count)\n", "Unsupported_Kd var count: i32 = 0; ExclusiveBorrowRequired_Kd Totals.count")]
+    [InlineData(Totals + "func take3(o: Option<uniq/i32 during a>) -> () => ()\nfunc k() -> ()\n    take3(.Some(Totals.count))\n", "Unsupported_Kd var count: i32 = 0; ExclusiveBorrowRequired_Kd Totals.count")]
+    [InlineData(Totals + "func take(x: uniq/i32) -> () => ()\nfunc k() -> ()\n    let f: (uniq/i32) -> () = take\n    f(Totals.count)\n", "Unsupported_Kd var count: i32 = 0; ExclusiveBorrowRequired_Kd Totals.count")]
+    [InlineData("func k(h: ref/(uniq/i32 during a) during b) -> ()\n    origin a outlives b\n    let y: uniq/i32 = h@follow\n", "TransferRequired_Kd h@follow")]
+    [InlineData("func k(h: ref/(uniq/i32 during a) during b) -> ()\n    origin a outlives b\n    _ = h@follow\n", "TransferRequired_Kd h@follow")]
+    [InlineData("func k(h: ref/(uniq/i32 during a) during b) -> ()\n    origin a outlives b\n    let t = (h@follow, 1)\n", "TransferRequired_Kd h@follow")]
+    [InlineData(Lender + "func k(h: ref/(objuniq/P during a) during b) -> ()\n    origin a outlives b\n    let y = h@follow\n", "TransferRequired_Kd h@follow")]
+    [InlineData("func k() -> ()\n    var q: i32 = 1\n    let y: uniq/i64 = q\n", "TypeMismatch_Kd q")]
+    [InlineData("func take3(o: Option<uniq/i32 during a>) -> () => ()\nfunc k() -> ()\n    var q: i32 = 1\n    take3(.Some(q))\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("func take2(t: (uniq/i32 during a, i32)) -> () => ()\nfunc k() -> ()\n    var q: i32 = 1\n    take2((q, 1))\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData(Lent + "func k() -> ()\n    let f: (uniq/i32) -> () = take\n    var q: i32 = 1\n    f(q)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("struct H\n    public var n: i32\n    public init()\n        self.n = 0\n    public func get(self: uniq/Self) -> uniq/i32 during self => self.n@uniq\nfunc k(h: uniq/H, r: ref/H) -> uniq/i32 during h\n    return r.get()\n", "SharedPathAccess_Kd r")]
+    [InlineData("struct H\n    public var n: i32\n    public init()\n        self.n = 0\n    public func get(self: uniq/Self) -> uniq/i32 during self => self.n@uniq\nfunc k(h: uniq/H) -> uniq/i32 during h\n    let x = H.init()\n    return x.get()\n", "InvalidAssignment_Kd x")]
+    public void ARefusedAcquisitionAtAFixedDestinationFailsThePlace(string body, string records)
+        => this.AValueCallsAcquisitionAndRelationsAreEachRecorded(body, records);
 
     // SPEC 6.5.2, 3.5, 8.15.2 (R6-check (b2)'s acceptance move): a payload Place is acquired by its bare acquisition, so `s/(uniq/i32)`, whose
     // owner case Reborrows its target, is no TransferRequired_Kd (before (b2) the owner case had no plan).

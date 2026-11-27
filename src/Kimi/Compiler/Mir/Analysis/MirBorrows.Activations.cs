@@ -3,8 +3,9 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's call reservations (A3 5's err(activate) and err(destroy), with E1, E5, E11 and E13 (1b), (3); SPEC 15.6.7): a two-phase Loan in its
-// reservation holder t activates where a Call takes t as an input (an argument, or a Value callee's operand) or the writeback writes through
-// it (R4-M37), checked on the activation's check set (MirBorrows.CheckSets): the holders live after ℓ, the values of the operation's operands
+// reservation holder t activates where a Call takes t as an input (an argument, or a Value callee's operand), where an Opaque site takes t
+// as a kept part (MirOpaque.Kept, DECISIONS Z17c: the invocation it replaces would) or the writeback writes through it (R4-M37), checked
+// on the activation's check set (MirBorrows.CheckSets): the holders live after ℓ, the values of the operation's operands
 // but t's and E, closed through the holders their direct Loans name and seeded by those σ_in(t)'s direct Loans name (E5), t left out, so the
 // inputs of one call are checked against each other, at the reservation's Place and at those of the parent Loans σ_in(t) carries unique
 // (SPEC 15.6.3, 15.6.7: overlap is judged through the Loans the argument carries, so a Loan on what a reference it was Reborrowed through
@@ -19,13 +20,15 @@ internal sealed partial class MirBorrows
     private readonly Dictionary<(int Node, MirProjectionKind Kind, int Arg), int> throughChildren = []; // The parents' trie: a node's child by step key.
     private readonly Dictionary<int, int> throughRoots = []; // By root key: the trie node the root's parents' steps lie under.
     private bool[] throughEnds = []; // By trie node: whether a parent's steps end there.
+    private int[] throughDeepest = []; // By trie node: the most steps of a parent through it, so the depth of its subtree's deepest end.
     private int[] throughFirst = []; // By trie node: its first child (None: none), the list an Index step of a Loan walks.
     private int[] throughNext = []; // By trie node: its next sibling (None: none).
     private MirProjectionKind[] throughKinds = []; // By trie node: the kind of the step it is reached by (a root node's unused).
     private int throughCount;
 
     // The reservations a location activates, those σ_in(t) carries in t: at a Call's input holders, its argument operands' and a Value
-    // callee's operand's (the receiver an Exclusive call takes, SPEC 7.7.3), and at the writeback's write through a reservation.
+    // callee's operand's (the receiver an Exclusive call takes, SPEC 7.7.3), at an Opaque site's kept uses (KeptUses), and at the
+    // writeback's write through a reservation.
     private void Reserving(ulong[] state, MirLocation at)
     {
         this.reserving.Clear();
@@ -36,6 +39,14 @@ internal sealed partial class MirBorrows
             if (statement.Kind == MirStatementKind.Assign && this.ThroughRoot(statement.Place))
             {
                 this.Reserve(state, statement.Place.Root, DiagnosticCode.PlacementActivationConflict_Kd);
+            }
+
+            foreach (var use in this.KeptUses(statement))
+            {
+                if (use is { Projection: 0, Root: >= 0 })
+                {
+                    this.Reserve(state, use.Root, DiagnosticCode.CallActivationConflict_Kd);
+                }
             }
 
             return;
@@ -49,6 +60,15 @@ internal sealed partial class MirBorrows
                 this.Reserve(state, input.Root, DiagnosticCode.CallActivationConflict_Kd);
             }
         }
+    }
+
+    // DECISIONS Z17c (SPEC 15.6.7): the kept uses of the Opaque site a statement assigns (MirOpaque.Kept), the Places of an Error node's
+    // kept parts, which it takes as the invocation it replaces takes its inputs; none for any other statement, so a default's site, which
+    // runs during the reservation, activates nothing.
+    private ReadOnlySpan<MirPlace> KeptUses(in MirStatement statement)
+    {
+        var site = this.body.SiteOf(statement);
+        return this.body.OpaqueUses.Slice(site.Start, site.Kept);
     }
 
     // A reservation holder's state, read once per call since the call moves it: an input that holds no reservation is not read.
@@ -87,7 +107,7 @@ internal sealed partial class MirBorrows
 
             if (loan.Destroying)
             {
-                this.Destroyed(reservation, cases.TypeOf(this.lent[local]), taking, at);
+                this.Destroyed(reservation, cases.TypeOf(this.LentInto(local)), taking, at);
             }
         }
 
@@ -159,6 +179,7 @@ internal sealed partial class MirBorrows
         foreach (var step in steps)
         {
             node = this.Child(node, StepKey(step));
+            this.throughDeepest[node] = Math.Max(this.throughDeepest[node], steps.Length);
         }
 
         this.throughEnds[node] = true;
@@ -181,18 +202,20 @@ internal sealed partial class MirBorrows
     {
         var node = this.throughCount++;
         MirDataflow.Grow(ref this.throughEnds, this.throughCount);
+        MirDataflow.Grow(ref this.throughDeepest, this.throughCount);
         MirDataflow.Grow(ref this.throughFirst, this.throughCount);
         MirDataflow.Grow(ref this.throughNext, this.throughCount);
         MirDataflow.Grow(ref this.throughKinds, this.throughCount);
-        (this.throughEnds[node], this.throughFirst[node], this.throughNext[node], this.throughKinds[node]) = (false, None, None, kind);
+        (this.throughEnds[node], this.throughDeepest[node], this.throughFirst[node], this.throughNext[node], this.throughKinds[node]) = (false, 0, None, None, kind);
         return node;
     }
 
     // hits(A, X, ActivateThrough) for the parents A on a shared Loan X's root (MirBorrows.Checks' Hits, its shallow rows): X's steps walked
-    // down the root's trie, a parent ending past X's last borrow Deref hits, as does any parent at or below X's Place.
+    // down the root's trie, a parent ending past X's last borrow Deref hits, as does any parent at or below X's Place. X's steps are those
+    // up to its receiver, the Array for a Loan through an Array's element (Loan.ReceiverSteps; Hits states the same).
     private bool Through(int root, in Loan loan)
     {
-        var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
+        var steps = this.loanSteps.AsSpan(loan.Start, loan.ReceiverSteps);
         var deref = -1;
         for (var i = 0; i < steps.Length; i++)
         {
@@ -204,8 +227,11 @@ internal sealed partial class MirBorrows
     }
 
     // Whether a parent in a trie node's subtree hits a Loan's steps from a depth: an end past the last borrow Deref, or the node reached at
-    // the steps' end. Meets at the walk: an Index step of the Loan walks every index child of the node (each a parent step it meets, so a
-    // node is visited at most once per Loan), a ConstIndex step the parents' Index key and its own, another step its key alone.
+    // the steps' end. Meets at the walk, the trie form of MirBorrows.Checks' Meets (the stop is stated in both): an Index step of the Loan
+    // beside an index child of the node, and a ConstIndex step beside the parents' Index key, are Unproven (SPEC 15.6.2), so every parent
+    // through that child meets the Loan's later steps and one hits when the child's deepest end lies past that Deref (throughDeepest, the
+    // end test without the later keys); a ConstIndex step beside its own constant and another step by its key walk on. A node is visited
+    // at most once per Loan.
     private bool Below(int node, ReadOnlySpan<MirStep> steps, int depth, int deref)
     {
         this.Work++;
@@ -219,7 +245,8 @@ internal sealed partial class MirBorrows
         {
             for (var each = this.throughFirst[node]; each != None; each = this.throughNext[each])
             {
-                if (this.throughKinds[each] is MirProjectionKind.Index or MirProjectionKind.ConstIndex && this.Below(each, steps, depth + 1, deref))
+                this.Work++;
+                if (this.throughKinds[each] is MirProjectionKind.Index or MirProjectionKind.ConstIndex && this.throughDeepest[each] > deref)
                 {
                     return true;
                 }
@@ -230,7 +257,7 @@ internal sealed partial class MirBorrows
 
         var key = StepKey(step);
         return (step.Kind == MirProjectionKind.ConstIndex && this.throughChildren.TryGetValue((node, MirProjectionKind.Index, 0), out var index) &&
-            this.Below(index, steps, depth + 1, deref)) ||
+            this.throughDeepest[index] > deref) ||
             (this.throughChildren.TryGetValue((node, key.Kind, key.Arg), out var child) && this.Below(child, steps, depth + 1, deref));
     }
 

@@ -18,8 +18,8 @@ public class UnresolvedConstraintBindingTest
         Assert.False(c.Bind().IsComplete);
         var reading = Container(c, "Reading");
         Assert.Equal(BindingState.Invalid, reading.StateOf());
-        Assert.False(Assert.IsType<PropertyKoto>(Assert.Single(reading.Members)).SymbolOf()!.Property!.IsVerified);
-        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(reading.ConstraintNodes.Single(x => x.Right.ToString() == "Copy").ConstraintOf()!, reading));
+        Assert.True(Assert.IsType<PropertyKoto>(Assert.Single(reading.Members)).SymbolOf()!.Property!.IsVerified); // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the Property reads no failed fact (`Self is Missing` is an obligation, not its premise)
+        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(reading.ConstraintNodes.Single(x => x.Right.ToString() == "Copy").ConstraintOf()!, reading)); // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): `Self is Copy` reads no failed fact (Reading stores an i32)
         c.Binding.ReportDiagnostics();
         var diagnostic = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal("UnresolvedBinding_Kd", diagnostic.Code);
@@ -216,8 +216,6 @@ public class UnresolvedConstraintBindingTest
     // SPEC 8.8.1: a non-generic Type, a non-parameter subject and `or` or `not` fail whatever the missing name finds.
     [InlineData("public struct Target\n    Self is Future when Self is Copy")]
     [InlineData("public contract C\npublic struct Target<T>\n    Self is C when i32 is Future")]
-    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future or Copy")]
-    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is not Future")]
     // SPEC 7.5, 8.8.1: a projection rooted in a missing name is rooted in no enclosing parameter whatever the name finds; an arity is
     // decided by the written list (9.7.1).
     [InlineData("group G\n    func take<T>()\n        U.(Future).Item is Copy\n        ()")]
@@ -235,6 +233,21 @@ public class UnresolvedConstraintBindingTest
         var c = Parse(source);
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         Assert.False(c.Bind().IsComplete);
+    }
+
+    // SPEC F.6.2 ConformanceRequirement, 8.8.1 (PB3, O1 (a)): a conformance condition joins its atoms with "and"; "or" and "not" are
+    // Parsing's record at the condition's requirement (ConformanceRequirement), so Binding judges none of its parts.
+    [Theory]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is Future or Copy", "Future or Copy")]
+    [InlineData("public contract C\npublic struct Target<T>\n    Self is C when T is not Future", "not Future")]
+    public void AnOrOrNotConformanceConditionIsParsingsRecord(string source, string requirement)
+    {
+        var c = CompilationTestHelper.Parse(source, "Hello.kimi");
+        var record = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.Equal("ExpectedSyntax_Kd", record.Code);
+        Assert.Contains("Expected conformance requirement", record.Message, StringComparison.Ordinal);
+        Assert.Equal(source.LastIndexOf(requirement, StringComparison.Ordinal), record.Span.Start);
+        Assert.Equal(requirement.Length, record.Span.Length);
     }
 
     [Theory]
@@ -337,7 +350,7 @@ public class UnresolvedConstraintBindingTest
     public void FunctionSubjectRestrictionsRemainDiagnostics()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "group G\n    func take<T>()\n        Future is Copy\n        ()"));
         // SPEC 7.5: the leading clause is a Constraint whatever it names; Binding rejects its subject, and does not wait for a source.
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);

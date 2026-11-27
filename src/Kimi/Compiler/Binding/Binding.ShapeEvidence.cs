@@ -6,11 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<FunctionKoto, int> shapeCallCandidates = new(ReferenceEqualityComparer.Instance);
-
-    private static bool SameShapeBinding(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (IsSubtype(a, b) && IsSubtype(b, a));
-
     // SPEC 10.8, 10.3: whether CollectTypes enters a pattern node against a Type, an argument's or the expected result's: the same head
     // and arity; neither projections nor adaptations are inverted. SameArgumentEvidence's Reached follows the same rule.
     private static bool CollectionEnters(BoundType pattern, BoundType actual)
@@ -18,7 +13,25 @@ public sealed partial class Binding
             pattern.Kind == actual.Kind && pattern.Symbol == actual.Symbol && pattern.Semantics == actual.Semantics &&
             pattern.Components.Count == actual.Components.Count;
 
-    private static bool MatchingConstructionExpectation(BoundType pattern, BoundType expected, int own)
+    // The position of a call's accessible candidate declared by `function` (the last, as a map written in order kept), -1 for none: a
+    // shape contract's left function among the call's own candidates.
+    private static int CandidateOf(ReadOnlySpan<EvaluatedCandidate> candidates, FunctionKoto function)
+    {
+        for (var i = candidates.Length - 1; i >= 0; i--)
+        {
+            if (candidates[i].Accessible && ReferenceEquals(candidates[i].Symbol!.Declaration, function))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private bool SameShapeBinding(BoundType a, BoundType b)
+        => ReferenceEquals(a, b) || (this.IsSubtype(a, b) && this.IsSubtype(b, a));
+
+    private bool MatchingConstructionExpectation(BoundType pattern, BoundType expected, int own)
     {
         if (pattern.Symbol != expected.Symbol || expected.Semantics != SemanticsKind.Owner || pattern.Components.Count != expected.Components.Count)
         {
@@ -27,7 +40,7 @@ public sealed partial class Binding
 
         for (var i = own; i < pattern.Components.Count; i++)
         {
-            if (!SameShapeBinding(pattern.Components[i], expected.Components[i]))
+            if (!this.SameShapeBinding(pattern.Components[i], expected.Components[i]))
             {
                 return false;
             }
@@ -78,7 +91,7 @@ public sealed partial class Binding
             var kind = end - start == 1 ? this.KindOf(node) : this.PositionKind(start, end, out type);
             if (kind is PartKind.Aggregate or PartKind.Join)
             {
-                return Composite(start, end, Referent(a), Referent(b));
+                return Composite(start, end, this.ExpectedTypeOf(a), this.ExpectedTypeOf(b));
             }
 
             if (end - start == 1 && kind != PartKind.Literal)
@@ -109,7 +122,7 @@ public sealed partial class Binding
         {
             if (a?.Kind == BoundTypeKind.Parameter || b?.Kind == BoundTypeKind.Parameter)
             {
-                if (this.IndependentPositionType(start, fitLiterals: true) is not null)
+                if (this.IsWholeEvidence(start))
                 {
                     return Paths(a, b);
                 }
@@ -153,9 +166,6 @@ public sealed partial class Binding
         static BoundType? CallableSlot(BoundType? pattern, FunctionKoto function)
             => pattern is not null && CallableSlotType(pattern, CallSlotOwner(function)) is not null ? pattern : null;
 
-        static BoundType? Referent(BoundType? pattern)
-            => pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : pattern;
-
         static BoundType? SignaturePart(BoundType? signature, int index)
             => signature is { Kind: BoundTypeKind.Function, Components: [var parameters, var returns] }
                 ? (index < 0 ? returns : index < parameters.Components.Count ? parameters.Components[index] : null) : null;
@@ -177,7 +187,7 @@ public sealed partial class Binding
             if (a.Kind == BoundTypeKind.Parameter)
             {
                 hits++;
-                return this.InfersReadReferent(a, left) == this.InfersReadReferent(b, right);
+                return this.InfersReadReferent(a, left, call) == this.InfersReadReferent(b, right, call);
             }
 
             if (a.Symbol != b.Symbol)
@@ -277,10 +287,15 @@ public sealed partial class Binding
     // supply no evidence; a failure at another source position does not discard a binding here.
     // A slot not fixed in both candidates needs the same evidence (SameArgumentEvidence, the expected
     // result's included) before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
-    private bool CheckCallShapeContracts(InvocationKoto call, ReadOnlySpan<BoundType?> explicitTypes, ReadOnlySpan<BoundLength?> explicitLengths, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
+    // It reads the call's evaluated candidates, each candidate's mapping (MappingOf) and the explicit Type arguments.
+    private bool CheckCallShapeContracts(in CallEvaluation evaluation, int slotStride)
     {
+        var (call, scope, expected) = (evaluation.Call, evaluation.Scope, evaluation.Expected);
+        var explicitCount = evaluation.Generic?.TypeArguments.Count ?? 0;
+        ReadOnlySpan<BoundType?> explicitTypes = evaluation.ExplicitTypes.AsSpan(0, explicitCount);
+        ReadOnlySpan<BoundLength?> explicitLengths = evaluation.ExplicitLengths.AsSpan(0, explicitCount);
+        ReadOnlySpan<EvaluatedCandidate> candidates = evaluation.Evaluated.AsSpan(0, evaluation.Count);
         var needed = false;
-        this.shapeCallCandidates.Clear();
         for (var i = 0; i < candidates.Length; i++)
         {
             if (!candidates[i].Accessible)
@@ -288,9 +303,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var function = (FunctionKoto)candidates[i].Symbol!.Declaration;
-            this.shapeCallCandidates[function] = i;
-            needed |= this.shapeContractHeads.ContainsKey(function);
+            needed |= this.shapeContractHeads.ContainsKey((FunctionKoto)candidates[i].Symbol!.Declaration);
         }
 
         if (!needed || candidates.Length < 2)
@@ -301,7 +314,7 @@ public sealed partial class Binding
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
         // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
-        var bindings = this.infer.Rent(slotStride);
+        var bindings = this.infer.Rent(slotStride, call, scope);
         var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try
@@ -329,9 +342,10 @@ public sealed partial class Binding
                     }
                 }
 
+                var mapping = evaluation.MappingOf(c);
                 for (var a = 0; a < call.ArgumentNodes.Count; a++)
                 {
-                    var mapped = allMaps[(c * call.ArgumentNodes.Count) + a];
+                    var mapped = mapping[a];
                     if (mapped >= 0 && function.Parameters[mapped].Type.BoundType is { } pattern && this.CallMemberPattern(pattern, function, declaring) is { } memberPattern)
                     {
                         CollectArgument(memberPattern, call.ArgumentNodes[a], candidateSlots);
@@ -339,7 +353,7 @@ public sealed partial class Binding
                 }
 
                 var result = function.IsConstructor ? declaring : function.BoundSymbol!.Type;
-                if (expected is not null && result is not null && (!function.IsConstructor || MatchingConstructionExpectation(result, expected, CallOwnSlots(function).Count)))
+                if (expected is not null && result is not null && (!function.IsConstructor || this.MatchingConstructionExpectation(result, expected, CallOwnSlots(function).Count)))
                 {
                     CollectTypes(result, expected, fillOnly: true);
                 }
@@ -347,7 +361,9 @@ public sealed partial class Binding
                 bindings.Types[..count].CopyTo(types.AsSpan(c * slotStride));
 
                 // Collects the open slots' evidence (CollectTypes skips a fixed slot, whose mode FixCallSlots gives); the argument is
-                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings, as in its trial.
+                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings (FixedPattern).
+                // Its trial's AdaptationPattern also forms the structured applications whose binder a source fixed; here no source has
+                // fixed one and CollectTypes enters no application (CollectionEnters), so a formed application is no evidence either way.
                 void CollectArgument(BoundType pattern, Koto source, in FixedSlots candidateSlots)
                 {
                     source = KotoHelper.UnwrapParentheses(source);
@@ -392,23 +408,19 @@ public sealed partial class Binding
                         return;
                     }
 
-                    if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] })
-                    {
-                        pattern = referent;
-                    }
-
+                    pattern = this.ExpectedTypeOf(pattern);
                     if (source is TupleLiteralKoto tuple && TupleShapeAt(tuple, pattern))
                     {
                         for (var e = 0; e < tuple.Elements.Count; e++)
                         {
-                            CollectArgument(pattern.Components[e], tuple.Elements[e], candidateSlots);
+                            CollectArgument(ExpectedChild(tuple, e, pattern)!, tuple.Elements[e], candidateSlots);
                         }
                     }
                     else if (source is ArrayLiteralKoto array && pattern.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array)
                     {
                         for (var e = 0; e < array.Elements.Count; e++)
                         {
-                            CollectArgument(pattern.Components[0], array.Elements[e], candidateSlots);
+                            CollectArgument(ExpectedChild(array, e, pattern)!, array.Elements[e], candidateSlots);
                         }
                     }
                 }
@@ -423,7 +435,7 @@ public sealed partial class Binding
                             return;
                         }
 
-                        if (!fillOnly && this.InfersReadReferent(pattern, function))
+                        if (!fillOnly && this.InfersReadReferent(pattern, function, call))
                         {
                             actual = ComparisonReferent(actual);
                         }
@@ -433,7 +445,7 @@ public sealed partial class Binding
                         {
                             bindings.SetType(slot, actual);
                         }
-                        else if (bindings.Types[slot] is not { } previous || !SameShapeBinding(previous, actual))
+                        else if (bindings.Types[slot] is not { } previous || !this.SameShapeBinding(previous, actual))
                         {
                             bindings.SetType(slot, null);
                             mode |= 8; // Keep differing witnesses; equal acquisition modes may still suffice.
@@ -467,7 +479,7 @@ public sealed partial class Binding
                 {
                     var contract = this.shapeContracts[at];
                     at = contract.Next;
-                    if (!this.shapeCallCandidates.TryGetValue(contract.Pair.Left, out var left))
+                    if (CandidateOf(candidates, contract.Pair.Left) is not (>= 0 and var left))
                     {
                         continue;
                     }
@@ -488,17 +500,17 @@ public sealed partial class Binding
                                 call,
                                 contract.Pair,
                                 slot,
-                                allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
-                                allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
+                                evaluation.MappingOf(left),
+                                evaluation.MappingOf(c),
                                 ((modes[a] | modes[b]) & 16) != 0 ? expected : null)) is { } occurs &&
                             ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
-                            (types[a] is { } ta && types[b] is { } tb && SameShapeBinding(ta, tb)) ||
+                            (types[a] is { } ta && types[b] is { } tb && this.SameShapeBinding(ta, tb)) ||
                             (modes[a] == 0 && modes[b] == 0 && occurs)))
                         {
                             continue;
                         }
 
-                        this.FailExplained(ref this.callInferenceFailures, call, BindingFailure.UnprovenAcquisitionCorrelation, new CallInferenceFailure(contract.Pair.Left, function, null, ConstructionCheck.AcquisitionCorrelation, slot, types[a], types[b]), true);
+                        this.RecordCorrelation(call, contract.Pair.Left, function, slot, types[a], types[b]);
                         return false;
                     }
                 }

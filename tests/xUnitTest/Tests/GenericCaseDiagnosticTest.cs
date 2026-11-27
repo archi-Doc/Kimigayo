@@ -20,6 +20,16 @@ public sealed class GenericCaseDiagnosticTest
 
     private const string Retained = "later use of the value retaining the conflicting loan";
 
+    // A direct generic call's callees (ADirectCallReadsItsInstanceInTheCase): `q: t/U` writable where t is uniq; `e` by value or borrowed.
+    private const string Put = "func put<t/U>(e: (U, ref/i32 during w), q: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
+
+    private const string PutBorrowed = "func put<t/U>(e: ref/(U, ref/i32 during w), q: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
+
+    // A direct call and a destruction whose substitution binds a pair slot (ACallInTheCaseKeepsItsInstanceFormed).
+    private const string Peek = "func peek<t/U>(value: t/U, seen: U = value@follow) -> U\n    t is owner or uniq\n    U is Copy\n    return seen\n";
+
+    private const string Holder = "struct Holder<h/V>\n    h is owner or uniq\n    public var b: V\n    public init(b: V) => self.b = b@move\n    drop => ()\n";
+
     [Fact]
     public void AProblemOfOneCaseNamesTheCaseAndItsBinding()
     {
@@ -102,6 +112,35 @@ public sealed class GenericCaseDiagnosticTest
         var related = Assert.Single(error.Related!);
         Assert.Equal(("declaration", "s/T"), (related.Role, Text(source, related.Span)));
     }
+
+    // SPEC 8.14, 8.15.2, 15.6.4, 23.1.2 (DECISIONS R4-M246, Z4-M; the direct-path twins D1, D1c, D2): a direct generic call's contract
+    // reads its instance's Types in the view's case after the call's substitution (TyCtxt.Retains, keyed by TyCtxt.CaseSubst). `put`'s
+    // `q: t/U` fed `y: s/T` is `uniq/T` under s = uniq, writable storage the body does not own, which carries the Loans of what `e`
+    // reaches (`k`'s), so `k`'s storage ends under its Loan; under s = owner `q` is a `T` by value and the call writes nothing the body
+    // reads through it. One record, under s = uniq alone, also after a by-case Closure call (Exclusive only where s = uniq) and with `e`
+    // borrowed.
+    [Theory]
+    [InlineData(Put, "func d<s/T>(y: s/T, z: T)\n", "    let k: i32 = 0\n    put((z, k@ref), y)\n")]
+    [InlineData(Put, "func d<s/T>(x: s/T, y: s/T, z: T)\n", "    var h = func [x] () -> ()\n        let local = x\n        _ = local\n    h()\n    let k: i32 = 0\n    put((z, k@ref), y)\n")]
+    [InlineData(PutBorrowed, "func d<s/T>(y: s/T, z: T)\n", "    let k: i32 = 0\n    let pair = (z, k@ref)\n    put(pair@ref, y)\n")]
+    public void ADirectCallReadsItsInstanceInTheCase(string put, string header, string body)
+    {
+        var source = put + header + "    s is owner or uniq\n    T is Copy\n" + body + "public func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        Assert.Equal(source.IndexOf("let k", StringComparison.Ordinal), error.Span!.Value.Start);
+        Assert.Equal(("case", "s = uniq"), (Assert.Single(error.Reason!).Name, error.Reason![0].Value));
+    }
+
+    // SPEC 8.14, 8.15.2, 16.3.1 (DECISIONS R4-M246, Z4-M; the twins 2e-A, H1, H2): a call's substitution is never read in a case, so a
+    // pair slot keeps its binder's whole Type and its instance forms as Binding formed it; only the instance's Types are read in the case.
+    // Valid: `peek(y)` with `y: T` where s admits only owner (`U = T`), and a `Holder<s/T>` read and destroyed in one case and in two.
+    [Theory]
+    [InlineData(Peek + "func caller<s/T>(y: T) -> T\n    s is owner\n    T is Copy\n    return peek(y)\n")]
+    [InlineData(Holder + "func caller<s/T>(z: T) -> T\n    s is owner\n    T is Copy\n    let holder = Holder<s/T>.init(z)\n    return holder.b\n")]
+    [InlineData(Holder + "func caller<s/T>(z: T) -> T\n    s is owner or uniq\n    T is Copy\n    let holder = Holder<s/T>.init(z)\n    return holder.b\n")]
+    public void ACallInTheCaseKeepsItsInstanceFormed(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source + "public func main() => ()\n").Diagnostics);
 
     // The CLI shows the case in the Note and the binding among the related locations; the language server sends the record.
     [Fact]

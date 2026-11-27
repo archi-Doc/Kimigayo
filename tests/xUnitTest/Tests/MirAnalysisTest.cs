@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Kimi;
@@ -17,9 +16,12 @@ namespace XunitTest;
 /// the analyses' costs (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
 public sealed class MirAnalysisTest
 {
-    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys: R3,
-    // a static's destruction reading itself, which needs no Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42).
-    internal const string Requirements = """
+    // One problem of each recording rule of A1-A4 and of A5's conflict, depth-limit and effect rules (Rules has the rest; MirEffectsTest's,
+    // MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys: R3, a static's destruction reading itself, which needs no
+    // Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42), and A4's platform rule (SPEC 22.4.5, the Tatara plan's
+    // decision 45): the Kernel's Board whose `write` reads an immutable static, judged on this hosted row too, since the rule reads no
+    // startup record. A property, not a constant: the Board is derived from KernelSources (ruling 121 N7).
+    internal static string Requirements { get; } = """
         contract Sink
             func put(self: uniq/Self, value: i32) -> i32
                 effect confined
@@ -107,11 +109,83 @@ public sealed class MirAnalysisTest
             public func effect() => tally = Tally.init()
         public func main() => ()
 
+        """ + EffectBoundImplementationTest.ScreenBoard;
+
+    // One problem of each recording rule Requirements lacks, the rest of DIAGNOSTICS' A6 code table's Language and Proof rows (Z21), each
+    // its family test's form, invalid by SPEC but the Warning: A1's Move of a default's prepared slot (7.2.3; MirInitTest); A5's Borrow of a target an
+    // exclusive input reserves (15.6.7; CallReservationTest), a call's activation meeting a shared Loan (15.6.7; CallReservationTest), an
+    // update's writeback activation meeting one (13.7.2, 15.6.7; MirBorrowsTest.Updates), a Move ending an own step's stay while its
+    // pointer is used (a Warning, 5.2.1 condition 3; MirBorrowsTest.OwnSteps), an input's own part stored past it (5.2.1's retained
+    // dependencies; MirBorrowsTest.Storing), a default's exclusive Borrow of a slot and its result keeping a Reborrow of one (R26-access,
+    // R26-borrow, 7.2.3; MirBorrowsTest.Defaults); the Origin stratum's local Borrow outliving a fixed Origin (15.6.5) and a relation
+    // between fixed Origins no premise derives (15.6.5; MirOriginsTest).
+    internal const string Rules = """
+        func moved(x: string, y: string = x@move) => ()
+        func swapped()
+            var p: i32 = 1
+            Kimi.Intrinsics.swap(p@uniq, p@uniq)
+        struct Cell
+            public var value: i32 = 1
+        func both(c: uniq/Cell, r: ref/Cell) => ()
+        func activated()
+            var c = Cell.init()
+            both(c@uniq, c@ref)
+        func inspect(value: ref/i32) => ()
+        func updated()
+            var x = 1
+            let r = x@ref
+            x++
+            inspect(r)
+        struct Buf<T>
+            internal var data: raw/T during self
+            public init(capacity: isize)
+                unsafe => self.data = Raw.allocate<T>(capacity)@(raw/T during self)
+        func usep<T>(p: raw/T) => ()
+        func departed()
+            var b = Buf<i32>.init(4)
+            let p = b.data
+            let c = b@move
+            usep(p)
+        func stored(t: uniq/(uniq/(raw/u8) during a))
+            t@follow@follow = t@follow@raw@raw/u8
+        func increment(x: uniq/i32) -> i32
+            x@follow += 1
+            return x@follow
+        func accessed(x: uniq/i32, y: i32 = increment(x)) => ()
+        func borrowed(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
+        func escaped(x: ref/i32) -> ref/i32 during x
+            let local: i32 = 1
+            return local@ref
+        func unproven(x: ref/i32, y: ref/i32) -> ref/i32 during y
+            let r = x
+            return r
+        public func main() => ()
+
         """;
 
     // A destructor's environment effect, which A4 composes from the planned cleanups, and group H's discard, open for more members.
     // N reference locals live across N branches (ArenaWorkload's parts): they fit A1's arena but not A5's Loans table.
     internal const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+
+    // The A6 code table's analyses (DIAGNOSTICS §12's lead; Z21 design §3.1), the closed set its Analysis column may name.
+    internal static readonly string[] A6Analyses = ["A1", "A3", "A4", "A5", "U", "B"];
+
+    // DIAGNOSTICS §12's A6 code table (2g-7; DECISIONS R4-M67, R5-M23, R5-M56; Z21), the consistency set and its one copy: per row the
+    // requirement, the code, the analysis it counts in (the first word: A1, A3, A4, A5, U for a limit A4 and A5 share, B for a broken
+    // contract) and the fact kinds its problems may carry. A row naming a requirement no MIR analysis records (outside RecordedKinds), a
+    // code or kind that does not exist or a kind past Cause (Binding's), an analysis outside that closed set (an edited cell such as
+    // "A5," would otherwise drop the census's assertion silently), or a (requirement, code) twice, fails the read.
+    internal static readonly Lazy<(DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis, ProblemFactKind[] Facts)[]> A6Rows = new(static () =>
+    {
+        var kinds = RecordedKinds().ToDictionary(static x => x.Name);
+        var rows = DiagnosticsRows(static x => x == "| Requirement | Code | Analysis | Facts |").Select(x => (
+            Requirement: kinds[Names(x[0]).Single()], Code: Enum.Parse<DiagnosticCode>(Names(x[1]).Single()), Analysis: x[2].Split(' ')[0],
+            Facts: Names(x[3]).Select(static y => Enum.Parse<ProblemFactKind>(y)).ToArray())).ToArray();
+        Assert.All(rows, static x => Assert.All(x.Facts, y => Assert.True(y <= ProblemFactKind.Cause, $"{x.Code}: {y}")));
+        Assert.All(rows, static x => Assert.Contains(x.Analysis, A6Analyses));
+        Assert.Equal(rows.Length, rows.DistinctBy(static x => (x.Requirement, x.Code)).Count());
+        return rows;
+    });
 
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
         "    public func discard<T>(item: T) => ()\n";
@@ -120,6 +194,22 @@ public sealed class MirAnalysisTest
     private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
     private static readonly MirProblem Conflict = new(
         DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 1), 0, 0b01);
+
+    // The problems of the recording rules' programs (Requirements, Rules), which Binding accepts, with their fact kinds: their own bodies'
+    // problems (Module 0: a library body records none, R4-M12, which the contract test does not assert), no construction or collection
+    // record.
+    private static readonly Lazy<(DiagnosticRequirement Requirement, DiagnosticCode Code, ProblemFactKind[] Facts)[]> Recorded = new(static () =>
+        [.. new[] { Requirements, Rules }.SelectMany(static source =>
+        {
+            var c = MirBuildTest.Compile(source);
+            Assert.Empty(c.Binding.Issues);
+            var problems = c.BuildMir().Problems;
+            return problems.All.ToArray().Index().Where(static x => !x.Item.IsRecord && x.Item.Subject.Module == 0)
+                .Select(x => (x.Item.Requirement, x.Item.Code, problems.Facts(x.Index).ToArray().Select(static f => f.Kind).ToArray()));
+        })]);
+
+    // The requirement kinds a MIR analysis records (RecordedKinds), by name.
+    public static TheoryData<string> Kinds => [.. RecordedKinds().Select(static x => x.Name)];
 
     // R4-M3a, R4-M71: a problem of a code, subject and body added again ORs its views into the first; another code, subject or body is its
     // own problem, so the views of one body's cases are never ORed into another's. Add returns the problem's index, the first's on a merge
@@ -157,14 +247,14 @@ public sealed class MirAnalysisTest
         var site = new SourceRef(0, 5);
         program.Report(site);
         program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
-        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1));
+        program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, site));
         program.Report(site);
         program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
         Assert.Equal(
             [
-                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue),
-                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Collection, ulong.MaxValue),
-                new MirProblem(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, MirProblem.NoBodyViews),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Collection, MirProblem.NoBodyViews),
+                MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, site),
             ],
             program.Problems.All.ToArray());
         Assert.Equal([true, true, false], program.Problems.All.ToArray().Select(static x => x.IsRecord));
@@ -174,17 +264,44 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, program.Problems.All.Length);
     }
 
+    // Z20 (MirProblem's invariant; R4-M71, R4-M118, R6-check H3-1): a problem no body describes is formed only by MirProblem.WithoutBody and a
+    // record only by MirProgram.Report, both with NoBodyViews, which names no body's cases: A4's obligation rows of a one-view owner (P) and
+    // of a two-view owner (Q, whose two owning views Owe composes, so the views were 0b11 before Z20) and the default expansion limit's
+    // construction records (f16).
+    [Fact]
+    public void EveryNoBodyProblemAndRecordCarriesNoBodyViews()
+    {
+        const string Run = "    public func run(self: ref/Self) -> i32\n        Console.writeLine(\"n\")\n        return 0\n";
+        var expansion = new StringBuilder("func f0(x: i32 = 1, s: string = \"a\", t: string = \"b\") -> i32 => x\n");
+        for (var i = 1; i <= 16; i++)
+        {
+            expansion.Append(System.Globalization.CultureInfo.InvariantCulture, $"func f{i}(x: i32 = f{i - 1}() + f{i - 1}()) -> i32 => x\n");
+        }
+
+        var c = MirBuildTest.Compile("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\nstruct P\n    Self is Work\n" + Run +
+            "struct Q<s/T>\n    s is owner or uniq\n    Self is Work\n    public var n: i32 = 0\n" + Run + expansion +
+            "let value = f16()\npublic func main() => ()\n");
+        var found = c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && (x.Body == MirProblem.NoBody || x.IsRecord)).ToArray();
+        Assert.Equal(
+            [
+                "ExpansionLimit_Kd Construction", "ExpansionLimit_Kd Construction", "ExpansionLimit_Kd Construction",
+                "IncompatibleContractImplementation_Kd NoBody", "IncompatibleContractImplementation_Kd NoBody",
+            ],
+            found.Select(static x => $"{x.Code} {x.RecordClass?.ToString() ?? "NoBody"}").Order(StringComparer.Ordinal));
+        Assert.All(found, static x => Assert.Equal(MirProblem.NoBodyViews, x.Views));
+    }
+
     // PLAN G951's round rule (MirReport's Rounds; the Back's review C3 and N1): while a round is open, a problem of another body value (a
     // construction record of a body a lookup builds during the round) is added at once and stays when the round is dropped; the round's own
     // problems are held, so a dropped round adds none and a committed one adds each once, merged, after the problems added during it; a
-    // held problem with facts is a recording rule's defect, held as the round's; a round opened in an open round, or ended with none open,
-    // is a broken contract. Fail-before (a report reverted to the round's start): the construction record is lost.
+    // held problem keeps its facts (R7-T1: the collector's height record carries its limit); a round opened in an open round, or ended
+    // with none open, is a broken contract. Fail-before (a report reverted to the round's start): the construction record is lost.
     [Fact]
     public void ARoundHoldsOnlyItsOwnProblems()
     {
         var (program, site) = (new MirProgram(), new SourceRef(0, 5));
         var report = program.Problems;
-        var construction = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue);
+        var construction = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, MirProblem.NoBodyViews);
         var collection = construction with { Body = (int)MirRecordClass.Collection };
         report.Begin((int)MirRecordClass.Collection);
         program.Report(site);
@@ -200,11 +317,12 @@ public sealed class MirAnalysisTest
         Assert.Equal([construction, collection], report.All.ToArray());
         Assert.Throws<InvalidOperationException>(report.Commit);
         Assert.Throws<InvalidOperationException>(report.Drop);
+        var found = MirProblem.WithoutBody(Conflict.Code, Conflict.Requirement, Conflict.Subject);
         report.Begin(MirProblem.NoBody);
-        Assert.Equal(-1, report.Add(Conflict with { Body = MirProblem.NoBody }, [new(ProblemFactKind.Anchor, site)]));
+        Assert.Equal(-1, report.Add(found, [new(ProblemFactKind.Anchor, site)]));
         report.Commit();
-        var defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-        Assert.Equal(new MirProblem(DiagnosticCode.InternalInvariant_Kd, defect, Conflict.Subject, MirProblem.NoBody, Conflict.Views), report.All[2]);
+        Assert.Equal(found, report.All[2]);
+        Assert.Equal([new ProblemFact(ProblemFactKind.Anchor, site)], report.Facts(2).ToArray());
     }
 
     // PLAN G950: rows kept from an index (MirReport.Keep) and replayed after other problems (Replay) equal their first adding at that step,
@@ -215,20 +333,57 @@ public sealed class MirAnalysisTest
     {
         var (first, second) = (new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4)));
         report.Add(first);
         report.Add(second, [new(ProblemFactKind.Cause, new(0, 1), 1), new(ProblemFactKind.Cause, new(0, 7), -1)]);
         report.Add(first with { Views = 0b10 });
         var kept = new MirReport.Kept();
         report.Keep(1, kept);
         var replayed = new MirReport();
-        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 3), MirProblem.NoBody, 1));
-        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        replayed.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, new(0, 3)));
+        replayed.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4)));
         replayed.Replay(kept);
         Assert.Equal(report.All[1..].ToArray(), replayed.All[2..].ToArray());
         Assert.Equal([new(ProblemFactKind.Cause, new(0, 1), 2), new(ProblemFactKind.Cause, new(0, 7), -1)], replayed.Facts(3).ToArray());
         Assert.Equal(2, replayed.Add(first with { Views = 0b100 }));
         Assert.Equal(0b111UL, replayed.All[2].Views);
+    }
+
+    // PLAN G651 U2b R6 (the Middle's D-B1): a read of the report's All or Records never flushes its limit table, which flushes only at
+    // the clean collector run's end or, with no collector run, on the first Merged read, so MirAnalysis (All.Length) and A5's rule W
+    // (All) read it while producers still run: f-open, a generic body never instantiated whose MIR reads D<W^8000<U>> past IMPL A.4's
+    // height, read through All and Records after construction and after the analyses, has the records of the same program unread.
+    [Fact]
+    public void AReadOfAllOrRecordsNeverFlushesTheLimitTable()
+    {
+        Assert.Equal(CompilerThread.Run(false, Rows), CompilerThread.Run(true, Rows)); // The deep Types need the compiler thread's stack.
+
+        static string[] Rows(bool read)
+        {
+            var nest = string.Concat(Enumerable.Repeat("W<", 250)) + "T" + new string('>', 250);
+            var lifts = string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n"));
+            var c = MirBuildTest.Compile(
+                $"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {nest}\n" +
+                $"func lift<T>(p: raw/T) -> raw/{string.Concat(Enumerable.Repeat("W<", 200))}T{new string('>', 200)} => null\n" +
+                "func count<U>(u: U) -> i32 => 0\nfunc noneD<T>(p: raw/T) -> Option<D<T>> => .None\n" +
+                $"func g<U>(p0: raw/U) -> ()\n{lifts}    _ = count(noneD(p40))\n    return\npublic func main() -> ()\n    return\n");
+            var program = new MirBuilder(c).Build(c.SourceModules.Length);
+            Read();
+            var analysis = new MirAnalysis(c.Types);
+            analysis.Run(program, c.SourceModules.Length);
+            Read();
+            Compilation.Collect(analysis, new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout), program, c.SourceModules.Length);
+            return [.. program.Problems.Merged.ToArray().Select(static x => $"{x.Code} {x.Subject} {x.Class}"),
+                .. TestDiagnostics.Of(c).Select(static x => $"{x.Code}@{x.Text ?? "-"}")];
+
+            void Read()
+            {
+                if (read)
+                {
+                    _ = (program.Problems.All.Length, program.Records(MirRecordClass.Construction).Count(), program.Records(MirRecordClass.Collection).Count());
+                }
+            }
+        }
     }
 
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
@@ -250,26 +405,6 @@ public sealed class MirAnalysisTest
                 new MirProblem(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), new(0, 5), 0, 0b110),
             ],
             report.All.ToArray());
-    }
-
-    // R4-M69 (SPEC 7.2.3, 23.1.1): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's
-    // check and is dropped (Add returns -1); a limit record, which a copy records without that fact, stays, as does the template's own
-    // problem.
-    [Fact]
-    public void AnInlinedProblemIsDropped()
-    {
-        var report = new MirReport();
-        var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0, 0b10);
-        var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
-        int[] indices =
-        [
-            report.Add(loan, [new(ProblemFactKind.Anchor, new(0, 4)), new(ProblemFactKind.Inlined, new(0, 9))]),
-            report.Add(limit),
-            report.Add(loan with { Views = 0b01 }, [new(ProblemFactKind.Anchor, new(0, 4))]),
-        ];
-        Assert.Equal([-1, 0, 1], indices);
-        Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
-        Assert.Equal([new ProblemFact(ProblemFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
     }
 
     // DECISIONS R4-M132 (rule W; R4-M96 per report, DIAGNOSTICS §4.3): a merged problem is derived exactly when every report of it is, its
@@ -349,10 +484,10 @@ public sealed class MirAnalysisTest
     {
         var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
         var depth = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01));
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, limit, new(0, 5)));
         report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), 0, 0b10));
         report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b10));
-        report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), MirProblem.NoBody, 0b01));
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5)));
         Assert.Equal(
             [
                 new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), default, null, 0),
@@ -438,7 +573,7 @@ public sealed class MirAnalysisTest
     {
         var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
         report.Add(Conflict);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, limit, new(0, 5)), [new(ProblemFactKind.Cause, new(0, 1), 0)]);
         report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(ProblemFactKind.Cause, new(0, 5), 1)]);
         Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
@@ -499,7 +634,7 @@ public sealed class MirAnalysisTest
         var code = new Regex(@"DiagnosticCode\.InternalInvariant_Kd");
         var pinned = new Regex(@"OwnershipRequirement\.Internal\)[^}]*?DiagnosticCode\.InternalInvariant_Kd");
         Assert.Equal(
-            ["MirBorrows.Reports.cs 1 1", "MirInit.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
+            ["MirBorrows.Reports.cs 1 1", "MirEffects.cs 1 1", "MirInit.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
             Directory.EnumerateFiles(Path.Combine(Repository.Root, "src/Kimi/Compiler/Mir/Analysis"), "*.cs")
                 .Select(x => (Name: Path.GetFileName(x), Text: File.ReadAllText(x))).Where(x => code.IsMatch(x.Text))
                 .Select(x => $"{x.Name} {code.Count(x.Text)} {pinned.Count(x.Text)}").Order(StringComparer.Ordinal));
@@ -615,37 +750,32 @@ public sealed class MirAnalysisTest
         Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Body(x.Body))));
     }
 
-    // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
-    // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
-    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its depth limit, and A5's Loan conflicts and
-    // its depth limit (a destruction past the walk's bound; R4-M153) and its effect rule, which the driver gives A4's keys (R4-M92). The
-    // storage limits need large bodies: A5ChecksTheViewsA1Completed has A1's. A parameter's record is at its Type occurrence
-    // (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
-    [Fact]
-    public void EachRecordingRuleNamesItsRequirement()
+    // DIAGNOSTICS §12, A6's code table (2g-7; DECISIONS R4-M67, R5-M23, R5-M56; Z21): every requirement kind a MIR analysis records has its
+    // rows (A6Rows reads no row of another); each problem of the recording rules (Recorded) lies in a row of its requirement and carries
+    // only that row's facts, so only A3's and rule W's problems carry a Cause (R7-M65); and each row of a Language or Proof code is
+    // recorded there. An Unsupported, Resource or Internal code is located (the publisher's rule, DIAGNOSTICS 4.1): its row needs no
+    // program (the storage limit's large body is A5ChecksTheViewsA1Completed's; a broken contract has none).
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public void EachRequirementHasItsA6Rows(string requirement)
     {
-        var c = MirBuildTest.Compile(Requirements);
-        Assert.Empty(c.Binding.Issues);
-        Assert.Equal(
-            [
-                "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
-                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init()",
-                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
-                "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a>",
-                "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store",
-                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
-                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
-                "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
-                "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
-            ],
-            c.BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
-                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}").Order(StringComparer.Ordinal));
+        var rows = A6Rows.Value.Where(x => x.Requirement.Name == requirement).ToArray();
+        Assert.NotEmpty(rows);
+        var found = Recorded.Value.Where(x => x.Requirement.Name == requirement).ToArray();
+        Assert.All(found, x => Assert.True(Array.Exists(rows, r => r.Code == x.Code && x.Facts.All(f => r.Facts.Contains(f))), $"{x.Code} {string.Join(", ", x.Facts)}"));
+        Assert.All(
+            rows.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Category is DiagnosticCategory.Language or DiagnosticCategory.Proof),
+            x => Assert.True(Array.Exists(found, y => y.Code == x.Code), $"{x.Code} is not recorded"));
     }
 
-    // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
-    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its depth limit) none, since they lie at Binding's
-    // rows.
-    // A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
+    // R5-M23, R4-M71, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code, and the body whose views
+    // number its problem's views: A1's uses, Moves without a Move Path and second initializations of a let, A2's incomplete layer at a
+    // Drop, A3's falling failure body, and A5's Loan conflicts, its depth limit (a destruction past the walk's bound; R4-M153) and its
+    // effect rule, which the driver gives A4's keys (R4-M92), the body they analyze; A4's obligations as Binding's row carries them (a
+    // conformance, a virtual function, a Callable binding, a platform member) and its depth limit none, since they lie at Binding's
+    // rows. One exact list pins each site's requirement, code, subject and body, so two sites of one code cannot swap requirements, which
+    // EachRequirementHasItsA6Rows, reading pairs, would pass (Z21). The storage limits need large bodies: A5ChecksTheViewsA1Completed has
+    // A1's. A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsBody()
     {
@@ -653,17 +783,20 @@ public sealed class MirAnalysisTest
         var program = c.BuildMir();
         Assert.Equal(
             [
-                "ComparisonLoanConflict_Kd tally = Tally.init() effect", "ComparisonLoanConflict_Kd x = 2 conflict",
-                "IncompatibleContractImplementation_Kd Self is Sink -",
-                "MovedPlace_Kd r moved",
-                "MovedPlace_Kd var box = Box.init(make()) layer", "OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep",
-                "OwnershipDepthLimit_Kd Self is Store -",
-                "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
-                "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
-                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
+                "ControlFlow RequireFallthrough_Kd () falls", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy -",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init() effect",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2 conflict",
+                "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep", "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store -",
+                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink -",
+                "Ownership.PlatformStatic UnsatisfiedEffectBound_Kd public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64 -",
+                "Ownership.PossiblyMovedUse MovedPlace_Kd r moved",
+                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make()) layer",
+                "Ownership.ReassignedLet ReassignedLet_Kd resource = make() twice",
+                "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i] runtime", "Ownership.UninitializedUse UninitializedPlace_Kd n unset",
+                "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
             ],
             program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
-                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
+                .Select(x => $"{x.Requirement} {x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
     }
 
@@ -674,7 +807,7 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Body(0).Source, 0, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 0, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
@@ -761,36 +894,38 @@ public sealed class MirAnalysisTest
 
     // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
     // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem of its code at its subject in the body (one per key,
-    // MirReport.Add), or for an inline default copy's, which the report drops, its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
-    // (Requirements), a default copy (MirDropTest.Indices) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
+    // MirReport.Add), or for an inline default copy's, which MirDrops.Problem does not add, its template's of that code and subject in a
+    // default template (R4-M69): MirDropTest.Owner's "own" and "copy". The forms: A1's state rules and A2's incomplete layer
+    // (Requirements) and A1's and A2's default copies (MirDropTest.Indices, MirDropTest.CopiedLayer); none merges a disagreement. A1's arena
+    // limit marks its own body (MirDropTest.OnlyA1sArenaLimitMarksItsBody). Every code A1 and A2 mark a body with is an Error in the catalog,
+    // DefaultArgumentMove_Kd (MirInitTest.ADefaultCannotMoveItsPreparedSlot) and a broken contract's InternalInvariant_Kd included.
     [Fact]
     public void AMarkedBodyHasAnError()
     {
-        var arena = "func f(flag: bool) -> i32\n" + string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    var v{n} = {n}\n")) +
-            string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    if flag => v{n} = 1\n")) + "    return 0\n";
+        Assert.All(
+            new[]
+            {
+                DiagnosticCode.UninitializedPlace_Kd, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.ReassignedLet_Kd, DiagnosticCode.StaticMovePathRequired_Kd,
+                DiagnosticCode.DefaultArgumentMove_Kd, DiagnosticCode.OwnershipStorageLimit_Kd, DiagnosticCode.InternalInvariant_Kd,
+            },
+            static x => Assert.True(DiagnosticEntries.TryGet(x, out var entry) && entry.Severity == DiagnosticSeverity.Error, x.ToString()));
         var marks = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var source in new[] { Requirements, MirDropTest.Indices, arena })
+        foreach (var source in new[] { Requirements, MirDropTest.Indices, MirDropTest.CopiedLayer })
         {
             var program = MirBuildTest.Compile(source).BuildMir();
-            var problems = program.Problems.All.ToArray();
             foreach (var body in program.Bodies.ToArray())
             {
-                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at))
+                if (program.Drops.Incomplete(body.Ordinal) is (var code, _))
                 {
-                    var subject = body.Subject(at);
-                    var own = Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == (code, subject, body.Ordinal));
-                    var kept = own || Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
-                    var error = DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error;
-                    Assert.True(kept && error, $"{body.Key.Kind} {code}");
-                    marks.Add($"{body.Key.Kind} {code} {(own ? "own" : "copy")}");
+                    marks.Add($"{body.Key.Kind} {code} {MirDropTest.Owner(program, body.Ordinal)}");
                 }
             }
         }
 
         Assert.Equal(
             [
-                "DefaultTemplate MovedPlace_Kd own", "Fn MovedPlace_Kd copy", "Fn MovedPlace_Kd own", "Fn OwnershipStorageLimit_Kd own",
-                "Fn ReassignedLet_Kd own", "Fn StaticMovePathRequired_Kd own", "Fn UninitializedPlace_Kd own",
+                "DefaultTemplate MovedPlace_Kd own", "Fn MovedPlace_Kd copy", "Fn MovedPlace_Kd own", "Fn ReassignedLet_Kd own",
+                "Fn StaticMovePathRequired_Kd own", "Fn UninitializedPlace_Kd own",
             ],
             marks);
     }
@@ -819,9 +954,10 @@ public sealed class MirAnalysisTest
     // the validator or A1-A5 runs it. PLAN G950's row M3 (design §R1.4, re-review RN4): the check, the checked set's records included
     // (A3b), runs in two versions of one compilation through one builder, analysis and collector and finds none in either, and each version
     // judges every body with A3 and A5 and collects the same checked set again: a library segment kept across versions (G950-K) is still
-    // judged in each.
+    // judged in each. MirCensusTest.TheLibraryHasNoProblems reads the library check's build as a census set, which adds the census's
+    // classification by the A6 pairs and its TSV.
     [Theory]
-    [InlineData(WindowsProfile.Target)]
+    [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("i686-unknown-linux-gnu")]
     public void TheLibraryHasNoAnalysisProblem(string target)
     {
@@ -855,7 +991,7 @@ public sealed class MirAnalysisTest
     // Labels (SPEC): X1 valid (8.11.4; Stopwatch.reset has no environment effect, 8.11.2); X2 invalid (start reads the counter, an
     // environment effect, so the confined bound fails at the argument: UnsatisfiedEffectBound_Kd, 8.11.4); Yp invalid, the same record at
     // each of its two arguments (start's, and noisy's Console output, an environment effect, 8.11.2; 23.1.2); X3 valid (10.5.3, 7.7.4); H1
-    // valid (22.9.2, 16.2.1); the examples and milestones valid; Requirements invalid (one problem of each recording rule, above). X2 needs
+    // valid (22.9.2, 16.2.1); the examples and milestones valid; Requirements invalid (problems of the recording rules, above). X2 needs
     // A4's second round (start, first named by its obligation); Yp too, while noisy's obligation is decided in the first, so only the
     // commit rule keeps the report's order; H1, Utf8Formatting and Milestone31 one for a destructor, a witness and storage bodies first
     // named by the solve.
@@ -900,29 +1036,32 @@ public sealed class MirAnalysisTest
         Assert.Throws<InvalidOperationException>(() => analysis.Step(program, c.SourceModules.Length));
     }
 
-    // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2): Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of
-    // the body (MirDropTable.Holds): a body a lookup built after the version's steps and nothing stepped has no A1 or A2 facts, so it is not
-    // judged without a problem; once the one stepping path steps it, it is. An explicit builder with the program's root range builds X3 and
-    // its analysis runs; a lookup then builds Stopwatch.reset, which X3 never reaches; the premise (a body built after the run, not held)
-    // is asserted before the judgment is read; the program stands for the compilation's latest analysis's, injected as R5-M183's hover rows
-    // inject a fact. Fail-before: the judgment read the body's existence, findings, records and problems only, so the unstepped body read
-    // as judged. X3 as above.
+    // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2), row H3-C through Compilation (U2's N8; the design review of U2-K-b's N5):
+    // Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of the body (MirDropTable.Holds): a body its version
+    // built and no step stepped has no A1 or A2 facts, so it is not judged without a problem; once a version steps it, it is. A chain of
+    // 19 distinct functions whose last makes an Array<Box^91<T>> at T = Box^8100<i32> is valid (SPEC 8.13.3) and rejected where the
+    // library's Array.initCapacity forms its local uniq/Array<...> past IMPL A.4's height (TypeHeightLimit_Kd at the requesting call,
+    // where the collector refuses the instance after its lookup built the body; the local's glue past the type-driven cap,
+    // GenerationResourceLimit_Kd), so nothing steps initCapacity: the premise (built at its library ordinal, not held) is asserted before
+    // the judgment is read; the edit into an Array<u8> with a capacity (valid) steps it. G950KeptPathTest's row K1-K reads the same
+    // program (before R7-T1 both read swap at 70 nested arrays, the storage-nesting gap; B's ruling 14). Replaces the seam that injected
+    // an explicit program by reflection. Fail-before: the judgment read the body's existence, findings, records and problems only, so the
+    // unstepped body read as judged.
     [Fact]
     public void ABodyBuiltButNotSteppedIsNotJudged()
     {
-        var c = MirBuildTest.Compile(LazySource("X3"));
-        var reset = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "reset");
-        var analysis = new MirAnalysis(c.Types);
-        var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
-        var count = program.Bodies.Length;
-        var body = program[reset]!;
-        Assert.Equal(count, body.Ordinal);
-        Assert.False(program.Drops.Holds(body.Ordinal));
-        typeof(Compilation).GetField("mir", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(c, program);
-        Assert.False(c.JudgedWithoutProblem(reset.Decl!));
-        analysis.Step(program, c.SourceModules.Length);
-        Assert.True(program.Drops.Holds(body.Ordinal));
-        Assert.True(c.JudgedWithoutProblem(reset.Decl!));
+        var c = MirBuildTest.Compile(InstanceCollectorTest.DeepSource("capacity91"));
+        _ = c.Analyze();
+        Assert.Equal([DiagnosticCode.GenerationResourceLimit_Kd, DiagnosticCode.TypeHeightLimit_Kd], c.Problems.Select(static x => x.Code).Order());
+        var (program, eager) = (c.BuildMir(), new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1));
+        var body = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Decl?.Name == "initCapacity");
+        Assert.Equal((eager[body.Key]!.Ordinal, false), (body.Ordinal, program.Drops.Holds(body.Ordinal)));
+        var declaration = body.Key.Decl!;
+        Assert.False(c.JudgedWithoutProblem(declaration));
+        Edit(c, "let a = Array<u8>.init(capacity: 1)\n");
+        _ = c.Analyze();
+        Assert.Empty(c.Problems);
+        Assert.True(c.JudgedWithoutProblem(declaration));
     }
 
     // PLAN G951 U2 (the review's N1: hover's rows H1 and H2 restated at Compilation.JudgedWithoutProblem, since hover writes the ownership
@@ -939,6 +1078,22 @@ public sealed class MirAnalysisTest
         Assert.True(c.JudgedWithoutProblem(c.Library.GetSymbol(KimiDeclarationId.WriteLine)!));
         Assert.Null(c.BuildMir()[start]);
         Assert.False(c.JudgedWithoutProblem(start.Decl!));
+    }
+
+    // Row H2-K (PLAN G951 U2-K-b; M-K1's Q1, HOVER's ownership line): a library function an earlier version of the compilation reached and
+    // the latest does not stays judged without a problem, since the kept library list keeps its body, stepped by the library step of
+    // every later version of the segment (a fresh pipeline would have no body: pending). X3 (valid, SPEC 10.5.3, 7.7.4) reaches
+    // Stopwatch.start; the edit into Hello (valid, SPEC 22.7) does not.
+    [Fact]
+    public void ALibraryFunctionAnEarlierVersionReachedStaysJudged()
+    {
+        var c = MirBuildTest.Compile(LazySource("X3"));
+        var start = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "start");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.JudgedWithoutProblem(start.Decl!));
+        Edit(c, LazySource("docs/examples/Hello/Hello.kimi"));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.JudgedWithoutProblem(start.Decl!));
     }
 
     // PLAN G951 U2, rows S1 and its guard (the design's §4; the review's N3): the record rule (SPEC 23.1.2, 23.2.2; DECISIONS R5-M168; the
@@ -997,18 +1152,28 @@ public sealed class MirAnalysisTest
             "    public func brokenOf<T>(value: T, condition: bool) -> i32\n        var second: i32\n        if condition\n" +
             "            second = 2\n        return second\n";
         var c = CompilationTestHelper.Parse(program + "\n");
-        c.Library.Kotonoha.AddSource(new("G951Probe.kimi", Probe));
+        var library = CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.AddSource(new("G951Probe.kimi", Probe)));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         string[] expected = reached.Length == 0 ? [] : [$"UninitializedPlace_Kd {reached}"];
         Assert.Equal(expected.Length == 0, c.Analyze().IsVerified);
+        Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
+
+        // h7 and g1 (PLAN G949 Stage 2 U3): the library is frozen through the seam and read, so a second compilation over it shows the
+        // reached body's record again, once, and the first compilation's records are its own.
+        var other = CompilationTestHelper.Parse(program + "\n");
+        other.UseLibrary(library);
+        Assert.True(other.Bind().IsComplete, MinimalEmissionTest.Describe(other));
+        Assert.True(other.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.Equal(expected.Length == 0, other.Analyze().IsVerified);
+        Assert.Equal(expected, other.Problems.Select(x => $"{x.Code} {Line(other, x.Subject)}"));
         Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
     // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and
     // replayed at the library step in a version that keeps the library segment: one analysis over two versions of one compilation reports
     // an A1 problem seeded into a library body after each build (a copy of a new Var no path initializes, in a new block the entry block
-    // enters first) in each version, at its location, once. Every version takes the library step until G950-K, so the row pins the replay
+    // enters first) in each version, at its location, once. With G950-K the second version keeps the segment, so the row pins the replay
     // on the kept path (as InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion pins A3b there).
     [Fact]
     public void ALibraryStepProblemIsInEveryVersion()
@@ -1132,6 +1297,42 @@ public sealed class MirAnalysisTest
             $"{drops.FlagsOf(body.Ordinal)} {drops.ViewsOf(body.Ordinal)} {drops.Incomplete(body.Ordinal)?.Code}";
     }
 
+    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), the review's Yp (X2's use,
+    // then a root function's), X3, H1 (a library heap buffer dropped), Requirements, or a repository file; G950KeptPathTest's row KV-2
+    // reads X1 and X2.
+    internal static string LazySource(string name)
+    {
+        const string apply = "func apply<F>(action: ref/F) -> ()\n    F is Callable<(uniq/::Kimi.Time.Stopwatch) -> ()>\n        effect confined\n" +
+            "    var watch = ::Kimi.Time.Stopwatch.init()\n    action(watch@uniq)\n\n";
+        return name switch
+        {
+            "X1" => apply + "apply(::Kimi.Time.Stopwatch.reset)\n",
+            "X2" => apply + "apply(::Kimi.Time.Stopwatch.start)\n",
+            "Yp" => apply + "func noisy(watch: uniq/::Kimi.Time.Stopwatch) -> ()\n    Console.writeLine(\"noisy\")\n\n" +
+                "apply(::Kimi.Time.Stopwatch.start)\napply(noisy)\n",
+            "X3" => MirBuildTest.StopwatchAction,
+            "H1" => "let buffer = ::Kimi.Text.heap(16)\n",
+            "Requirements" => Requirements,
+            _ => Repository.ReadText(name.Split('/')),
+        };
+    }
+
+    // The rows of each DIAGNOSTICS table whose header line `header` selects, each row its trimmed cells (A6Rows; MirPublicationTest's A6
+    // fact tables).
+    internal static IEnumerable<string[]> DiagnosticsRows(Func<string, bool> header)
+    {
+        var lines = Repository.ReadText("docs", "dev", "DIAGNOSTICS.md").Split('\n');
+        return lines.Index().Where(x => header(x.Item)).SelectMany(x => lines.Skip(x.Index + 2).TakeWhile(static y => y.StartsWith('|')))
+            .Select(static x => x.Split('|')[1..^1].Select(static y => y.Trim()).ToArray());
+    }
+
+    // The names a table cell writes in backticks.
+    internal static IEnumerable<string> Names(string cell) => Regex.Matches(cell, "`([^`]+)`").Select(static x => x.Groups[1].Value);
+
+    // The requirement kinds a MIR analysis records: the Ownership partition's members and A3's ControlFlow.
+    private static DiagnosticRequirement[] RecordedKinds()
+        => [.. Enum.GetValues<OwnershipRequirement>().Select(DiagnosticRequirement.Ownership), DiagnosticRequirement.ControlFlow];
+
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().
     private static string RequireEnds(int n)
     {
@@ -1153,23 +1354,13 @@ public sealed class MirAnalysisTest
     // The first line of a syntax's text.
     private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
 
-    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), the review's Yp (X2's use,
-    // then a root function's), X3, H1 (a library heap buffer dropped), Requirements, or a repository file.
-    private static string LazySource(string name)
+    // A compilation's next Binding pass: its program edited into a source, then a final pass and the startup check.
+    private static void Edit(Compilation c, string source)
     {
-        const string apply = "func apply<F>(action: ref/F) -> ()\n    F is Callable<(uniq/::Kimi.Time.Stopwatch) -> ()>\n        effect confined\n" +
-            "    var watch = ::Kimi.Time.Stopwatch.init()\n    action(watch@uniq)\n\n";
-        return name switch
-        {
-            "X1" => apply + "apply(::Kimi.Time.Stopwatch.reset)\n",
-            "X2" => apply + "apply(::Kimi.Time.Stopwatch.start)\n",
-            "Yp" => apply + "func noisy(watch: uniq/::Kimi.Time.Stopwatch) -> ()\n    Console.writeLine(\"noisy\")\n\n" +
-                "apply(::Kimi.Time.Stopwatch.start)\napply(noisy)\n",
-            "X3" => MirBuildTest.StopwatchAction,
-            "H1" => "let buffer = ::Kimi.Text.heap(16)\n",
-            "Requirements" => Requirements,
-            _ => Repository.ReadText(name.Split('/')),
-        };
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        c.Binding.Bind(BindingMode.Final);
+        _ = c.Binding.CheckStartup(OutputKind.Application);
     }
 
     // A compilation of a source, built with a root range and analyzed with its source modules as roots, as Compilation's driver does.

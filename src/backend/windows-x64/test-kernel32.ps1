@@ -43,8 +43,34 @@ $warnings = @()
 $unverified = Get-KimiDlltoolIdentity $tools['llvm-readobj'] -AllowUnpinnedToolchain -WarningVariable warnings -WarningAction SilentlyContinue
 if ($unverified.hashMatched -or $warnings.Count -ne 1) { throw 'Missing exploratory warning/identity' }
 Expect-Failure { Get-KimiDlltoolIdentity (Join-Path $root 'missing.exe') } 'not found'
-$entry = [pscustomobject]@{ name='kernel32'; kind='import'; generator='llvm-dlltool'; dll='KERNEL32.dll'; definitionSha256=(Read-KimiWindowsProfile).kernel32.definitionSha256 }
-Assert-KimiKernel32Manifest $entry
-$entry.definitionSha256 = '0' * 64
-Expect-Failure { Assert-KimiKernel32Manifest $entry } 'Invalid generated kernel32 identity'
-Write-Output 'Kernel32 tests passed: generation, inspection, path independence, privacy, failed generation, tool policy and manifest integrity.'
+
+# The inspection's rejections (Test-KimiKernel32Library, its one owner; C-444 N5): the adopted library passes, and each library crafted
+# from the shared definition differing in one property fails for it. No library has members that llvm-readobj prints without a Format
+# line, so the row for that rule reads the adopted library through llvm-readobj with its Format lines dropped.
+$crafted = Join-Path $root 'crafted'
+New-Item -ItemType Directory -Path $crafted | Out-Null
+function New-CraftedLibrary([string] $Name, [string] $Machine, [string[]] $Lines) {
+    $path = Join-Path $crafted "$Name.def"
+    [IO.File]::WriteAllText($path, ($Lines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+    & $tools['llvm-dlltool'] -m $Machine -d $path -l (Join-Path $crafted "$Name.lib")
+    if ($LASTEXITCODE -ne 0) { throw "Crafted library $Name was not generated" }
+    return Join-Path $crafted "$Name.lib"
+}
+Test-KimiKernel32Library $tools['llvm-dlltool'] $tools['llvm-readobj'] (Get-KimiKernel32)
+$lines = $definition.TrimEnd("`n").Split("`n")
+$x64 = 'i386:x86-64'
+$rows = [ordered]@{
+    'DLL name' = New-CraftedLibrary 'other-dll' $x64 (@('LIBRARY OTHER.dll') + $lines[1..($lines.Count - 1)])
+    'unexpected architecture' = New-CraftedLibrary 'arm64' 'arm64' $lines
+    'unexpected import symbol set' = @(
+        (New-CraftedLibrary 'missing' $x64 $lines[0..($lines.Count - 2)]),
+        (New-CraftedLibrary 'extra' $x64 ($lines + '    KimiExtraImport')),
+        (New-CraftedLibrary 'duplicate' $x64 ($lines + $lines[-1])))
+}
+foreach ($row in $rows.GetEnumerator()) {
+    foreach ($library in $row.Value) { Expect-Failure { Test-KimiKernel32Library $tools['llvm-dlltool'] $tools['llvm-readobj'] $library } $row.Key }
+}
+$noFormat = Join-Path $crafted 'readobj-without-format.ps1'
+"& '$($tools['llvm-readobj'])' @args | Where-Object { `$_ -notmatch '^Format:' }" | Set-Content -LiteralPath $noFormat -Encoding utf8
+Expect-Failure { Test-KimiKernel32Library $tools['llvm-dlltool'] $noFormat (Get-KimiKernel32) } 'unexpected architecture'
+Write-Output 'Kernel32 tests passed: generation, inspection and its rejections, path independence, privacy, failed generation and tool policy.'

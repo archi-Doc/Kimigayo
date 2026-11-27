@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -10,12 +11,14 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<EvaluatedCandidate> candidateScratch = new();
 
-    // SPEC 10.4 step 1: the adaptation classes of the element positions of each candidate's Tuple and array literal arguments, in each
-    // fit's order (BoundArgumentOperation.Positions; FitElement appends them); a candidate evaluation removes what it appended when it ends.
-    private readonly List<ArgumentAdaptation> positionClasses = new();
+    // R7-I2 c: one frame per candidate of a selection; a candidate's solution is its own frame, the winner's the call's.
+    private readonly ScratchBuffers<SlotFrame> frameScratch = new();
 
-    // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
-    private Dictionary<Koto, PendingJudgment>? pendingJudgments;
+    // SPEC 10.5.1: the operations of the element positions of each candidate's Tuple and array literal arguments, each element fitted as
+    // an argument at its position, in each fit's order (BoundArgumentOperation.Positions; FitElement appends them): ranked by their
+    // classes (SPEC 10.4 step 1) and read by step 5 as the arguments' (ErasedArgumentsEnvironment); a candidate evaluation removes what
+    // it appended when it ends.
+    private readonly List<BoundArgumentOperation> positionOperations = new();
 
     private enum CandidateApplicability : byte
     {
@@ -24,13 +27,15 @@ public sealed partial class Binding
         Waiting,
         Pending,
         Error,
+        FailedSignature, // A reference's candidate that fails only at its own signature, Refuted where written (rule W): never selected.
     }
 
-    // DECISIONS BU-86: the closed vocabulary of PendingJudgment.
+    // DECISIONS BU-86: the closed vocabulary of PendingJudgment (UnformedSplit: the temporary BU-240 fact, PLAN G886).
     private enum PendingJudgmentKind : byte
     {
         FailedTypeArgument,
         EnvironmentResult,
+        UnformedSplit,
     }
 
     // SPEC 10.4, 8.3.3: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
@@ -45,6 +50,12 @@ public sealed partial class Binding
     // premise-unproven candidate ranked as applicable; no judgment of those premises then changes the winner. The ordinary comparison
     // decides, so a tie or an incomparable pair still defers.
     private bool PremisesCannotAffect(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+        => this.PremisedBest(call, candidates, operations, stride) is var best && best >= 0 &&
+            candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+
+    // SPEC 10.1, 8.3.3: the candidate strictly best with every premise-unproven candidate ranked as the applicable candidate it would be
+    // (compared as though applicable), or -1 when none is, or when candidates holding waiting callables are not comparable.
+    private int PremisedBest(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
         foreach (ref readonly var candidate in candidates)
         {
@@ -52,15 +63,38 @@ public sealed partial class Binding
             {
                 if (!this.ComparableCallableSlots(call, candidates, operations, stride, true))
                 {
-                    return false;
+                    return -1;
                 }
 
                 break;
             }
         }
 
-        var best = StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
-        return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+        return StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
+    }
+
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent), keyed by the solve's node and judged in the use's
+    // `view`; a candidate's trial and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity, Koto node, BindingScope view)
+    {
+        var frames = this.frameScratch.Rent(count);
+        for (var i = 0; i < count; i++)
+        {
+            frames[i] = this.infer.Rent(Math.Max(1, capacity), node, view);
+        }
+
+        return frames;
+    }
+
+    // Returns a selection's frames in reverse order of their rental; the winner's solution is read before.
+    private void ReturnFrames(SlotFrame[] frames, int count)
+    {
+        for (var i = count - 1; i >= 0; i--)
+        {
+            this.infer.Return(frames[i]);
+        }
+
+        this.frameScratch.Return(frames, clearArray: true);
     }
 
     private readonly ref struct CandidateOrder : IStrictCandidateOrder
@@ -96,18 +130,18 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2.2, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
-    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
+    private static bool ErasureIncomparable(in CallEvaluation evaluation)
     {
-        for (var a = 0; a < arguments; a++)
+        for (var a = 0; a < evaluation.Call.ArgumentNodes.Count; a++)
         {
             var erased = false;
             var direct = false;
-            for (var i = 0; i < candidates.Length; i++)
+            for (var i = 0; i < evaluation.Count; i++)
             {
-                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                if (evaluation.Evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {
-                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
-                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
+                    erased |= evaluation.OperationsOf(i)[a].Adaptation == ArgumentAdaptation.Erasure;
+                    direct |= evaluation.OperationsOf(i)[a].Adaptation != ArgumentAdaptation.Erasure;
                 }
             }
 
@@ -124,19 +158,7 @@ public sealed partial class Binding
     // (E > R > L > U), read where the trial left it and never proven again (AGENTS Diagnostics). None when the trial left no fact, as for
     // a candidate that failed before its Constraints were judged, or when the clause did not bind (its binding failure is its own record).
     private static ReferenceConstraintFailure? ClauseFailure(ClauseFact? fact, BindingSymbol? declaration)
-        => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration) : null;
-
-    // DECISIONS BU-86: the record of a selection that an EnvironmentResult judgment blocks: the argument whose result over its closure's
-    // environment gives the slot no evidence (SPEC 8.10, 7.7.4), named without its acquisition spelling.
-    private static void ReportPendingJudgment(Koto node, PendingJudgment judgment, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var argument = KotoHelper.UnwrapParentheses(judgment.Part) is ConversionKoto { Left: { } place } ? place : judgment.Part;
-        node.Report(
-            requirement,
-            code,
-            note: $"The result of {argument} over its environment is no evidence for {judgment.Slot?.Name}",
-            related: [("argument", judgment.Part, null)]);
-    }
+        => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration, clause.Conformance) : null;
 
     // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
     // any other row), which no other argument or tie-breaker rescues.
@@ -181,8 +203,7 @@ public sealed partial class Binding
 
                 var function = (FunctionKoto)candidates[candidate].Symbol!.Declaration;
                 var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
-                SemanticsKind? mode = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }
-                    ? pattern.Semantics : null;
+                SemanticsKind? mode = pattern.SafeReferent is not null ? pattern.Semantics : null;
                 // SPEC 10.5: a waiting reference, like an anonymous body, never ranks the outer candidates; once their ordinary
                 // inputs and defaults select one, its fixed call signature selects the reference, even when the signatures differ.
                 if (CallableSlotType(pattern, CallSlotOwner(function)) is null || (!first && acquisition != mode))
@@ -199,41 +220,19 @@ public sealed partial class Binding
     }
 
     // SPEC 10.4: this comparison reads explicit source arguments only; receiver acquisition is common to the group. Step 1 compares each
-    // argument's class and each element position's (Positions). Two fits of one argument walk its syntax alike, so they record the same
-    // positions, unequal counts being a broken contract (InternalInvariant_Kd at the argument); a candidate that leaves the argument open
-    // (no Type) records none and is compared at the argument only (step 2 then makes the pair incomparable).
+    // argument's class and each element position's (Positions, ComparePositions).
     private bool BetterCandidate(
         in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
     {
         var better = false;
         var worse = false;
-        var classes = CollectionsMarshal.AsSpan(this.positionClasses);
+        var positions = CollectionsMarshal.AsSpan(this.positionOperations);
         for (var i = 0; i < left.Length; i++)
         {
-            var x = classes[left[i].Positions];
-            var y = classes[right[i].Positions];
-            if (!CompareClasses(left[i].Adaptation, right[i].Adaptation, ref better, ref worse))
+            if (!CompareClasses(left[i].Adaptation, right[i].Adaptation, ref better, ref worse) ||
+                !this.ComparePositions(positions, left[i], right[i], ref better, ref worse))
             {
                 return false;
-            }
-
-            if (x.Length != y.Length)
-            {
-                if (!x.IsEmpty && !y.IsEmpty)
-                {
-                    this.Fail(left[i].Source!, BindingFailure.Internal);
-                    return false;
-                }
-
-                continue;
-            }
-
-            for (var p = 0; p < x.Length; p++)
-            {
-                if (!CompareClasses(x[p], y[p], ref better, ref worse))
-                {
-                    return false;
-                }
             }
         }
 
@@ -244,13 +243,6 @@ public sealed partial class Binding
 
         for (var i = 0; i < left.Length; i++)
         {
-            if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
-                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
-                this.IsWaiting(source))
-            {
-                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
-            }
-
             var x = left[i].ParameterType;
             var y = right[i].ParameterType;
             if (ReferenceEquals(x, y) && (x is not null || left[i].Source is null))
@@ -258,9 +250,30 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 10.4 step 2: the structural parts must be identical (Origin bindings never rank, even inside Function Types), or the
-            // candidates are incomparable; open slots are never identical.
-            if (x is null || y is null || !FitsStructuralPart(x, y))
+            // SPEC 10.4 step 2: for each source argument the substituted parameter Types' structural parts must be identical (Origin
+            // bindings never rank, even inside Function Types), or the candidates are incomparable; open slots are never identical, and a
+            // Type holding an atom is identical only to itself (Binding.OpenSlots: a pair whose walk met an atom is incomparable; a
+            // reference-equal pair is skipped above; SPEC 10.8 Unbound slots, ArgFlow ruling 166). A waiting checked part (a Call or Case,
+            // checked at each candidate's Type, 10.5.1) is compared like any source argument (ArgFlow ruling 173). The one position not
+            // compared is a waiting callable's at a parameter `F`, `ref/F` or `uniq/F` that it binds (its operation is not an Erasure):
+            // SPEC 10.8 Unbound slots compares such an F by its form, "equal forms compare equal in step 2", and the candidates acquire it
+            // in one mode (ComparableCallableSlots), so the position ties (ArgFlow ruling 175 C3); it is walked only when a side holds an
+            // atom, the only thing it can meet there. At a Function Type the callable's operation is an Erasure, compared as above.
+            var callable = a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
+                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source && this.IsWaitingCallable(source);
+            var metOpenSlot = false;
+            var fits = x is not null && y is not null && (!callable || x.ContainsOpenSlot || y.ContainsOpenSlot) && this.FitsStructuralPart(x, y, out metOpenSlot);
+            if (metOpenSlot)
+            {
+                return false;
+            }
+
+            if (callable)
+            {
+                continue;
+            }
+
+            if (!fits)
             {
                 return false;
             }
@@ -271,24 +284,103 @@ public sealed partial class Binding
         return aGeneric != bGeneric ? !aGeneric : a.DefaultsUsed < b.DefaultsUsed;
     }
 
+    // SPEC 10.4 step 1 and its exception (PLAN G814): two fits of one argument compared position by position. Both walk its syntax
+    // alike, a nested literal's operation following its own positions (FitElement), so the walk runs from each range's end. Where one
+    // fit holds a part whole (an operation with no positions: at a bare atom, an unbound slot that takes it whole, or a join at an open
+    // Type) and the other records the part's positions, the part's own classes are compared and the other's positions skipped: no
+    // position within it is compared; two parts that both record positions are walked into. The root is that case too: an argument held
+    // at a bare atom has no positions. Ranges that do not end together are a broken contract (InternalInvariant_Kd at the argument).
+    private bool ComparePositions(
+        ReadOnlySpan<BoundArgumentOperation> positions, in BoundArgumentOperation left, in BoundArgumentOperation right, ref bool better, ref bool worse)
+    {
+        var (x, xLength) = left.Positions.GetOffsetAndLength(positions.Length);
+        var (y, yLength) = right.Positions.GetOffsetAndLength(positions.Length);
+        if (xLength == 0 || yLength == 0)
+        {
+            return true;
+        }
+
+        var (i, j) = (x + xLength - 1, y + yLength - 1);
+        while (i >= x && j >= y)
+        {
+            if (!CompareClasses(positions[i].Adaptation, positions[j].Adaptation, ref better, ref worse))
+            {
+                return false;
+            }
+
+            var (p, q) = (positions[i].Positions.GetOffsetAndLength(positions.Length).Length, positions[j].Positions.GetOffsetAndLength(positions.Length).Length);
+            (i, j) = (p == 0) == (q == 0) ? (i - 1, j - 1) : (i - 1 - p, j - 1 - q);
+        }
+
+        if (i == x - 1 && j == y - 1)
+        {
+            return true;
+        }
+
+        this.Fail(left.Source!, BindingFailure.Internal);
+        return false;
+    }
+
+    // A failed selection: its omitted header Types wait, and its record is the selection's (RecordSelection) with the parties built.
     private BoundType? FailWaitingSelection(InvocationKoto call, BindingFailure failure)
     {
         this.MarkWaitingHeaders(call);
-        return this.Fail(call, failure, true);
+        return this.RecordSelection(call, failure);
     }
 
-    // SPEC 8.10, 7.7.4 (DECISIONS BU-86): a selection that a single Pending candidate's judgment blocks, explained by that judgment.
+    // The selection's one recorder (SPEC 10.1, 10.4, 23.1.2): the facts its caller built since the last record, recorded at a call
+    // without a failure; a call that already failed keeps its first failure and drops them (the slot's drop). The scratch is cleared
+    // either way, its capacity kept. Its callers' B1 statement (R7-E3 E3b delta 2.4): every check before each verdict that fails the call
+    // returns, so the one input that can hold an earlier failure is the call's own, which Calls' NoneApplicable arm read before.
+    [Transitional("R7", Reason = "Records only at a call without a failure, so the call keeps its first failure (d2: f<Missing>(1) records no fact-less NoApplicableOverload_Kd; h57: an unbound slot at a call already NoApplicableOverload_Kd records none), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
+    private BoundType? RecordSelection(Koto use, BindingFailure failure)
+    {
+        if (this.RecordedFailure(use) == BindingFailure.None)
+        {
+            this.Record(use, failure, CollectionsMarshal.AsSpan(this.candidateFacts), unresolved: true);
+        }
+        else
+        {
+            this.Fail(use, failure, true);
+        }
+
+        this.candidateFacts.Clear();
+        return null;
+    }
+
+    // SPEC 8.10, 7.7.4 (DECISIONS BU-86, amended by R7-E3 E3b-2): a selection that a single Pending candidate's EnvironmentResult judgment
+    // blocks, the selection's deferral (RecordSelection): the argument whose result over its closure's environment is no evidence (role 6,
+    // "argument") and the slot's Type parameter it leaves unbound (role 7, "declaration"), both shown as related locations.
     private BoundType? FailPendingJudgment(InvocationKoto call, PendingJudgment judgment)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(ref this.pendingJudgments, call, BindingFailure.UnprovenConstraint, judgment, true);
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(judgment.Part!), 6)); // An EnvironmentResult judgment names its argument and slot.
+        this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(judgment.Slot!.Declaration), 7));
+        return this.RecordSelection(call, BindingFailure.UnprovenConstraint);
+    }
+
+    // The pending judgment's record from its facts (FailPendingJudgment), read by role: the argument (role 6) and the slot's Type parameter
+    // (role 7) related, any other shape a broken contract; its Note went by code (R7-E3 E3b-2, M3).
+    private void ReportPendingJudgment(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        if (this.report.Facts(index) is not [.., { Kind: ProblemFactKind.Related, Value: 6 } argument, { Kind: ProblemFactKind.Related, Value: 7 } slot])
+        {
+            throw new UnreachableException();
+        }
+
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            related: [("argument", this.compilation.SyntaxOf(argument.Site), null), ("declaration", this.compilation.SyntaxOf(slot.Site), null)],
+            condition: problem.Condition);
     }
 
     // SPEC 8.3, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
     private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(ref this.callableConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+        return this.RecordCallableConstraint(call, fact, unresolved: true);
     }
 
     // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused.
@@ -305,7 +397,7 @@ public sealed partial class Binding
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
-            if (this.IsWaitingPart(argument))
+            if (this.IsCheckedCall(argument))
             {
                 this.CompleteDependent(argument, call);
             }
@@ -318,7 +410,26 @@ public sealed partial class Binding
 
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false);
+    // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
+    // Acquisition: the absent spelling of a bare Place that alone kept an otherwise Applicable trial from applying (SPEC 15.1.5), read by
+    // a NoneApplicable selection through LastAcquisition.
+    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation (EvaluateCallCandidate)
+    // ArgumentMap and the facts after the trial, the trial (TryCandidate) its verdict and facts. A continuation's trial (CheckDefaulted,
+    // the waiting re-trial, the fixed re-check) writes a local row; CheckDefaulted takes back only State and Unsolved.
+    private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false, bool PremiseReadsMark = false)
+    {
+        internal Refusal? HeldRefusal { get; set; }
+
+        internal AcquisitionFailure? Acquisition { get; set; }
+
+        // SPEC 10.5.1: an inapplicable candidate's failed check of a part against its expected Type (TakeTrialChecked).
+        internal CheckedPartFailure? CheckedFailure { get; set; }
+
+        // SPEC 10.5.1 bullet 1 (ArgFlow rulings 160 C3, 171 C2): the trial left a checked part unqueried under the argument probe
+        // (ProbedResultOpen), which gives the part no class: applicable, the candidate makes the call not independently typable
+        // whatever the others give, so the call defers unranked (ClassifySelection, SolveSelected).
+        internal bool Deferred { get; set; }
+    }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);
@@ -327,7 +438,10 @@ public sealed partial class Binding
     // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
     // EnvironmentResult: the argument (Part) whose known signature's result over its closure's environment is no evidence for Slot
     // (SPEC 8.10, 7.7.4), a slot that no other evidence binds (SPEC 10.8).
-    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part, BindingSymbol? Slot = null)
+    // UnformedSplit (DECISIONS BU-240, temporary until PLAN G886's representation): the candidate trial of Part rests on a formation under a
+    // binding whose split no Type represents (Binding.Unformed's count), every check reading no unformed Type having passed; only
+    // TryCandidate's verdict publishes it, and its call is then one located Unsupported_Kd.
+    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto? Part, BindingSymbol? Slot = null)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
         internal long Epoch { get; init; }

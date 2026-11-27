@@ -138,7 +138,7 @@ public class AbortEmissionTest
     public void AMovedFunctionsLocationKeepsItsDocumentsName()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Project.Directory = Path.GetFullPath("location-moved-root");
         var library = Path.GetFullPath("location-moved-library");
         var other = new Kotonoha(c, "Other", Path.Combine(library, "Other.kimiproj"));
@@ -157,7 +157,7 @@ public class AbortEmissionTest
     {
         var c = Compilation.CreateForTest();
         c.Project.Directory = Path.GetFullPath("location-nul");
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument(Path.Combine(c.Project.Directory, "a\0b.kimi"), "$abort(\"x\")"));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("a\\u{0}b.kimi:1:1", c.Locations.Text(SourceRef.Of(Abort(c))));
@@ -186,17 +186,17 @@ public class AbortEmissionTest
         var c = MinimalEmissionTest.Analyze("let text = \"x\"\n$abort(text@move)");
         var macro = Abort(c);
         var invocation = Assert.IsType<InvocationKoto>(macro.Operand);
-        var call = Assert.IsType<CallPlan>(CallPlan.Of(macro));
+        var call = Assert.IsType<CallPlan>(CallPlan.Of(c.Binding, macro));
         var version = HirTables.Publish(c);
         c.InvalidateSourceAnalysis();
         Assert.Null(invocation.CallOf()); // The current query revokes the call; raw views retain the preceding pass.
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(call, CallPlan.Of(macro));
+        Assert.Same(call, CallPlan.Of(c.Binding, macro));
         Assert.Same(call, invocation.CallOf());
         Assert.True(HirTables.Publish(c) > version);
         c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(Assert.IsType<InvocationKoto>(Abort(c).Operand).CallOf(), CallPlan.Of(Abort(c)));
+        Assert.Same(Assert.IsType<InvocationKoto>(Abort(c).Operand).CallOf(), CallPlan.Of(c.Binding, Abort(c)));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
         Assert.True(c.Generate(TextWriter.Null));
@@ -213,7 +213,7 @@ public class AbortEmissionTest
         c.Kotonoha.RootKoto.Clear();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "$abort(1)");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(CallPlan.Of(Abort(c)));
+        Assert.Null(CallPlan.Of(c.Binding, Abort(c)));
         Assert.Null(Assert.IsType<InvocationKoto>(Abort(c).Operand).CallOf());
         version = HirTables.Publish(c);
         c.Kotonoha.RootKoto.Clear();
@@ -221,7 +221,7 @@ public class AbortEmissionTest
         Assert.True(c.Bind().IsComplete);
         macro = Abort(c);
         invocation = Assert.IsType<InvocationKoto>(macro.Operand);
-        call = Assert.IsType<CallPlan>(CallPlan.Of(macro));
+        call = Assert.IsType<CallPlan>(CallPlan.Of(c.Binding, macro));
         Assert.Same(invocation.CallOf(), call);
         Assert.Same(invocation.ArgumentNodes[0], call.ArgumentOperations[0].Source);
         Assert.Equal("\"after\"", call.ArgumentOperations[0].Source!.ToString());

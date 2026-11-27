@@ -88,6 +88,22 @@ public class AcquisitionCorrelationTest
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnprovenAcquisitionCorrelation);
     }
 
+    // SPEC 7.4.4, 23.3: where both candidates bind the slot, from typed sources along different structural paths (the Elements row
+    // above), the record shows the slot's two bindings, the group contract's then the corresponding declaration's, with the two
+    // declarations (R7-E3 E3b-1, ruling 9's C-3).
+    [Fact]
+    public void BothBindingsKnownShowTheSlotsPair()
+    {
+        var path = Path.GetFullPath("AcquisitionCorrelation.kimi");
+        var c = MinimalEmissionTest.Analyze(Elements + Body + "    let n: i32 = 42\n    let p: (i32, i32) = (1, 2)\n    let c = C.init(n, 0, (p, 1))", path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var record = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal("UnprovenAcquisitionCorrelation_Kd", record.Code);
+        Assert.Equal(["T", "i32", "i32"], record.Reason!.Select(static x => x.Value));
+        Assert.Equal(["Group contract", "Corresponding declaration"], record.Related!.Select(static x => x.Label));
+    }
+
     // SPEC 10.5.1, 10.8: a waiting part, whole, as a Tuple element or as a join's results, and a Never part are never evidence, so a
     // parameter that only they reach does not break the correlation, for a Literal or a typed source alike.
     [Theory]
@@ -112,12 +128,22 @@ public class AcquisitionCorrelationTest
         Assert.Equal("UnresolvedBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
     }
 
+    // SPEC 10.2.2 item 2, 10.8.1, 12.3.1 (PLAN G924, K's revision; F's rulings 68 and 74): at an expected `ref/U` a returned value that is
+    // no borrow value is matched against U. So `(T, i32)` at `ref/(i32, i32)` is filled at `(i32, i32)`, the Literal correlates T, and
+    // the result is one owner temporary, borrowed (before G924 the reference matched nothing and no candidate applied).
+    [Fact]
+    public void AnExpectedReferenceFillsAReturnedValueAtItsReferent()
+    {
+        var c = MinimalEmissionTest.Analyze(Results + Body + "    let r: ref/(i32, i32) = f(42, 0)");
+        c.Binding.ReportDiagnostics();
+        Assert.Empty(TestDiagnostics.Of(c));
+    }
+
     // SPEC 10.8, 10.3: an expected result is evidence only at the occurrences its structural fill reaches: none of a result it does not
     // match, and only Tuple.0 of `(T, Option<T>)` against `(i32, Box<i32>)`. So the Literal alone, or with the same reached path,
     // correlates T, and the call reports only that no candidate fits the expected result.
     [Theory]
     [InlineData(Results + Body + "    let r: i64 = f(42, 0)")]
-    [InlineData(Results + Body + "    let r: ref/(i32, i32) = f(42, 0)")]
     [InlineData(Wrappers + "func f<T>(value: T, code: i32) -> (T, Option<T>) => (value@move, .None)\nfunc f<T>(value: T, name: string) -> (T, Option<i64>) => (value@move, .None)\n" + Body + "    let r: (i32, Box<i32>) = f(42, 0)")]
     public void AnExpectedResultIsEvidenceOnlyWhereItsFillReaches(string source)
     {

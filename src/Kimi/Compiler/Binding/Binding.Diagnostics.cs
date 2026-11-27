@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -7,21 +8,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 10.2.2, 10.7: no ordering is defined between an erasure and a direct match at one argument; the erasure's receiver and Owned
-    // conditions are judged only after selection, so they never make it inapplicable.
-    private const string ErasureAmbiguityNote = "At one argument, one candidate erases the argument to a common Function Type and another takes it directly; these adaptations are incomparable (SPEC 10.2.2, 10.7), and the erasure's receiver and Owned conditions are judged only after selection";
+    // SPEC 10.2.2, 10.7: no ordering is defined between an erasure and a direct match at one argument.
+    private const string ErasureAmbiguityNote = "At one argument, one candidate erases the argument to a common Function Type and another takes it directly; these adaptations are incomparable (SPEC 10.2.2, 10.7)";
 
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
 
-    // The rows of every failed selection's rejectedCandidates range, cleared by ResetPrerequisites with their capacity kept, as the
-    // prerequisite and parameter-shape stores are, so a warm rebind of a rejected call allocates nothing. A range is contiguous: a
-    // check appends its rows with no other append to this list between its first row and RecordRejected.
-    private readonly List<RejectedCandidate> rejectedRows = [];
+    private readonly List<ProblemFact> acquisitionFacts = []; // FailAcquisition's facts, a kept scratch (AcquisitionFacts).
 
-    // Keep proof failures intact. Only diagnostic publication follows these recorded
-    // missing-name causes; later validators must still see an invalid declaration.
-    private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
-    private Dictionary<Koto, BindingSymbol>? objectPayloadCauses;
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
 
     private FailedSignaturePartVisitor? failedSignaturePartVisitor;
@@ -29,109 +22,21 @@ public sealed partial class Binding
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
 
-    // SPEC 15.6.1: the Origin relation that an Origin-only fit failure leaves, at the value that supplies its longer end.
-    private Dictionary<Koto, OriginRelationFact>? originRelations;
-
-    private Dictionary<Koto, OriginContractFact>? originContracts;
-
-    // SPEC 15.2.3: the Owned failure of a common Function conversion, recorded only when it fails.
-    private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
-
-    // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
-    private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
-
-    // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
-    private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
-
-    // The selected iteration entry and the range whose boundary Types cannot supply it.
-    private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
-
-    // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
-    private Dictionary<Koto, Koto>? writeTargets;
-
-    // The candidates a failed overload selection considered, recorded only when it fails: the use's range of rejectedRows.
-    private Dictionary<Koto, (int Start, int Count)>? rejectedCandidates;
-
-    // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
-    // object handle, recorded only when the check fails.
-    private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
-
-    // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
-    // the generic container that declares it (Outer), with the declared and the written counts.
-    private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
-
-    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1, bool ErasureIncomparable = false, ReferenceConstraintFailure? ConstraintFailure = null);
-
-    // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
-    // slot would hold (as bits) and that signature.
-    private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature);
-
-    // The referenced declaration, its Type parameter when one is known (else -1), the failure and whether Type arguments are written.
-    private readonly record struct ReferenceSlotFact(FunctionKoto Declaration, int Slot, ReferenceSlotFailure Failure, bool Explicit);
-
-    // SPEC 15.6.1, 23.1: the Reason facts and related locations of an Origin relation record, shared by every phase that reports
-    // one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
-    internal static (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
-    {
-        // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
-        // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
-        var borrow = BorrowSource(relation.At, relation.Supplier) ??
-            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? BorrowSource(call, relation.Supplier) : null);
-        // A clause of a Field or Case names its Type's own slots as written there, without `self.`; a Type's clause substituted at
-        // a use in a body names the substituted Origins as that body does.
-        var typeLevel = relation.Clause is not null && !relation.Substituted && TypeLevelClause(relation.At);
-        var longer = OriginDisplay(relation.Longer, borrow, typeLevel);
-        // SPEC 15.6.1, 23.1: a shorter end that an equality fixed to another argument's Borrow shows that Borrow too.
-        var shorterBorrow = relation.FixedBy is { } fixedBy && relation.Shorter.Kind is OriginKind.Projection or OriginKind.Anchor ? BorrowSource(fixedBy, relation.Shorter) : null;
-        var shorter = OriginDisplay(relation.Shorter, shorterBorrow, typeLevel);
-        var operation = relation.Equality ? "==" : "outlives";
-        // SPEC 23.1: a borrow or omitted end is also related at its syntax.
-        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer)
-            : longer.Kind == "closure" && RoleOf(relation.Longer) == ProjectionRole.ClosureValue ? relation.Longer.Binder : null; // ρ's literal.
-        var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : shorter.Kind == "borrow" ? shorterBorrow : null;
-        (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
-            : longerAt is not null ? [("origin", longerAt, null)]
-            : shorterAt is not null ? [("origin", shorterAt, null)]
-            : null;
-        if (relation.Clause is { } clause)
-        {
-            // SPEC 23.1: a declared relation relates its clause with the role `relation`.
-            related = related is null ? [("relation", clause, null)] : [.. related, ("relation", clause, null)];
-        }
-
-        if (relation.FixedBy is { } input)
-        {
-            // SPEC 15.6.1: the input whose equality made a call's fresh Origin equal to a fixed one is related with the role `relation`.
-            related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
-        }
-
-        if (source != "fit")
-        {
-            // SPEC 23.1: only a fit names its destination Type; a declared relation relates its clause instead, and well-formedness
-            // its Type occurrence, which is the primary location.
-            return ([operation, longer, shorter, source], related);
-        }
-
-        // SPEC 23.1: the destination shows only the Origin at the failed position, also below another borrow layer; a borrow, omitted
-        // or closure end is never written as an Origin expression.
-        var destination = relation.Destination is not { } type ? $"during {shorter.Text}"
-            : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
-        return ([operation, longer, shorter, source, destination], related);
-    }
-
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
 
     /// <summary>Forms the Transfer candidate of a bare Place (SPEC 23.1.3): <c>@move</c> after the Place, or <c>(*p)@move</c> around a dereference.</summary>
+    /// <param name="store">The store the record goes to (Compilation.StoreOf), which locates the edits.</param>
     /// <param name="node">The reporting node, in the Place's document.</param>
     /// <param name="place">The Place.</param>
     /// <param name="judgment">The Take judgment; never refuted.</param>
     /// <returns>The candidate.</returns>
-    internal static DiagnosticRepairFact[] TransferRepair(Koto node, Koto place, AcquisitionJudgment judgment)
+    internal static DiagnosticRepairFact[] TransferRepair(DiagnosticCollection store, Koto node, Koto place, AcquisitionJudgment judgment)
     {
+        var document = node.CodeContext.SourceDocument;
         DiagnosticEditFact[] edits = place is DereferenceKoto
-            ? [node.Edit(new(place.Span.Start, 0), "("), node.Edit(new(place.Span.End, 0), ")@move")]
-            : [node.Edit(new(place.Span.End, 0), "@move")];
+            ? [store.Edit(new(place.Span.Start, 0), "(", document), store.Edit(new(place.Span.End, 0), ")@move", document)]
+            : [store.Edit(new(place.Span.End, 0), "@move", document)];
         var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
         var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
         return [new(RepairKind.Transfer, [place.ToString(), TransferDestination(place)], edits, verified, required)];
@@ -148,6 +53,60 @@ public sealed partial class Binding
             ArrayLiteralKoto or TupleLiteralKoto or DictionaryLiteralKoto => "the element",
             _ => "its destination",
         };
+
+    // SPEC 15.6.1, 23.1: the Reason facts and related locations of an Origin relation record, shared by every phase that reports
+    // one (Binding's ReportOriginRelation, A5's through the publication's Relation row); `source` is `fit` for a fit, `declared` for a
+    // relation clause and `wellFormed` for a Type occurrence. `Spans` are the related syntax without a node of its own: a shorter end
+    // that is an anonymous function's call result is related at its header, from `func` through the parameter list (DIAGNOSTICS).
+    internal (object[] Evidence, (string Role, Koto At, string? Label)[]? Related, (string Role, Koto In, SourceSpan Span, string? Label)[]? Spans) OriginRelationFacts(OriginRelationFact relation, string source)
+    {
+        // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
+        // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
+        var borrow = this.BorrowSource(relation.At, relation.Supplier) ??
+            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? this.BorrowSource(call, relation.Supplier) : null);
+        // A clause of a Field or Case names its Type's own slots as written there, without `self.`; a Type's clause substituted at
+        // a use in a body names the substituted Origins as that body does.
+        var typeLevel = relation.Clause is not null && !relation.Substituted && TypeLevelClause(relation.At);
+        var longer = OriginDisplay(relation.Longer, borrow, typeLevel);
+        // SPEC 15.6.1, 23.1: a shorter end that an equality fixed to another argument's Borrow shows that Borrow too.
+        var shorterBorrow = relation.FixedBy is { } fixedBy && relation.Shorter.Kind is OriginKind.Projection or OriginKind.Anchor ? this.BorrowSource(fixedBy, relation.Shorter) : null;
+        var shorter = OriginDisplay(relation.Shorter, shorterBorrow, typeLevel);
+        var operation = relation.Equality ? "==" : "outlives";
+        // SPEC 23.1: a borrow or omitted end is also related at its syntax.
+        var longerAt = longer.Kind == "borrow" ? borrow ?? SubjectOf(relation.Longer) ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer)
+            : longer.Kind == "closure" && RoleOf(relation.Longer) == ProjectionRole.ClosureValue ? relation.Longer.Binder : null; // ρ's literal.
+        var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : shorter.Kind == "borrow" ? shorterBorrow ?? SubjectOf(relation.Shorter) : null;
+        (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
+            : longerAt is not null ? [("origin", longerAt, null)]
+            : shorterAt is not null ? [("origin", shorterAt, null)]
+            : null;
+        if (relation.Clause is { } clause)
+        {
+            // SPEC 23.1: a declared relation relates its clause with the role `relation`.
+            related = related is null ? [("relation", clause, null)] : [.. related, ("relation", clause, null)];
+        }
+
+        if (relation.FixedBy is { } input)
+        {
+            // SPEC 15.6.1: the input whose equality made a call's fresh Origin equal to a fixed one is related with the role `relation`.
+            related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
+        }
+
+        (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure }
+            ? [("origin", closure, SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd)), null)] : null;
+        if (source != "fit")
+        {
+            // SPEC 23.1: only a fit names its destination Type; a declared relation relates its clause instead, and well-formedness
+            // its Type occurrence, which is the primary location.
+            return ([operation, longer, shorter, source], related, spans);
+        }
+
+        // SPEC 23.1: the destination shows only the Origin at the failed position, also below another borrow layer; a borrow, omitted
+        // or closure end is never written as an Origin expression.
+        var destination = relation.Destination is not { } type ? $"during {shorter.Text}"
+            : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
+        return ([operation, longer, shorter, source, destination], related, spans);
+    }
 
     private static Koto? Destination(Koto place)
     {
@@ -191,7 +150,7 @@ public sealed partial class Binding
     // SPEC 23.1: an omitted Origin is related at its Type occurrence. Closed annotation atoms and open local-input atoms name
     // such occurrences; open call/evidence atoms do not. A local region is shown by the local's name.
     private static Koto? OmittedAt(BoundOrigin origin)
-        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence } && !IsRegionOwner(occurrence) && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
+        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence } && !IsRegionOwner(occurrence) && !origin.IsOpenStandIn ? occurrence : null);
 
     // SPEC 23.1: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
     private static Koto? OmittedInput(BoundOrigin origin)
@@ -205,45 +164,38 @@ public sealed partial class Binding
 
     private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
     {
-        while (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (actual.SafeReferent is { } referent)
         {
-            actual = actual.Components[0];
+            actual = referent;
         }
 
-        while (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (expected.SafeReferent is { } referent)
         {
-            expected = expected.Components[0];
+            expected = referent;
         }
 
         return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
     }
 
-    // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
-    private static bool IsStringJoin(Koto node, int depth)
-        => depth < 32 && KotoHelper.UnwrapParentheses(node) is BinaryKoto { Akind: KotoKind.Plus } join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
-
-    private static bool IsStringOperand(Koto node, int depth)
-        => ReferenceTypes.EndsInString(KotoHelper.UnwrapParentheses(node).BoundType) || IsStringJoin(node, depth);
-
     // SPEC 15.6.1, 23.1: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
     // SPEC 15.6.1, 23.1: the Reason names the comparison, the member, the relation and its two ends, rigid symbols of the comparison
     // displayed as the required contract writes them; an omitted end is related at its Type occurrence.
-    private static void ReportOriginContract(
-        Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition = 0)
+    private static void ReportOriginContract(Koto node, DiagnosticCollection? store, in BindingProblem problem, OriginContractFact contract)
     {
         if (contract.Required is { } original)
         {
             var relation = contract.Equality ? "==" : "outlives";
-            node.Report(
-                requirement,
-                code,
+            node.ReportIn(
+                store,
+                problem.Requirement,
+                problem.Code,
                 evidence: ["implementation", contract.Member, relation, OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)],
                 related: [("requirement", original, "the original implementation contract")],
                 at: contract.At,
-                condition: condition);
+                condition: problem.Condition);
             return;
         }
 
@@ -262,29 +214,35 @@ public sealed partial class Binding
             // is related at the anonymous function's header.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
             const string Note = "A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.7.4)";
-            node.Report(
-                requirement,
-                code,
+            node.ReportIn(
+                store,
+                problem.Requirement,
+                problem.Code,
                 note: Note,
                 evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
                 related: related,
                 relatedSpans: [("origin", closure, header, null)],
                 at: contract.At,
-                condition: condition);
+                condition: problem.Condition);
             return;
         }
 
-        node.Report(
-            requirement,
-            code,
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
             evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
             related: related,
             at: contract.At,
-            condition: condition);
+            condition: problem.Condition);
     }
 
-    // The capture entry that names an environment binding, when the closure has a capture list.
+    // The capture entry that names an environment binding, when the closure has a capture list (CaptureEntryIndex).
     private static CaptureKoto? CaptureEntryOf(FunctionKoto closure, string name)
+        => CaptureEntryIndex(closure, name) is { } entry ? closure.Captures![entry] : null;
+
+    // The index of the written entry that names an environment binding; null when the closure has no such entry or no capture list.
+    private static int? CaptureEntryIndex(FunctionKoto closure, string name)
     {
         if (closure.Captures is { } captures)
         {
@@ -292,7 +250,7 @@ public sealed partial class Binding
             {
                 if (captures[i].Name == name)
                 {
-                    return captures[i];
+                    return i;
                 }
             }
         }
@@ -309,7 +267,7 @@ public sealed partial class Binding
             for (var i = 0; i < bound.Captures.Count; i++)
             {
                 var capture = bound.Captures[i];
-                if (capture.Environment.Name == name && capture.Source is { } source && DefaultParameters.InLaterDefault(closure, source))
+                if (capture.Environment.Name == name && capture.Source is { } source && InLaterDefault(closure, source))
                 {
                     return source;
                 }
@@ -319,49 +277,35 @@ public sealed partial class Binding
         return null;
     }
 
-    private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
-    {
-        var (evidence, related) = OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
-        if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
-        {
-            // SPEC 23.1: a closure end is related at the anonymous function's header, from `func` through the parameter list.
-            var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
-            var at = relation.At is CodeBlockKoto ? BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
-            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
-            return;
-        }
-
-        node.Report(requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
-    }
-
-    // SPEC 9.7.1: outside constructor-own inference, required Type arguments are written in full; an outer container never takes call
-    // arguments or an expected Type; outside a generic container, a nested declaration is named through that container.
-    private static void ReportArity(Koto node, (BindingSymbol Declaration, int Declared, int Written, bool Outer) arity, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var name = arity.Declaration.Name;
-        var parameters = arity.Declaration.Declaration is DeclarationContainerKoto container ? string.Join(", ", container.GenericParameterNodes) : string.Empty;
-        var declared = $"{name}<{parameters}>";
-        var member = node.Parent is MemberAccessKoto access && ReferenceEquals(KotoHelper.UnwrapParentheses(access.Left), node) ? access.Right.ToString() : null;
-        string note;
-        if (arity.Outer)
-        {
-            note = $"{node} is declared in {declared}; outside it, the Type arguments of {name} are written on the qualifier and are never inferred (SPEC 9.7.1)";
-        }
-        else if (arity.Written == 0 && member is not null)
-        {
-            note = $"{declared} is named without its Type arguments; this qualifier requires explicit Type arguments; only the construction target itself can infer its own slots (SPEC 9.7.1, 10.8)";
-        }
-        else
-        {
-            note = $"{declared} declares {arity.Declared} Type parameter{(arity.Declared == 1 ? string.Empty : "s")}, and {arity.Written} Type argument{(arity.Written == 1 ? " is" : "s are")} written (SPEC 9.7.1)";
-        }
-
-        node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
-    }
-
     // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
     private static bool IsMissingInformation(Koto? node)
         => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
+
+    // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of the generic
+    // container that declares it: that declaration (Related) and its declared and written counts (Count, in that order).
+    private BoundType? RecordArity(Koto node, BindingSymbol declaration, int declared, int written)
+    {
+        var subject = SourceRef.Of(node);
+        return this.Record(
+            node,
+            BindingFailure.InvalidTypeFormation,
+            [new(ProblemFactKind.Related, this.FactSite(declaration.Declaration), 0), new(ProblemFactKind.Count, subject, declared), new(ProblemFactKind.Count, subject, written)]);
+    }
+
+    private void ReportArity(Koto node, DiagnosticCollection? store, int problem, in BindingProblem record)
+    {
+        var facts = this.report.Facts(problem);
+        node.ReportIn(store, record.Requirement, record.Code, evidence: [(int)facts[1].Value, (int)facts[2].Value], related: [("declaration", this.compilation.SyntaxOf(facts[0].Site), null)]);
+    }
+
+    // An Origin relation record of `node` under the problem's code, requirement and condition, into Core's store decision for the node.
+    private void ReportOriginRelation(Koto node, DiagnosticCollection? store, in BindingProblem problem, OriginRelationFact relation, string? note)
+    {
+        var (evidence, related, spans) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
+        // A closure end's record at a block body is at the Borrow that supplied it.
+        var at = spans is not null && relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
+        node.ReportIn(store, problem.Requirement, problem.Code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: at, condition: problem.Condition);
+    }
 
     // The call signature of a Function Item, closure or Function value.
     private BoundType? ValueSignature(BoundType value) => value.Kind switch
@@ -423,12 +367,10 @@ public sealed partial class Binding
 
     // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
     // structural part holds failed only in its Origin part, which is an Origin relation, never a Type mismatch (SPEC 15.6.1).
-    // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
-    // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
-    // inference and is a located Unsupported (SPEC 23.1.1), never a relation record.
     // The one record of a failed comparison, by the Kind of the failure its walk found (no reader walks it again): a condition of a
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
-    // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
+    // position is a row of its body that A5 judges (R7-O1: CheckTypeUse formed it, so no record here); a Shape or a structure that
+    // differs is a Type mismatch.
     // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
     private BoundType? RecordMismatch(Koto node, Koto at, MismatchSide actual, MismatchSide expected, in ComparisonFailure failure)
     {
@@ -441,21 +383,26 @@ public sealed partial class Binding
             return null;
         }
 
-        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
-        if (storage && failure.Kind != ComparisonFailureKind.Shape)
+        // SPEC 8.2.3, 15.6.1 (F's C2 rulings 307 (2), 315): the record reads the pair its walk compared, as the walk's intake formed it
+        // and published it with its facts (comparisonRoot), so identity decides the structure and an Origin difference is the Origin
+        // relation's record; a failure whose facts no recording walk published is read as written.
+        var (walkedActual, walkedExpected) = this.comparisonFacts is [var first, ..] && first.Same(failure) && this.comparisonRoot is (BoundType a, BoundType e)
+            ? (a, e) : (actual.Type, expected.Type);
+        if (TyCtxt.StorageMatches(walkedExpected, walkedActual) && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
-                : this.RecordComparisonFacts(node, at, actual.Type!, expected.Type!, failure);
+                : this.RecordComparisonFacts(node, at, walkedActual!, walkedExpected!, failure);
         }
 
         return this.RecordTypeMismatch(node, at, actual, expected);
     }
 
-    // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
-    // and the others published with it (RecordFurtherOriginRecord): each Function component's failed condition is one
-    // UnprovenOriginContract_Kd at the value (ContractFact); the plain positions are recorded once, by RecordOriginFitFailure, whose search
-    // skips the Function components the walk judged; a limit is the located Unsupported_Kd. The walk's facts are read only when their
-    // first is `failure` (another fit may have walked since); otherwise `failure` is the one fact.
+    // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, each an Origin record of the
+    // node (RecordOrigin): each Function component's failed condition is one UnprovenOriginContract_Kd at the value (ContractFact); a limit
+    // is the located Unsupported_Kd. The plain positions are rows A5 judges (R7-O1), formed by the recording caller's use-site fit
+    // (CheckTypeUse, FitsValueAt): a failure that is a plain position, at a node that fit left unfailed, reaches here on a path that
+    // bypassed it, a broken contract, the node's Internal failure before any record. The walk's facts are read only when their first is
+    // `failure` (another fit may have walked since); otherwise `failure` is the one fact.
     private BoundType? RecordComparisonFacts(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
     {
         if (failure.Kind == ComparisonFailureKind.Limit)
@@ -463,92 +410,138 @@ public sealed partial class Binding
             return this.Fail(node, BindingFailure.Unsupported);
         }
 
+        if (!failure.IsCondition && this.RecordedFailure(node) == BindingFailure.None)
+        {
+            this.Fail(node, BindingFailure.Internal); // Before any RecordOrigin, so the node keeps its Internal slot.
+        }
+
         var facts = this.comparisonFacts;
         var count = facts.Count != 0 && facts[0].Same(failure) ? facts.Count : 1;
-        var positions = !failure.IsCondition;
-        if (!positions)
+        for (var i = 0; i < count; i++)
         {
-            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure, node));
-        }
-
-        for (var i = 1; i < count; i++)
-        {
-            if (facts[i].IsCondition)
+            var fact = i == 0 ? failure : facts[i];
+            if (fact.IsCondition)
             {
-                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i], node)));
-            }
-            else
-            {
-                positions |= facts[i].Kind is ComparisonFailureKind.Position or ComparisonFailureKind.Shape;
+                this.RecordOrigin(node, new(null, this.ContractFact(at, fact, node)));
             }
         }
 
-        // A plain position the walk met is always found by its search; one that is not is a broken contract (design-r2 §2).
-        return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && node.BindingFailure == BindingFailure.None
-            ? this.Fail(node, BindingFailure.Internal) : null;
+        return null;
     }
 
-    // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.
-    private DiagnosticCode OriginRelationCode(Koto node)
-        => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
-
-    // Fails a node with the facts that explain the failure. A node keeps its first failure only (DIAGNOSTICS rule 4), so the facts are
-    // recorded only with the failure the slot takes: a fact in a publication table always explains the failure of its node, whatever the
-    // failure's code.
-    private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
-    {
-        if (node.BindingFailure == BindingFailure.None)
-        {
-            (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
-        }
-
-        return this.Fail(node, failure, unresolved);
-    }
-
-    /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
+    /// <summary>Records a write whose target's path denies it (SPEC 3.4, 15.1.5) with the target (`Related` role 0, "target"), beside any
+    /// other failure of the write (SPEC 23.1.2: the check reads the target's path, never the value or the route); an unsupported path is
+    /// located only.</summary>
     /// <param name="node">The write.</param>
     /// <param name="target">The written target.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailWrite(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, AccessFailure(target, out _), target);
+        => this.RecordWrite(node, this.AccessFailure(target, out _), target);
 
     private BoundType? FailObjectAuthority(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
+        => this.RecordWrite(node, BindingFailure.SharedPathAccess, target);
 
-    // A bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired), with the Place it names.
-    private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
-        => this.FailExplained(ref this.acquisitionPlaces, node, failure, (place, @object), unresolved);
-
-    // SPEC 3.5, 15.1.5, 23.1.3: the acquisition a bare Place needs spelled, located at the Place with the candidate that writes it:
-    // an exclusive borrow is verified exclusively writable (BorrowablePlace held), a transfer has Take judged from the Place's path.
-    private void ReportAcquisition(Koto node, Koto place, bool @object, DiagnosticRequirement requirement, DiagnosticCode code)
+    // The one recorder of a denied write (AccessFailure's code, or the object authority's): the target related; a write the implementation
+    // does not support yet is the located limit (SPEC 23.1.1), at the write as before.
+    private BoundType? RecordWrite(Koto node, BindingFailure failure, Koto target)
     {
+        if (failure == BindingFailure.Unsupported)
+        {
+            this.RecordLocated(node, node.Span);
+            return null;
+        }
+
+        return this.RecordNumbered(node, failure, [new(ProblemFactKind.Related, this.FactSite(target), 0)]);
+    }
+
+    // The one recorder of a bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired; SPEC 15.1.5),
+    // numbered: the Place as `Related` role 0, "place"; a Reason: bit 0 whether an exclusive borrow is of an object handle, above it a
+    // transfer's Take judgment (O-A1); and, for a transfer of a Place whose Type has a pair layer, a second Reason: the mask of the cases
+    // its bare acquisition moves in (R7-E4 ruling 6, D1), the judgments the adapter once made at publication, made here at the failure.
+    private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
+    {
+        this.acquisitionFacts.Clear();
+        this.AcquisitionFacts(this.acquisitionFacts, node, failure, place, @object);
+        return this.RecordNumbered(node, failure, CollectionsMarshal.AsSpan(this.acquisitionFacts), unresolved);
+    }
+
+    // The facts of a bare Place's acquisition record, appended to `facts` (FailAcquisition's scratch, or the selection's when a call's
+    // selection records it through RecordSelection's one guard).
+    // An implicit exclusive acquisition the lending rule denies (OwnedLending, ExclusiveAcquisitionDenial: AccessFailure's codes) records
+    // its written twin's form, RecordWrite's: the Place alone, as role 0, "target" (SPEC 7.3.3); a limit (BU-15's construction receiver,
+    // PLAN G762's object pair layer) is located at the Place, as RecordLocated's (SPEC 23.1.1). The denials are SharedPathAccess and
+    // InvalidAssignment; any kind but a spelling, a denial or a limit is a broken contract (InternalInvariant_Kd).
+    private void AcquisitionFacts(List<ProblemFact> facts, Koto node, BindingFailure failure, Koto place, bool @object)
+    {
+        if (failure == BindingFailure.Unsupported)
+        {
+            facts.Add(LocatedFact(node, place.Span));
+            return;
+        }
+
+        var transfer = failure == BindingFailure.TransferRequired;
+        var judgment = transfer ? this.TakeJudgment(place) : AcquisitionJudgment.Verified;
+        facts.Add(new(ProblemFactKind.Related, this.FactSite(place), 0));
+        if (failure is BindingFailure.SharedPathAccess or BindingFailure.InvalidAssignment)
+        {
+            return;
+        }
+
+        if (failure is not (BindingFailure.TransferRequired or BindingFailure.ExclusiveBorrowRequired))
+        {
+            throw new InvalidOperationException($"An acquisition record is a spelling, a lending denial or a limit, not {failure} (InternalInvariant; R7-E4 E4a-3).");
+        }
+
+        facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(node), (@object ? 1L : 0L) | ((long)judgment << 1)));
+        if (transfer && this.AcquisitionCaseMask(place) is { } cases)
+        {
+            facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(node), (long)cases));
+        }
+    }
+
+    // SPEC 3.5, 15.1.5, 23.1.3: the acquisition a bare Place needs spelled, located at the Place with the candidate that writes it, from
+    // the record's facts (FailAcquisition): an exclusive borrow is verified exclusively writable (BorrowablePlace held), a transfer's Take
+    // judgment and moving cases were made at the failure.
+    private void ReportAcquisition(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        if (store is null)
+        {
+            return;
+        }
+
+        var (requirement, code) = (problem.Requirement, problem.Code);
+        var place = this.compilation.SyntaxOf(facts[0].Site);
         var text = place.ToString();
         if (code == DiagnosticCode.ExclusiveBorrowRequired_Kd)
         {
-            var spelling = @object ? "@objuniq" : "@uniq";
-            node.Report(requirement, code, at: place, evidence: [text], repairs: [new(RepairKind.BorrowExclusively, [text, spelling], [node.Edit(new(place.Span.End, 0), spelling)], RepairConditionSet.ExclusiveAccess, RepairConditionSet.UsageLegality)]);
+            var spelling = (facts[1].Value & 1) != 0 ? "@objuniq" : "@uniq";
+            var edit = store.Edit(new(place.Span.End, 0), spelling, node.CodeContext.SourceDocument);
+            node.ReportIn(store, requirement, code, at: place, evidence: [text], repairs: [new(RepairKind.BorrowExclusively, [text, spelling], [edit], RepairConditionSet.ExclusiveAccess, RepairConditionSet.UsageLegality)], condition: problem.Condition);
             return;
         }
 
         // SPEC 8.15, 23.1.2 (R6-check H1): a pair-layer Place carries the cases its bare acquisition moves in, as the `case` fact. A
         // default's move of a prepared argument (SPEC 7.2.3) names no target and offers no transfer, since none is valid in a default.
-        var judgment = TakeJudgment(place);
-        var found = this.AcquisitionCases(place, out var single);
+        var judgment = (AcquisitionJudgment)(facts[1].Value >> 1);
+        var single = false;
+        var found = facts.Length > 2 ? this.AcquisitionCases(place, (ulong)facts[2].Value, out single) : null;
         var prepared = code == DiagnosticCode.DefaultArgumentMove_Kd;
-        node.Report(
+        node.ReportIn(
+            store,
             requirement,
             code,
             note: CaseNote(null, found, single),
             at: place,
             evidence: CaseEvidence(code, prepared ? null : text, found),
             related: WithCaseDeclarations(null, this.namedCaseBinders, found),
-            repairs: prepared || judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
+            repairs: prepared || judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(store, node, place, judgment),
+            condition: problem.Condition);
     }
 
     // Reports a write failure at its target; an assignment names the target. An
     // Exclusive call of a closure (SPEC 7.7.3) borrows the callee exclusively, so the callee is the written target.
-    private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportWrite(Koto node, DiagnosticCollection? store, Koto target, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition)
     {
         var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
         var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
@@ -567,7 +560,7 @@ public sealed partial class Binding
             var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
             var authority = handle?.HandleMode is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : null;
             var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : objectCallee ? authority is null ? callNote : $"{callNote}. {authority}" : authority ?? this.SharedIndexNote(target);
-            node.Report(requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
+            node.ReportIn(store, requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null, condition: condition);
             return;
         }
 
@@ -577,34 +570,59 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(root is MemberAccessKoto member ? member.Left : ((IndexKoto)root).Left);
         }
 
-        node.Report(requirement, code, note: callNote, at: target, evidence: [target.ToString()]);
+        node.ReportIn(store, requirement, code, note: callNote, at: target, evidence: [target.ToString()], condition: condition);
+    }
+
+    // SPEC 4.7.1, 8.9.1: an ambiguous index key's record (RecordKeyAmbiguity), at the index expression, each conformance its selection
+    // weighed related by the instance it stands for and the recorded members counted.
+    private void ReportKeyAmbiguity(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var related = new (string Role, Koto At, string? Label)[facts.Length / 2];
+        for (var i = 0; i < related.Length; i++)
+        {
+            related[i] = ("conformance", this.compilation.SyntaxOf(facts[2 * i].Site), DiagnosticTypeName(this.report.Value(facts[(2 * i) + 1])));
+        }
+
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: [related.Length], related: related, condition: problem.Condition);
     }
 
     // SPEC 4.7.1, 8.3.3: a user index publishes its element exclusively only through indexUniq. When the receiver's Type
     // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
     private string? SharedIndexNote(Koto target)
     {
-        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !ElementAccess.IsUserIndex(index) ||
+        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !this.IsUserIndex(index) ||
             this.Library.UniqIndexable is not { } uniqIndexable)
         {
             return null;
         }
 
         var core = index.Left.BoundType;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (core?.SafeReferent is { } referent)
         {
-            core = core.Components[0];
+            core = referent;
         }
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
         {
-            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.7.1): the check's selection.
+            // The check's fact alone (uniqIndexing): the conformance it selected, whose condition does not hold here; else the declaration's
+            // UniqIndexable identities (a query by declaration: no judgment), with the key's reference that selected none (Key, SPEC 4.7.1).
             var name = DiagnosticTypeName(core);
-            var registered = this.uniqIndexing.GetValueOrDefault(index).Conformance;
-            _ = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey);
-            return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
-                byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
-                $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";
+            var fact = this.uniqIndexing.GetValueOrDefault(index);
+            if (fact.Conformance is not null)
+            {
+                return $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only";
+            }
+
+            var identities = string.Empty;
+            foreach (var identity in new SelectionMembers(this, core, uniqIndexable, null, owner.Scope, QuerySite.AfterPass))
+            {
+                identities = identities.Length == 0 ? DiagnosticTypeName(identity.Contract.Type!) : $"{identities}, {DiagnosticTypeName(identity.Contract.Type!)}";
+            }
+
+            return identities.Length == 0 ? $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only" :
+                fact.Key is { } key ? $"{name} conforms to {identities} but not to {DiagnosticTypeName(key)}, so its element is published by index alone, which grants Read only" :
+                $"{name} conforms to {identities}, none of which is selected here, so its element is published by index alone, which grants Read only";
         }
 
         return core is { Kind: BoundTypeKind.Parameter } ? $"{DiagnosticTypeName(core)} is not required to be UniqIndexable here, so its element is published by index alone, which grants Read only" : null;
@@ -612,11 +630,12 @@ public sealed partial class Binding
 
     // SPEC 11.3: an accessor receiver has the shape of its operation. The report is located at the written receiver Type and
     // relates the Property header; the written Type is a bounded display value, as the message argument of a transfer is.
-    private void ReportAccessorReceiverShape(PropertyAccessorKoto accessor, Koto written, DiagnosticRequirement requirement)
+    private void ReportAccessorReceiverShape(PropertyAccessorKoto accessor, DiagnosticCollection? store, Koto written, DiagnosticRequirement requirement)
     {
         var property = (PropertyKoto)accessor.Parent!;
         var getter = accessor.AccessorKind == PropertyAccessorKind.Get;
-        accessor.Report(
+        accessor.ReportIn(
+            store,
             requirement,
             DiagnosticCode.AccessorReceiverShape_Kd,
             accessor.AccessorText,
@@ -626,49 +645,15 @@ public sealed partial class Binding
             related: [("property", property.NameKoto, $"{property.NameKoto.IdentifierName} is read through ref/Self and written through uniq/Self")]);
     }
 
-    // Publishes the rejected-candidate rows a failed selection appended from `start` on as its fact at `use`.
-    private void RecordRejected(Koto use, int start)
-        => (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = (start, this.rejectedRows.Count - start);
-
     private void ResetPrerequisites()
     {
+        this.invalidations = 0;
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
-        this.qualificationStops?.Clear();
-        this.qualificationFailures?.Clear();
-        this.ResetOriginRecords();
-        this.originContracts?.Clear();
-        this.ownedConversions?.Clear();
-        this.objectErasureFailures?.Clear();
-        this.perCallSlots?.Clear();
-        this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
-        this.callableConstraints?.Clear();
-        this.clauseConstraints?.Clear();
-        this.pendingJudgments?.Clear();
-        this.arithmeticConformanceFailures?.Clear();
-        this.arithmeticSelectionFailures?.Clear();
-        this.arithmeticDirectionFailures?.Clear();
-        this.rangeIterationFailures?.Clear();
-        this.writeTargets?.Clear();
-        this.takeLayers?.Clear();
-        this.captureFailures?.Clear();
-        this.captureRepeats?.Clear();
-        this.captureRepeatRows.Clear();
-        this.arityFailures?.Clear();
-        this.constructorAbsences?.Clear();
-        this.invalidStaticOriginSlots?.Clear();
-        this.phantomRawOrigins?.Clear();
-        this.pairCaseRows.Clear();
-        this.rejectedCandidates?.Clear();
-        this.rejectedRows.Clear();
-        this.unboundSlots?.Clear();
-        this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
-        this.duplicateDeclarations?.Clear();
-        this.prerequisites.Clear();
-        this.partPrerequisites.Clear();
+        this.duplicateOrder.Clear();
         this.specificationLinks?.Clear();
         this.derivedUses?.Clear();
         this.prerequisiteStore.Clear();
@@ -676,6 +661,7 @@ public sealed partial class Binding
         this.consulted.Clear();
         this.consultationStart = -1;
         this.consultationNode = null;
+        this.consultationHeld = false;
         this.missingExpectation = null;
     }
 
@@ -686,11 +672,11 @@ public sealed partial class Binding
         => name is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement ? BindingFailure.Unsupported : missing;
 
     // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
-    // explains the miss, otherwise the Name is missing.
+    // explains the miss, otherwise it is the resolver's miss (FailUnselected).
     private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
         => this.ReportUnavailableQualifier(name, scope) is { } qualifier
             ? this.CompleteDependent(name, qualifier)
-            : this.Fail(name, this.MissingFailure(name, missing), true);
+            : this.FailUnselected(name, this.MissingFailure(name, missing));
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.
@@ -745,39 +731,66 @@ public sealed partial class Binding
             return null;
         }
 
-        this.Fail(member, BindingFailure.Access);
+        this.RecordAccess(member, first!, null); // SPEC 9.4: every candidate is inaccessible; the first the walk met is related.
         return member;
     }
 
-    /// <summary>Rejects an object form, creation, cast or runtime test over a Type that opts out of ObjectPayload, naming the declaring Type (SPEC 8.7.3).</summary>
+    /// <summary>Rejects an object form, creation, cast or runtime test over a Type that opts out of ObjectPayload (SPEC 8.7.3), relating the
+    /// declaration that opts out, its own or an inherited base's (`Related` role 0), whose name the record shows.</summary>
     private BoundType? FailObjectPayload(Koto use, BindingSymbol renounced)
-    {
-        (this.objectPayloadCauses ??= new(ReferenceEqualityComparer.Instance))[use] = renounced;
-        return this.Fail(use, BindingFailure.NotObjectPayload);
-    }
+        => this.Record(use, BindingFailure.NotObjectPayload, [new(ProblemFactKind.Related, this.FactSite(renounced.Declaration), 0)]);
 
+    [Transitional("R7", Reason = "Records only at a node without a failure, so the node keeps its first failure until R7-E5's per-problem inputs (the owner's O-470 (a); R7-E2 E2-5's O2, the Front's C4): RequireConstraint's Error proof at a node that already failed, which would otherwise publish a dependent record (a clause's own Refuted conformance) or an internal error; InheritVirtualConstraints and BindArrayFill, where no program records otherwise (a repeat records the same key). Constraints.Requirements' cause-less Fail keeps the requirement's own Type record (BindType's, at the node).")]
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {
-        if (use.BindingFailure != BindingFailure.None)
+        if (this.RecordedFailure(use) != BindingFailure.None)
         {
             return;
         }
 
-        this.Fail(use, BindingFailure.InvalidConstraint);
+        // SPEC 23.1.1, 23.1.2 (rule W; R7-C3 b, F's ruling 5): a cause whose failure rests on a part that is missing information (a
+        // conformance on its unsupported specification, RestOnSpecification) carries that part's record, which this record then rests on.
+        if (!IsMissingInformation(diagnosticCause) && diagnosticCause is not null && this.partPrerequisites.TryGetValue(diagnosticCause, out var part) &&
+            IsMissingInformation(part))
+        {
+            diagnosticCause = part;
+        }
+
         if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)
         {
             diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
         }
 
-        if (diagnosticCause is not null)
+        // SPEC 8.3, 23.1.2: an invalid Constraint, with the part its check named as the cause it rests on (a Cause fact, Value -1: a Binding
+        // cause at the site, never shown); a cause whose own record is missing information makes this record derived from that one
+        // (ReportConstraint). Later validators still see an invalid node. The guard above leaves RecordConstraint's read always passing.
+        this.RecordConstraint(use, ConstraintProof.Error, diagnosticCause is null ? [] : [new(ProblemFactKind.Cause, this.FactSite(diagnosticCause), -1)]);
+    }
+
+    // The part a node's InvalidConstraint problem names as its cause, or null.
+    private Koto? ConstraintCause(Koto node)
+    {
+        var problem = this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(BindingFailure.InvalidConstraint), 0);
+        return problem >= 0 && this.FactOf(problem, ProblemFactKind.Cause) is { } cause ? this.compilation.SyntaxOf(cause.Site) : null;
+    }
+
+    // The adapter's InvalidConstraint row (F's C2 ruling 306): derived from a cause that is missing information, else direct; a
+    // declaration's premise error relates the premises that linked it (SPEC 8.2.3), read from their published Failed state
+    // (FailedPremiseClauses), never proved again.
+    private void ReportConstraint(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition, Koto? cause)
+    {
+        if (cause is not null && IsMissingInformation(cause))
         {
-            (this.constraintDiagnosticCauses ??= new(ReferenceEqualityComparer.Instance))[use] = diagnosticCause;
+            node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
+        }
+        else
+        {
+            node.ReportIn(store, requirement, code, condition: condition, related: this.FailedPremiseClauses(node)?.ToArray());
         }
     }
 
     private Koto? ConformanceDiagnosticCause(Koto owner)
-        => owner is StructKoto or EnumKoto && owner.BindingFailure == BindingFailure.InvalidConstraint ?
-            this.constraintDiagnosticCauses?.GetValueOrDefault(owner) : null;
+        => owner is StructKoto or EnumKoto && this.RecordedFailure(owner) == BindingFailure.InvalidConstraint ? this.ConstraintCause(owner) : null;
 
     private Koto? FindConformanceDiagnosticCause(Koto owner, BoundConstraint fact)
     {
@@ -787,7 +800,7 @@ public sealed partial class Binding
             for (var i = 0; i < function.TypeConstraints.Count; i++)
             {
                 if (function.TypeConstraints[i] is IsKoto { Right: { } requirement } clause && ReferenceEquals(clause.BoundConstraint, fact) &&
-                    this.constraintDiagnosticCauses?.TryGetValue(KotoHelper.UnwrapParentheses(requirement), out var part) == true)
+                    this.ConstraintCause(KotoHelper.UnwrapParentheses(requirement)) is { } part)
                 {
                     return part;
                 }
@@ -840,7 +853,7 @@ public sealed partial class Binding
             for (var i = 0; i < function.TypeConstraints.Count; i++)
             {
                 if (function.TypeConstraints[i] is IsKoto { Left: { } subject, Right: { } requirement } clause && clause.BoundConstraint?.Kind == ConstraintKind.Error &&
-                    ReferenceEquals(subject.BoundType, owner) && this.constraintDiagnosticCauses?.ContainsKey(KotoHelper.UnwrapParentheses(requirement)) == true)
+                    ReferenceEquals(subject.BoundType, owner) && this.ConstraintCause(KotoHelper.UnwrapParentheses(requirement)) is not null)
                 {
                     return KotoHelper.UnwrapParentheses(requirement);
                 }

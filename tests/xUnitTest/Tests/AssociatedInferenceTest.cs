@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class AssociatedInferenceTest
+public partial class AssociatedInferenceTest
 {
     private const string InferredHeaderFails = """
         contract Z
@@ -68,14 +68,11 @@ public class AssociatedInferenceTest
         "struct PA<T>\n    public init() => ()\n    Self is P when T is Copy\n        public func x(self: ref/Self) -> PB.(Q).Y => 0\n        public func z(self: ref/Self) -> i32 => 0\n" +
         "struct PB\n    public init() => ()\n    Self is Q\n    public func y(self: ref/Self) -> i64 => 0\n    public func w(self: ref/Self) -> PA<i32>.(P).Z => 0\n";
 
-    private const string MutualRecords = "IncompatibleContractImplementation_Kd: Self is P when T is Copy | InvalidConstraint_Kd: public func x(self: ref/Self) -> PB.(Q).Y => 0 | " +
-        "AssociatedTypeInferenceFailed_Kd: Self is Q | InvalidConstraint_Kd: public func w(self: ref/Self) -> PA<i32>.(P).Z => 0";
-
     private const string MutualUses = "func use(a: ref/PA<i32>, b: ref/PB) -> ()\n    let x: i64 = a.x()\n    let z: i32 = a.z()\n    let y: i64 = b.y()\n    let w: i32 = b.w()\n    ()\n()";
 
     private const string MutualMismatch = "func use(a: ref/PA<i32>, b: ref/PB) -> ()\n    let x: bool = a.x()\n    let z: bool = a.z()\n    let y: bool = b.y()\n    let w: bool = b.w()\n    ()\n()";
 
-    private const string MismatchRecords = " | NoApplicableOverload_Kd: let x: bool = a.x() | NoApplicableOverload_Kd: let z: bool = a.z() | " +
+    private const string MismatchRecords = "NoApplicableOverload_Kd: let x: bool = a.x() | NoApplicableOverload_Kd: let z: bool = a.z() | " +
         "NoApplicableOverload_Kd: let y: bool = b.y() | NoApplicableOverload_Kd: let w: bool = b.w()";
 
     private const string AltContracts = "contract DC\n    associate X\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\n";
@@ -91,6 +88,8 @@ public class AssociatedInferenceTest
     private const string ChainB = "struct B\n    Self is HB\n    public func value(self: ref/Self) -> A.(HA).Item => 0\n";
 
     private const string InferredBase = "open struct B0<X>\n    public func get(self: ref/Self) -> i32 => 1\n";
+
+    private const string MergedIter = "contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n    public init() => ()\ncontract Iter<T>\n    associate Tag\n    func tag(self: ref/Self) -> Self.Tag\ncontract Q<U, V>: Iter<U>, Iter<V>\n";
 
     // PLAN G375: a signature completed by associated inference is judged complete; its clause fails or holds as written.
     [Theory]
@@ -322,7 +321,7 @@ public class AssociatedInferenceTest
     {
         const string source = "contract C\n    associate Item\n    func read() -> Self.Item\nstruct S\n    Self is C\n    public func read() -> i32 => 1";
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.CollectHover = true;
         c.Kotonoha.AddSource(new("associated-inference.kimi", source));
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -479,19 +478,31 @@ public class AssociatedInferenceTest
         }));
     }
 
+    // R7-E2 E2-5b: an inference hole's problem keeps its facts in the report's storage and one kept list (InferenceFacts), so a warm
+    // rebind of a failing hole allocates nothing either.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AFailingInferenceHoleRebindsWithoutAllocation()
+    {
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item\n    func read<T>(value: T) -> Self.Item\nstruct S\n    Self is C\n    public func read<U>(value: U) -> U => value@move\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
     // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
     [Theory]
     // SPEC 8.5.5, 8.3.3 Finality: a value inferred for another definition is usable as soon as it is determined, so PA and PB complete each other in
     // every declaration and requirement order.
-    [InlineData("C4", "pa-first", PqContracts + PaFirstField + PbFirstField, "", Explicit = true)]
-    [InlineData("C4", "pb-first", PqContracts + PbFirstField + PaFirstField, "", Explicit = true)]
-    [InlineData("C4", "pa-swap", PqContracts + PaLastField + PbLastField, "", Explicit = true)]
-    [InlineData("C4", "pb-swap", PqContracts + PbLastField + PaLastField, "", Explicit = true)]
+    [InlineData("C4", "pa-first", PqContracts + PaFirstField + PbFirstField, "")]
+    [InlineData("C4", "pb-first", PqContracts + PbFirstField + PaFirstField, "")]
+    [InlineData("C4", "pa-swap", PqContracts + PaLastField + PbLastField, "")]
+    [InlineData("C4", "pb-swap", PqContracts + PbLastField + PaLastField, "")]
 
     // SPEC 8.5.5: evidence that needs a value of the current definition held pending supplies none, so D.X is a's i32, and E.W reads the determined D.X,
     // in both orders.
-    [InlineData("C4", "alt-d", AltContracts + AltD + AltE, "", Explicit = true)]
+    [InlineData("C4", "alt-d", AltContracts + AltD + AltE, "")]
     [InlineData("guard", "alt-e", AltContracts + AltE + AltD, "")]
 
     // SPEC 8.5.5: B.Value is inferred from A.Item, so A.Other has no evidence although the graph is acyclic; the failure's resting records stay open. An
@@ -502,17 +513,33 @@ public class AssociatedInferenceTest
     public void AssociatedValuesFollowTheirEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
-    // PLAN G949 S1-b2 C4 (Q13): the inference batches run in declaration order (NodeColumns, DECISIONS BU-220), so of two definitions that
-    // infer from each other the first declared starts first. Before S1-b2's commit 4 they ran in registration order, and these two
-    // conformances' records stood the other way round (AssociatedTypeInferenceFailed_Kd at PA, IncompatibleContractImplementation_Kd at
-    // PB; the same codes, count and acceptance). `mutual` is valid by SPEC 8.5.5 (each value is determined directly from a declared
-    // result), yet rejected as a Type-value cycle: the PLAN open issue posted as D-732, whose fix moves these records on purpose.
-    // `mutual-mismatch` is invalid (bool annotations of the inferred i64 and i32) and keeps the same conformance records.
+    // R7-C4 (PLAN G172, G955): `mutual` is valid by SPEC 8.5.5 (each value is determined directly from a declared result: P.X = i64
+    // from PB's y, Q.W = i32 from PA<i32>'s z) and accepted; until R7-C4 the batches rejected it as a Type-value cycle with conformance
+    // records (D-732). `mutual-mismatch` is invalid only by its bool annotations of the inferred i64 and i32: one record at each.
     [Theory]
-    [InlineData("mutual", Mutual + MutualUses, MutualRecords)]
-    [InlineData("mutual-mismatch", Mutual + MutualMismatch, MutualRecords + MismatchRecords)]
-    public void MutualInferenceRecordsFollowDeclarationOrder(string form, string program, string records)
+    [InlineData("mutual", Mutual + MutualUses, "")]
+    [InlineData("mutual-mismatch", Mutual + MutualMismatch, MismatchRecords)]
+    public void MutualDefinitionsInferFromTheirDeclaredResults(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 8.5.5, 8.4.3, 8.9.2 (PLAN G1384): under the premises the two Iter paths of `Q<U, V>: Iter<U>, Iter<V>` are one conformance, so one
+    // declaration result infers its one Tag, whether both arguments are projections (i0) or one is the Type the other's premise names (i4);
+    // the inferred Type is bool (i0w).
+    [Theory]
+    [InlineData("i0", MergedIter + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\nfunc f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
+    [InlineData("i4", MergedIter + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Q<i32, S.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\nfunc f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
+    [InlineData("i0w", MergedIter + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\nfunc f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = 1\n    return\n", "TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = 1")]
+    public void AMergedConformanceInfersItsOneAssociatedType(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
+
+    // SPEC 8.5.5 Completion (PLAN G1384): two declaration results of differing Types for the merged conformance's one Tag are a conflict.
+    [Fact]
+    public void AMergedConformancesDifferingResultsConflict()
+    {
+        var record = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(MergedIter.Replace("-> Self.Tag\n", "-> Self.Tag\n    func tag2(self: ref/Self) -> Self.Tag\n", StringComparison.Ordinal) +
+            "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\n    public func tag2(self: ref/Self) -> i64 => 0\n()")));
+        Assert.Equal((nameof(DiagnosticCode.AssociatedTypeInferenceFailed_Kd), "Iter<S.Item>.Tag: declaration results supply conflicting complete Types"), (record.Code, record.Label));
+    }
 
     private static Compilation Bound(string source)
     {

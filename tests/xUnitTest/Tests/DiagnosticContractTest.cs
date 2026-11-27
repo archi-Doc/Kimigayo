@@ -250,7 +250,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
     {
         var owner = new DiagnosticOwner();
         owner.GetOrAddCollection("main").For(new("main.kimi", "x")).Add(new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd);
-        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, new string('x', 1000), "main.kimi", owner.Finalize());
+        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, new InvalidOperationException(new string('x', 1000)), "main.kimi", owner.Finalize());
         Assert.Equal(["CheckFaulted_Kd", "IndentationLevelMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
         Assert.True(result.Diagnostics[0].Note!.Length <= DiagnosticLimits.NoteLength);
     }
@@ -430,13 +430,29 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
 
         public bool EnableColor { get; set; }
 
+        // The host's action during a report: the first line that starts with Prefix runs Action before it is written, once. A host's
+        // console failure is one such action: it throws, and the line is not written (Fail).
+        public (string Prefix, Action Action)? LineAction { get; set; }
+
+        // The host's console failing at its line, with InvalidOperationException (a type the toolchain's JSON reads throw).
+        public static void Fail() => throw new InvalidOperationException("The host's console failed.");
+
         public void Write(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 
         public void Write(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 
-        public void WriteLine(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message).Append('\n');
+        public void WriteLine(string? message, ConsoleColor color = ConsoleColor.Gray) => this.WriteLine(message.AsSpan(), color);
 
-        public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message).Append('\n');
+        public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray)
+        {
+            if (this.LineAction is { } action && message.StartsWith(action.Prefix, StringComparison.Ordinal))
+            {
+                this.LineAction = null;
+                action.Action();
+            }
+
+            this.text.Append(message).Append('\n');
+        }
 
         public Task<InputResult> ReadLineAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 

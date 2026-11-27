@@ -93,9 +93,9 @@ internal static class MirDescriptors
     };
 
     // The access to the rvalue's Place where its kind has one (HasPlace): a Ref's, Discriminant's, Len's or Storage's, or an Adapt's
-    // payload; an Opaque's is to its site's roots, which the replaced syntax may have read, written or borrowed. An operator or a checked
-    // Cast aborts unless Proven; an Adapt may create an object, whose allocation may Abort (SPEC 22.5.1); an aggregate's effects are its
-    // kind's row's.
+    // payload; an Opaque's is to its site's uses, each undecided, which the replaced syntax may have read, written or borrowed. An operator
+    // or a checked Cast aborts unless Proven; an Adapt may create an object, whose allocation may Abort (SPEC 22.5.1); an aggregate's
+    // effects are its kind's row's.
     internal static MirDescriptor Of(MirRvalueKind kind) => kind switch
     {
         MirRvalueKind.Use => Row(MirAccess.None, effects: MirEffect.None),
@@ -131,6 +131,7 @@ internal static class MirDescriptors
     {
         MirTerminatorKind.Goto => Row(MirAccess.None, effects: MirEffect.None),
         MirTerminatorKind.SwitchInt => Row(MirAccess.None, effects: MirEffect.None),
+        MirTerminatorKind.CaseSwitch => Row(MirAccess.None, effects: MirEffect.None),
         MirTerminatorKind.Unreachable => Row(MirAccess.None, effects: MirEffect.None),
         MirTerminatorKind.Call => Row(MirAccess.Writes | MirAccess.Defines, effects: MirEffect.None),
         MirTerminatorKind.Drop => Row(MirAccess.DropUse, effects: MirEffect.None),
@@ -173,6 +174,8 @@ internal static class MirDescriptors
         IntrinsicId.MakeRc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
         IntrinsicId.MakeArc => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1),
         IntrinsicId.RawInitialize => Intrinsic(MirEffect.None, 2),
+        IntrinsicId.VolatileRead => Intrinsic(MirEffect.None, 1), // Raw accesses through its arguments (SPEC 8.11.2), as RawInitialize's.
+        IntrinsicId.VolatileWrite => Intrinsic(MirEffect.None, 2),
         IntrinsicId.RawSlice => Intrinsic(MirEffect.None, 3) with { Retained = 2 }, // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Intrinsic(MirEffect.None, 3),
         IntrinsicId.Stride => Intrinsic(MirEffect.None, 0),
@@ -194,15 +197,25 @@ internal static class MirDescriptors
         IntrinsicId.TestRecordValue => Intrinsic(MirEffect.Environment, 2), // The side and the Scalar value (F8b).
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
         IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment | MirEffect.Allocation, 0), // The path's copy on the heap.
+        IntrinsicId.MonotonicClock => Intrinsic(MirEffect.Environment, 0), // A platform read, no Abort: Time.readCounter raises clockFailure.
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
         _ => default,
     };
 
-    /// <summary>Gets whether an access a walk reports is an Opaque site's root's (G191 N1): only the Opaque row's roots carry Reads with
-    /// Writes, so the predicate is that row's root access, which the validator's static rule and A5's accesses read.</summary>
+    /// <summary>Gets whether an access a walk reports is an Opaque site's undecided use's (G191 N1, DECISIONS Z17): only the Opaque row's
+    /// access carries Reads with Writes, so the predicate is that row's access, which the validator's rules and A5's accesses read.</summary>
     /// <param name="access">The access <see cref="MirUses"/> reports.</param>
-    /// <returns>Whether it is an Opaque site's root's.</returns>
-    internal static bool IsOpaqueRoot(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
+    /// <returns>Whether it is an Opaque site's undecided use's.</returns>
+    internal static bool IsUndecided(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
+
+    /// <summary>Gets the Place a reader judges an access at (DECISIONS Z17): an undecided use's root, since it stands for whatever its
+    /// replaced syntax may access within that root (R4-M10), and any other access's own Place. A1 alone reads an undecided use at its
+    /// Place, which asks only whether the part is usable; a reader that judges a write, a borrow, a layer or a departure reads
+    /// this.</summary>
+    /// <param name="place">The Place <see cref="MirUses"/> reports.</param>
+    /// <param name="access">Its access.</param>
+    /// <returns>The Place judged.</returns>
+    internal static MirPlace Judged(MirPlace place, MirAccess access) => IsUndecided(access) ? new(place.Root) : place;
 
     // Each family's rows state the columns every row of the family has: a kind's its access and effects, an intrinsic's its effects and
     // arity (it accesses no Place itself: its arguments have their operand rows). A column only some rows set (HasPlace, Diverges,
@@ -244,24 +257,32 @@ internal static class MirUses
     {
         MirTerminatorKind.Goto or MirTerminatorKind.Drop => 1,
         MirTerminatorKind.Call => terminator.Target >= 0 ? 1 : 0,
-        MirTerminatorKind.SwitchInt => terminator.Count + 1,
+        MirTerminatorKind.SwitchInt or MirTerminatorKind.CaseSwitch => terminator.Count + 1,
         _ => 0,
     };
 
     /// <summary>Gets a successor of a terminator: at -1 its CheckTarget (-1: none), else a runtime successor, a SwitchInt's case targets in
-    /// order, then its otherwise target.</summary>
+    /// order, then its otherwise target, a CaseSwitch's exclusive side, then its shared side.</summary>
     /// <param name="body">The body.</param>
     /// <param name="terminator">The terminator.</param>
     /// <param name="index">The successor's index from -1, below <see cref="Successors"/>.</param>
-    /// <returns>The successor block.</returns>
-    internal static int Successor(MirBody body, in MirTerminator terminator, int index)
+    /// <param name="view">The view the edge is taken under, a view of the body selected, or null for none: a CaseSwitch has the one
+    /// edge to the side the view selects (<see cref="MirCases.Branch"/>), every other terminator the same edges in every view.</param>
+    /// <returns>The successor block; -1 for none.</returns>
+    internal static int Successor(MirBody body, in MirTerminator terminator, int index, MirCases? view = null)
     {
         if (index < 0)
         {
             return terminator.CheckTarget;
         }
 
-        return terminator.Kind == MirTerminatorKind.SwitchInt && index < terminator.Count ? body.Cases[terminator.Start + index].Target : terminator.Target;
+        if (terminator.Kind == MirTerminatorKind.CaseSwitch && view is not null && index != (view.Branch(terminator) ? 0 : 1))
+        {
+            return -1;
+        }
+
+        return terminator.Kind is MirTerminatorKind.SwitchInt or MirTerminatorKind.CaseSwitch && index < terminator.Count
+            ? body.Cases[terminator.Start + index].Target : terminator.Target;
     }
 
     private static void Walk<TVisitor>(MirBody body, MirCases? view, MirLocation location, ref TVisitor visitor)
@@ -352,9 +373,12 @@ internal static class MirUses
             case MirRvalueKind.Opaque:
                 Effect(row.Effects, rvalue.Arg, ref visitor);
                 var site = body.OpaqueSites[rvalue.Arg];
-                foreach (var root in body.OpaqueRoots.Slice(site.Start, site.Count))
+                // Each use at its own Place, undecided (DECISIONS Z17); a projected Place's index locals are reported with the Index row's
+                // Reads, outside MirDescriptors.Judged, and a PairLayer step adds CaseDependent, so MirMoveData marks the body
+                // view-dependent, as for any Place.
+                foreach (var use in body.OpaqueUses.Slice(site.Start, site.Count))
                 {
-                    Place(body, new(root), row.Access, default, ref visitor);
+                    Place(body, use, row.Access, default, ref visitor);
                 }
 
                 break;

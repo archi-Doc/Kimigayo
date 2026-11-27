@@ -35,7 +35,7 @@ public sealed partial class Binding
     private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope, MemberSelection? retained = null)
     {
         this.BindHeader(requirement.Symbol);
-        var selection = retained ?? this.LookupTypeMember(self, requirement.Symbol.Name, scope, self);
+        var selection = retained ?? this.LookupMember(self, requirement.Symbol.Name, scope, LookupRole.Value, self);
         if (selection.Pending)
         {
             return ConstraintProof.Unknown;
@@ -47,7 +47,7 @@ public sealed partial class Binding
         }
 
         this.BindHeader(implementation.Symbol);
-        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope);
+        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope, conformance.Use);
         if (proof != ConstraintProof.Proven)
         {
             return proof;
@@ -99,7 +99,7 @@ public sealed partial class Binding
             Array.Clear(origins);
             originBindings = origins;
             Array.Clear(inputOrigins);
-            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
+            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, conformance.Use, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
         }
         else
         {
@@ -110,7 +110,7 @@ public sealed partial class Binding
             }
 
             var getter = requirement.Kind == PropertyAccessorKind.Get;
-            if (receiver.Kind != BoundTypeKind.Semantics || receiver.Semantics != (getter ? SemanticsKind.Ref : SemanticsKind.Uniq) || !SameType(receiver.Components[0], self))
+            if (receiver.Kind != BoundTypeKind.Semantics || receiver.Semantics != (getter ? SemanticsKind.Ref : SemanticsKind.Uniq) || !ReferenceEquals(receiver.Components[0], self))
             {
                 return ConstraintProof.Refuted;
             }
@@ -120,15 +120,15 @@ public sealed partial class Binding
                 kind = PropertyWitnessKind.StorageSet;
                 proof = input is not null && implementation.Property.Declaration.DeclarationKind == PropertyDeclarationKind.Var &&
                     SignatureEquals(input, field, requirement.Binder, implementation.Binder) &&
-                    this.IsSubtypeAt(input, field, requirement.Binder, Bridge()) && SameType(result, BoundType.Unit) ?
+                    this.IsSubtypeAt(input, field, requirement.Binder, Bridge()) && ReferenceEquals(result, BoundType.Unit) ?
                     ConstraintProof.Proven : ConstraintProof.Refuted;
             }
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
+                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope, conformance.Use) : ConstraintProof.Refuted;
             }
-            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && SameType(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
+            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && ReferenceEquals(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {
                 kind = PropertyWitnessKind.StorageBorrow;
                 proof = ConstraintProof.Proven;
@@ -141,7 +141,7 @@ public sealed partial class Binding
 
         if (proof == ConstraintProof.Proven)
         {
-            var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? ProjectedReceiverProof(implementation.Property.Symbol, implementation) : ConstraintProof.Proven;
+            var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? this.ProjectedReceiverProof(implementation.Property.Symbol, implementation) : ConstraintProof.Proven;
             var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof) { Origins = originBindings, Contract = conformance.Contract };
             conformance.PropertyWitnessStorage.Add(witness);
             conformance.PropertyWitnessMap.Add((witness.Identity, requirement.Kind), witness);

@@ -18,8 +18,26 @@ public sealed class MirInitTest
     private const string Resource = "struct Resource\n    public var name: string = \"r\"\nfunc make() -> Resource => Resource.init()\n" +
         "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
 
+    // A default that moves s twice or once, a consume, a runtime-indexed Array in a default, and a default's callers: two calls in f, one in
+    // g's two views (ACopysProblemIsItsTemplatesCheck).
+    private const string Consume = "func consume(s: string) => ()\n";
+
+    private const string MovesTwice = Consume + "func probe(n: i32 = label w: do\n    let s: string = \"abc\"\n    consume(s@move)\n    consume(s@move)\n" +
+        "    exit to w 1\n) -> i32 => n\n";
+
+    private const string MovesOnce = Consume + "func probe(n: i32 = label w: do\n    let s: string = \"abc\"\n    consume(s@move)\n    exit to w 1\n) -> i32 => n\n";
+
+    private const string TakesAt = "func take(s: string) => ()\nfunc probe(n: i32 = label w: do\n    let values: Array<string> = [\"a\", \"b\"]\n" +
+        "    let i: isize = 0\n";
+
+    private const string CopyCallers = "func f() -> i32 => probe() + probe()\nfunc g<s/T>(v: s/T) -> i32\n    s is ref or uniq\n    return probe()\n";
+
     private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
     private const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
+    private const string Parts = "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n        self.s = s@move\n" +
+        "        self.n = n\n"; // A struct of a moved and a Copy Field (AnOpaqueSitesPartIsCheckedAtItsPlace).
+
+    private const string Callees = "func k(x: i32) -> i32 => x\nfunc g(n: i32, m: i32) -> i32 => n\n"; // Calls and their decided twins (ditto).
 
     // Receivers of each aggregate kind, nested ones included, and two returns of an incomplete Array, valid on the assumed path.
     private const string Components = "func fail() -> Never => $abort(\"no\")\nfunc takeA(a: Array<i32>) => ()\nfunc takeF(a: [2 of i32]) => ()\n" +
@@ -78,6 +96,17 @@ public sealed class MirInitTest
         "struct B\n    public var t: (i32, i32)\n    public init(t: (i32, i32)) => self.t = t\n" +
         "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
 
+    // The declarations before the bodies of AnOverwriteIsReachedOnlyByThePathsThatHoldItsValue.
+    private const string Overwrites = "func eat(a: Array<i32>) -> Never => $abort(\"no\")\nfunc fail() -> Never => $abort(\"no\")\nfunc g(n: i32) -> i32 => n\nfunc idx(a: ref/Array<i32>) -> usize => 0\nfunc keepA(a: Array<i32>) -> Array<i32> => a@move\nfunc mkA(n: i32) -> Array<i32> => [n]\nfunc mkO(n: i32) -> Array<i32>? => .Some([n])\nfunc mkR(c: bool) -> Result<Array<i32>, i32>\n    if c => return .Ok([1])\n    return .Err(1)\nfunc mkR2(a: Array<i32>, c: bool) -> Result<Array<i32>, i32>\n    if c => return .Ok(a@move)\n    return .Err(1)\nfunc peek(a: ref/Array<i32>) -> () => ()\nfunc pos(a: Array<i32>) -> usize => 0\nfunc takeA(a: Array<i32>) -> () => ()\nfunc takeO(o: Array<i32>?) -> () => ()\nfunc use(n: i32) -> () => ()\nfunc useB(b: bool) -> () => ()\nfunc pos2(n: i32) -> usize => 0\nfunc takeTA(t: (i32, Array<i32>)) -> () => ()\nfunc use64(n: i64) -> () => ()\nfunc idB(b: bool) -> bool => b\nfunc peekI(r: ref/i32) -> () => ()\npublic func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
+
+    // The declarations before the overwrites of AnOverwriteByAValueWithoutOneKeepsTheTargetsState.
+    private const string Kept = "func fail() -> Never => $abort(\"no\")\nfunc use(n: i32) => ()\nfunc takeA(a: Array<i32>) => ()\n" +
+        "func takeF(a: [2 of i32]) => ()\nfunc takeFA(a: [2 of Array<i32>]) => ()\nfunc takeT(t: (i32, i32)) => ()\n" +
+        "func takeTA(t: (i32, Array<i32>)) => ()\nfunc takeTN(t: (i32, (Array<i32>, i32))) => ()\nfunc takeD(d: Dictionary<i32, i32>) => ()\n" +
+        "func takeSP(s: SP) => ()\nstruct SP\n    public var a: Array<i32>\n    public var n: i32\n" +
+        "    public init(a: Array<i32>, n: i32)\n        self.a = a@move\n        self.n = n\n" +
+        "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
+
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
     public void AUseNeedsInitializationOnEveryPath()
@@ -104,6 +133,18 @@ public sealed class MirInitTest
         Assert.Empty(written.Binding.Issues);
         Assert.Equal(["MovedPlace_Kd x.name = \"n\" 1", "MovedPlace_Kd x 1"], Problems(written));
     }
+
+    // SPEC 15.1.1 (PLAN G215; DECISIONS R7-M115): a Field initializer's second Move is MovedPlace in its constructor's body and in a
+    // constructorless layer's body alike (m_; accepted before), whose Field without an initializer is not judged unset; one Move is valid.
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("        let u = s@move\n", "", "MovedPlace_Kd s 1")]
+    [InlineData("        let u = s@move\n", "    public init(p: ref/i32 during a) => self.p = p\n", "MovedPlace_Kd s 1")]
+    public void AFieldInitializersMoveIsJudgedInItsBody(string second, string constructor, params string[] expected)
+        => Assert.Equal(
+            expected,
+            Problems("struct Holder {a}\n    public let p: ref/i32 during a\n    public var n: i32 = if true\n        let s: Array<i32> = []\n" +
+                $"        let t = s@move\n{second}        yield 0\n    else => 0\n{constructor}public func main() => ()\n"));
 
     // SPEC 15.1.1: a let binding is initialized once per binding lifetime: a loop body's let starts a lifetime per iteration, one outside
     // the loop does not, and neither a Move nor a destruction resets the first initialization.
@@ -198,20 +239,20 @@ public sealed class MirInitTest
             Problems("struct S\n    var value: i32\n    public init(flag: bool)\n        if flag => return\n        self.value = 1\n"));
     }
 
-    // SPEC 6.3.5, 23.1.2 (PLAN G105, G522): a Field Binding formed no stored Type for, its initializer failed in the parser or in
-    // Binding or its Type annotation unresolved, is a part of a rejected declaration that its constructor places nothing into
-    // (MirBuilder.Stored), so no exit requires it: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit
-    // one, also one that never sets the annotated Field, a generic and a nested struct's report only the Field's own failure; another Field
-    // an explicit init leaves unset is still reported (fail-before: UninitializedPlace_Kd at the struct or the init for the failed Field).
+    // SPEC 6.3.3, 6.3.5, 23.1.2 (DECISIONS Q13, R7-M88): a Field whose initializer failed in the parser or in Binding is placed by that
+    // initializer where its slot failed (MirBuilder.Construct into its Field Place) and is no part otherwise (MirBody.SelectsPart), so no
+    // exit finds it unplaced: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit one, a generic and a
+    // nested struct's report only the Field's own failure; another Field an explicit init leaves unset is still reported (fail-before,
+    // f5e9aaf7d: UninitializedPlace_Kd at the struct or the init for the failed Field). An annotated Field whose Type failed and that its
+    // constructor never places reports at the exit since Z28's M3 (AFieldWhoseSlotFailedIsItsOwnPlace's q07 rows).
     [Theory]
     [InlineData("struct Node\n    var next = (1 x)\n", "")]
     [InlineData("struct Node\n    var next = undefinedName\n", "")]
     [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    init(k: i32) => self.k = k\n", "")]
-    [InlineData("struct S\n    var a: Missing\n    var k: i32\n    init() => self.k = 1\n", "")]
     [InlineData("struct Box<T>\n    var next = (1 x)\nfunc f()\n    let b = Box<i32>.init()\n", "")]
     [InlineData("struct Outer\n    public let k: i32 = 1\n    struct Inner\n        var next = (1 x)\n", "")]
     [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    var m: i32\n    init(k: i32) => self.k = k\n", "UninitializedPlace_Kd init(k: i32) => self.k = k 1")]
-    public void AConstructorRequiresNoFieldWithoutAStoredType(string source, string expected)
+    public void AFailedFieldsInitializerPlacesIt(string source, string expected)
     {
         var c = CompilationTestHelper.Parse(source);
         c.Bind();
@@ -222,8 +263,9 @@ public sealed class MirInitTest
 
     // SPEC 15.1.3, 15.1.5: a Move needs a Move Path: a constant index of a fixed array has one, a runtime index of an Array has none
     // (StaticMovePathRequired_Kd), and such a Move changes no state, so a second one is not MovedPlace; a raw pointer's Take is untracked
-    // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222), and so is a Take of a part its storage holds (TyCtxt.RawPart: a
-    // fixed array's element), while an Array's element below it has no Move Path (SPEC 4.7.1; PLAN G672). A Place a function publishes
+    // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222) or from an Array by a runtime index (valid: by SPEC 5.2, `*p`
+    // is a raw Place however `p` is read), and so is a Take of a part its storage holds (TyCtxt.RawPart: a fixed array's element), while an
+    // Array's element below it has no Move Path (SPEC 4.7.1; PLAN G672). A Place a function publishes
     // never offers Take, whatever root holds its reference: its bare Move is SPEC 3.5's error and its explicit one a shared path's
     // (SPEC 15.1.5), both Binding's since R6-check H1 (DECISIONS BU-84; TransferJudgmentTest), so no MIR Move Path is asked. A referent
     // through a reference Field offers no Take either, also inside a raw Place: its bare Move is Binding's TransferRequired_Kd since H1
@@ -238,6 +280,9 @@ public sealed class MirInitTest
         Assert.Empty(Problems("func take(s: string) => ()\nfunc f(pointer: raw/string)\n    unsafe\n        let first = (*pointer)@move\n" +
             "        let second = (*pointer)@move\n        take(first@move)\n        take(second@move)\n"));
         Assert.Empty(Problems(Lens + "func f(lens: uniq/Lens)\n    unsafe => _ = (*lens.at)@move\n"));
+        var indexed = MirBuildTest.Compile("func f(values: Array<raw/string>, i: isize)\n    unsafe => _ = (*values[i])@move\n");
+        Assert.Empty(indexed.Binding.Issues);
+        Assert.Empty(Problems(indexed));
         Assert.Equal(
             ["StaticMovePathRequired_Kd (*p)[0] 1"],
             Problems("func f(p: raw/Array<string>, q: raw/[2 of string])\n    unsafe\n        _ = (*q)[1]@move\n        _ = (*p)[0]@move\n"));
@@ -276,6 +321,27 @@ public sealed class MirInitTest
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
     }
 
+    // SPEC 7.2.3, 15.1, 15.1.2, 15.1.3 (DECISIONS R4-M69, Z20): A1's Language problems in a default are its template's checks, recorded once
+    // at the default (even where no call evaluates it) whatever copies evaluate it, two calls and a two-view caller: MovedPlace_Kd,
+    // UninitializedPlace_Kd, ReassignedLet_Kd and StaticMovePathRequired_Kd (DefaultArgumentMove_Kd: ADefaultCannotMoveItsPreparedSlot);
+    // outside a copy a problem is its body's own, in a plain function and in a caller's own Move beside a copy. Each valid twin drops the
+    // failing condition.
+    [Theory]
+    [InlineData(MovesTwice + CopyCallers, "MovedPlace_Kd s 1")]
+    [InlineData(MovesTwice, "MovedPlace_Kd s 1")]
+    [InlineData(MovesOnce + CopyCallers, "")]
+    [InlineData(MovesTwice + "func f() -> i32\n    let t: string = \"x\"\n    consume(t@move)\n    let k = probe()\n    consume(t@move)\n    return k\n", "MovedPlace_Kd s 1 | MovedPlace_Kd t 1")]
+    [InlineData(Consume + "func plain() -> i32\n    let s: string = \"abc\"\n    consume(s@move)\n    consume(s@move)\n    return 1\nfunc f() -> i32 => plain() + plain()\n", "MovedPlace_Kd s 1")]
+    [InlineData(Consume + "func plain() -> i32\n    let s: string = \"abc\"\n    consume(s@move)\n    return 1\nfunc f() -> i32 => plain() + plain()\n", "")]
+    [InlineData("func probe(n: i32 = label w: do\n    let x: i32\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "UninitializedPlace_Kd x 1")]
+    [InlineData("func probe(n: i32 = label w: do\n    let x: i32\n    x = 2\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "")]
+    [InlineData("func probe(n: i32 = label w: do\n    let x: i32 = 1\n    x = 2\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "ReassignedLet_Kd x = 2 1")]
+    [InlineData("func probe(n: i32 = label w: do\n    var x: i32 = 1\n    x = 2\n    exit to w x\n) -> i32 => n\n" + CopyCallers, "")]
+    [InlineData(TakesAt + "    take(values[i]@move)\n    exit to w 1\n) -> i32 => n\n" + CopyCallers, "StaticMovePathRequired_Kd values[i] 1")]
+    [InlineData(TakesAt + "    take(Text.toString(values[i]))\n    exit to w 1\n) -> i32 => n\n" + CopyCallers, "")]
+    public void ACopysProblemIsItsTemplatesCheck(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
+
     // SPEC 15.1.3: a Move of a constant index forms the referenced element's Move Path; the paths follow the accesses, never the declared
     // length (an input-size property of MirMoveData).
     [Fact]
@@ -283,7 +349,7 @@ public sealed class MirInitTest
     {
         var c = MirBuildTest.Compile("func f()\n    var a: [1000000 of string]\n    let taken = a[42]@move\n");
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         flow.Begin(body);
         moves.Build(body, flow);
         var array = body.Locals.ToArray().ToList().FindIndex(static x => x.Name == "a");
@@ -322,7 +388,7 @@ public sealed class MirInitTest
                 $"let leaf = Leaf.init({string.Join(", ", parameters)})\n");
             Assert.True(c.Analyze().IsVerified, $"{count} parameters");
             var body = c.BuildMir().Bodies.ToArray().Last(static x => x.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(x.Key.Decl));
-            var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+            var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
             flow.Begin(body);
             moves.Build(body, flow);
             Assert.Contains(moves.Paths.ToArray(), static x => (x.Local, x.Kind, x.Arg) == (0, MirProjectionKind.Base, 1));
@@ -344,13 +410,14 @@ public sealed class MirInitTest
 
         text.Append("func small(flag: bool)\n    var q = Q.init()\n    if flag => q.b.0 = 3\n    q.a = 2\n");
         text.Append("func other(flag: bool)\n    var q = Q.init()\n    q.a = 4\n    let t = (q.b.1, flag)\n");
-        var bodies = MirBuildTest.Compile(text.ToString()).BuildMir().Bodies.ToArray();
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+        var c = MirBuildTest.Compile(text.ToString());
+        var bodies = c.BuildMir().Bodies.ToArray();
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         Paths(bodies.Single(static x => x.Key.Decl?.Name == "large"), moves);
         foreach (var name in new[] { "small", "other" })
         {
             var body = bodies.Single(x => x.Key.Decl?.Name == name);
-            Assert.Equal(Paths(body, new MirMoveData()), Paths(body, moves));
+            Assert.Equal(Paths(body, new MirMoveData(c.Types)), Paths(body, moves));
         }
 
         // A body's paths built by a MirMoveData: each path, the flow paths' count and each projected Place's path and access in use order.
@@ -956,27 +1023,18 @@ public sealed class MirInitTest
     [InlineData(false)]
     [InlineData(true)]
     public void NoRuntimeDefinitionKeepsItsState(bool broken)
-    {
-        var c = MirBuildTest.Compile("func use(n: i32) => ()\nfunc f(y: i32, c: bool)\n    let x: i32\n    x = if c => y else => y\n    use(x)\n");
-        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies.
-        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var statements = body.Statements.ToArray();
-        var take = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use, Place.Projection: 0 } &&
-            body.Locals[x.Place.Root].Kind == MirLocalKind.Var && body.Operands[x.Rvalue.Start].Place is { Projection: 0, Root: >= 0 } operand &&
-            body.Locals[operand.Root].Kind == MirLocalKind.Temp);
-        Assert.True(take >= 0);
-        var temp = body.Operands[statements[take].Rvalue.Start].Place;
-        var placements = Enumerable.Range(0, statements.Length).Where(x => statements[x].Kind == MirStatementKind.Assign && statements[x].Place == temp).ToArray();
-        Assert.Equal(2, placements.Length);
-        if (broken)
-        {
-            Unsafe.AsRef(in body.Statements[placements[1]]) = statements[placements[1]] with { Kind = MirStatementKind.StorageLive };
-        }
+        => Assert.Equal(broken ? 1 : 0, KeptDefinitions("func f(y: i32, c: bool)\n    let x: i32\n    x = if c => y else => y\n    use(x)\n", broken));
 
-        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
-        var internals = program.Problems.All.ToArray().Where(x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Body == body.Ordinal);
-        Assert.Equal(broken ? 1 : 0, internals.Count());
-    }
+    // MirInit's third invariant (the owner's O-390 (a)): no path, assumed too, reaches an overwrite's Use without its value, the temp
+    // MirBuilder.Replace publishes as MirLocalRole.Assigned, as the builder sends a path without it around the overwrite (SPEC 13.7.1,
+    // 14.10.3). Made to reach it after a return, where only assumed paths run (the else arm's placement of the value temp turned into
+    // a StorageLive of it), the overwrite's Use keeps x's state: one InternalInvariant_Kd; the unmutated body has none. Fail-before:
+    // without the role's check the mutated body records none, as no runtime edge reaches the kept Use.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NoPathReachesAnOverwritesUseWithoutItsValue(bool broken)
+        => Assert.Equal(broken ? 1 : 0, KeptDefinitions("func f(y: i32, c: bool)\n    var x: i32 = y\n    return\n    x = if c => y else => y\n    use(x)\n", broken));
 
     // SPEC 15.1.3, 15.1.2, 14.10.3 (the owner's O-319 (a); PLAN G909): an incomplete value (a Tuple, an Array literal, a Case or a
     // Dictionary literal with a part without a value; an aggregate whose operand holds nothing on an assumed path) written where no
@@ -1126,6 +1184,259 @@ public sealed class MirInitTest
     public void AnIncompleteValueWrittenWithoutAMovePathIsReportedAtTheWrite(string body, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Writes + "    " + body + "\n"));
 
+    // SPEC 13.7.1, 14.10.3, 15.1 (DECISIONS R4-M62, per value and so per path; the owner's O-336 (a), O-371 (a)): only a value is
+    // delivered into an overwrite, so a path on which the right side has no value goes around the overwrite and the target keeps its
+    // own state there: Initialized where it was (valid), Moved, uninitialized or partly Moved where it was (its record at the use
+    // after), while the paths that hold the value Move, destroy and re-place the target as written
+    // (`a = if c => keepA(a@move) else => fail()` is valid). The forms that deliver a value as it is: a group, a construct's arm or
+    // body value (if, match, do, loop, try), a transfer's operand (a label exit, a loop exit, a yield: its assumed continuation
+    // follows a value-less operand too, and the cleanups of a value-less delivery are checked on their own path), and a
+    // short-circuit's left and right operands (a left without a value is tested on its own paths, so the right operand is checked
+    // there too); any other operation makes a value of a value-less operand. A first placement keeps its destination's state where its
+    // temp holds nothing, whatever the destination: a var initialized or bound through a temp is uninitialized on the value-less path
+    // (vi, vb, g1, vm, rt3), as a let is. Targets: an Array, a Copy value, a Tuple part, a let, a function value; an access path that
+    // builds code is located on both kinds of path (tg). A form whose every path has no value has none (SPEC 14.9.2 gives it a Type
+    // all the same: `fail() and fail()` is a bool), so no path reaches the overwrite: a short-circuit of such operands, nested, as an
+    // arm's, a label exit's or a loop exit's value, keeps the target's state (lg1, lv); as a condition or an initializer it is no
+    // overwrite's value (lv8, lv12). Run-time twins (no Never form before) stay as written. Rows by table and name in the trailing
+    // comments (the design's r2-r4 and t8-t10, the design reviews' rv, q1-q3 and x1, x3, x4, the implementation review's p1, p2),
+    // each labelled from SPEC before any run. Fail-before (the redesign's step 5, which kept a temp's or a let's state only): most
+    // invalid rows were accepted (a var through a temp: vi1, vi2, vb1, g1a, g1e, rt3; a target left Moved or uninitialized on a
+    // value-less path: la4, la6, la7, ln1i, lb1, ns2, pt3, yd4, yd5, nd2, o1i-o12i, nw1i, the t8-t10 and rv rows, lg1i, lv11, lv15),
+    // and lo3, lo4, lo2, ex5, o2i, o15i, lp5 lacked their record at the code after; step 6's first version gave InternalInvariant_Kd
+    // on lg1, lg1i, lv1-lv7, lv10, lv11 and lv15 (the operation's join without a predecessor).
+    [Theory]
+    [InlineData("var f: (i32) -> i32 = g\n    return\n    f = if c => g else => fail()\n    use(f(1))", "")] // q1 ad1
+    [InlineData("var f: (i32) -> i32\n    return\n    f = if c => g else => fail()\n    use(f(1))", "UninitializedPlace_Kd f 1")] // q1 ad1i
+    [InlineData("var b: bool = true\n    return\n    b = (if c => true else => fail()) and c\n    useB(b)", "")] // q1 la1
+    [InlineData("var b: bool = true\n    b = (if c => true else => fail()) and c\n    useB(b)", "")] // q1 la1r
+    [InlineData("var b: bool = true\n    return\n    b = fail() and c\n    useB(b)", "")] // q1 la2
+    [InlineData("var b: bool = true\n    return\n    b = (c and fail()) and c\n    useB(b)", "")] // q1 la3
+    [InlineData("var b: bool\n    return\n    b = (if c => true else => fail()) and fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q1 la4
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        exit to w ((if c => true else => fail()) and c)\n    )\n    useB(b)", "")] // q1 la5
+    [InlineData("var b: bool = true\n    return\n    b = c and (if y > 3 => fail() else => true)\n    useB(b)", "")] // q1 lc1
+    [InlineData("var b: bool = true\n    return\n    b = (if c => false else => fail()) or c\n    useB(b)", "")] // q1 lr1
+    [InlineData("let x = tr(true)\nfunc tr(c: bool) -> Result<i32, i32>\n    var a: Array<i32> = [1]\n    return .Ok(0)\n    a = try mkR(c)\n    takeA(a@move)\n    return .Ok(1)", "")] // q1 mt3
+    [InlineData("let x = tr(true)\nfunc tr(c: bool) -> Result<i32, i32>\n    var a: Array<i32> = [1]\n    return .Ok(0)\n    a = try mkR2(a@move, c)\n    takeA(a@move)\n    return .Ok(1)", "MovedPlace_Kd a 1")] // q1 mt3i
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (label v: do\n            exit to v (if c => keepA(a@move) else => fail())\n        )\n    )\n    takeA(a@move)", "")] // q1 nx1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (label v: do\n            exit to v (if c => [y] else => eat(a@move))\n        )\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // q1 nx1i
+    [InlineData("var q: [2 of i32] = [1, 2]\n    return\n    q[(if c => 0 else => 1)] = if c => 3 else => fail()\n    use(q[0])", "")] // q1 tg3
+    [InlineData("var q: [2 of i32] = [1, 2]\n    var a: Array<i32> = [y]\n    return\n    q[(if c => pos(a@move) else => 1)] = if c => 3 else => fail()\n    takeA(a@move)", "MovedPlace_Kd a 1")] // q1 tg4
+    [InlineData("var q: [2 of i32] = [1, 2]\n    var a: Array<i32> = [y]\n    takeA(a@move)\n    return\n    q[(if c => pos(a@move) else => 1)] = if c => 3 else => fail()", "MovedPlace_Kd a 1")] // q1 tg5
+    [InlineData("var q: [2 of i32] = [1, 2]\n    return\n    q[idx(mkA(y)@ref)] = if c => 3 else => fail()\n    use(q[0])", "")] // q1 tg6
+    [InlineData("var q: [2 of i32] = [1, 2]\n    q[idx(mkA(y)@ref)] = if c => 3 else => fail()\n    use(q[0])", "")] // q1 tg6r
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        unsafe\n            defer => peek(a@ref)\n            exit to w (if c => [y] else => fail())\n    )\n    takeA(a@move)", "")] // q1 us2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        unsafe\n            defer => peek(a@ref)\n            exit to w (if c => [y] else => eat(a@move))\n    )\n    takeA(a@move)", "MovedPlace_Kd a@ref 1 | MovedPlace_Kd a 1")] // q1 us2i
+    [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        var v => keepA(v@move)\n    )\n    takeA(r@move)", "UninitializedPlace_Kd v 1")] // q1 vb1
+    [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        var v => [y]\n    )\n    takeA(r@move)", "")] // q1 vb1v
+    [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        let v => keepA(v@move)\n    )\n    takeA(r@move)", "UninitializedPlace_Kd v 1")] // q1 vb2
+    [InlineData("return\n    var a: Array<i32> = (label w: do\n        exit to w (if c => [y] else => fail())\n    )\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // q1 vi1
+    [InlineData("return\n    var a: Array<i32> = (label w: do\n        exit to w (if c => [y] else => fail())\n    )\n    a = [y]\n    takeA(a@move)", "")] // q1 vi1v
+    [InlineData("return\n    var b: bool = (if c => true else => fail()) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q1 vi2
+    [InlineData("return\n    var b: bool = (if c => true else => fail()) and c\n    b = true\n    useB(b)", "")] // q1 vi2v
+    [InlineData("return\n    let b: bool = (if c => true else => fail()) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q1 vi3
+    [InlineData("var o: Array<i32>? = .Some([y])\n    var a: Array<i32> = [y]\n    return\n    a = (match o\n        .Some(let v) => keepA(a@move)\n        .None => fail()\n    )\n    takeO(o@move)\n    takeA(a@move)", "")] // q2 mt1b
+    [InlineData("var o: Array<i32>? = .Some([y])\n    var a: Array<i32> = [y]\n    return\n    a = (match o\n        .Some(let v) => keepA(a@move)\n        .None => eat(a@move)\n    )\n    takeO(o@move)\n    takeA(a@move)", "MovedPlace_Kd a 1")] // q2 mt1bi
+    [InlineData("let r: Array<i32> = (match (if c => [y] else => fail())\n        var v => keepA(v@move)\n    )\n    takeA(r@move)", "")] // q2 vb1r
+    [InlineData("var a: Array<i32> = (label w: do\n        exit to w (if c => [y] else => fail())\n    )\n    takeA(a@move)", "")] // q2 vi1r
+    [InlineData("var b: bool = (if c => true else => fail()) and c\n    useB(b)", "")] // q2 vi2r
+    [InlineData("var x: i32 = (label w: do\n        exit to w (if c => y else => fail())\n    )\n    use(x)", "")] // q2 vi4r
+    [InlineData("var b: bool = true\n    useB(b@move)\n    return\n    b = (if c => true else => fail()) and c\n    useB(b)", "MovedPlace_Kd useB(b) 1")] // q3 la6
+    [InlineData("var b: bool\n    return\n    b = (if c => true else => fail()) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q3 la7
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        exit to w (if c => x@move else => fail())\n    )\n    use(x)", "")] // r2 cp2
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        exit to w (if c => x@move else => fail())\n        use(x)\n        exit to w 2\n    )\n    use(x)", "MovedPlace_Kd use(x) 1")] // r2 cp3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => [y] else => fail())\n        peek(a@ref)\n        exit to w [y]\n    )\n    takeA(a@move)", "")] // r2 ex4v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => [y] else => eat(a@move))\n        peek(a@ref)\n        exit to w [y]\n    )\n    takeA(a@move)", "MovedPlace_Kd a@ref 1 | MovedPlace_Kd a 1")] // r2 ex5
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        if c => exit to w keepA(a@move)\n        exit to w eat(a@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 lb1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        if c => exit to w keepA(a@move)\n        exit to w fail()\n    )\n    takeA(a@move)", "")] // r2 lb1v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        exit (if c => keepA(a@move) else => fail())\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // r2 lo3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        exit (if c => [y] else => eat(a@move))\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // r2 lo4
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3 => (if c => keepA(a@move) else => fail()) else => [y]\n    takeA(a@move)", "")] // r2 ns1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3 => (if c => [y] else => eat(a@move)) else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 ns2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match y\n        0 => (if c => keepA(a@move) else => fail())\n        _ => keepA(a@move)\n    )\n    takeA(a@move)", "")] // r2 ns3
+    [InlineData("var p: (i32, Array<i32>) = (y, [y])\n    return\n    p.1 = (label w: do\n        exit to w (if c => keepA(p.1@move) else => fail())\n    )\n    takeTA(p@move)", "")] // r2 pt2
+    [InlineData("var p: (i32, Array<i32>) = (y, [y])\n    return\n    p.1 = (label w: do\n        exit to w (if c => [y] else => eat(p.1@move))\n    )\n    takeTA(p@move)", "MovedPlace_Kd p 1")] // r2 pt3
+    [InlineData("var a: Array<i32> = [y]\n    a = (label w: do\n        exit to w (if c => keepA(a@move) else => fail())\n    )\n    takeA(a@move)", "")] // r2 rt1
+    [InlineData("var a: Array<i32> = [y]\n    a = (label w: do\n        exit to w (if c => keepA(a@move) else => fail())\n        peek(a@ref)\n        exit to w [y]\n    )\n    takeA(a@move)", "MovedPlace_Kd a@ref 1")] // r2 rt2
+    [InlineData("var a: Array<i32> = [y]\n    var q: [2 of i32] = [1, 2]\n    return\n    q[pos(a@move)] = if c => 3 else => fail()\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 tg1
+    [InlineData("var a: Array<i32> = [y]\n    var q: [2 of i32] = [1, 2]\n    return\n    q[pos2(y)] = if c => 3 else => fail()\n    takeA(a@move)\n    use(q[0])", "")] // r2 tg1v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => peek(a@ref)\n        yield (if c => keepA(a@move) else => fail())\n    else => [y]\n    takeA(a@move)", "MovedPlace_Kd a@ref 1")] // r2 yd3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => use(y)\n        yield (if c => keepA(a@move) else => fail())\n    else => [y]\n    takeA(a@move)", "")] // r2 yd3v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => use(y)\n        yield (if c => [y] else => eat(a@move))\n    else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 yd4
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => takeA(a@move)\n        yield (if c => [y] else => fail())\n    else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 yd5
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => takeA(a@move)\n        yield (if c => [y] else => [y, y])\n    else => [y]\n    takeA(a@move)", "")] // r2 yd5v
+    [InlineData("return\n    let b: Array<i32> = (label w: do\n        defer => use(y)\n        if c => exit to w [y]\n        exit to w fail()\n    )\n    takeA(b@move)", "UninitializedPlace_Kd b 1")] // r3 lt2
+    [InlineData("return\n    let b: Array<i32> = (label w: do\n        defer => use(y)\n        if c => exit to w [y]\n        exit to w [y, y]\n    )\n    takeA(b@move)", "")] // r3 lt2v
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        defer => b = (if c => keepA(b@move) else => fail())\n        if c => exit to w keepA(a@move)\n        exit to w fail()\n    )\n    takeA(a@move)\n    takeA(b@move)", "")] // r3 nd1
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        defer => b = (if c => [y] else => eat(b@move))\n        if c => exit to w keepA(a@move)\n        exit to w fail()\n    )\n    takeA(a@move)\n    takeA(b@move)", "MovedPlace_Kd b 1")] // r3 nd2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => fail() else => fail())\n    )\n    takeA(a@move)", "")] // r3 nv1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => eat(a@move) else => fail())\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r3 nv2
+    [InlineData("var a: Array<i32> = [y]\n    var q: [2 of i32] = [1, 2]\n    takeA(a@move)\n    return\n    q[pos(a@move)] = if c => 3 else => fail()", "MovedPlace_Kd a 1")] // r3 tg2
+    [InlineData("var b: bool = true\n    return\n    b = ((if c => true else => fail()) or c) and c\n    useB(b)", "")] // r4 ln1
+    [InlineData("var b: bool = true\n    useB(b@move)\n    return\n    b = ((if c => true else => fail()) or c) and c\n    useB(b)", "MovedPlace_Kd useB(b) 1")] // r4 ln1i
+    [InlineData("var a: Array<i32> = [y]\n    var b: bool = true\n    return\n    b = fail() and (if c => true else => eat(a@move))\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r4 ln2
+    [InlineData("var x: i32 = 1\n    return\n    x = if (if c => true else => fail()) and c => 2 else => 3\n    use(x)", "")] // r4 ln3
+    [InlineData("return\n    var a: Array<i32> = (match y\n        0 => fail()\n        _ => [y]\n    )\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // r4 vm1
+    [InlineData("return\n    var a: Array<i32> = (match y\n        0 => fail()\n        _ => [y]\n    )\n    a = [y]\n    takeA(a@move)", "")] // r4 vm1v
+    [InlineData("takeA(h(true))\nfunc h(c: bool) -> Array<i32>\n    return [1]\n    return (label w: do\n        exit to w (if c => [1] else => fail())\n    )", "")] // r4 vr1
+    [InlineData("return\n    var a: Array<i32> = loop\n        exit (if c => [y] else => fail())\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // x1 g1a
+    [InlineData("return\n    var a: Array<i32> = loop\n        exit (if c => [y] else => fail())\n    a = [y]\n    takeA(a@move)", "")] // x1 g1av
+    [InlineData("return\n    var b: bool = c and (if y > 3 => true else => fail())\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 g1b
+    [InlineData("return\n    var b: bool = c and (if y > 3 => true else => fail())\n    b = true\n    useB(b)", "")] // x1 g1bv
+    [InlineData("useB(h(c))\nfunc h(c: bool) -> bool\n    return true\n    (if c => true else => fail()) and c", "")] // x1 g1d
+    [InlineData("return\n    var a: Array<i32> = if c\n        yield (if y > 3 => [y] else => fail())\n    else => [y]\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // x1 g1e
+    [InlineData("return\n    var a: Array<i32> = if c\n        yield (if y > 3 => [y] else => fail())\n    else => [y]\n    a = [y]\n    takeA(a@move)", "")] // x1 g1ev
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        if c => exit to w 2\n        exit to w fail()\n    )\n    use(x)", "")] // x1 o1
+    [InlineData("var b: bool = true\n    return\n    b = (((if c => true else => fail()) and c) or c) and c\n    useB(b)", "")] // x1 o10
+    [InlineData("var b: bool\n    return\n    b = (((if c => true else => fail()) and c) or c) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o10i
+    [InlineData("var b: bool = true\n    return\n    b = loop\n        exit ((if c => true else => fail()) and c)\n    useB(b)", "")] // x1 o11
+    [InlineData("var b: bool\n    return\n    b = loop\n        exit ((if c => true else => fail()) and c)\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o11i
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match y\n        0 if c => fail()\n        _ => keepA(a@move)\n    )\n    takeA(a@move)", "")] // x1 o12
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match y\n        0 if c => eat(a@move)\n        _ => keepA(a@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // x1 o12i
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        let t = (if c => true else => fail()) and c\n        exit to w t\n    )\n    useB(b)", "UninitializedPlace_Kd t 1")] // x1 o13i
+    [InlineData("var p: (bool, i32) = (true, 1)\n    return\n    p.0 = (if c => true else => fail()) and c\n    useB(p.0)", "")] // x1 o14
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        let t: i32 = (if c => exit to w (if y > 3 => 2 else => fail()) else => 3)\n        exit to w t\n    )\n    use(x)", "UninitializedPlace_Kd t 1")] // x1 o15
+    [InlineData("var x: i32\n    return\n    x = (label w: do\n        let t: i32 = (if c => exit to w (if y > 3 => 2 else => fail()) else => 3)\n        exit to w t\n    )\n    use(x)", "UninitializedPlace_Kd t 1 | UninitializedPlace_Kd use(x) 1")] // x1 o15i
+    [InlineData("var x: i32\n    return\n    x = (label w: do\n        if c => exit to w 2\n        exit to w fail()\n    )\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // x1 o1i
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        if c => exit keepA(a@move)\n        exit fail()\n    takeA(a@move)", "")] // x1 o2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        if c => exit keepA(a@move)\n        exit eat(a@move)\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // x1 o2i
+    [InlineData("var b: bool = true\n    return\n    b = (fail() or c)\n    useB(b)", "")] // x1 o3
+    [InlineData("var b: bool\n    return\n    b = (fail() or c)\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o3i
+    [InlineData("var b: bool = true\n    return\n    b = if y > 3 => ((if c => true else => fail()) and c) else => false\n    useB(b)", "")] // x1 o4
+    [InlineData("var b: bool\n    return\n    b = if y > 3 => ((if c => true else => fail()) and c) else => false\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o4i
+    [InlineData("var b: bool = true\n    return\n    b = c and ((if y > 3 => true else => fail()) or c)\n    useB(b)", "")] // x1 o5
+    [InlineData("var b: bool\n    return\n    b = c and ((if y > 3 => true else => fail()) or c)\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o5i
+    [InlineData("var b: bool = true\n    return\n    b = idB((if c => true else => fail()) and c)\n    useB(b)", "")] // x1 o6
+    [InlineData("var b: bool = true\n    return\n    b = not ((if c => true else => fail()) and c)\n    useB(b)", "")] // x1 o7
+    [InlineData("var a: Array<i32> = [y]\n    var b: bool = true\n    return\n    b = (if c => true else => fail()) and (if y > 3 => true else => eat(a@move))\n    takeA(a@move)", "MovedPlace_Kd a 1")] // x1 o8
+    [InlineData("var a: Array<i32> = [y]\n    var b: bool = true\n    return\n    b = (if c => true else => fail()) and (if y > 3 => true else => eat(a@move))\n    a = [y]\n    takeA(a@move)", "")] // x1 o8v
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        if c => exit to w true\n        exit to w fail()\n    ) and c\n    useB(b)", "")] // x1 o9
+    [InlineData("var b: bool\n    return\n    b = (label w: do\n        if c => exit to w true\n        exit to w fail()\n    ) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o9i
+    [InlineData("var x: i32 = 1\n    return\n    x += (if c => 1 else => fail())\n    use(x)", "")] // x3 ca1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        loop\n            exit to w (if c => keepA(a@move) else => fail())\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // x3 lp5
+    [InlineData("let x: i32\n    return\n    x = if c => 1 else => fail()\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // x3 lt1
+    [InlineData("let x: i32 = 1\n    return\n    x = if c => 2 else => fail()\n    use(x)", "ReassignedLet_Kd x = if c => 2 1")] // x3 lt2
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        b = (label v: do\n            if c => exit to w (if y > 3 => keepA(a@move) else => fail())\n            exit to v [y]\n        )\n        exit to w [y]\n    )\n    takeA(a@move)\n    takeA(b@move)", "")] // x3 nw1
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        b = (label v: do\n            if c => exit to w (if y > 3 => keepA(a@move) else => eat(a@move))\n            exit to v [y]\n        )\n        exit to w [y]\n    )\n    takeA(a@move)\n    takeA(b@move)", "MovedPlace_Kd a 1")] // x3 nw1i
+    [InlineData("return\n    var n: i32 = 0\n    loop\n        var t: Array<i32> = (label w: do\n            defer => use(y)\n            if c => exit to w (if y > 3 => [y] else => fail())\n            exit to w [y]\n        )\n        takeA(t@move)\n        n += 1\n        if n > 2 => exit", "UninitializedPlace_Kd t 1")] // x4 rt3
+    [InlineData("return\n    var n: i32 = 0\n    loop\n        var t: Array<i32> = (label w: do\n            defer => use(y)\n            if c => exit to w (if y > 3 => [y] else => fail())\n            exit to w [y]\n        )\n        t = [y]\n        takeA(t@move)\n        n += 1\n        if n > 2 => exit", "")] // x4 rt3v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match (if c => [y] else => fail())\n        var v => [y]\n    )\n    takeA(a@move)", "")] // x4 vb3v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    takeA(a@move)\n    a = if c => [y] else => fail()\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t8 ma2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if c => [y] else => eat(a@move)\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t8 ma3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if c => keepA(a@move) else => eat(a@move)\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t8 ma4
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    return\n    takeA(t.1@move)\n    t = if c => (y, [y]) else => fail()\n    takeTA(t@move)", "MovedPlace_Kd t 1")] // t8 pb4
+    [InlineData("var a: Array<i32> = [y]\n    return\n    loop\n        a = if c => keepA(a@move) else => eat(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // t8 lw2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if c => (if y > 3 => [y] else => eat(a@move)) else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t8 nj2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match y\n        0 => fail()\n        1 => [y]\n        _ => eat(a@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t8 me2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        defer => takeA(a@move)\n        if c => exit to w [y]\n        exit to w fail()\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t8 df1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        if c => exit to w [y]\n        takeA(a@move)\n        exit to w fail()\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t8 ra2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => [y] else => eat(a@move))\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t9 ch3
+    [InlineData("var b: bool\n    return\n    b = c and fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // t10 an3
+    [InlineData("var b: bool = true\n    useB(b@move)\n    return\n    b = c and fail()\n    useB(b)", "MovedPlace_Kd useB(b) 1")] // t10 an4
+    [InlineData("var b: bool = true\n    return\n    b = b@move or fail()\n    useB(b)", "MovedPlace_Kd useB(b) 1")] // t10 an5
+    [InlineData("var b: bool = true\n    return\n    b = b@move and fail()\n    useB(b)", "MovedPlace_Kd useB(b) 1")] // t10 or3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        if c => exit to w [y]\n        if y > 3 => exit to w [y]\n        exit to w eat(a@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t10 lx2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: loop\n        if c => exit to w [y]\n        takeA(a@move)\n        if y > 3 => exit to w fail()\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // t10 lo2
+    [InlineData("var a: Array<i32> = [y]\n    takeA(a@move)\n    return\n    let t: Array<i32> = [y]\n    a = if c => t@move else => fail()\n    takeA(a@move)", "MovedPlace_Kd a 1")] // rv nl1
+    [InlineData("var a: Array<i32> = [y]\n    takeA(a@move)\n    return\n    let t: Array<i32> = [y]\n    a = if c => t@move else => eat(t@move)\n    takeA(a@move)", "MovedPlace_Kd a 1")] // rv nl1e
+    [InlineData("var a: Array<i32>\n    return\n    let t: Array<i32> = [y]\n    a = if c => t@move else => eat(t@move)\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // rv nl2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    takeA(a@move)\n    a = (label w: do\n        let t: Array<i32> = [y]\n        if c => exit to w t@move\n        exit to w eat(t@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // rv nl3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    takeA(a@move)\n    let t: Array<i32> = [y]\n    a = (match y\n        0 => t@move\n        _ => eat(t@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // rv nl4
+    [InlineData("var p: (i32, Array<i32>) = (y, [y])\n    return\n    takeA(p.1@move)\n    let t: Array<i32> = [y]\n    p.1 = if c => t@move else => eat(t@move)\n    takeTA(p@move)", "MovedPlace_Kd p 1")] // rv nl5
+    [InlineData("var b: bool = true\n    return\n    b = fail() and fail()\n    useB(b)", "")] // p1 lg1
+    [InlineData("var b: bool\n    return\n    b = fail() and fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // p1 lg1i
+    [InlineData("var b: bool = true\n    return\n    b = fail() or fail()\n    useB(b)", "")] // p2 lv1
+    [InlineData("var b: bool = true\n    return\n    b = if c => (fail() and fail()) else => true\n    useB(b)", "")] // p2 lv2
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        exit to w (fail() and fail())\n    )\n    useB(b)", "")] // p2 lv3
+    [InlineData("var b: bool = true\n    return\n    b = fail() and (fail() and fail())\n    useB(b)", "")] // p2 lv4
+    [InlineData("var b: bool = true\n    return\n    b = (fail() and fail()) and c\n    useB(b)", "")] // p2 lv5
+    [InlineData("var b: bool = true\n    b = fail() and fail()\n    useB(b)", "")] // p2 lv6
+    [InlineData("var b: bool = true\n    return\n    b = if c => (fail() and fail()) else => (fail() or fail())\n    useB(b)", "")] // p2 lv7
+    [InlineData("return\n    var x: bool = fail() and fail()\n    useB(x)", "UninitializedPlace_Kd useB(x) 1")] // p2 lv8
+    [InlineData("var b: bool = true\n    return\n    b = loop\n        exit (fail() and fail())\n    useB(b)", "")] // p2 lv10
+    [InlineData("var b: bool\n    return\n    b = fail() or fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // p2 lv11
+    [InlineData("var x: i32 = 1\n    return\n    x = if (fail() and fail()) => 2 else => 3\n    use(x)", "")] // p2 lv12
+    [InlineData("var b: bool\n    b = fail() and fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // p2 lv15
+    public void AnOverwriteIsReachedOnlyByThePathsThatHoldItsValue(string body, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Overwrites + "    " + body + "\n"));
+
+    // SPEC 14.10.3, 13.7.1 (DECISIONS R4-M62; the owner's O-336 (a), O-371 (a)): an overwrite whose value holds nothing on an assumed
+    // path is not reached on that path, so its target keeps its state there: a var local, a Tuple's or a struct's Field, a fixed
+    // array's element at a constant or a runtime index, an Option, a Dictionary, nested or whole, after a loop's back edge, on a
+    // check-only path a real path joins later, or where a nested value holds none. An uninitialized target stays uninitialized
+    // (UninitializedPlace_Kd at the use, once), a Moved one Moved (MovedPlace_Kd), an initialized one keeps its value; a value on every
+    // path, a real path, a later overwrite by a value, an unused target and the Never value itself (R4-M62) stay valid, and a value
+    // placed lacking a part (an Array or a Dictionary literal) is placed. The O-336 unit's rows (its table's t1-t3 names) and its
+    // review's (t4), which the per-path design keeps as expectations. Fail-before: dev (b3ffd28c5, the redesign's step 5) accepted e10,
+    // e9, e10m, ev1, ev2, ev2p, ev3, ev5, ev6, es1, efa, rc1, rc2, rlp, rn1, rt1, pk1 and the t4 rows.
+    [Theory]
+    [InlineData("var x: i32\n    return\n    x = if c => y else => fail()\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // e10
+    [InlineData("var x: i32\n    return\n    x = (label w: do\n        defer => use(y)\n        if c => exit to w y\n        exit to w fail()\n    )\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // e9
+    [InlineData("var x: i32\n    return\n    x = (match c\n        true => y\n        false => fail()\n    )\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // e10m
+    [InlineData("var x: i32\n    return\n    x = if c => y else => fail()\n    x = if c => y else => fail()\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // ev5
+    [InlineData("var a: Array<i32>\n    return\n    a = if c => [y] else => fail()\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // ev1
+    [InlineData("var t: (i32, i32)\n    return\n    t = if c => (y, y) else => fail()\n    takeT(t)", "UninitializedPlace_Kd takeT(t) 1")] // ev2
+    [InlineData("var t: (i32, i32)\n    return\n    t = if c => (y, y) else => fail()\n    use(t.0)", "UninitializedPlace_Kd use(t.0) 1")] // ev2p
+    [InlineData("var a: Array<i32> = [y]\n    takeA(a@move)\n    return\n    a = if c => [y] else => fail()\n    takeA(a@move)", "MovedPlace_Kd a 1")] // ev6
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t.1 = if c => [y] else => fail()\n    takeTA(t@move)", "MovedPlace_Kd t 1")] // ev3
+    [InlineData("var s: SP = SP.init([y], y)\n    takeA(s.a@move)\n    return\n    s.a = if c => [y] else => fail()\n    takeSP(s@move)", "MovedPlace_Kd s 1")] // es1
+    [InlineData("var f: [2 of Array<i32>] = [[y], [y]]\n    takeA(f[0]@move)\n    return\n    f[0] = if c => [y] else => fail()\n    takeFA(f@move)", "MovedPlace_Kd f 1")] // efa
+    [InlineData("var t: (i32, i32) = (y, y)\n    return\n    t = if c => (y, y) else => fail()\n    takeT(t)", "")] // ev2v
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    return\n    t.1 = if c => [y] else => fail()\n    takeTA(t@move)", "")] // ev3v
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t.1 = if c => [y] else => [y]\n    takeTA(t@move)", "")] // ev3w
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t.1 = if c => [y] else => fail()", "")] // ev3u
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    t.1 = if c => [y] else => fail()\n    takeTA(t@move)", "")] // ev3r
+    [InlineData("var t: (i32, i32) = (y, y)\n    return\n    t.1 = if c => y else => fail()\n    use(t.1)", "")] // ev4v
+    [InlineData("var s: SP = SP.init([y], y)\n    return\n    s.a = if c => [y] else => fail()\n    takeSP(s@move)", "")] // es1v
+    [InlineData("var s: SP = SP.init([y], y)\n    return\n    s.n = if c => y else => fail()\n    use(s.n)", "")] // es2
+    [InlineData("var f: [2 of Array<i32>] = [[y], [y]]\n    return\n    f[0] = if c => [y] else => fail()\n    takeFA(f@move)", "")] // efav
+    [InlineData("var f: [2 of Array<i32>] = [[y], [y]]\n    takeA(f[0]@move)\n    return\n    f[0] = if c => [y] else => [y]\n    takeFA(f@move)", "")] // efaw
+    [InlineData("var f: [2 of Array<i32>] = [[y], [y]]\n    takeA(f[0]@move)\n    f[0] = if c => [y] else => fail()\n    takeFA(f@move)", "")] // efar
+    [InlineData("var f: [2 of i32] = [y, y]\n    return\n    f[0] = if c => y else => fail()\n    takeF(f)", "")] // efc
+    [InlineData("var f: [2 of i32] = [y, y]\n    let i: isize = 0\n    return\n    f[i] = if c => y else => fail()\n    takeF(f)", "")] // efi
+    [InlineData("var x: i32\n    return\n    x = if c => y else => y\n    use(x)", "")] // e10v
+    [InlineData("var x: i32\n    x = if c => y else => fail()\n    use(x)", "")] // e10r
+    [InlineData("var x: i32\n    return\n    x = if c => y else => fail()\n    x = y\n    use(x)", "")] // e10o
+    [InlineData("var x: i32\n    return\n    x = if c => y else => fail()", "")] // e10u
+    [InlineData("var x: i32\n    return\n    x = fail()\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // e10n
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = fail()\n    takeA(a@move)", "")] // e15n
+    [InlineData("var a: Array<i32> = [y]\n    a = if c => [y] else => fail()\n    takeA(a@move)", "")] // e15r
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        defer => use(y)\n        if c => exit to w [y]\n        exit to w fail()\n    )\n    takeA(a@move)", "")] // e15x
+    [InlineData("var a: Array<i32>\n    return\n    a = if c => [y] else => [y]\n    takeA(a@move)", "")] // ev1v
+    [InlineData("var a: Array<i32>\n    return\n    a = if c => [y] else => fail()", "")] // ev1u
+    [InlineData("var a: Array<i32>\n    a = if c => [y] else => fail()\n    takeA(a@move)", "")] // ev1r
+    [InlineData("var a: Array<i32> = [y]\n    takeA(a@move)\n    return\n    a = if c => [y] else => fail()", "")] // ev6u
+    [InlineData("var a: Array<i32> = [y]\n    takeA(a@move)\n    a = if c => [y] else => fail()\n    takeA(a@move)", "")] // ev6r
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if c => [if c => y else => y] else => fail()\n    takeA(a@move)", "")] // ek1
+    [InlineData("var t: (i32, i32) = (y, y)\n    use(t.1@move)\n    return\n    t.1 = if c => y else => fail()\n    takeT(t)", "MovedPlace_Kd takeT(t) 1")] // rc1
+    [InlineData("var x: i32 = 1\n    use(x@move)\n    return\n    x = if c => y else => fail()\n    use(x)", "MovedPlace_Kd use(x) 1")] // rc2
+    [InlineData("var x: i32 = 1\n    use(x@move)\n    return\n    x = if c => y else => y\n    use(x)", "")] // rc2v
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t = if c => (y, [y]) else => fail()\n    takeTA(t@move)", "MovedPlace_Kd t 1")] // rt1
+    [InlineData("var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t = if c => (y, [y]) else => (y, [y])\n    takeTA(t@move)", "")] // rt1v
+    [InlineData("var f: [2 of Array<i32>] = [[y], [y]]\n    let i: isize = 0\n    return\n    f[i] = if c => [y] else => fail()\n    takeFA(f@move)", "")] // rfi
+    [InlineData("var f: [2 of Array<i32>] = [[y], [y]]\n    let i: isize = 0\n    takeA(f[0]@move)\n    return\n    f[i] = if c => [y] else => [y]\n    takeFA(f@move)", "MovedPlace_Kd f[i] 1 | MovedPlace_Kd f 1")] // rfim
+    [InlineData("var t: (i32, (Array<i32>, i32)) = (y, ([y], y))\n    takeA(t.1.0@move)\n    return\n    t.1.0 = if c => [y] else => fail()\n    takeTN(t@move)", "MovedPlace_Kd t 1")] // rn1
+    [InlineData("var t: (i32, (Array<i32>, i32)) = (y, ([y], y))\n    return\n    t.1.0 = if c => [y] else => fail()\n    takeTN(t@move)", "")] // rn1v
+    [InlineData("let a: Array<i32>\n    return\n    a = if c => [y] else => [y]\n    takeA(a@move)", "")] // rl1v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    loop\n        a = if c => [y] else => fail()\n        takeA(a@move)", "MovedPlace_Kd a 1")] // rlp
+    [InlineData("var a: Array<i32> = [y]\n    return\n    loop\n        a = if c => [y] else => [y]\n        takeA(a@move)", "")] // rlpv
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if c => [if c => y else => fail()] else => fail()\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // pl1
+    [InlineData("var a: Array<i32>\n    return\n    a = if c => [if c => y else => fail()] else => fail()\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // pl1u
+    [InlineData("return\n    var a: Array<i32> = [if c => y else => fail()]\n    a = if c => [y] else => fail()\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // pk1
+    [InlineData("return\n    var a: Array<i32> = [if c => y else => fail()]\n    a = if c => [y] else => [y]\n    takeA(a@move)", "")] // pk1v
+    [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    return\n    d = if c => [1: fail()] else => fail()\n    takeD(d@move)", "UninitializedPlace_Kd d 1")] // pd1
+    [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    return\n    d = if c => [1: y] else => fail()\n    takeD(d@move)", "")] // pd1v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    loop\n        takeA(a@move)\n        a = if c => [y] else => fail()", "MovedPlace_Kd a 1")] // t4 lp2
+    [InlineData("var b: Bx = Bx.init([y])\n    takeA(b.value@move)\n    fail()\n    b.value = if c => [y] else => fail()\n    takeB(b@move)\nstruct Bx\n    public var value: Array<i32>\n    public init(v: Array<i32>)\n        self.value = v@move\n    drop => ()\nfunc takeB(b: Bx) -> () => ()", "MovedPlace_Kd b 1")] // t4 fb1
+    [InlineData("var o: Option<Array<i32>> = .Some([y])\n    takeO(o@move)\n    return\n    o = if c => .Some([y]) else => fail()\n    takeO(o@move)\nfunc takeO(o: Option<Array<i32>>) -> () => ()", "MovedPlace_Kd o 1")] // t4 op2
+    [InlineData("return\n    var f: [1 of i32] = [1 of if c => y else => fail()]\n    f[0] = if c => y else => fail()\n    takeF1(f)\nfunc takeF1(a: [1 of i32]) -> () => ()", "UninitializedPlace_Kd takeF1(f) 1")] // t4 ff1
+    [InlineData("return\n    var f: [2 of i32] = [2 of if c => y else => fail()]\n    f[0] = y\n    f[1] = if c => y else => fail()\n    takeF(f)", "UninitializedPlace_Kd takeF(f) 1")] // t4 ff3
+    [InlineData("var a: Array<i32> = [y]\n    takeA(a@move)\n    if c\n        return\n        a = if c => [y] else => fail()\n        takeA(a@move)\n    a = [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t4 dr1
+    [InlineData("var a: Array<i32> = [y]\n    takeA(a@move)\n    return\n    a = if c => (if c => [y] else => fail()) else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // t4 ch1
+    [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    takeD(d@move)\n    return\n    d = if c => [1: y] else => fail()\n    takeD(d@move)", "MovedPlace_Kd d 1")] // t4 pd2
+    public void AnOverwriteByAValueWithoutOneKeepsTheTargetsState(string body, string expected)
+        => Assert.Equal(expected, string.Join(" | ", Problems(Kept + "    " + body + "\n")));
+
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
     [Fact]
@@ -1195,9 +1506,9 @@ public sealed class MirInitTest
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
         const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
@@ -1227,10 +1538,12 @@ public sealed class MirInitTest
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
     // an operand it did not resolve (`1 + (missing + once(s@move))`, a selection's index), so the problems of what it evaluates stay; one
     // in a statement or a typed destination, `and`, a parenthesized `if` and a selection whose `if` or labeled do index, also in
-    // parentheses or under a unary operator, has no Type validate now (fail-before: a finding, which stops every analysis, or, for the
-    // index, the whole selection derived), such an operand replaced with its parts. A construct, an assignment, a labeled do and a default
+    // parentheses or under a unary operator, validates now (fail-before: a finding, which stops every analysis, or, for the index, the
+    // whole selection derived): such a join a source supplied a candidate to is typed by it (G103 C), and one with none (`missing` on
+    // every path, under `-` or labeled) is untyped and replaced with its parts. A construct, an assignment, a labeled do and a default
     // keep their forms elsewhere (a typed destination keeps the Loan its branch places), an assignment's derived value initializes its
-    // target, and a failed call's operands stay replaced (PLAN G121).
+    // target, and a failed call keeps its operands, which it evaluates on every path (DECISIONS Z16; until Z16 they stayed replaced, PLAN
+    // G121, and the move by `once(s@move)` was lost).
     [Theory]
     [InlineData(Take + "func f(c: bool) -> bool\n    let s = \"x\"\n    return take(s@move, s@move) == 1 and missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f()\n    let s = \"x\"\n    _ = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
@@ -1249,6 +1562,10 @@ public sealed class MirInitTest
         Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
         "    return v[-(if c => i else => missing)]\n",
         "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32]) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[-(if c => missing else => missing2)]\n",
+        "MovedPlace_Kd s 1")]
     [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y = make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y += make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f(c: bool)\n    let s = \"x\"\n    var y: i32 = 0\n    y = if c => take(s@move, s@move) else => missing\n", "MovedPlace_Kd s 1")]
@@ -1263,11 +1580,16 @@ public sealed class MirInitTest
         "    return v[label l: do\n        if c => exit to l i\n        exit to l missing\n    ]\n",
         "MovedPlace_Kd s 1")]
     [InlineData(
+        Take + "func f(c: bool, v: [3 of i32]) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[label l: do\n        exit to l missing\n    ]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
         Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
         "    return v[(label l: do\n        if c => exit to l i\n        exit to l missing\n    )]\n",
         "MovedPlace_Kd s 1")]
 
-    // A labeled do or loop, an operand without a Type, is replaced with its body, whose problems are lost (PLAN G121's failed construct).
+    // A labeled do with no candidate, an operand without a Type, is replaced with its body, whose problems are lost (PLAN G121's failed
+    // construct); a labeled loop that `exit to l 1` supplies a candidate to is typed by it (G103 C) and kept under the Error `+`.
     [InlineData(
         Take + "func f() -> i32\n    let s = \"x\"\n    return other + label l: do\n        _ = once(s@move)\n        _ = once(s@move)\n" +
         "        exit to l missing\n",
@@ -1285,11 +1607,11 @@ public sealed class MirInitTest
     [InlineData(
         Take + "func two(a: i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    let s = \"x\"\n    let v: i32 = two(once(s@move), missing)\n    let t = s@move\n" +
         "    return v\n",
-        "")]
+        "MovedPlace_Kd s 1")]
     public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
-    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS R5-M195; PLAN G105, G791): a write Binding rejected for its value's fit after admitting its
+    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS R5-M195): a write Binding rejected for its value's fit after admitting its
     // destination still places a value derived from that failure, as one whose value Binding left unresolved does: a second placement of
     // a let local or Field is reported, and a first placement, the target's later use, a constructor's end and a later write to a replaced
     // reference's old referent are not; its target's operands are evaluated (SPEC 13.7.1 step 2), so a move there is a later use's
@@ -1309,6 +1631,135 @@ public sealed class MirInitTest
     public void ARejectedWriteKeepsItsWrite(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
+    // SPEC 15.1.3, 15.1.4, 23.1.2 (DECISIONS Z17, R4-M232): an Opaque site's kept or located part is checked at
+    // its own Place, so a part of a partly moved root is no use of the moved part: a derived write's located right side (`missing = p.n`),
+    // a failed call's kept argument (`g(p.n, missing)`, also r2-oq's last form) and a failed call's only one (`missing(p.n)`) report
+    // nothing beside Binding's record (fail-before: MovedPlace_Kd at the site, the root read whole), while the moved part itself and an
+    // uninitialized local stay reported; a kept part through a runtime Index is checked at its selection, where the moved receiver is
+    // reported once (fail-before: also at the site), as its resolved twin's is (R4-M56). A part a rejected form reads (a derived write's
+    // right side, a rejected jump's operand) is read at its own node, so its record lies there, as its resolved twin's does: an element or
+    // a local uninitialized or moved, a field of a constructor's receiver before its initialization (fail-before: at the site), and a
+    // moved receiver through a runtime Index once, at the element (fail-before: also at the site). A located part through a constant
+    // Index or a Field is its own Move Path, so the sibling of a moved element read by a derived write or a rejected jump reports nothing
+    // (fail-before: MovedPlace_Kd at the site), and the moved element itself is reported at its node (fail-before: at the site). A kept
+    // operand of a failed call, operation or construction is read as the call builder reads an operand (DECISIONS Z17c): a Copy part the
+    // form reads at the site where no later kept part builds code (missing(x), missing(a[0])), at its own node where a later one does
+    // (a later kept Error builds its Opaque value: g(x, missing), (x, missing), x + missing, x == missing, missing(x + missing2) and
+    // g(a[0], missing) at the part; fail-before: at the site, P7's record moves), below a runtime Index at the selection, once; a Copy
+    // part read before a later kept part moves it is read there, so the move is no use of it (missing(y, g(y@move)), SPEC 12.2;
+    // fail-before: a false MovedPlace_Kd at the site); an undecided use of replaced syntax or an unresolved call's receiver stays at the
+    // site (PLAN G121, G1172).
+    [Theory]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing = p.n\n", "")]
+    [InlineData("func g(n: i32, m: i32) -> i32 => n\nfunc f() -> i32\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    return g(p.n, missing)\n", "")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing(p.n)\n", "")]
+    [InlineData("func f()\n    var p = P.init(\"s\", 1)\n    let a = p.s@move\n    missing(p.s)\n", "MovedPlace_Kd missing(p.s) 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    missing(x)\n    return 1\n", "UninitializedPlace_Kd missing(x) 1")]
+    [InlineData("func f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    let t = a[0]@move\n    missing(a[i])\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData("func inspect(v: ref/string) => ()\nfunc f(i: isize)\n    var a: [2 of string] = [\"a\", \"b\"]\n    let t = a[0]@move\n    inspect(a[i])\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData(Callees + "func f()\n    var x: i32\n    let z = g(x, missing)\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let z = missing(y, g(y@move))\n", "")]
+    [InlineData(Callees + "func f()\n    var x: i32\n    let z = g(x, 1)\n", "UninitializedPlace_Kd g(x, 1) 1")]
+    [InlineData(Callees + "func f()\n    var x: i32\n    missing(x + missing2)\n", "UninitializedPlace_Kd x 1")]
+    [InlineData(Callees + "func f()\n    var x: i32\n    k(x + 1)\n", "UninitializedPlace_Kd x + 1 1")]
+    [InlineData("func f()\n    var x: i32\n    let t = (x, missing)\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f()\n    var x: i32\n    let t = (x, 1)\n", "UninitializedPlace_Kd (x, 1) 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    return x + missing\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    return x + 1\n", "UninitializedPlace_Kd x + 1 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    if x == missing => return 1\n    return 0\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    if x == 1 => return 1\n    return 0\n", "UninitializedPlace_Kd x == 1 1")]
+    [InlineData("func use(s: string) -> i32 => 0\nfunc f() -> i32\n    var s = \"a\"\n    let t = use(s@move)\n    return missing(s)\n", "MovedPlace_Kd missing(s) 1")]
+    [InlineData("func use(s: string) -> i32 => 0\nfunc f() -> i32\n    var s = \"a\"\n    let t = use(s@move)\n    return use(s)\n", "MovedPlace_Kd use(s) 1")]
+    [InlineData(
+        "func f(c: bool) -> i32\n    var x: i32\n    let v = if c => missing else => x\n    return 0\n",
+        "UninitializedPlace_Kd x 1")] // At x: the join is typed by x (G103 C; fail-before: the site, the let, G121's record selection; DECISIONS Q13).
+    [InlineData("func f(c: bool) -> i32\n    var x: i32\n    let v = if c => 1 else => x\n    return 0\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    return x.missing()\n", "UninitializedPlace_Kd x.missing() 1")] // The site: G1172.
+    [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    missing(a[0])\n", "UninitializedPlace_Kd missing(a[0]) 1")]
+    [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    k(a[0])\n", "UninitializedPlace_Kd k(a[0]) 1")]
+    [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    missing(a[i])\n", "UninitializedPlace_Kd a[i] 1")]
+    [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    k(a[i])\n", "UninitializedPlace_Kd a[i] 1")]
+    [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    let z = g(a[0], missing)\n", "UninitializedPlace_Kd a[0] 1")]
+    [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    let z = g(a[0], 1)\n", "UninitializedPlace_Kd g(a[0], 1) 1")]
+    [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    let z = g(a[i], missing)\n", "UninitializedPlace_Kd a[i] 1")]
+    [InlineData(Callees + "func f(i: isize)\n    var a: [2 of i32]\n    let z = g(a[i], 1)\n", "UninitializedPlace_Kd a[i] 1")]
+    [InlineData("func f()\n    var a: [2 of i32]\n    missing = a[0]\n", "UninitializedPlace_Kd a[0] 1")]
+    [InlineData("func f()\n    var a: [2 of i32]\n    var m = 0\n    m = a[0]\n", "UninitializedPlace_Kd a[0] 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    defer => return x\n    return 1\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f() -> i32\n    var x: i32\n    return x\n", "UninitializedPlace_Kd x 1")]
+    [InlineData("func f()\n    var x = 1\n    let t = x@move\n    missing = x\n", "MovedPlace_Kd x 1")]
+    [InlineData("func f()\n    var x = 1\n    let t = x@move\n    let m = x\n", "MovedPlace_Kd x 1")]
+    [InlineData("func f(i: isize)\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    missing = a[i]\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData("func f(i: isize)\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    let m = a[i]\n", "MovedPlace_Kd a[i] 1")]
+    [InlineData("struct S\n    var value: i32\n    public init(flag: bool)\n        missing = self.value\n        self.value = 1\n", "UninitializedPlace_Kd self.value 1")]
+    [InlineData("struct S\n    var value: i32\n    public init(flag: bool)\n        let m = self.value\n        self.value = 1\n", "UninitializedPlace_Kd self.value 1")]
+    [InlineData("func f()\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    missing = a[1]\n", "")]
+    [InlineData("func f()\n    var a: [2 of i32] = [1, 2]\n    let t = a[0]@move\n    missing = a[0]\n", "MovedPlace_Kd a[0] 1")]
+    [InlineData("func f() -> i32\n    var p = (1, 2)\n    let t = p.0@move\n    defer => return p.1\n    return 1\n", "")]
+    [InlineData("func f() -> i32\n    var p = (1, 2)\n    let t = p.0@move\n    defer => return p.0\n    return 1\n", "MovedPlace_Kd p.0 1")]
+    public void AnOpaqueSitesPartIsCheckedAtItsPlace(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Parts + source));
+
+    // PLAN G1184 (DECISIONS BU-250, R7-M88; SPEC 6.3.4, 11.7, 13.7.1, 15.1.2, 15.1.3, 23.1.2): a use of a stored Field whose own slot
+    // failed (HirFormsTest.FailedSlot's `w`, the Weak limit's Field), accessed directly over a receiver whose Type stores it, is its Field
+    // Place of no Type, so a write places it and a read names that Place, never its receiver whole: a read after the constructor's
+    // placement (q04), a read beside a moved sibling, also in a Consuming closure (q10, r01), report nothing (fail-before: a false
+    // UninitializedPlace_Kd or MovedPlace_Kd at the read), while a read before the placement (q05), of a wholly moved root (q11, r02) and
+    // a constructor placing it on one branch only (r21, the typed twin's record at the constructor; fail-before: none) keep their true
+    // records. A constructor's _0 has a path per Field it places (MirMoveData, Z28's M3), so a constructor that never places it (q07;
+    // q07m over an unresolved Type, which G105's rule, f5e9aaf7d, left without a record while no Place could hold the Field) or places
+    // a let one twice (q06) reports at its exit (SPEC 6.3.5) or at the second placement, as the typed twin does (fail-before: none),
+    // and one whose only write of it is an update (u7: a derived write until PLAN G1340) reports at its exit, as the typed twin's
+    // dependent second record (PLAN G1114), its read's independent record still lost (G1340).
+    // Every other form reports nothing and builds without a fault: the constructor's placement (q01), through a custom `set`
+    // (r23) or beside a custom `get` (g1), whose read stays the getter's call (g2: its receiver read whole, the twin's record); a discard
+    // or a Move of it (d1, d2, q14), a write through a user index, an Array element, a held `uniq` reference, an exclusive parameter, a
+    // generic instance and a base layer (d5, d7, d8, d6, d11, d13), a shared borrow through a user index (d10), a read beside a moved
+    // sibling through a Tuple element (c4); and `storage` over a failed `self` (d3, d4: Binding's records alone) or a typed one (d4t). A
+    // receiver Place of a Type parameter an identity premise makes the struct (SPEC 8.2.3), direct, in a chain or nested in an array, an
+    // Array or a struct (d14, d15, x4, x1, x2, x3, x5), stores no Field the builder can index: each gives the builder's located
+    // Unsupported_Kd at the Field, its typed twin's (G168b's limit), with no fault (fail-before on 7135677d7: CheckFaulted, "no published
+    // Type", at x1, x2, x3, x5; no limit at d14, d15, x4).
+    [Theory]
+    [InlineData(HirFormsTest.FailedSlot, "")] // q01
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        self.w = w@move\n        let k = self.w@ref\n        self.s = s@move\n", "")] // q04
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        let k = self.w@ref\n        self.w = w@move\n        self.s = s@move\n", "UninitializedPlace_Kd self.w@ref 1")] // q05
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let t = n.s@move\n    let k = n.w@ref\n", "")] // q10
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let t = n@move\n    let k = n.w@ref\n", "MovedPlace_Kd n.w@ref 1")] // q11
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let c = func [n@move] ()\n        let t = n.s@move\n        let k = n.w@ref\n", "")] // r01
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let c = func [n@move] ()\n        let t = n@move\n        let k = n.w@ref\n", "MovedPlace_Kd n.w@ref 1")] // r02
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public let v: i32\n    public init(c: bool, w: Weak<rc/N>, v: i32)\n        if c\n            self.w = w@move\n        self.v = v\n", "UninitializedPlace_Kd public init(c: bool, w: Weak<rc/N>, v: i32) 1")] // r21
+    [InlineData("struct N\n    public let w: Weak<rc/N>\n    public let v: i32\n    public init(w: Weak<rc/N>, w2: Weak<rc/N>, v: i32)\n        self.w = w@move\n        self.w = w2@move\n        self.v = v\n", "ReassignedLet_Kd self.w = w2@move 1")] // q06
+    [InlineData("struct N\n    public let w: Weak<rc/N>\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n", "UninitializedPlace_Kd public init(v: i32) 1")] // q07
+    [InlineData("struct S\n    var a: Missing\n    var k: i32\n    init() => self.k = 1\n", "UninitializedPlace_Kd init() => self.k = 1 1")] // q07m
+    [InlineData("struct H\n    public var x: Missing\n    public var s: string\n    public init(s: string)\n        self.x += 1\n        self.s = s@move\n", "UninitializedPlace_Kd public init(s: string) 1")] // u7
+    [InlineData(HirFormsTest.CustomSet, "")] // r23
+    [InlineData(HirFormsTest.CustomGet, "")] // g1
+    [InlineData(HirFormsTest.CustomGet + "func f(n: N)\n    let t = n.s@move\n    let k = n.w\n", "MovedPlace_Kd n.w 1")] // g2
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    n.w@move\n", "")] // d1
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    n.w\n", "")] // d2
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let k = n.w@move\n", "")] // q14
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: uniq/Dictionary<i32, N>, w: Weak<rc/N>)\n    d[1].w = w@move\n", "")] // d5
+    [InlineData(HirFormsTest.FailedSlot + "func f(p: uniq/N, w: Weak<rc/N>)\n    p.w = w@move\n", "")] // d6
+    [InlineData(HirFormsTest.FailedSlot + "func f(a: uniq/Array<N>, w: Weak<rc/N>)\n    a[0].w = w@move\n", "")] // d7
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: uniq/Dictionary<i32, N>, w: Weak<rc/N>)\n    let r = d[1]@uniq\n    r.w = w@move\n", "")] // d8
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: ref/Dictionary<i32, N>)\n    let k = d[1].w@ref\n", "")] // d10
+    [InlineData(HirFormsTest.FailedSlot + "struct B<T>\n    public var w: Weak<rc/N>\n    public var t: T\n    public init(w: Weak<rc/N>, t: T)\n        self.w = w@move\n        self.t = t@move\nfunc f(b: uniq/B<i32>, w: Weak<rc/N>)\n    b.w = w@move\n", "")] // d11
+    [InlineData(HirFormsTest.FailedSlot + "open struct A\n    public var w: Weak<rc/N>\n    public init(w: Weak<rc/N>)\n        self.w = w@move\nstruct D : A\n    public var s: string\n    public init(w: Weak<rc/N>, s: string) : base(w@move)\n        self.s = s@move\nfunc f(d: uniq/D, w: Weak<rc/N>)\n    d.w = w@move\n", "")] // d13
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        set(self: uniq/Missing, value: Weak<rc/N>) -> ()\n            storage = value@move\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d3
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        get(self: ref/Missing) -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        get() -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4t
+    [InlineData(HirFormsTest.FailedSlot + "func f(p: (N, i32))\n    let t = p.0.s@move\n    let k = p.0.w@ref\n", "")] // c4
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: uniq/T, w: Weak<rc/N>)\n    T is N\n    t.w = w@move\n", "Unsupported_Kd t.w 18446744073709551615")] // d14
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: ref/T)\n    T is N\n    let k = t.w@ref\n", "Unsupported_Kd t.w 18446744073709551615")] // d15
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(a: uniq/[2 of T], w: Weak<rc/N>)\n    T is N\n    a[0].w = w@move\n", "Unsupported_Kd a[0].w 18446744073709551615")] // x1
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(xs: uniq/Array<T>, w: Weak<rc/N>)\n    T is N\n    xs[0].w = w@move\n", "Unsupported_Kd xs[0].w 18446744073709551615")] // x2
+    [InlineData(HirFormsTest.FailedSlot + "struct B<T>\n    public var inner: T\n    public init(inner: T)\n        self.inner = inner@move\nfunc f<T>(b: uniq/B<T>, w: Weak<rc/N>)\n    T is N\n    b.inner.w = w@move\n", "Unsupported_Kd b.inner.w 18446744073709551615")] // x3
+    [InlineData(HirFormsTest.FailedSlot + "func f<T, U>(t: uniq/T, w: Weak<rc/N>)\n    T is U\n    U is N\n    t.w = w@move\n", "Unsupported_Kd t.w 18446744073709551615")] // x4
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(a: ref/[2 of T])\n    T is N\n    let k = a[0].w@ref\n", "Unsupported_Kd a[0].w 18446744073709551615")] // x5
+    public void AFieldWhoseSlotFailedIsItsOwnPlace(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
+
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)
         => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * (long)MirInit.Lanes * ((moves.FlowCount + 63) / 64);
@@ -1325,7 +1776,7 @@ public sealed class MirInitTest
             $"    let a = [{length} of fail()]\n    let n = a[3]\n    let b: [{length} of i32] = [{length} of if c => y else => fail()]\n" +
             $"    use(b[3])\n    let t: [{length} of (i32, i32)] = [{length} of (y, if c => y else => fail())]\n");
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         flow.Begin(body);
         moves.Build(body, flow);
         var locals = body.Locals.ToArray();
@@ -1334,6 +1785,30 @@ public sealed class MirInitTest
         var tuples = paths.Count(x => locals[x.Local] is { Kind: MirLocalKind.Temp, Type.Kind: BoundTypeKind.Tuple });
         var parts = Enumerable.Range(0, body.Statements.Length).Max(i => moves.NeverParts(i).Length);
         return (Of("a"), Of("b"), Of("t"), tuples, parts, moves.MaxCarried);
+    }
+
+    // The InternalInvariant_Kd records of f, whose assignment's value temp two arms place: as built, or with the second placement turned
+    // into a StorageLive of the temp, so that the assignment's Use takes a temp that may hold nothing.
+    private static int KeptDefinitions(string function, bool broken)
+    {
+        var c = MirBuildTest.Compile("func use(n: i32) => ()\n" + function);
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies.
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var statements = body.Statements.ToArray();
+        var take = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use, Place.Projection: 0 } &&
+            body.Locals[x.Place.Root].Kind == MirLocalKind.Var && body.Operands[x.Rvalue.Start].Place is { Projection: 0, Root: >= 0 } operand &&
+            body.Locals[operand.Root].Kind == MirLocalKind.Temp);
+        Assert.True(take >= 0);
+        var temp = body.Operands[statements[take].Rvalue.Start].Place;
+        var placements = Enumerable.Range(0, statements.Length).Where(x => statements[x].Kind == MirStatementKind.Assign && statements[x].Place == temp).ToArray();
+        Assert.Equal(2, placements.Length);
+        if (broken)
+        {
+            Unsafe.AsRef(in body.Statements[placements[1]]) = statements[placements[1]] with { Kind = MirStatementKind.StorageLive };
+        }
+
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
+        return program.Problems.All.ToArray().Count(x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Body == body.Ordinal);
     }
 
     private static string[] Problems(Compilation c)
@@ -1398,8 +1873,9 @@ public sealed class MirInitTest
                 Assert.Empty(program.Problems.All.ToArray());
                 var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
                 work[i] = body.Blocks.Length + body.Statements.Length;
-                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
-                var drops = new MirDrops(moves, cases);
+                var cases = new MirCases(c.Types);
+                var (flow, moves, sink) = (new MirDataflow(new MirReach(), cases), new MirMoveData(c.Types), new MirProgram());
+                var drops = new MirDrops(c.Types, moves, cases);
                 var init = new MirInit(flow, moves, cases, drops);
                 analyses[i] = (body, flow, moves, sink);
                 return () =>

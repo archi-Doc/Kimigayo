@@ -1,13 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns an item's targets (R5 package K 4.3, K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102, R5-M111): a body item's template
-// replayed under its representative (Replay), each site's edge row in the item's instance: for a call, a Drop or a statement of the item's
+// replayed under its representative (Replay), in a body with a case branch at the sites of the blocks the item's view reaches (MirReach
+// under the view), each site's edge row in the item's instance: for a call, a Drop or a statement of the item's
 // body, the row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a Value callee's body, an
 // intrinsic's target column, a dropped value's glue; a case adaptation's creation, an aggregate's, a function item constant's or an
 // erasure's) and its target under the item's representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after
 // an owner Value call's body, the operand's glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets
 // from its representative Type by its kind's row (Expand).
-// Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Compose, Implementation, Witness,
+// Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Answered, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
 // Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
 // without one or a refused edge), a Drop's glue of each part its group destroys (DropTargets) and an owner Value call's second target
@@ -15,8 +16,8 @@
 // whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, except a Drop's, one per part its group destroys in DropGlue.Destroyed's order, the order code
 // generation writes them in (PLAN G641), and the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS
-// R5-M102: a departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row
-// is a fault;
+// R5-M102: a departure from package C 3.2 I8); a composed substitution's formation is read at the site (Formed), never its storage; a kind
+// without a row is a fault;
 // a default template's call has the template's body, read unchecked (the validator's program pass guarantees it, MirValidator.Program,
 // G191).
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
@@ -36,8 +37,10 @@ internal sealed partial class InstanceCollector
         return callable;
     }
 
-    private static BoundType OperandType(MirBody body, in MirOperand operand)
-        => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
+    // An operand's Type: its constant's or its Place's, none for a derived temp of no Type an rvalue reads (PLAN G1073; rule W: it has no
+    // instance, layout need or capability to judge).
+    private static BoundType? OperandType(MirBody body, in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place);
 
     // An item's targets: a body item's template replayed under its representative, the target of each site that resolves and is admitted;
     // a type-driven item's from its representative Type.
@@ -50,19 +53,27 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        var body = program.Body(set.Items[item].BodyOrdinal);
-        if (this.extent < program.Bodies.Length)
-        {
-            this.Templates(program); // Bodies a lookup built during the run (PLAN G951).
-        }
-
-        this.missed |= !program.Drops.Holds(body.Ordinal); // Round: a body the analyses have not stepped.
+        var body = program.Body(set.Items[item].BodyOrdinal); // Held by A2's table (Round), so built and templated before the run.
         this.LayOutLocals(item, body);
         this.LayOutNeeds(item, body);
+        // A body with a case branch: the blocks the item's view reaches (MirCases.Branch's side), whose sites alone are admitted.
+        if (body.CaseSwitches > 0)
+        {
+            _ = this.cases.Select(body, set.Items[item].View);
+            this.reach.Clear(body.Blocks.Length);
+            this.reach.Walk(body, 0, checks: true, this.cases);
+            this.cases.Deselect();
+        }
+
         foreach (var site in this.TemplatesOf(body.Ordinal).Sites(body.Ordinal))
         {
             this.Work++;
             var (at, runtime) = site;
+            if (body.CaseSwitches > 0 && !this.reach[at.Block])
+            {
+                continue;
+            }
+
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
                 ? this.Edge(program, item, body, site, block.Terminator)
@@ -163,10 +174,9 @@ internal sealed partial class InstanceCollector
                 : this.Intrinsic(program, item, subject, row, this.In(item, subject, callee.Subst!.Types[0]!));
         }
 
-        var representative = this.Set.Items[item].Representative;
-        var (subst, storage, _) = callee.Subst is { } inner && representative is not null
-            ? this.types.Compose(inner, representative) : (callee.Subst, Binding.StorageOutcome.Prepared, null);
-        if (!this.Made(storage, subject))
+        var (subst, cause) = callee.Subst is { } inner && this.Set.Items[item].Representative is { } representative
+            ? this.types.Answered(inner, representative) : (callee.Subst, TyCtxt.Formation.Formed);
+        if (!this.Formed(cause, item, body.Subject(call.Source), subject))
         {
             return -1;
         }
@@ -174,6 +184,11 @@ internal sealed partial class InstanceCollector
         if (callee.Kind == MirCalleeKind.Requirement)
         {
             var target = this.types.Witness(callee.Symbol!, callee.Contract, subst!);
+            if (!this.Formed(target.Cause, item, body.Subject(call.Source), subject))
+            {
+                return -1;
+            }
+
             return callee.Arg == 0 ? this.Called(program, item, subject, callee.Symbol!, target) : this.Compared(item, subject, callee, target);
         }
 
@@ -206,7 +221,7 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
     // substitution's Type argument in the item's instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its
     // caller's, LaysOutArguments): a reserveDispatch's reserve witness on its Writer (SPEC 22.10.1), a creation's payload
-    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not made, whose verdict the caller
+    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not formed, whose cause the caller
     // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
     private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
     {

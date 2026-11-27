@@ -96,8 +96,8 @@ public partial class LayoutTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-        Assert.Contains(body.Locals.ToArray(), static x => x.Type.Kind == BoundTypeKind.Constructed && ReferenceEquals(x.Type.Components[0], BoundType.Never));
-        Assert.All(body.Locals.ToArray(), x => Assert.Equal(Layout.Outcome.Ok, c.Layout.Of(x.Type).Outcome));
+        Assert.Contains(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.Constructed } type && ReferenceEquals(type.Components[0], BoundType.Never));
+        Assert.All(body.Locals.ToArray(), x => Assert.Equal(Layout.Outcome.Ok, c.Layout.Of(x.Type!).Outcome));
     }
 
     [Theory]
@@ -148,7 +148,7 @@ public partial class LayoutTest
         var c = CompilationTestHelper.BindSuccess("#Layout(\"C\")\nstruct C\n    var x: u8\n    var y: i32\nopen struct B\n    var c: C\n    var t: u8\nstruct E: B\n    var u: u8\nstruct D: B\n    var u: u8\n    var w: i64\nlet p: raw/" + derivedName + " = null");
         var derived = Variable(c, "p").Components[0];
         var whole = c.Layout.Of(derived).Value!;
-        var prefix = c.Layout.Of(AdtDef.Base(derived)!).Value!;
+        var prefix = c.Layout.Of(AdtDef.Base(c.Types, derived)!).Value!;
         Assert.Equal(("{ [0 x i32], [12 x i8] }", 12, 4), (prefix.Layout.StorageType, prefix.Layout.Size, prefix.Layout.Alignment));
         Assert.Equal(new[] { 0, 8 }, prefix.Layout.FieldOffsets.ToArray());
         Assert.Equal((storage, size, alignment), (whole.Layout.StorageType, whole.Layout.Size, whole.Layout.Alignment));
@@ -178,7 +178,7 @@ public partial class LayoutTest
         var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "func f<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = f(())\nlet s = f(1)");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x is { Target.Name: "f" }).ToArray();
         var declared = Variable(c, "x");
-        var instances = calls.Select(x => c.Types.Apply(declared, c.Types.SubstOf(x!)!)!).ToArray();
+        var instances = calls.Select(x => c.Types.Apply(declared, c.Types.SubstOf(x!)!).Type!).ToArray();
         Assert.Equal([BoundType.Unit, BoundType.I32], instances.Select(static x => x.Components[0].Components[0]));
         Assert.Same(instances[0].Components[0], c.Layout.Of(instances[0]).Instance);
         Assert.Equal(("{ i32, { [0 x i32], [8 x i8] } }", 12), (c.Layout.Of(instances[1]).Value!.Layout.StorageType, c.Layout.Of(instances[1]).Value!.Layout.Size));
@@ -244,7 +244,7 @@ public partial class LayoutTest
         Assert.Equal(source.Length == 0, c.Bind().IsComplete);
         var type = probe switch
         {
-            "E.b" => AdtDef.FieldType(Declared(c, "E"), 0)!,
+            "E.b" => AdtDef.FieldType(c.Types, Declared(c, "E"), 0)!,
             "E<i32>" => c.Types.Intern(BoundTypeKind.Constructed, Declared(c, "E").Symbol, SemanticsKind.Owner, [BoundType.I32]),
             "[-1 of i32]" => c.Types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [BoundType.I32], length: -1),
             _ => Declared(c, probe),
@@ -550,11 +550,37 @@ public partial class LayoutTest
     public void StringReprIsPlacedAsTheStringRow()
     {
         var c = CompilationTestHelper.BindSuccess("()");
-        var placed = c.Layout.Of(LibrarySource.Declaration(c.Library, "Storage.StringRepr").SymbolOf()!.Type!);
+        var placed = c.Layout.Of(LibrarySource.Declaration(c.Library, "Storage.StringRepr").SymbolOf(c)!.Type!);
         Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
         var (layout, row) = (placed.Value!.Layout, Layout.Row(BoundType.String).Layout);
         Assert.Equal((row.Size, row.Alignment, row.Stride), (layout.Size, layout.Alignment, layout.Stride));
         Assert.Equal(row.FieldOffsets.ToArray(), layout.FieldOffsets.ToArray());
+    }
+
+    // IMPL 21.1.3, 21.6: the none row's boot fills a Kimi.Boot as the library's declaration is placed: the boot local takes its size and
+    // alignment, and directMapOffset, regions and regionCount are stored at their offsets.
+    [Fact]
+    public void BootIsPlacedAsTheNoneBootFillsIt()
+    {
+        var c = CompilationTestHelper.BindSuccess("()");
+        var boot = LibrarySource.Declaration(c.Library, "Boot").SymbolOf(c)!.Type!;
+        var placed = c.Layout.Of(boot);
+        Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
+        var layout = placed.Value!.Layout;
+        var offsets = layout.FieldOffsets.Span;
+        var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
+        Assert.Contains($"  %boot = alloca [{layout.Size} x i8], align {layout.Alignment}\n", runtime, StringComparison.Ordinal);
+        Assert.Equal(0, offsets[AdtDef.IndexOf(boot, "directMapOffset")]);
+        Assert.Contains("  store i64 %offset, ptr %boot, align 8\n", runtime, StringComparison.Ordinal);
+        Assert.Contains(
+            $"  %regions = getelementptr i8, ptr %boot, i64 {offsets[AdtDef.IndexOf(boot, "regions")]}\n  store ptr %entries, ptr %regions, align 8\n",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"  %region_count = getelementptr i8, ptr %boot, i64 {offsets[AdtDef.IndexOf(boot, "regionCount")]}\n" +
+            "  store i64 %count, ptr %region_count, align 8\n",
+            runtime,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -573,7 +599,7 @@ public partial class LayoutTest
     public void AUniqSlicesStorageAndLengthLieAtTheArrayHandlesWords()
     {
         var c = MirBuildTest.Compile("func f(values: uniq/Array<i64>) -> i64\n    var view = values.sliceUniq()\n    return view[0]\n");
-        var slice = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type)
+        var slice = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type!)
             .First(x => x.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice && !x.ContainsParameter);
         var value = c.Layout.Of(slice).Value!;
         Assert.Equal([0, 8], value.Layout.FieldOffsets.ToArray()[..2]);

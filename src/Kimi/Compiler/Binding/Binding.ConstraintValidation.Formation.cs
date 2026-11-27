@@ -4,26 +4,38 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// A Type's formation in a scope (SPEC 8.3, 15.6.1; DECISIONS BU-19, BU-55, R4-M163), a part of constraint validation.
+// A Type's formation in a scope (SPEC 8.3, 15.6.1; DECISIONS BU-19, BU-55, R4-M163, PLAN G464), a part of constraint validation.
 // - Responsibility: two walks over one per-part step. The step (BeginTypeFormation, EndTypeFormation) judges a part's declaration
 //   context, its Origin clauses and a constructed part's clauses with every enclosing container's under its arguments. The per-use
-//   walk (CheckTypeConstraints) judges an instantiated Type and enters every component; the declaration walk
-//   (CheckDeclaredTypeConstraints) judges a callee's declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints
-//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth.
+//   walk (CheckTypeConstraints) judges an instantiated Type; the declaration walk (CheckDeclaredTypeConstraints) judges a callee's
+//   declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints keeps its Proven as the declaration query
+//   SignatureVerdict). Both enter every component but a Function Type's, at any depth (SPEC 15.6.1, 15.3.4: a nested signature); they
+//   differ only in the clause fact the per-use walk hands on and the declaration walk's SignatureVerdict. An instance's evidence
+//   (InstanceFormation, SPEC 8.6.3) reads the step alone: its declaration's Constraints at its arguments; so does the question which
+//   parts of a Refuted signature failed where written (RefutedSignatureParts, DECISIONS Q13 rule W), at each part's root.
 // - Inputs: a Type and the scope whose premises apply; the declaration contexts, Origin declarations and constraint clauses bound so far.
 // - Outputs: the proof, combined as P < U < L < R < E, with the cause it rests on read into the enclosing proof scope; in the per-use
 //   walk, also the clause fact at the part's verdict, handed on as a clause list hands its own (LeaveClause; PLAN G354 (2)).
 // - Invariants: the step runs in the same order in both walks: the declaration context, the Origin clauses, the walk's components, the
 //   clauses; each walk then closes the part's proof scope; each distinct part with components is decided once per query, and each walk
-//   call begins its own query, so the two walks never share an entry. A cached part and a computed one leave the same facts.
+//   call begins its own query, so the two walks never share an entry; a per-use walk call made while a per-use walk of the same scope
+//   runs (a conformance's instance formation inside a part's clauses) first reads a part that walk has decided on settled verdicts
+//   alone (no dependence on an open obligation, EndAnswer, no provisional read, ProvisionalReads, and no part read that was not), which
+//   holds at the call's deeper obligation, and stores nothing in that walk's query, so the walk is linear in the distinct parts however deep its
+//   instances nest, and an answer formed while an obligation or a capability request is pending is never read past it. A cached part
+//   and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
-//   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
-//   no clause fact on while PLAN G375's sigref1 stays open.
+//   (FormNestedResult, R4-M162) and its inputs at its calls (RequireInputPremises, R4-M137), never by either walk; the declaration walk
+//   hands no clause fact on while PLAN G375's sigref1 stays open.
 public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
-    // (DECISIONS BU-55) and the clause fact it hands on (G354 (2); none in the declaration walk).
-    private readonly TypeMemo<BoundType, (ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause)> formedParts = new();
+    // (DECISIONS BU-55), the clause fact it hands on (G354 (2); none in the declaration walk) and whether its computation read only
+    // settled verdicts (a nested per-use call's condition; the declaration walk's entries are read by their own walk only): its proof
+    // depends on no obligation open before it began (EndAnswer, R1.1: a decided proof holds whatever the obligation settles to), and
+    // neither ProvisionalReads nor unsettledReads grew over it. Settled goes with ProvisionalReads (removal: R7-C2e2 e2-5b, the answer's
+    // Completion).
+    private readonly TypeMemo<BoundType, (ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause, bool Settled)> formedParts = new();
 
     // The walks the SignatureVerdict row ran in this pass.
     private int signatureWalks;
@@ -31,20 +43,53 @@ public sealed partial class Binding
     /// <summary>Gets the walks the SignatureVerdict row ran in the latest pass, which a scaling check reads.</summary>
     internal int SignatureWalkWork => this.signatureWalks;
 
-    // The per-use walk over an instantiated Type. A part's proof and the cause it rests on depend on the part alone in one query (its
-    // scope fixed), so each distinct part is proven once (FormedPart).
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
-        => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion));
+    // The innermost per-use walk running: its scope and query (no scope outside every per-use walk).
+    private (BindingScope? Scope, uint Query) openFormation;
 
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query)
+    // The reads of a part not decided on settled verdicts: a part whose computation read one rests on a provisional verdict through it.
+    // Temporary with Settled and ProvisionalReads; removal: R7-C2e2 e2-5b (a part's Completion meets its parts').
+    private int unsettledReads;
+
+    // Whether part `part` is in a set RefutedSignatureParts gave; a part past bit 63 is in none, so it is compared as written.
+    private static bool RefutedPart(ulong parts, int part) => (uint)part < 64 && (parts & (1UL << part)) != 0;
+
+    // The per-use walk over an instantiated Type. A part's proof and the cause it rests on depend on the part alone in one query (its
+    // scope fixed), so each distinct part is proven once (FormedPart). A call made while a per-use walk of the same scope runs (a
+    // part's clause proving a conformance, whose evidence rests on the instance's formation: InstanceFormation) reads a part that walk
+    // has decided, so a nested instance is not formed again per enclosing level. It runs inside a clause's proof, at a deeper obligation
+    // than the walk's, so it reads only a part decided on settled verdicts (an assumption or a re-entry read holds only at the depth it
+    // was read at), and it stores nothing in that walk's query: what it computes there may rest on provisional verdicts and is decided in
+    // a query of its own, which ends with it.
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, QuerySite site)
     {
-        if (this.BeginTypeFormation(type, scope) is not { } proof)
+        if (ReferenceEquals(this.openFormation.Scope, scope) && this.formedParts.TryGet(type, this.openFormation.Query, out var decided) && decided.Settled)
+        {
+            this.BeginProof(site);
+            return this.ReadPart(decided);
+        }
+
+        var outer = this.openFormation;
+        this.openFormation = (scope, this.formedParts.Begin(this.storageVersion));
+        try
+        {
+            return this.CheckTypeConstraints(type, scope, this.openFormation.Query, site);
+        }
+        finally
+        {
+            this.openFormation = outer;
+        }
+    }
+
+    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query, QuerySite site)
+    {
+        if (this.BeginTypeFormation(type, scope, site) is not { } proof)
         {
             return ConstraintProof.Error;
         }
 
-        // A Function Type's components are its inputs and its result.
-        for (var i = 0; i < type.Components.Count; i++)
+        // SPEC 15.6.1, 15.3.4 (PLAN G464): a Function Type is a nested signature, whose inputs are its premises, proven at its calls
+        // (RequireInputPremises), and whose result is formed where it is written (FormNestedResult, R4-M162); no use forms either.
+        for (var i = 0; type.Kind != BoundTypeKind.Function && i < type.Components.Count; i++)
         {
             proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query), true);
         }
@@ -60,12 +105,12 @@ public sealed partial class Binding
     // SPEC 15.6.1, 15.3.4 (DECISIONS R4-M163): the declaration walk, over a Type written in a callee's own signature, in that callee's
     // scope. It enters no Function Type's components at any depth: a nested signature's result is judged where it is written
     // (BindFunctionType, R4-M162), and its inputs are that signature's premises, proven at its value calls (R4-M137).
-    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope)
-        => this.CheckDeclaredTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion));
+    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope, QuerySite site)
+        => this.CheckDeclaredTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion), site);
 
-    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope, uint query)
+    private ConstraintProof CheckDeclaredTypeConstraints(BoundType type, BindingScope scope, uint query, QuerySite site)
     {
-        if (this.BeginTypeFormation(type, scope) is not { } proof)
+        if (this.BeginTypeFormation(type, scope, site) is not { } proof)
         {
             return ConstraintProof.Error;
         }
@@ -80,18 +125,23 @@ public sealed partial class Binding
     }
 
     // The step's opening: a part whose declaration context failed is Error with no component entered (null); otherwise its proof scope
-    // opens with its unresolved declaration context and its Origin clauses.
-    private ConstraintProof? BeginTypeFormation(BoundType type, BindingScope scope)
+    // opens with its unresolved declaration context and its Origin clauses; `site` is the walk's (a part's: Nested).
+    private ConstraintProof? BeginTypeFormation(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
         {
             return null;
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ?
             ConstraintProof.Unknown : ConstraintProof.Proven;
-        return CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
+
+        // A temporary second judge of a declaration's written Type, beside the declaration judge's roots (ValidateOriginRelations): a
+        // pass-level validator forming it in its container's or an accessor's scope (a base, a Property Type's or an enum Case's
+        // projection, an accessor's circular proof of its Field's Type). Removal condition: R7-E5 or G491 D1's owner decision, whichever
+        // comes first; this part then judges only a Type with no written occurrence (PLAN G1459).
+        return CombineProof(proof, this.CheckTypeOriginRelations(type, scope.Owner), true);
     }
 
     // The step's closing judgment, after the walk's components: a constructed part's clauses and every enclosing container's under its
@@ -103,7 +153,7 @@ public sealed partial class Binding
         {
             for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
             {
-                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope), true);
+                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, QuerySite.Nested), true);
             }
         }
 
@@ -117,19 +167,28 @@ public sealed partial class Binding
     {
         if (part.Components.Count == 0)
         {
-            return this.CheckTypeConstraints(part, scope, query);
+            return this.CheckTypeConstraints(part, scope, query, QuerySite.Nested);
         }
 
-        this.BeginProof();
+        this.BeginProof(QuerySite.Nested);
         if (!this.formedParts.TryGet(part, query, out var known))
         {
-            var proof = this.CheckTypeConstraints(part, scope, query);
-            known = (proof, this.ProofCause(proof), this.ProofFact(proof), this.ProofClause(proof));
+            var (mark, reads) = (this.BeginAnswer(), this.ProvisionalReads + this.unsettledReads);
+            var proof = this.CheckTypeConstraints(part, scope, query, QuerySite.Nested);
+            var settled = !this.EndAnswer(mark, proof) && this.ProvisionalReads + this.unsettledReads == reads;
+            known = (proof, this.ProofCause(proof), this.ProofFact(proof), this.ProofClause(proof), settled);
             this.formedParts.Set(part, query, known);
         }
 
+        return this.ReadPart(known);
+    }
+
+    // A decided part read into the proof scope its reader opened: a cached formation and a computed one leave the same facts.
+    private ConstraintProof ReadPart(in (ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause, bool Settled) known)
+    {
+        this.unsettledReads += known.Settled ? 0 : 1;
         var verdict = this.EndProof(this.ReadVerdict(known.Proof, known.Cause, known.Fact));
-        this.LeaveClause(known.Clause, known.Proof); // A cached formation and a computed one leave the same fact.
+        this.LeaveClause(known.Clause, known.Proof);
         return verdict;
     }
 
@@ -138,14 +197,14 @@ public sealed partial class Binding
     {
         if (part.Components.Count == 0)
         {
-            return this.CheckDeclaredTypeConstraints(part, scope, query);
+            return this.CheckDeclaredTypeConstraints(part, scope, query, QuerySite.Nested);
         }
 
-        this.BeginProof();
+        this.BeginProof(QuerySite.Nested);
         if (!this.formedParts.TryGet(part, query, out var known))
         {
-            var proof = this.CheckDeclaredTypeConstraints(part, scope, query);
-            known = (proof, this.ProofCause(proof), this.ProofFact(proof), null);
+            var proof = this.CheckDeclaredTypeConstraints(part, scope, query, QuerySite.Nested);
+            known = (proof, this.ProofCause(proof), this.ProofFact(proof), null, false);
             this.formedParts.Set(part, query, known);
         }
 
@@ -158,7 +217,7 @@ public sealed partial class Binding
     // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C2. So
     // does a demand before the gate (contractHeadersReady; DECISIONS BU-120's line, PLAN G949 S1-r2): it forms the signature without
     // entering the row, so no Running state is set and no Done is read before the gate, for every subject, and it counts as a walk.
-    private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
+    private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function, QuerySite site)
     {
         if (this.activeRequirementContract is not null || !this.contractHeadersReady)
         {
@@ -167,21 +226,28 @@ public sealed partial class Binding
                 this.signatureWalks++; // A pre-gate demand counts its walk, as the query's did (the S1-r2 note's C4).
             }
 
-            return this.FormSignature(function);
+            return this.FormSignature(function, site);
         }
 
         var symbol = function.BoundSymbol!;
         switch (this.BeginQuery(symbol, DeclQueryKind.SignatureVerdict))
         {
             case DeclState.Done:
-                this.BeginProof(); // A kept answer and a computed one leave the same facts: outside every scope, the frame drops untaken ones.
+                this.BeginProof(site); // A kept answer and a computed one leave the same facts: outside every scope, the frame drops untaken ones.
                 return this.EndProof(ConstraintProof.Proven);
             case DeclState.Running:
                 return ConstraintProof.Unknown; // SPEC 8.3.3: a revisited obligation supplies no evidence.
         }
 
+        // A frozen library verdict (PLAN G949 S1-1; G949 ruling 187 (c)) is read, never written: Done answered above, and one the freeze
+        // left not Done is final too, so its use forms the signature in its own scope (PLAN G375's per-use form) and completes nothing.
         this.signatureWalks++;
-        var proof = this.FormSignature(function);
+        var proof = this.FormSignature(function, site);
+        if (symbol.QueriesFrozen)
+        {
+            return proof;
+        }
+
         if (proof == ConstraintProof.Proven)
         {
             this.CompleteQuery(symbol, DeclQueryKind.SignatureVerdict);
@@ -206,24 +272,59 @@ public sealed partial class Binding
             if (this.nodes[i] is FunctionKoto function && ReferenceEquals(function.CodeContext?.Kotonoha, library) &&
                 function.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && ReferenceEquals(symbol.Declaration, function))
             {
-                this.BeginProof();
-                this.EndProof(this.CheckSignatureTypeConstraints(function));
+                this.BeginProof(function);
+                this.EndProof(this.CheckSignatureTypeConstraints(function, QuerySite.Nested));
             }
         }
     }
 
-    private ConstraintProof FormSignature(FunctionKoto function)
+    private ConstraintProof FormSignature(FunctionKoto function, QuerySite site)
     {
+        // The callee's own declaration check, not part of typing a header that calls it (SPEC 11.6, 15.3.5): its requests walk nothing.
+        var inferring = this.inferringHeader;
+        this.inferringHeader = false;
         var scope = this.scopes[function];
-        var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope) : ConstraintProof.Unknown;
+        var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope, site) : ConstraintProof.Unknown;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             proof = CombineProof(
                 proof,
-                function.Parameters[i].Type.BoundType is { } parameter ? this.CheckDeclaredTypeConstraints(parameter, scope) : ConstraintProof.Unknown,
+                function.Parameters[i].Type.BoundType is { } parameter ? this.CheckDeclaredTypeConstraints(parameter, scope, site) : ConstraintProof.Unknown,
                 true);
         }
 
+        this.inferringHeader = inferring;
         return proof;
+    }
+
+    // SPEC 23.1.2 (DECISIONS Q13 rule W): the parts of a callee's declared signature whose own written Type is the failed occurrence,
+    // as bits (its input i at bit i, its result at the parameter count): the signature's verdict is Refuted and the step alone at the
+    // part's root (BeginTypeFormation, EndTypeFormation; no component) is Refuted. A part whose failed Type lies under its root
+    // (`Option<Box<string>>`) is none: it is compared, and its other components with it. Only a reader that reads the verdict itself
+    // takes them as the wildcards of its comparison against a required Function Type (a function-group reference: ContractFits,
+    // InferReferenceSlots); every other comparison takes none. An Error verdict gives none: an Error part that misfits leaves the
+    // candidate inapplicable, and its record is as without the rule. The question is no proof: it runs in a scope of its own, opening no
+    // site frame (Nested), whose reads, an Error's cause among them, it drops; a Proven verdict is the kept query, so a valid callee
+    // walks nothing.
+    private ulong RefutedSignatureParts(FunctionKoto function)
+    {
+        var parts = 0UL;
+        this.BeginProof(QuerySite.Nested);
+        if (this.CheckSignatureTypeConstraints(function, QuerySite.Nested) == ConstraintProof.Refuted)
+        {
+            var scope = this.scopes[function];
+            for (var i = 0; i <= function.Parameters.Count && i < 64; i++)
+            {
+                var written = i < function.Parameters.Count ? function.Parameters[i].Type.BoundType : function.BoundSymbol?.Type;
+                if (written is not null && this.BeginTypeFormation(written, scope, QuerySite.Nested) is { } open &&
+                    this.EndProof(this.EndTypeFormation(written, scope, open)) == ConstraintProof.Refuted)
+                {
+                    parts |= 1UL << i;
+                }
+            }
+        }
+
+        this.EndProof(ConstraintProof.Proven);
+        return parts;
     }
 }

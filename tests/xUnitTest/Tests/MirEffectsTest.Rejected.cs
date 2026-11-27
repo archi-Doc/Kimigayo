@@ -37,6 +37,21 @@ public sealed partial class MirEffectsTest
         }
     }
 
+    // SPEC 23.1.2 (the Z2 DECISIONS draft; DECISIONS BU-102, R5-M183): a static Binding rejects (`Box<T>` without `T is Owned`) publishes
+    // no body of the Closure in its initializer, and a confined witness's call of it through the failed access is that rejection's
+    // dependent in A4: Derived, no A4 problem (in a complete compilation a body without a category is a broken contract,
+    // ABodylessCallWithoutACategoryIsABrokenContract). Fail-before: Unsupported_Kd at `Self is Sink` (dev 661695576), CheckFaulted_Kd
+    // (42ae03031, the solve's throw read Binding's incompleteness as a broken contract).
+    [Fact]
+    public void AClosureARejectedStaticLeftWithoutABodyIsItsDependent()
+    {
+        var c = MirBuildTest.Compile(Sink + Loud + "struct Box<T>\n    public init() => ()\n    public group G\n        public let s = func [] () -> isize => 4\n" +
+            Witness + "        _ = Box<i32>.G.s()\n        return .Ok(())\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(Problems(c, program));
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == Kimi.DiagnosticCode.InternalInvariant_Kd); // The whole report.
+    }
+
     // SPEC 23.1.2 (DECISIONS R4-M139): a copy over storage Binding rejected inside a confined witness (Holder.reset's `U.d(self.item@ref)`
     // omits `k: Option<T> = .None`) is built, and A4 reads the copy's Rejected locals, as its repair: no builder record and no A4 problem,
     // as MirBuildTest.ACopyOverRejectedStorageIsBuilt builds dep, dep3 and dep2. Before, the copy's Rejected instance read as a limit: the
@@ -54,4 +69,29 @@ public sealed partial class MirEffectsTest
             Assert.Empty(Problems(c, program));
         }
     }
+
+    // SPEC 7.2.3 ¶2, 8.11.2 (PLAN G396 (3)): a copy over an instance past Binding's storage bound inside a confined witness contributes its
+    // default's effects as its written twin does (`IncompatibleContractImplementation_Kd` at `Self is Sink`, Failed): H.takeLoud<Bx^65>'s
+    // default prints (wit), in a closure literal called there (clo), and through the conforming Self's requirement (self: Ld<Bx^64>'s
+    // zero prints), each beside its written twin. Fail-before: no A4 problem, B3's Opaque value hiding the effect behind the call's
+    // Unsupported_Kd record (the design's b3-wit-loud, the reviewers' r-clo-loud and f-self-loud).
+    [Theory]
+    [InlineData("_ = H.takeLoud<B65>(value)")]
+    [InlineData("_ = H.takeLoud<B65>(value, H.loud<B65>())")]
+    [InlineData("let f = func (x: i32) -> i32 => H.takeLoud<B65>(x)\n        _ = f(value)")]
+    [InlineData("let f = func (x: i32) -> i32 => H.takeLoud<B65>(x, H.loud<B65>())\n        _ = f(value)")]
+    [InlineData("_ = H.takeSelf<Ld<B64>>(value)")]
+    [InlineData("_ = H.takeSelf<Ld<B64>>(value, Ld<B64>.zero())")]
+    public void ACopyPastTheBoundInAConfinedWitnessIsItsDefaultsEffect(string statement)
+        => Assert.Equal(
+            [Failed],
+            Problems(Sink + "contract Zero\n    func zero() -> i32\nstruct Bx<T>\n    public var v: T\nstruct Ld<T>\n    public var v: T\n    Self is Zero\n" +
+                "    public func zero() -> i32\n        Console.writeLine(\"loud\")\n        return 0\ngroup H\n    public func loud<T>() -> i32\n" +
+                "        Console.writeLine(\"loud\")\n        return 0\n    public func takeLoud<T>(a: i32, k: i32 = H.loud<T>()) -> i32 => a + k\n" +
+                "    public func takeSelf<T>(a: i32, k: i32 = T.zero()) -> i32\n        T is Zero\n        return a + k\nstruct S\n    Self is Sink\n" +
+                Put + "        " + statement.Replace("B65", BoxNest(65), StringComparison.Ordinal).Replace("B64", BoxNest(64), StringComparison.Ordinal) +
+                "\n        return .Ok(())\n"));
+
+    // Bx nested n times over i32.
+    private static string BoxNest(int n) => string.Concat(Enumerable.Repeat("Bx<", n)) + "i32" + new string('>', n);
 }

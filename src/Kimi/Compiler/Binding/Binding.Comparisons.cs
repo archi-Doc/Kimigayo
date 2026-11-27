@@ -1,17 +1,26 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type.
-    internal static BoundType ComparisonReferent(BoundType type)
+    // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type; a string comparison operand is
+    // one whose terminal Type is string.
+    [return: NotNullIfNotNull(nameof(type))]
+    internal static BoundType? ComparisonReferent(BoundType? type) => ComparisonReferent(type, out _);
+
+    // SPEC 3.4.3, 13.4: the terminal Type below every ref and uniq layer of a Type, and the number of those layers.
+    [return: NotNullIfNotNull(nameof(type))]
+    internal static BoundType? ComparisonReferent(BoundType? type, out int layers)
     {
-        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        layers = 0;
+        while (type?.SafeReferent is { } referent)
         {
-            type = type.Components[0];
+            layers++;
+            type = referent;
         }
 
         return type;
@@ -32,8 +41,9 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3: the Type below the ref, uniq and qualifying pair layers of `type` in `scope`, in any order: the one walk of the safe
-    // value-reference layers, shared by an operand's terminal, a value read's (ReadTypeReferent) and the shared-reference row's
-    // (SharedReferenceThroughLayers), one LayerBelow each step. It ends within the Type's height.
+    // value-reference layers, shared by an operand's terminal, a value read's (ReadTypeReferent), a receiver's through several layers
+    // (ReceiverThroughLayers) and the shared-reference row's (SharedReferenceThroughLayers), one LayerBelow each step. It ends within the
+    // Type's height.
     private BoundType LayersTerminal(BoundType type, BindingScope scope)
     {
         while (this.LayerBelow(type, scope) is { } below)
@@ -46,22 +56,19 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3, 13.5.5: the referent below one safe value-reference layer (ref, uniq, or a pair layer whose admitted set in `scope` lies
-    // in value or valueborrow), or null for any other Type. A layer admitting no case ends the walk (stopped: it has no node to rest; its
-    // operand's consumer would; PLAN G750).
+    // in value or valueborrow), or null for any other Type: also the referent an update locates its receiver at (BindPropertyUpdate). A
+    // layer admitting no case ends the walk (stopped: it has no node to rest; its operand's consumer would; PLAN G750).
     private BoundType? LayerBelow(BoundType type, BindingScope scope)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent
-            : this.FollowablePair(type, scope, out var target) is { } admitted && admitted != SemanticsMask.None ? target : null;
+        => type.SafeReferent ?? (this.FollowablePair(type, scope, out var target) is { } admitted && admitted != SemanticsMask.None ? target : null);
 
     private BoundType? CompleteComparison(
         BinaryKoto binary, BoundType left, BoundType right, BindingScope scope, OperatorApplicability decision)
     {
-        if ((ReferenceTypes.EndsInString(left) || ReferenceEquals(left, BoundType.Never)) &&
-            (ReferenceTypes.EndsInString(right) || ReferenceEquals(right, BoundType.Never)))
+        if ((ReferenceEquals(ComparisonReferent(left), BoundType.String) || ReferenceEquals(left, BoundType.Never)) &&
+            (ReferenceEquals(ComparisonReferent(right), BoundType.String) || ReferenceEquals(right, BoundType.Never)))
         {
-            this.CompareInPlace(binary.Left);
-            this.CompareInPlace(binary.Right);
-            this.StringThroughLayers(binary.Left, left);
-            this.StringThroughLayers(binary.Right, right);
+            this.CompareInPlace(binary.Left, this.StringThroughLayers(binary.Left, left));
+            this.CompareInPlace(binary.Right, this.StringThroughLayers(binary.Right, right));
             return Complete(binary, BoundType.Boolean);
         }
 
@@ -82,9 +89,10 @@ public sealed partial class Binding
 
         // SPEC 13.4, 3.8: the terminal Types are equal under the Type relation, which relates Never only to itself, or one operand is Never:
         // the right one's own Type here, as applicability fitted a Never left one to the right; a Never terminal below a layer is ordinary.
-        if (!ReferenceEquals(operand, BoundType.Never) && !IsSubtype(right, left, out var failure))
+        if (!ReferenceEquals(operand, BoundType.Never) &&
+            !this.IsSubtype(this.RegionValuesAt(right, binary.Right), this.RegionValuesAt(left, binary.Left), out var failure))
         {
-            if (this.CommonOriginType(left, right, out _) is not { } common)
+            if (this.CommonOriginType(left, right, binary, out _) is not { } common)
             {
                 return this.FailMismatch(binary, binary.Right, right, left, failure);
             }
@@ -93,7 +101,7 @@ public sealed partial class Binding
         }
 
         var integer = decision.Requirement?.Contract == this.Library.PrimitiveInteger && decision.Proof == ConstraintProof.Proven;
-        return left.Kind == BoundTypeKind.Primitive || ReferenceTypes.IsPointer(left) || integer
+        return left.Kind == BoundTypeKind.Primitive || left.IsPointer || integer
             ? Complete(binary, BoundType.Boolean) : this.BindContractComparison(binary, left, scope);
     }
 
@@ -106,12 +114,12 @@ public sealed partial class Binding
         var name = equality ? "equals" : "compare";
         if (contract.Contract is not { } shape || !shape.MembersByName.TryGetValue(name, out var members) || members.Count != 1)
         {
-            return this.Fail(binary, BindingFailure.InvalidConstraint);
+            return this.Record(binary, BindingFailure.InvalidConstraint, []);
         }
 
         var call = this.BindSelectedRequirement(binary, binary.ComparisonStorage, [binary.Left, binary.Right], self, members[0].Contract, members[0].Symbol, scope, tupleOperator);
         binary.ComparisonStorage = call;
-        binary.ComparisonActive = call?.BoundCall is not null;
+        binary.ComparisonActive = call is not null && this.CallOf(call) is not null;
         return Complete(binary, binary.ComparisonActive ? BoundType.Boolean : null);
     }
 }

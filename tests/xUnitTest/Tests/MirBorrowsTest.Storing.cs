@@ -37,6 +37,8 @@ public sealed partial class MirBorrowsTest
         ["localRoot"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    let v = t@follow@raw@raw/u8\n    let r = t@follow@follow@uniq\n    r@follow = v",
         ["loop"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    var n: i32 = 0\n    while n < 2\n        t@follow@follow = t@follow@raw@raw/u8\n" +
             "        n = n + 1",
+        ["readFirst"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    var m: raw/u8 = null\n    m = t@follow@follow\n" +
+            "    t@follow@follow = t@follow@raw@raw/u8",
         ["replaced"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    var v: raw/u8 = u@follow@raw@raw/u8\n" +
             "    v = t@follow@raw@raw/u8\n    t@follow@follow = v",
         ["structField"] = "struct NR\n    public var a: raw/u8\n    public init() => self.a = null\n" +
@@ -130,6 +132,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("displaced", "st: t@follow@follow = v")]
     [InlineData("localRoot", "st: r@follow = v")]
     [InlineData("loop", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("readFirst", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("replaced", "st: t@follow@follow = v")]
     [InlineData("structField", "st: t@follow@follow.a = t@follow@raw@raw/u8")]
     [InlineData("generic", "st: t@follow@follow = t@follow@raw@raw/T")]
@@ -191,5 +194,73 @@ public sealed partial class MirBorrowsTest
         Assert.All(
             Enumerable.Range(0, all.Length).Where(i => all[i].Code == DiagnosticCode.UnretainedRawStore_Kd),
             i => Assert.Equal(0, program.Problems.Facts(i).Length));
+    }
+
+    // SPEC 5.2.1, 15.6.4 rule A (the Middle's G408-B A5 ruling C5, twin (d), and its consent amendment 2, superseding consent ruling 3's
+    // five records): st's store of t's own part past t is invalid, as "direct"; its input d holds an i64 34 entries down, past
+    // StorageBound, and t's written storage and d can each carry a Loan or an address, so st's own contract is Deep (G408B-17). d is by
+    // value, so it is dropped at st's exit, and its drop is undecided past the bound (MayNeedDrop fails closed): Redirects' drop clause
+    // caps the landing, so st's store is silent on dev and the head (O-62 (a)'s named silence; an open issue). st's raw layer states no
+    // Origin and st writes it, so by SPEC 15.6.4 each call retains every argument, d included, and d's first component borrows x within
+    // the bound: x's Loan lives in t's referent past x, `var x = 1`'s ComparisonLoanConflict_Kd, a decided row's record beside the call's
+    // Deep record (twin (c)'s pattern, SPEC 23.1.2), and likewise y's at h's call. Each caller's records stand.
+    [Fact]
+    public void ABodyWhoseContractIsDeepStoresSilentlyAndEachCallerRecords()
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 33)) + "i64" + new string(')', 33);
+        var source = $"func make(x: ref/i32 during q) -> (ref/i32 during q, {nest}) => $abort(\"x\")\n" +
+            $"func st(t: uniq/(uniq/(raw/u8) during a), d: (ref/i32 during q, {nest}))\n    t@follow@follow = t@follow@raw@raw/u8\n" +
+            "func g(t: uniq/(uniq/(raw/u8) during a))\n    var x = 1\n    st(t, make(x@ref))\n" +
+            "func h(u: uniq/(uniq/(raw/u8) during b))\n    var y = 2\n    st(u, make(y@ref))\n" +
+            "public func main() => ()\n";
+        Assert.StartsWith("deep", RetentionTest.Declared(MirBuildTest.Compile(source), "st"), StringComparison.Ordinal);
+        Assert.Equal(
+            "ComparisonLoanConflict_Kd var x = 1; OwnershipDepthLimit_Kd st(t, make(x@ref)); " +
+            "ComparisonLoanConflict_Kd var y = 2; OwnershipDepthLimit_Kd st(u, make(y@ref))",
+            Records(source));
+    }
+
+    // SPEC 5.2.1, 15.6.4 rule A, 8.3.3 (the Middle's G408-B A5 consent ruling 1 and its amendment 2; its twins dstU0, dstFieldU0): a
+    // StoringForms body with an input d past StorageBound (an i64 34 entries down) beside the storage it writes, so its own contract is
+    // Deep, and no call of it. d is a borrow, which needs no drop. Its referent's parts are no sources of their own (SPEC 15.6.3), so
+    // the input fold asks past the bound only at an exclusive layer. d's referent holds one 33 entries down, the first meeting past
+    // StorageBound, so d's sources are undecided there and st's own contract is Deep. A by-value d is dropped at st's exit, where
+    // MayNeedDrop fails closed, so Redirects caps the landing and the store is silent (O-62 (a); twin (d)); with scalars alone past the
+    // bound d is exact (dstU0). "direct" and "field" store t's (h's) own
+    // part past it, invalid: the rule refuses on the decided rows, a missing row of a lower bound, so the store is the depth limit, its
+    // one record (a Q13 class 4 move from dev's UnretainedRawStore_Kd at the same store). "other" stores u's part, other storage (rule A
+    // holds): valid, no record.
+    [Theory]
+    [InlineData("direct", "OwnershipDepthLimit_Kd t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("field", "OwnershipDepthLimit_Kd h@follow.r@follow = h@follow@raw@raw/u8")]
+    [InlineData("other", "")]
+    public void AStoreABodyWithADeepContractRefusesIsTheDepthLimit(string form, string expected)
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 31)) + "uniq/i64 during q" + new string(')', 31);
+        var body = StoringForms[form];
+        var header = body.IndexOf('\n', body.IndexOf("func st(", StringComparison.Ordinal));
+        var source = body[..(header - 1)] + $", d: uniq/(ref/i32 during q, {nest}))" + body[header..] + "\npublic func main() => ()\n";
+        Assert.StartsWith("deep", RetentionTest.Declared(MirBuildTest.Compile(source), "st"), StringComparison.Ordinal);
+        Assert.Equal(expected, Records(source));
+    }
+
+    // Invalid and silent, a named limit (MirBorrows.Storing: an Opaque site rests on an error; DECISIONS Z17, rule W): the landing fact
+    // takes the least depth for every input of a body with an Opaque site, whatever the site names, since a part the replaced form reads
+    // reaches that form as a value, not as a use: a site naming a literal's temp, one whose right side is read at its own node (its
+    // resolved twin, readFirst above, has the record) and one naming nothing, a failed call taking no value (fail-before: the record).
+    [Theory]
+    [InlineData("    missing = 1\n")]
+    [InlineData("    missing = t@follow@follow\n")]
+    [InlineData("    missing()\n")]
+    public void ABodyWithAnOpaqueSiteStoresNoUnretainedPart(string statement)
+    {
+        var c = MirBuildTest.Compile(Prelude + "func st(t: uniq/(uniq/(raw/u8) during a))\n" + statement + "    t@follow@follow = t@follow@raw@raw/u8\n");
+        Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.DoesNotContain(
+            program.Problems.All.ToArray(),
+            static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.UnretainedRawStore_Kd or DiagnosticCode.InternalInvariant_Kd);
     }
 }

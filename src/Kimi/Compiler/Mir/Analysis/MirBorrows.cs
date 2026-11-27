@@ -16,31 +16,38 @@
 // reaches a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of the rules below); OwnershipDepthLimit_Kd where a
 // check's verdict rests on a part past a walk's bound or on a call's retention limit (R4-M153: a borrowed root's Drop, a destroying call,
 // a store W or its referent leaves undecided there, A4's Deep at a call or Drop, and a conflict only drop-liveness gives, at the drop-live
-// holder's declaration); each a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
-// view's case admits, R4-M148) every rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
-// signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
-// operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with only
+// holder's declaration); each a limit record at its operation also inside a copy, through MirReport; InternalInvariant_Kd at a Value
+// call whose declared signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an operation
+// that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with only
 // an Evaluated fact (SPEC 5.2.1 condition 3; no Loan fact, G673); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with
 // their problems as Cause facts; UnretainedRawStore_Kd at a safe direct store of an input's own part that its own contract refuses
 // (SPEC 5.2.1 Retained dependencies; MirBorrows.Storing, PLAN G581); and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
-// - a raw pointer's addresses and own-step entries, the untracked rule and PQ-10's Borrows and reads: MirBorrows.Addresses (R4-M116);
+// - a raw pointer's addresses, the own-step rows of the Places reads use and PQ-10's narrowed limit: MirBorrows.Addresses (R4-M116, Z5-R1,
+//   Z5-R2);
 // - the own-step entries' departures: MirBorrows.OwnSteps (R4-M116);
 // - a Call's contract rows, P9's and untied stores among them: MirBorrows.CallRows; their transfer: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
 // - a default template's slot-rooted test, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
 // - a Place's steps and their classes, E17's Inline row included: MirSteps (R4-M100);
-// - the problems' codes and facts, and PD13's held view: MirBorrows.Reports, its fact MirBorrows.CallRows' (R4-M148);
+// - a Place's and a borrow's exact lent position (the storage past each dereference, by the borrow that formed the reference):
+//   MirBorrows.Lent (Z5-F), over MirBorrows.Loans' store record;
+// - the problems' codes and facts: MirBorrows.Reports;
 // - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
 // - the storing rule, its must-facts (Own, Past, the landing fact) and its producer: MirBorrows.Storing (PLAN G581);
 // - the pun rule, its marker Δ and its undecided writes (Φ_M, Φ_U; a located Unsupported_Kd at the check that rests on one):
 //   MirBorrows.Puns, with its judgement over Types (MirBorrows.PunTypes) and its Place keys (MirBorrows.PunKeys; PLAN G667b, G667c).
-// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
+// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), that is exposed
+// (MirBorrows.Loans' Exposed: a pointer the body formed may write it, whatever its Type) or that a store of the body gives a value read
+// from a holder (SPEC 15.6 Holders, whatever its Type; MirBorrows.Holders), or E, the storage the
 // body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
-// (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
+// (drop-liveness, MirBorrows.Holders; R4-M153), or a local's write slot, in the flow region, whose state is what a call's write source
+// stored in the local since its last whole store, with Φ_B where a store of the body through a Deref stored a value of its own there,
+// which only a read a bound (the Case or the referent bound) empties reads, and reads whole where it holds Φ_B (MirBorrows.Holders' WriteSlots, StoredThrough,
+// MirBorrows.Values' Read; SPEC 15.6 Holders' Case-payload sentence, the owner's O-383 (b); R4-M250); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
 // reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their
-// indirect markers, an ending removes (Φ_E, Φ_W, Φ_N, Δ, the per-local markers of the role table, Marker, and rule W's indirect markers,
+// indirect markers, an ending removes (Φ_E, Φ_W, Φ_N, Δ, Φ_B, which no value's set holds, the per-local markers of the role table, Marker, and rule W's indirect markers,
 // MirBorrows.Causes); Φ_W is always beside Φ_E, and only reads through a shared Loan drop it (MirBorrows.Reach, R4-M170); Φ_N is in
 // every state a store gives an exposed holder (MirBorrows.Loans' Exposed), its own Place's or through a reference or a call's W, and in
 // every call result, so the empty set is a value null on every path, A5's must-null fact (PLAN G598; MirBorrows.Calls' Keep). An
@@ -80,7 +87,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private const int Offgrid = 3; // The element of the marker Δ: a pointer A5 saw displaced off an element grid (MirBorrows.Puns), read by no check.
     private const int Maybe = 4; // The element of the marker Φ_M: the value's Φ_E rests on an undecided write (MirBorrows.Puns).
     private const int Undecided = 5; // The element of the marker Φ_U: the set's content rests on one, which a check's gather reads (MirBorrows.Puns).
-    private const int Markers = 6; // The element of local 0's marker, after Φ_E to Φ_U: local L's is Markers + L, which its role decides (Marker).
+    private const int Built = 6; // The element of the marker Φ_B, in write slots only: the body stored a value of its own there (MirBorrows.Holders' StoredThrough; R4-M250).
+    private const int Markers = 7; // The element of local 0's marker, after Φ_E to Φ_B: local L's is Markers + L, which its role decides (Marker).
 
     private readonly MirLoanSets sets = new();
     private readonly HashSet<BoundType> seen = new(ReferenceEqualityComparer.Instance);
@@ -88,13 +96,17 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private MirProgram program = null!;
     private long view;
     private ulong views;
-    private int loanBase; // The element of Loan 0: after Φ_E, Φ_W and the per-local markers.
-    private int escapedSet; // The set {Φ_E, Φ_W}, which a value that may refer to storage the body does not own carries where it is formed.
+    private int loanBase; // The element of Loan 0: after Φ_E to Φ_B and the per-local markers.
+    private int escapedSet; // The set {Φ_E, Φ_W}, which a value that may refer to storage the body does not own carries where it is
+    // formed, with its mode.
+    private int readEscapedSet; // The set {Φ_E}: a value that reaches storage the body does not own for reads only, formed at a parameter
+    // whose Type reaches past it through shared layers only (Initial).
     private int writableSet; // The set {Φ_W}, which a read through a shared Loan drops (MirBorrows.Reach).
     private int unformedSet; // The set {Φ_N}: in an exposed holder's stored states and every call result (MirBorrows.Flow, .Calls).
     private int offgridSet; // The set {Δ} (MirBorrows.Puns).
     private int maybeSet; // The set {Φ_E, Φ_W, Φ_M}, an undecided write's holder's (MirBorrows.Puns).
     private int undecidedSet; // The set {Φ_U} (MirBorrows.Puns).
+    private int builtSet; // The set {Φ_B}: what a store of the body through a Deref puts in a write slot (MirBorrows.Holders' StoredThrough).
 
     /// <summary>What a local's marker, element <see cref="Markers"/> plus the local, is: the role table of the per-local markers (R4-M70),
     /// by the local's role (<see cref="MarkerOf"/>).</summary>

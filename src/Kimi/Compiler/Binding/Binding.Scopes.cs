@@ -8,10 +8,11 @@ namespace Kimi.Compiler;
 // Scopes and symbols: the scope tree and the symbol tables of its scopes.
 // - Responsibility: one scope per key, created once and attached to its parent each pass (GetScope; a source document's execution
 //   scope, which its top-level statements in one module share, DocumentScope); the scope kept for a node (ScopeOf) and the one it
-//   binds in (NodeScope); a symbol's declaration in its scope's Type or value table with the duplicate rule (Declare); a function
-//   parameter's symbol by its function and index, declared (DeclareParameter) and read (ParameterSymbol); the `symbols` and `scopes`
-//   families' accessors (DeclaredSymbols, KeptScopes), the order of any node family's rows over the modules (FamilyRows) and the kept
-//   families' values (KeptValues).
+//   binds in (NodeScope); a symbol's declaration in its scope's Type or value member table, or, for a formal parameter of the scope's
+//   declaration, in its formal-parameter table of that namespace (BindingScope.Parameters), with the duplicate rule across both
+//   (Declare); a Self context's Self in its Type formal-parameter table (DeclareSelf); a function parameter's symbol by its function
+//   and index, declared (DeclareParameter) and read (ParameterSymbol); the `symbols` and `scopes` families' accessors (DeclaredSymbols,
+//   KeptScopes), the order of any node family's rows over the modules (FamilyRows) and the kept families' values (KeptValues).
 // - Inputs: the indexing walk and the declaration steps that declare a symbol. Outputs: scopes, symbols, each declaring node's
 //   BoundSymbol, Duplicate failures.
 // - Invariants: scopes and symbols are kept across passes in their key's module's NodeColumns and reset by ResetPass (DECISIONS
@@ -19,7 +20,7 @@ namespace Kimi.Compiler;
 //   node's SyntaxId, a document's execution scope in the composite column at its module root's id by document, the module the one that
 //   holds the document's top-level items now (AST2), so a document whose items sit in two modules has a scope in each (the owner's
 //   O-380 (a)).
-// - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's table only
+// - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's tables only
 //   to chain a name's symbols (Next) and apply the duplicate rule. No other file keys either family by anything but a node: a
 //   parameter's symbol goes through DeclareParameter and ParameterSymbol, a document's scope through DocumentScope and ScopeOf
 //   (DECISIONS BU-220's key rules).
@@ -27,7 +28,10 @@ public sealed partial class Binding
 {
     internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => function.Accessor is { } accessor
         ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
-        : this.symbols.Parameter(function, index);
+        : DeclaredSymbols.Parameter(function, index);
+
+    // A statement of a generated function's block, which binds in its source document's scope (ScopeOf).
+    private static bool GeneratedStatement(Koto node) => node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } };
 
     private BindingScope GetScope(Koto node, BindingScope? parent) => this.KeptScope(ref KeptScopes.Slot(node), node, parent);
 
@@ -36,10 +40,13 @@ public sealed partial class Binding
     private BindingScope DocumentScope(SourceDocument document, BindingScope parent, Koto owner)
         => this.KeptScope(ref KeptScopes.DocumentSlot(owner.Kotonoha.RootKoto, document), owner, parent);
 
-    // The kept slot is read and written first: a later column write may carve a page and move the arena it points into.
+    // The kept slot is read and written first: a later column write may carve a page and move the arena it points into. A scope of a
+    // constrained declaration, one with a Constraint region of its own (SPEC 8.2.1, 7.5, 8.8.1), is formed for its premises
+    // (BindingScope.Declaration).
     private BindingScope KeptScope(ref BindingScope? kept, Koto owner, BindingScope? parent)
     {
-        var scope = kept ??= new(owner);
+        var scope = kept ??= owner is FunctionKoto { IsAnonymous: false } or PropertyAccessorKoto or DeclarationContainerKoto or
+            SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? new(owner, owner) : new(owner);
         scope.Parent = parent;
         scope.Function = scope.Owner is FunctionKoto function ? function : parent?.Function;
         return scope;
@@ -48,13 +55,29 @@ public sealed partial class Binding
     // The scope a node opens, else for a top-level statement (a node directly in its module's generated function) its document's in
     // that module.
     private BindingScope? ScopeOf(Koto node) => this.scopes.GetValueOrDefault(node) ??
-        (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } body && node.CodeContext.SourceDocument is { } document
-            ? KeptScopes.Document(body.Kotonoha.RootKoto, document) : null);
+        (GeneratedStatement(node) && node.CodeContext.SourceDocument is { } document ? KeptScopes.Document(node.Parent!.Kotonoha.RootKoto, document) : null);
 
     private BindingScope NodeScope(Koto node, BindingScope fallback) => this.ScopeOf(node) ?? fallback;
 
+    // The scope `current`, reached from its child `child`, gives the nodes below it (ConstraintScope): a match arm's body has its
+    // pattern's (SPEC 14.8.2), a scope's owner its own; null when it gives none.
+    private BindingScope? ScopeStop(Koto current, Koto? child)
+        => (current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) ?? this.scopes.GetValueOrDefault(current);
+
     private BindingSymbol Declare(Koto key, string name, BindingSymbolKind kind, Koto node, BindingScope scope)
         => this.DeclareKept(ref DeclaredSymbols.Slot(key), name, kind, node, scope);
+
+    // SPEC 6.1.5, 9.1, 9.5: a Self context declares its Self beside its formal parameters, so the stage walk finds it as it finds them; a
+    // group declares none, so the walk reaches the nearest outer one. A Contract's is its Self Type parameter; a struct's or enum's names
+    // the declaration with all its bindings (Kind Type, its Type set with the schema, BindSchemas), made once. Declared after the
+    // declaration's parameters (the indexing walk's Self entry), whose provisional slots count the table.
+    private void DeclareSelf(BindingSymbol declaration, BindingScope scope)
+    {
+        var self = declaration.IsContract ? this.ContractSelfType(declaration).Symbol! :
+            declaration.SelfSymbol ??= new("Self", BindingSymbolKind.Type, declaration.Declaration, scope) { SelfOf = declaration };
+        self.Scope = scope;
+        scope.AddParameters().Types["Self"] = self;
+    }
 
     private void DeclareParameter(FunctionKoto function, int index, BindingScope scope)
         => this.DeclareKept(ref DeclaredSymbols.ParameterSlot(function, index), function.Parameters[index].InternalName, BindingSymbolKind.Parameter, function, scope).Slot = index;
@@ -72,15 +95,26 @@ public sealed partial class Binding
             return symbol;
         }
 
-        var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType ? scope.Types : scope.Values;
+        // SPEC 9.2, 9.1, 4.4.1: a kind's namespace, and whether it is a formal parameter of the scope's declaration (BindingScope.Parameters).
+        var values = kind is not (BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.AssociatedType or BindingSymbolKind.TypeParameter or
+            BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter);
+        var parameter = kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.LengthParameter;
+        var members = values ? scope.Values : scope.Types;
+        var declared = parameter ? scope.AddParameters() : scope.Parameters;
+        var parameters = !values ? declared?.Types : parameter ? declared!.AddValues() : declared?.Values;
+        var table = parameter ? parameters! : members;
         if (table.TryGetValue(name, out var previous))
         {
             symbol.Next = previous;
-            if ((kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function) &&
-                !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, previous)))
-            {
-                this.FailDuplicate(node, previous.Declaration);
-            }
+        }
+
+        // SPEC 9.1, 9.7.3: a Name repeats in one namespace and scope only as a function group or a Type of another arity, and a formal
+        // parameter conflicts with a declaration of its namespace: a namespace's member and parameter tables are one space for this rule.
+        if ((previous ?? (parameter ? members : parameters)?.GetValueOrDefault(name)) is { } conflict &&
+            (kind != BindingSymbolKind.Function || conflict.Kind != BindingSymbolKind.Function) &&
+            !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, conflict)))
+        {
+            this.FailDuplicate(node, conflict.Declaration);
         }
 
         table[name] = symbol;
@@ -211,15 +245,19 @@ public sealed partial class Binding
             return ref parameters[index];
         }
 
-        internal BindingSymbol? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Symbols.Get(node.SyntaxId) : null;
-
-        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out BindingSymbol? symbol) => (symbol = this.GetValueOrDefault(node)) is not null;
-
-        internal void Add(Koto node, BindingSymbol symbol)
+        internal static void Add(Koto node, BindingSymbol symbol)
         {
             ref var kept = ref Slot(node);
             kept = kept is null ? symbol : throw new ArgumentException($"A symbol is already declared at `{node}`.", nameof(node));
         }
+
+        internal static BindingSymbol Parameter(FunctionKoto function, int index)
+            => (function.SyntaxOwner is { } table && table.Hir.Families.Parameters.Get(function.SyntaxId) is { } parameters && index < parameters.Length ? parameters[index] : null)
+                ?? throw new KeyNotFoundException($"No symbol is declared for parameter {index} of `{function}`.");
+
+        internal BindingSymbol? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Symbols.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out BindingSymbol? symbol) => (symbol = this.GetValueOrDefault(node)) is not null;
 
         internal void Remove(Koto node)
         {
@@ -228,10 +266,6 @@ public sealed partial class Binding
                 Slot(node) = null;
             }
         }
-
-        internal BindingSymbol Parameter(FunctionKoto function, int index)
-            => (function.SyntaxOwner is { } table && table.Hir.Families.Parameters.Get(function.SyntaxId) is { } parameters && index < parameters.Length ? parameters[index] : null)
-                ?? throw new KeyNotFoundException($"No symbol is declared for parameter {index} of `{function}`.");
     }
 
     /// <summary>The `scopes` family's one accessor (DECISIONS BU-220): a scope is kept in its key node's module at the node's SyntaxId,

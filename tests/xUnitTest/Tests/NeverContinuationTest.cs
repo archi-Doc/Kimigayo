@@ -82,6 +82,7 @@ public class NeverContinuationTest
     [InlineData("let n = 1 % stop()")]
     [InlineData("let wide: i64 = 2\nlet n = wide & stop()")]
     [InlineData("let wide: i64 = 2\nlet n = wide % stop()")]
+    [InlineData("let wide: i64 = 2\nlet n = wide * stop()")] // PLAN G1356: a typed Never counterpart keeps no verdict (the route's counterpart row)
     [InlineData("let n = 1.5 + stop()")]
     [InlineData("let n = (1 + 2) & stop()")]
     [InlineData("let n = stop() < stop()")]
@@ -96,6 +97,17 @@ public class NeverContinuationTest
         Assert.Empty(c.Binding.Issues);
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
+
+    // SPEC 12.3.1 ("Otherwise a Type comes from the operands"), 12.3.3 (PLAN G51, F's P1 ruling 1, reading (A)): a declared Type is
+    // no expected Type of a built-in operator's operands, and `1 & stop()` is not literal-only, so `1` defaults to i32 and the i64
+    // declaration rejects it, in either operand order; a literal-only expression and a typed counterpart give the operation i64.
+    [Theory]
+    [InlineData("g51-l", "let value: i64 = 1 & stop()\n", "TypeMismatch_Kd: let value: i64 = 1 & stop()")]
+    [InlineData("g51-r", "let value: i64 = stop() & 1\n", "TypeMismatch_Kd: let value: i64 = stop() & 1")]
+    [InlineData("g51-lit", "let value: i64 = 1 + 2\n", "")]
+    [InlineData("g51-wide", "let wide: i64 = 2\nlet value: i64 = 1 & wide\n", "")]
+    public void ADeclaredTypeIsNoExpectedTypeOfAnOperatorsOperands(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, Stop + program, records);
 
     [Theory]
     [InlineData("func f() -> i32\n    +(return 1)", DiagnosticCode.OperatorNotDefined_Kd)]
@@ -112,7 +124,7 @@ public class NeverContinuationTest
     [InlineData("func f() -> i32\n    (return 42)[0] = 1\n    return 0", DiagnosticCode.InvalidAssignment_Kd)] // A Never receiver has no element.
     [InlineData("func f() -> i32\n    let ia: [1 of i32] = [1]\n    let x: bool = ia[(return 42)]\n    return 0", DiagnosticCode.TypeMismatch_Kd)] // R5-M159.
     [InlineData("let n = stop() & stop()", DiagnosticCode.NonIntegerOperand_Kd)]
-    [InlineData("let n = stop() + stop()", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("let n = stop() + stop()", DiagnosticCode.OperatorNotDefined_Kd)] // SPEC 13.3.4: no Never proves a direction, no provider (PLAN G1356, Q13: was ArithmeticSelection_Kd)
     [InlineData("let n = stop() & true", DiagnosticCode.NonNumericOperand_Kd)]
     [InlineData("let n = stop() & missing", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("let n = 2147483648 & stop()", DiagnosticCode.InvalidNumericLiteral_Kd)]
@@ -127,6 +139,16 @@ public class NeverContinuationTest
         Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
+
+    // SPEC 13.3.4, 13.7.2 (PLAN G1356, F's C1, B's ruling 5): a compound assignment performs its operation in the destination's read
+    // Type and never swaps sides, so a Never destination has no provider whatever its right is: the operation's record is its own, beside
+    // the right's independent one (Q13: dev gave TypeMismatch_Kd at `b` and at `1`, and no record at `y += missing`).
+    [Theory]
+    [InlineData("bool", "func f(x: Never, b: bool)\n    var y = x\n    y += b", "OperatorNotDefined_Kd: y += b")]
+    [InlineData("literal", "func f(x: Never)\n    var y = x\n    y += 1", "OperatorNotDefined_Kd: y += 1")]
+    [InlineData("missing", "func f(x: Never)\n    var y = x\n    y += missing", "OperatorNotDefined_Kd: y += missing | UnresolvedBinding_Kd: y += missing")]
+    public void ANeverDestinationHasNoProviderWhateverItsRightIs(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
 
     // SPEC 3.8: a Never element of a Tuple literal fits its expected element Type, which the literal's Type takes, so the literal fits its
     // expected Type, also as an enum Case's payload.
@@ -223,7 +245,7 @@ public class NeverContinuationTest
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.ToString() == element))!));
         var f = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        Assert.Equal("i32", TyCtxt.Name(f.Locals.ToArray().Single(static x => x.Name == "x").Type));
+        Assert.Equal("i32", TyCtxt.Name(f.Locals.ToArray().Single(static x => x.Name == "x").Type!));
         BuildsWithoutRecords(c);
     }
 

@@ -1,7 +1,7 @@
 # A5-F4 boundary census (unit 2a0-0)
 
 Date: 2026-10-19. Base: `origin/dev` `48a42168`. Unit row: plan §4.2 2a0-0
-([A5 step 2 plan](../../Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md)); decisions PD8, PD9, PD10; inputs: the
+([A5 step 2 plan](../../Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md)); decisions PD8, PD9, PD10; inputs: the
 A5-F4 audit (`artifacts/handoff/2026-10-18-pause/r4-scratch/step2-audit/F4/audit.md`), A3 §7, SPEC 15.3.5–15.3.6, 15.5, 15.6.3,
 15.6.5, 5.2.2, 8.11.3. Evidence only (DEC Q6 form 3): it changes no SPEC, compiler, library or test file. "(H)" marks an
 inference not checked by running code.

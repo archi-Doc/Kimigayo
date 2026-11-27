@@ -30,6 +30,18 @@ public class InheritedReceiverBindingTest
         Assert.False(c.Binding.TryGetReceiverOperation(Call(c), out _));
     }
 
+    // SPEC 9.6, 6.2.2 (R7-N1 c-b, O-431 (a)): an inherited Type function reached as the Type reading and through a value of the derived
+    // Type counts once (rb71v); an inherited receiver function reached with a receiver and without one is two paths (rb72i).
+    [Theory]
+    [InlineData("open struct Base\n    public init() => ()\n    public func m() -> i32 => 1\nstruct T : Base\n    public init() : base() => ()\nfunc f(T: ref/T) -> i32 => T.m()\n", "")]
+    [InlineData("open struct Base\n    public init() => ()\n    public func f(self) -> i32 => 1\nstruct T : Base\n    public init() : base() => ()\nfunc g(T: ref/T) -> i32 => T.f()\n", "AmbiguousBinding_Kd T.f")]
+    public void AnInheritedMemberOfBothReadingsCountsItsPathsOnce(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
     [Fact]
     public void ATypeDeclarationDoesNotStopValueMemberLookup()
     {
@@ -261,6 +273,20 @@ public class InheritedReceiverBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
+    // R7-E2 E2-1 (SPEC 6.1, 7.3, 23.1.2): a constructor's parameter named `self` repeats its implicit receiver's Name, and as a receiver of
+    // Type i32 it is no receiver of S: two independent requirements of one function, both reported; with the receiver's Type fixed the
+    // duplicate alone stays, and a named function's invalid receiver alone is its own record.
+    [Theory]
+    [InlineData("init(self: i32) => ()", "DuplicateBinding_Kd|InvalidTypeFormation_Kd")]
+    [InlineData("init(self: ref/Self) => ()", "DuplicateBinding_Kd")]
+    [InlineData("func f(self: i32) => ()", "InvalidTypeFormation_Kd")]
+    public void AConstructorsSelfParameterIsADuplicateAndItsOwnReceiver(string member, string records)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    {member}");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records.Split('|'), CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public void UnqualifiedInstanceCallsCannotPretendToBeUnboundCalls()
     {
@@ -277,16 +303,15 @@ public class InheritedReceiverBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NotCallable_Kd);
     }
 
-    // SPEC 9.6 makes this ambiguous: the arguments never select a path. Deciding it needs both namespaces' complete paths before either
-    // publishes (PLAN G488, R7 N1), so until then the shared qualifier is one located Unsupported_Kd, never a verdict from one path (the
-    // owner's decision O-32 (a), 2026-11-07; it was AmbiguousBinding_Kd only because the value path read the Type path's S).
+    // SPEC 9.6 makes this ambiguous: the arguments never select a path. Both namespaces' complete paths are evaluated before either
+    // publishes (R7-N1 c-b; BU-117's Unsupported_Kd removed under its removal condition), and both succeed: AmbiguousBinding_Kd at the access.
     [Fact]
     public void CallArgumentsCannotDisambiguateTypeAndValuePaths()
     {
         var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(x: i32) -> i32 => x\nstruct Other\n    public func f(self: ref/Self, x: string) -> i32 => 1\nfunc use(S: ref/Other) -> i32 => S.f(1)");
         Assert.False(c.Bind().IsComplete);
         var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "S"), (issue.Code, issue.Node.ToString()));
+        Assert.Equal((DiagnosticCode.AmbiguousBinding_Kd, "S.f"), (issue.Code, issue.Node.ToString()));
     }
 
     [Theory]
@@ -479,6 +504,37 @@ public class InheritedReceiverBindingTest
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);
+    }
+
+    // SPEC 6.2.2, 9.6 (DECISIONS BU-220, R7-N5 B7c): an edit empties the member path interner, so a derived clause it replaces leaves no
+    // path: the edit replaces D0's clause `Mid` by `Base` (D0's path through `Mid` heads a depth-3 chain and is the parent of the path
+    // through Mid's clause), the rebind interns the current program's paths only and the removed clause is collected. Fails on an
+    // interner kept across edits, and on a row at the clause named last (C-518: Mid's row kept D0's path).
+    [Fact]
+    public void AnEditRemovingADerivedClauseLeavesNoPathOfIt()
+    {
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public var item: i32\n    public func get(self: ref/Self) -> i32 => self.item\nopen struct Mid: Base\n    public var other: i32\n" +
+            "struct D0: Mid\n    public func read(self: ref/Self) -> i32 => self.item + self.get()\nstruct D1: Mid\n    public func read(self: ref/Self) -> i32 => self.item + self.get()\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Equal(5, c.Binding.MemberPathCount);
+        var removed = ReplaceD0Base(c);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Equal(4, c.Binding.MemberPathCount);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(removed.IsAlive);
+    }
+
+    // Replaces D0's base clause `Mid` by `Base`, an edit, and returns the removed clause.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference ReplaceD0Base(Compilation c)
+    {
+        var d0 = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "D0");
+        var donor = KotoTree.Walk(CompilationTestHelper.ParseSuccess("open struct Base\nstruct D0: Base\n").Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "D0");
+        var removed = d0.Bases[0];
+        Assert.True(KotoHelper.Replace(d0, removed, ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(d0.CodeContext))));
+        return new(removed);
     }
 
     private static BoundConformancePath Path(Compilation c, string type, string contract)

@@ -31,14 +31,15 @@ internal sealed partial class InstanceCollector
     /// BU-48 amended by G283); both are checked only. An output root is a declaration's
     /// own body: a Closure's body, made at an Aggregate(Closure) site, and a function declared in a function's or Closure's body (its
     /// declaring scope's Function) are none; the bodies that make or call them reach them; a default template takes the verdict of its
-    /// declaration's own body, so a public function's is a root and a checked-only constructor's is none (DECISIONS R5-M153).</summary>
+    /// declaration's own body, so a public function's is a root and a checked-only constructor's is none (DECISIONS R5-M153). A layer body
+    /// (MirBodyKind.Layer) is checked only: no call names it (SPEC 8.15.3; DECISIONS R7-M115, the owner's (a2)).</summary>
     /// <param name="program">The program.</param>
     /// <param name="root">The root.</param>
     /// <returns>Whether it is an output root, or null where its slot's applicability is undecided, a broken contract.</returns>
     internal bool? Generates(MirProgram program, int root)
     {
         var function = this.Set.Items[root].Key.Body.Def.Decl;
-        if (this.Set.Items[root].Key.Body.Def.Kind == MirBodyKind.Closure || function?.Scope.Function is not null)
+        if (this.Set.Items[root].Key.Body.Def.Kind is MirBodyKind.Layer or MirBodyKind.Closure || function?.Scope.Function is not null)
         {
             return false;
         }
@@ -51,7 +52,8 @@ internal sealed partial class InstanceCollector
 
         var locals = program.Body(this.Set.Items[root].BodyOrdinal).Locals;
         var receiver = locals is [{ Role: MirLocalRole.Receiver }, ..] ? 0 : locals is [_, { Role: MirLocalRole.Receiver }, ..] ? 1 : -1;
-        if (receiver >= 0 && this.layout.Of(locals[receiver].Type).Outcome != Layout.Outcome.Ok)
+        // A receiver is of its struct's Type, never of no Type (MirValidator).
+        if (receiver >= 0 && this.layout.Of(locals[receiver].Type!).Outcome != Layout.Outcome.Ok)
         {
             return false;
         }
@@ -62,18 +64,18 @@ internal sealed partial class InstanceCollector
             return true;
         }
 
-        _ = TyCtxt.Layer(TyCtxt.Signature(function!, null, function!.ReceiverIndex, out _), out var self, out _);
+        _ = TyCtxt.Layer(this.types.Signature(function!, null, function!.ReceiverIndex, out _), out var self, out _);
         return self is null ? null : this.Applies(self, VTableDef.Of(VTableDef.Owner(function)!)!, slot, out _);
     }
 
     // The first layer on a Type's base chain whose struct owns a function (F 4.2's consumer rule), or null off the chain.
-    private static BoundType? Owning(BoundType type, BindingSymbol function)
+    private static BoundType? Owning(TyCtxt types, BoundType type, BindingSymbol function)
     {
         var owner = VTableDef.Owner(function);
         var layer = (BoundType?)type;
         while (layer is not null && !ReferenceEquals(layer.Symbol, owner))
         {
-            layer = AdtDef.Base(layer);
+            layer = AdtDef.Base(types, layer);
         }
 
         return layer;
@@ -111,8 +113,8 @@ internal sealed partial class InstanceCollector
     private bool? Applies(BoundType type, VTableDef table, int slot, out BoundType? layer)
     {
         var original = table.Originals[slot];
-        var declaring = Owning(type, original);
-        layer = Owning(type, table.Implementations[slot]);
+        var declaring = Owning(this.types, type, original);
+        layer = Owning(this.types, type, table.Implementations[slot]);
         return declaring is null || layer is null ? null : this.types.Applies(original, declaring);
     }
 }

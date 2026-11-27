@@ -13,11 +13,15 @@ namespace Kimi.Compiler;
 //   Origin's kind; DeclaredStep over StoredLayer, a Field's or Case payload's layer in the instance's kept part, in the cases that
 //   instance selects, which StoredStep and the hold walk read; RawStepAt, a layer a contract's walk meets by its position,
 //   over SignatureStep, the walked signature's declared layer, and BinderStep, an Origin where it is bound; DECISIONS BU-113), which
-//   retention and A5 read, and the borrows its Origin belongs to (RawMembers), which retention and
-//   InvalidRawOrigin read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
-//   (CallRetention.Limit), never a silent stop; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
+//   retention and A5 read, and the borrows its Origin belongs to, at one arm by the layer's position (within a scope, RawMembers, which
+//   InvalidRawOrigin also reads; or where the Origin is bound, AtomMembers, through retention's BinderReading and A5's StoredMembers),
+//   each slot keeper walked once, a keeper cycle that changes its Type arguments, an Origin kind without a row or a raw layer's region
+//   slot an unanswered one (CallRetention.Limit, A5's OwnershipDepthLimit_Kd at the call, R4-M153), never a silent stop; the named
+//   limits a layer's Origin's limit marks give (Marks, one reader of Binding.AtomMarks; LimitsDeclared, LimitsBinder: A5's false,
+//   retention's binder reading with no members); the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
 //   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
-//   layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)); the borrows keeping a declared slot (Keepers, D15);
+//   layer's Place reached through no dereference (JudgeHolderPlace, OQ-R1 (a)), which with ReadHolder reads one decision, whether a
+//   constructor's or drop's receiver holds the layer (ReceiverHolds); the borrows keeping a declared slot (Keepers, D15);
 //   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): AdtDef's view of an instance's stored Types (Instance,
 //   design-final §15; its kept parts keep them, DECISIONS BU-41); the old analysis's view at its Type intake (the D5 exception, the
 //   owner's Q-O3, DECISIONS BU-24) went with that analysis at R6-check H10b.
@@ -31,7 +35,8 @@ namespace Kimi.Compiler;
 //   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only
 //   retention and the TyCtxt views read one, after Binding's last pass.
 // - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (a raw layer's step and its readers); .Written.cs (the written
-//   forms and their judgment); .Holder.cs (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers).
+//   forms and their judgment); .Holder.cs (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers);
+//   .Borrows.cs (the borrows each body Borrow atom belongs to, formed with each Borrow, and the published claims' marks).
 // - Prohibitions: no region, Loan or retention facts beyond the member borrows, no Place walk of its own (PathOrigin is PlaceAuthority's),
 //   no access verdict, no message text.
 public sealed partial class Binding
@@ -69,8 +74,8 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Semantics == SemanticsKind.Raw && a.Kind == BoundTypeKind.Semantics
-            ? b is not { Semantics: SemanticsKind.Raw, Kind: BoundTypeKind.Semantics }
+        if (a.IsPointer
+            ? !b.IsPointer
             : !a.SameExceptOrigins(b) || !ReferenceEquals(a.Origin, b.Origin) || !a.OriginArguments.SequenceEqual(b.OriginArguments))
         {
             return false;
@@ -116,7 +121,7 @@ public sealed partial class Binding
             }
 
             var parts = components.AsSpan(0, type.Components.Count);
-            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
+            return type.IsPointer
                 ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
         }
         finally

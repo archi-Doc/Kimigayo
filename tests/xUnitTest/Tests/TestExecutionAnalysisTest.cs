@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -32,6 +33,7 @@ public class TestExecutionAnalysisTest
     [InlineData("Missing.startup()\n#Test\nfunc sample() => ()")]
     [InlineData("#Test\nfunc sample()\n    $expect(1)")]
     [InlineData("#Test\nfunc sample()\n    $require(true, message: 1)")]
+    [InlineData("#Test\nfunc sample()\n    let x: Missing = \"m\"\n    $expect(true, message: x)")] // PLAN G1073: a failed slot's message.
     [InlineData("func ordinary()\n    $expect(true)\n#Test\nfunc sample() => ()")]
     [InlineData("func ordinary() -> string => Test.tempDirectory()\n#Test\nfunc sample() => ()")] // SPEC 22.1: only in test-only bodies.
     [InlineData("#Test\nfunc sample() => ()\n#Test\nfunc another() => sample()")]
@@ -96,7 +98,7 @@ public class TestExecutionAnalysisTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Helpers.kimi", "func helper<T>(x: T)\n    $expect(false, message: \"shared\")\n    $require(true)\n#Test\nfunc sample() => helper(1)", isTestOnly: true));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.CheckTestStartup();
@@ -114,7 +116,7 @@ public class TestExecutionAnalysisTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Product.kimi", source));
         c.Kotonoha.AddSource(new SourceDocument("Helpers.kimi", "group G\n    public func helper() => ()", isTestOnly: true));
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -136,6 +138,25 @@ public class TestExecutionAnalysisTest
         Assert.DoesNotContain("__kimi_test_observe", output.ToString());
     }
 
+    // R7-D2 c's named move (c9): the indexer's walk resets an excluded test's subtree, its leading attribute chain included (SPEC 6.7.2,
+    // 18.6: outside a test build a test body is checked only for syntax), so a warm Test-to-Product rebind leaves the marker's and the
+    // body's rows as a cold Product build has them. On dev the Product pass kept the Test pass's rows (the marker Resolved, `v` Resolved
+    // `i32`); no Hover change was observed. Valid in both builds.
+    [Fact]
+    public void AProductRebindResetsTheExcludedTestsSubtreeRows()
+    {
+        const string Source = "Console.writeLine(\"p\")\n#Test\nfunc t()\n    let v = 1\n    $expect(v == 1)";
+        var c = Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.StartsWith("Resolved", SubtreeRows(c)[0], StringComparison.Ordinal);
+        Assert.Contains(SubtreeRows(c), static x => x.StartsWith("Resolved i32", StringComparison.Ordinal));
+        c.IsTestBuild = false;
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var cold = MinimalEmissionTest.Analyze(Source, "Tests.kimi");
+        Assert.Equal(SubtreeRows(cold), SubtreeRows(c));
+        Assert.DoesNotContain(SubtreeRows(c), static x => x.StartsWith("Resolved", StringComparison.Ordinal));
+    }
+
     // A warm rebind checks a message's transfers without allocating (PLAN G609: 384 B a literal message, 1,920 B a call's).
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -152,11 +173,18 @@ public class TestExecutionAnalysisTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", source));
         c.Bind();
         c.Binding.CheckTestStartup();
         c.Analyze();
         return c;
+    }
+
+    // The state and Type of each node of the test function `t`'s leading attribute chain (its marker first) and body, in walk order.
+    private static string[] SubtreeRows(Compilation c)
+    {
+        var test = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "t");
+        return KotoTree.Walk(test.AttributeChain!).Concat(KotoTree.Walk(test.Body!)).Select(static x => $"{HirTables.State(x)} {HirTables.TypeOf(x)} {x}").ToArray();
     }
 }

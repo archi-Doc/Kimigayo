@@ -20,22 +20,22 @@ internal static class AbortReasons
 {
     internal const int Stdout = 0;
     internal const int AllocationSize = 1;
-    internal const int ProcessHeap = 2;
-    internal const int Allocation = 3;
-    internal const int Free = 4;
-    internal const int StringRelease = 5;
-    internal const int IntegerOverflow = 6;
-    internal const int IntegerDivisionZero = 7;
-    internal const int IntegerShiftCount = 8;
-    internal const int IntegerConversion = 9;
-    internal const int FloatingConversion = 11;
-    internal const int IndexBounds = 10;
-    internal const int ArgumentRange = 12;
-    internal const int Format = 13;
-    internal const int MissingKey = 14;
-    internal const int DuplicateKey = 15;
-    internal const int ReferenceCount = 16;
-    internal const int StaticCycle = 17;
+    internal const int Allocation = 2;
+    internal const int Free = 3;
+    internal const int StringRelease = 4;
+    internal const int IntegerOverflow = 5;
+    internal const int IntegerDivisionZero = 6;
+    internal const int IntegerShiftCount = 7;
+    internal const int IntegerConversion = 8;
+    internal const int FloatingConversion = 10;
+    internal const int IndexBounds = 9;
+    internal const int ArgumentRange = 11;
+    internal const int Format = 12;
+    internal const int MissingKey = 13;
+    internal const int DuplicateKey = 14;
+    internal const int ReferenceCount = 15;
+    internal const int StaticCycle = 16;
+    internal const int Clock = 17;
 
     // Indices are module-local ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -45,7 +45,6 @@ internal static class AbortReasons
     [
         new(Stdout, "stdout", "KIMI_E_STDOUT: Failed to write to stdout"),
         new(AllocationSize, "size", "KIMI_E_ALLOC_SIZE: Allocation size exceeds limit"),
-        new(ProcessHeap, "heap", "KIMI_E_PROCESS_HEAP: Failed to obtain process heap"),
         new(Allocation, "alloc", "KIMI_E_ALLOC: Failed to allocate memory"),
         new(Free, "free", "KIMI_E_FREE: Failed to free memory"),
         new(StringRelease, "release", "KIMI_E_STRING_RELEASE: Invalid string release kind"),
@@ -61,6 +60,7 @@ internal static class AbortReasons
         new(DuplicateKey, "duplicate_key", "KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key"),
         new(ReferenceCount, "ref_count", "KIMI_E_REF_COUNT: Reference count limit exceeded"),
         new(StaticCycle, "static_cycle", "KIMI_E_STATIC_CYCLE: Static initialization cycle"),
+        new(Clock, "clock", "KIMI_E_CLOCK: Elapsed-time counter failed"),
     ];
 
     // Appends the text of a runtime template's abort marker: the reason table and the message constants (`abort_reasons`), the

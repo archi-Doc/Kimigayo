@@ -8,7 +8,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private List<FunctionKoto> virtualDeclarations; // The running pass's part (PassPart, EnterPass).
-    private Dictionary<FunctionKoto, VirtualDeclarationCause>? virtualDeclarationFailures;
 
     // SPEC 6.4.1's eligibility and inherited-header rules, in check order; the adapter explains each (DECISIONS BU-111).
     private enum VirtualDeclarationCause : byte
@@ -68,14 +67,10 @@ public sealed partial class Binding
     private void ResetVirtualDeclarations()
     {
         this.virtualDeclarations.Clear();
-        this.virtualDeclarationFailures?.Clear();
         foreach (var entries in this.overrideEntries.Values.In(this.pass))
         {
             entries!.Clear();
         }
-
-        this.overrideFailures?.Clear();
-        this.baseCallFailures?.Clear();
     }
 
     // SPEC 6.4: declaration eligibility precedes slot matching and body proofs.
@@ -97,26 +92,28 @@ public sealed partial class Binding
             }
             else if (VirtualDeclarationFailure(function, symbol) is { } cause)
             {
-                (this.virtualDeclarationFailures ??= new(ReferenceEqualityComparer.Instance))[function] = cause;
-                this.Fail(function, BindingFailure.VirtualDeclaration);
+                this.Record(function, BindingFailure.VirtualDeclaration, [new(ProblemFactKind.Reason, SourceRef.Of(function), (long)cause)]);
             }
         }
     }
 
-    // Shared receivers preserve completeness by their authority (SPEC 12.7.1) and proceed
-    // through ordinary ownership checking. Exclusive OCC still needs its fixed point.
+    // Shared receivers preserve completeness by their authority (SPEC 12.7.1) and proceed through ordinary ownership checking. Exclusive
+    // OCC still needs its fixed point: an objuniq receiver is the located limit at the modifier, its own record beside the declaration's
+    // other failures (SPEC 23.1.1, 23.1.2).
     private void GuardPendingVirtualDeclarations()
     {
         foreach (var function in this.virtualDeclarations)
         {
-            if (function.BindingFailure == BindingFailure.None && ReceiverShape(function.BoundSymbol!) != SemanticsKind.ObjRef)
+            if (function.BindingFailure == BindingFailure.Unsupported)
             {
-                this.FailUnsupportedAt(function, function.DispatchModifierSpan, unresolved: true);
-            }
-            else if (function.BindingFailure == BindingFailure.Unsupported)
-            {
-                // Binding a body can complete its result Type without discharging the earlier subset gate.
+                // Binding a body can complete its result Type without discharging the earlier subset gate. An override pending on a
+                // failed original (VirtualOverrides) holds a plain Unsupported, so its own limit stays unrecorded until it rests on that
+                // original without a failure of its own (PLAN's open issue; R7-E2-5 or E5).
                 this.MarkUnresolved(function);
+            }
+            else if (ReceiverShape(function.BoundSymbol!) == SemanticsKind.ObjUniq)
+            {
+                this.RecordLocated(function, function.DispatchModifierSpan, unresolved: true);
             }
         }
     }

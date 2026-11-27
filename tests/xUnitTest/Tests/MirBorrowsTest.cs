@@ -215,6 +215,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
+    // A Guard with a drop, and a layer over `a` with a Field without an initializer, so no constructor unless LayerInit declares one
+    // (PLAN G215's l_ and d_ twins; SPEC 6.3.6).
+    private const string LayerShapes = "struct LayerGuard {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
+        "    drop => ()\nstruct LayerHost {a}\n    public let p: ref/i32 during a\n";
+
+    private const string LayerInit = "    public init(p: ref/i32 during a) => self.p = p\n";
+
     /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's, and
     /// 15.6.4's destruction retention (PLAN G264 U1).</summary>
     public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases
@@ -284,7 +291,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // parameter. Each form stores spare (r's Loan) through a pointer into a Slice's elements: into values, dead after (direct, tuple,
     // dynamic: valid; dev gave their Slices that storage) or used after (usedAfter, subUsedAfter, readAfter), or into storage the body
     // does not own, used after every point (written, writtenSub, parameter, parameterArray). values holds raw pointers, so it is a holder
-    // (a Loan-free array's storage address takes Φ_E by the untracked rule, R4-M120).
+    // by its Type (a Loan-free array is one once exposed: MirBorrowsTest.Exposed's fSliceKeepDirectOk).
     [Fact]
     public void ARangeSelectionsSliceReachesWhatItsBackingReaches()
         => Assert.Equal(
@@ -441,6 +448,689 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """));
 
+    // SPEC 15.6.2, 15.1.3 (D-910): paths compare step by step and stop at the first pair proven neither disjoint nor the same: an index
+    // other than a constant one (15.1.3's literal on a fixed-array element, however the array is reached) is Unproven, so no later Field
+    // or Tuple element proves them disjoint; an Array's element has no constant index. With r = ps[0].a@ref live, a write, update,
+    // increment, exclusive borrow, `replace` or `swap` of another part of an Array element conflicts (a1-a9, a13, a17, r16, r38; a18
+    // through a stored reference), and so does a fixed array's at a runtime index (a10-a12, a16, r18 with one variable); a second exclusive
+    // borrow meets the first at the selection's guard and at its own borrow (a14, a15). Equal constant indices with distinct Fields and
+    // distinct constants stay disjoint (v1, v2, v6), also through a reference (r26, r27) and of a length parameter (r28, r29, r39, r40),
+    // as do shared Loans (v3, v8, v11), a `for` item's reference (v4), Dictionary values read shared (v5), a Copy (v9), tryGetPairUniq's
+    // pair (v10, SPEC 4.8.5), distinct roots (v13) and Loans that ended (v7, v12, v14).
+    [Fact]
+    public void AnUnprovenIndexStepProvesNoLaterStepDisjoint()
+        => Assert.Equal(
+            [
+                "a1: ps[0].b += 1 PlacementActivationConflict_Kd", "a2: ps[0].b = 5", "a3: ps[1].b += 1 PlacementActivationConflict_Kd",
+                "a4: ps[0].b++ PlacementActivationConflict_Kd", "a5: ps[0].b@uniq",
+                "a6: Kimi.Intrinsics.replace(ps[0].b@uniq, with: 3) CallActivationConflict_Kd",
+                "a7: ts[0].1 += 1 PlacementActivationConflict_Kd", "a8: ps[0].b += 1 PlacementActivationConflict_Kd",
+                "a9: vs[0][1] += 1 PlacementActivationConflict_Kd", "a10: fs[j].b += 1 PlacementActivationConflict_Kd",
+                "a11: ts[j].1 += 1 PlacementActivationConflict_Kd", "a12: m[j][1] += 1 PlacementActivationConflict_Kd",
+                "a13: Kimi.Intrinsics.swap(ps[0].a@uniq, ps[0].b@uniq) CallReservationConflict_Kd", "a14: ps[0]", "a14: ps[0].b@uniq",
+                "a15: fs[j]", "a15: fs[j].b@uniq", "a16: fs[0].b += 1 PlacementActivationConflict_Kd",
+                "a17: m[0][0].b += 1 PlacementActivationConflict_Kd", "a18: hs[0].b += 1 PlacementActivationConflict_Kd",
+                "r16: ts[0].1.b += 1 PlacementActivationConflict_Kd", "r18: fs[i].b += 1 PlacementActivationConflict_Kd",
+                "r38: g[0][0].b += 1 PlacementActivationConflict_Kd",
+            ],
+            Problems("""
+                func touchI(value: uniq/i32) => ()
+                func a1()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[0].b += 1
+                    inspect(r)
+                func a2()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[0].b = 5
+                    inspect(r)
+                func a3()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[1].b += 1
+                    inspect(r)
+                func a4()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[0].b++
+                    inspect(r)
+                func a5()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let u = ps[0].b@uniq
+                    inspect(r)
+                    touchI(u)
+                func a6()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    Kimi.Intrinsics.replace(ps[0].b@uniq, with: 3)
+                    inspect(r)
+                func a7()
+                    var ts: Array<(i32, i32)> = [(1, 2)]
+                    let r = ts[0].0@ref
+                    ts[0].1 += 1
+                    inspect(r)
+                func a8(ps: uniq/Array<Pair>)
+                    let r = ps[0].a@ref
+                    ps[0].b += 1
+                    inspect(r)
+                func a9()
+                    var vs: Array<[2 of i32]> = [[1, 2]]
+                    let r = vs[0][0]@ref
+                    vs[0][1] += 1
+                    inspect(r)
+                func a10(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    fs[j].b += 1
+                    inspect(r)
+                func a11(i: isize, j: isize)
+                    var ts: [2 of (i32, i32)] = [(1, 2), (3, 4)]
+                    let r = ts[i].0@ref
+                    ts[j].1 += 1
+                    inspect(r)
+                func a12(i: isize, j: isize)
+                    var m: [2 of [2 of i32]] = [[1, 2], [3, 4]]
+                    let r = m[i][0]@ref
+                    m[j][1] += 1
+                    inspect(r)
+                func a13()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    Kimi.Intrinsics.swap(ps[0].a@uniq, ps[0].b@uniq)
+                func a14()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let u = ps[0].a@uniq
+                    let w = ps[0].b@uniq
+                    touchI(u)
+                    touchI(w)
+                func a15(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let u = fs[i].a@uniq
+                    let w = fs[j].b@uniq
+                    touchI(u)
+                    touchI(w)
+                func a16(i: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    fs[0].b += 1
+                    inspect(r)
+                func a17()
+                    var m: Array<Array<Pair>> = [[Pair.init()]]
+                    let r = m[0][0].a@ref
+                    m[0][0].b += 1
+                    inspect(r)
+                func a18()
+                    var rs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[0].b += 1
+                    inspect(r)
+                func v1()
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[0].a@ref
+                    fs[0].b += 1
+                    fs[0].b = 3
+                    inspect(r)
+                func v2()
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[0].a@ref
+                    fs[1].a += 1
+                    fs[1].b = 3
+                    inspect(r)
+                func v3()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let s = ps[0..2]
+                    let r = s[0].a@ref
+                    let q = s[1].b@ref
+                    inspect(r)
+                    inspect(q)
+                func v4()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    for p in ps@uniq
+                        let r = p.a@ref
+                        p.b += 1
+                        inspect(r)
+                func v5()
+                    var d: Dictionary<i32, Pair> = [1: Pair.init()]
+                    let r = d[1].a@ref
+                    let q = d[1].b@ref
+                    inspect(r)
+                    inspect(q)
+                    d[1].b += 1
+                func v6()
+                    var m: [2 of [2 of i32]] = [[1, 2], [3, 4]]
+                    let r = m[0][0]@ref
+                    m[0][1] += 1
+                    m[1][0] += 1
+                    inspect(r)
+                func v7(ps: uniq/Array<Pair>)
+                    let r = ps[0].a@ref
+                    inspect(r)
+                    ps[0].b += 1
+                func v8()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let q = ps[1].b@ref
+                    inspect(r)
+                    inspect(q)
+                func v9()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let x = ps[0].a
+                    ps[0].b += 1
+                    inspect(x@ref)
+                func v10()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    match ps.tryGetPairUniq(first: 0, second: 1)
+                        .Some(let pair)
+                            let r = pair.0.a@ref
+                            pair.1.b += 1
+                            inspect(r)
+                        .None => ()
+                func v11(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    let q = fs[j].b@ref
+                    inspect(r)
+                    inspect(q)
+                func v12()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    inspect(r)
+                    ps[1].b = 4
+                    ps[0].b += 1
+                func v13(p: uniq/Array<Pair>, q: uniq/Array<Pair>)
+                    let r = p[0].a@ref
+                    q[0].b += 1
+                    inspect(r)
+                func v14(ps: uniq/Array<Pair>)
+                    for p in ps
+                        let r = p.a@ref
+                        inspect(r)
+                    ps[0].b += 1
+                func r16()
+                    var ts: Array<(Pair, Pair)> = [(Pair.init(), Pair.init())]
+                    let r = ts[0].0.a@ref
+                    ts[0].1.b += 1
+                    inspect(r)
+                func r18(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    fs[i].b += 1
+                    inspect(r)
+                func r26(fs: uniq/[2 of Pair])
+                    let r = fs[0].a@ref
+                    fs[0].b += 1
+                    inspect(r)
+                func r27(fs: uniq/[2 of Pair])
+                    let r = fs[0].a@ref
+                    fs[1].a += 1
+                    inspect(r)
+                func r28<length N>(fs: uniq/[N of Pair])
+                    let r = fs[0].a@ref
+                    fs[0].b += 1
+                    inspect(r)
+                func r29<length N>(fs: uniq/[N of Pair])
+                    let r = fs[0].a@ref
+                    fs[1].b += 1
+                    inspect(r)
+                func r38()
+                    var g: [2 of Array<Pair>] = [[Pair.init()], [Pair.init()]]
+                    let r = g[0][0].a@ref
+                    g[0][0].b += 1
+                    inspect(r)
+                func r39<length N>()
+                    var fs: [N of (i32, i32)] = [N of (1, 2)]
+                    let r = fs[0].0@ref
+                    fs[0].1 += 1
+                    inspect(r)
+                func r40<length N>()
+                    var fs: [N of (i32, i32)] = [N of (1, 2)]
+                    let r = fs[0].0@ref
+                    fs[1].1 += 1
+                    inspect(r)
+                """));
+
+    // SPEC 15.1.3, 15.6.2 (D-910): an out-of-range literal is still a constant index (it forms no Move Path, and Binding warns that its
+    // bounds check fails), so equal constants with distinct Fields (r03) and distinct constants (r04, r05: also the same Field) are
+    // disjoint; a runtime index beside one is Unproven (r05i).
+    [Fact]
+    public void AnOutOfRangeLiteralIsAConstantIndex()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func r03()
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[5].a@ref
+                fs[5].b += 1
+                inspect(r)
+            func r04()
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[0].a@ref
+                fs[5].b += 1
+                inspect(r)
+            func r05()
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[0].a@ref
+                fs[5].a += 1
+                inspect(r)
+            func r05i(i: isize)
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[i].a@ref
+                fs[5].b += 1
+                inspect(r)
+            """);
+        Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.PositionAlwaysFails_Kd, x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.Equal(["r05i: fs[5].b += 1 PlacementActivationConflict_Kd"], Problems(c, program, LoanCodes));
+    }
+
+    // SPEC 4.7.1, 15.6.2, 15.6.3 (D-920): an Array's element is the referent of its `index` or `indexUniq` call, which borrows the whole
+    // Array, so a Borrow through it carries that call's receiver Loan of the Array, past the element's Deref too. With r =
+    // hs[0]@follow.a@ref live (hs: Array<uniq/Pair>), a write, `replace` or destruction of any element or of the Array conflicts (e01-e05,
+    // the storage end x03), through a local reference (e10), a parameter (w01), inside a fixed array (e11) or an Array (e12, w20), and of
+    // a fixed array's element inside an Array (w09); with q = hs[0]@follow@uniq live, an access of the Array that selects no element
+    // conflicts too (w15, w16, x07), and a write of another element meets q at the selection's guard and at the write (e07, e08, as a14
+    // and a15 above). A destroying `replace` of the Array writes it, so a Loan through its element is met there, not by err(destroy): a
+    // shared one at the activation (x01), an exclusive one at the reservation's formation (x02). A fixed array's element stays a built-in
+    // projection (v01-v05, w10, x03v: not reached past its Deref, the Move Path's destruction ends the Loan); valid stay shared beside
+    // shared (v07-v09, w08, w19), a reservation's shared reads (w12, w13), a Deref above the Array (v10, w17), distinct Fields before the
+    // element (v12, w18), Slices (v13), index calls (UniqSlice, Dictionary: v14, v15, w05, w07) and Loans that ended (v06, v16, w02,
+    // w11); the other controls keep their records (e06, e09, e13-e17, w03, w06, w14, w21).
+    [Fact]
+    public void AnArrayElementLoanIsMetAtItsReceiver()
+        => Assert.Equal(
+            [
+                "e01: hs[1] = rs[2]@uniq", "e02: hs[0] = rs[2]@uniq",
+                "e03: Kimi.Intrinsics.replace(hs[1]@uniq, with: rs[2]@uniq) CallActivationConflict_Kd", "e04: hs = [rs[2]@uniq]",
+                "e05: Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq]) CallActivationConflict_Kd", "e06: hs[1]@follow.b = 5", "e07: hs[1]",
+                "e07: hs[1] = rs[2]@uniq", "e08: hs[1]", "e08: hs[1] = rs[2]@uniq", "e09: ts[1].1 += 1 PlacementActivationConflict_Kd",
+                "e10: hs[1] = rs[2]@uniq", "e11: g[0][1] = rs[4]@uniq", "e12: m[1] = [rs[2]@uniq]", "e13: u[1] CallActivationConflict_Kd",
+                "e14: u = qs.sliceUniq()", "e15: d[2] CallActivationConflict_Kd", "e16: ps[1].b = 3", "e17: ps = [Pair.init()]",
+                "w01: hs[1] = x@move", "w03: hs[1] = rs[2]@uniq", "w06: d[1] CallActivationConflict_Kd", "w09: vs[0][1] = rs[2]@uniq",
+                "w14: cs[0].setR(cs[1].b@ref) CallActivationConflict_Kd", "w15: hs.length", "w16: hs = [rs[2]@uniq]", "w20: m[0][0] = rs[2]@uniq",
+                "w21: hs@ref", "x01: Kimi.Intrinsics.replace(arr@uniq, with: [DropR.init(r: y@uniq)]) CallActivationConflict_Kd", "x02: arr@uniq",
+                "x03: var hs: Array<uniq/Pair> = [rs[0]@uniq]", "x07: hs@uniq",
+            ],
+            Problems("""
+                func touchP(value: uniq/Pair) => ()
+                struct HP
+                    public var hs: Array<Pair> = []
+                    public var n: i32 = 0
+                    public init() => ()
+                struct Cell
+                    public var a: i32 = 1
+                    public var b: i32 = 2
+                    public init() => ()
+                    public func setA(self: uniq/Self, v: i32) => self.a = v
+                    public func setR(self: uniq/Self, v: ref/i32) => ()
+                    public func setN(self: uniq/Self, v: isize) => ()
+                struct DropR {a}
+                    public var r: uniq/i32 during a
+                    public init(r: uniq/i32 during a) => self.r = r
+                    drop
+                        self.r@follow = 0
+                func e01()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func e02()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[0] = rs[2]@uniq
+                    inspect(r)
+                func e03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs[1]@uniq, with: rs[2]@uniq)
+                    inspect(r)
+                func e04()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs = [rs[2]@uniq]
+                    inspect(r)
+                func e05()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq])
+                    inspect(r)
+                func e06()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[1]@follow.b = 5
+                    inspect(r)
+                func e07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    hs[1] = rs[2]@uniq
+                    inspect(q)
+                func e08()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]
+                    hs[1] = rs[2]@uniq
+                    inspect(q)
+                func e09()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var ts: Array<(uniq/Pair, i32)> = [(rs[0]@uniq, 1), (rs[1]@uniq, 2)]
+                    let r = ts[0].0@follow.a@ref
+                    ts[1].1 += 1
+                    inspect(r)
+                func e10()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs0: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var hs = hs0@uniq
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func e11()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var g: [2 of Array<uniq/Pair>] = [[rs[0]@uniq, rs[1]@uniq], [rs[2]@uniq, rs[3]@uniq]]
+                    let r = g[0][0]@follow.a@ref
+                    g[0][1] = rs[4]@uniq
+                    inspect(r)
+                func e12()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var m: Array<Array<uniq/Pair>> = [[rs[0]@uniq], [rs[1]@uniq]]
+                    let r = m[0][0]@follow.a@ref
+                    m[1] = [rs[2]@uniq]
+                    inspect(r)
+                func e13()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var u = hs.sliceUniq()
+                    let r = u[0]@follow.a@ref
+                    u[1] = rs[2]@uniq
+                    inspect(r)
+                func e14()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    var qs: Array<Pair> = [Pair.init()]
+                    var u = ps.sliceUniq()
+                    let r = u[0].a@ref
+                    u = qs.sliceUniq()
+                    inspect(r)
+                func e15()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, uniq/Pair> = [1: rs[0]@uniq, 2: rs[1]@uniq]
+                    let r = d[1]@follow.a@ref
+                    d[2] = rs[2]@uniq
+                    inspect(r)
+                func e16()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let s = ps[0..2]
+                    let r = s[0].a@ref
+                    ps[1].b = 3
+                    inspect(r)
+                func e17()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps = [Pair.init()]
+                    inspect(r)
+                func v01()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func v02()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[0] = rs[2]@uniq
+                    inspect(r)
+                func v03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs[1]@uniq, with: rs[2]@uniq)
+                    inspect(r)
+                func v04()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs = [rs[2]@uniq, rs[3]@uniq]
+                    inspect(r)
+                func v05()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq, rs[3]@uniq])
+                    inspect(r)
+                func v06()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs[1] = rs[2]@uniq
+                func v07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    let q = hs[1]@follow.b@ref
+                    inspect(r)
+                    inspect(q)
+                func v08()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    let x = hs[1]@follow.b
+                    inspect(r)
+                    inspect(x@ref)
+                func v09()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    let n = hs.length
+                    inspect(r)
+                    inspect(n@ref)
+                func v10()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var hs2: Array<uniq/Pair> = [rs[2]@uniq]
+                    var p = hs@uniq
+                    let r = p[0]@follow.a@ref
+                    p = hs2@uniq
+                    inspect(r)
+                func v11()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var g: [2 of Array<uniq/Pair>] = [[rs[0]@uniq, rs[1]@uniq], [rs[2]@uniq, rs[3]@uniq]]
+                    let r = g[0][0]@follow.a@ref
+                    g[1][0] = rs[4]@uniq
+                    inspect(r)
+                func v12()
+                    var h = HP.init()
+                    h.hs.append(Pair.init())
+                    let r = h.hs[0].a@ref
+                    h.n = 3
+                    inspect(r)
+                func v13()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    var s = ps[0..2]
+                    let r = s[0].a@ref
+                    s = ps[1..2]
+                    inspect(r)
+                func v14()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var u = hs.sliceUniq()
+                    let r = u[0]@follow.a@ref
+                    inspect(r)
+                    u[1] = rs[2]@uniq
+                func v15()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, uniq/Pair> = [1: rs[0]@uniq, 2: rs[1]@uniq]
+                    let r = d[1]@follow.a@ref
+                    inspect(r)
+                    d[2] = rs[2]@uniq
+                func v16()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs = [rs[2]@uniq]
+                func w01(hs: uniq/Array<uniq/Pair during a>, x: uniq/Pair during a)
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = x@move
+                    inspect(r)
+                func w02(hs: uniq/Array<uniq/Pair during a>, x: uniq/Pair during a)
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs[1] = x@move
+                func w03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let s = hs[0..2]
+                    let r = s[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func w05()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var u = hs.sliceUniq()
+                    let r = u[0]@follow.a@ref
+                    let q = u[1]@follow.b@ref
+                    inspect(r)
+                    inspect(q)
+                func w06()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, Array<uniq/Pair>> = [1: [rs[0]@uniq, rs[1]@uniq]]
+                    let r = d[1][0]@follow.a@ref
+                    d[1][1] = rs[2]@uniq
+                    inspect(r)
+                func w07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, Array<uniq/Pair>> = [1: [rs[0]@uniq, rs[1]@uniq]]
+                    let r = d[1][0]@follow.a@ref
+                    let q = d[1][1]@follow.b@ref
+                    inspect(r)
+                    inspect(q)
+                func w08()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let x = ps[1].b
+                    let q = ps[0].b@ref
+                    inspect(r)
+                    inspect(q)
+                    inspect(x@ref)
+                func w09()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var vs: Array<[2 of uniq/Pair]> = [[rs[0]@uniq, rs[1]@uniq]]
+                    let r = vs[0][0]@follow.a@ref
+                    vs[0][1] = rs[2]@uniq
+                    inspect(r)
+                func w10()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var f: [2 of [2 of uniq/Pair]] = [[rs[0]@uniq, rs[1]@uniq], [rs[2]@uniq, rs[3]@uniq]]
+                    let r = f[0][0]@follow.a@ref
+                    f[0][1] = rs[4]@uniq
+                    inspect(r)
+                func w11()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs[0] = rs[2]@uniq
+                    let q = hs[0]@follow.b@ref
+                    inspect(q)
+                func w12()
+                    var cs: Array<Cell> = [Cell.init(), Cell.init()]
+                    cs[0].setA(cs[1].b)
+                func w13()
+                    var cs: Array<Cell> = [Cell.init(), Cell.init()]
+                    cs[0].setN(cs.length)
+                func w14()
+                    var cs: Array<Cell> = [Cell.init(), Cell.init()]
+                    cs[0].setR(cs[1].b@ref)
+                func w15()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    let n = hs.length
+                    touchP(q)
+                    inspect(n@ref)
+                func w16()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    hs = [rs[2]@uniq]
+                    touchP(q)
+                func w17()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var hs2: Array<uniq/Pair> = [rs[2]@uniq]
+                    var p = hs@uniq
+                    let q = p[0]@follow@uniq
+                    p = hs2@uniq
+                    touchP(q)
+                func w18(h: uniq/HP)
+                    let r = h.hs[0].a@ref
+                    h.n = 3
+                    inspect(r)
+                func w19()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let s = ps[0..2]
+                    inspect(s)
+                    inspect(r)
+                func w20()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var m: Array<Array<uniq/Pair>> = [[rs[0]@uniq, rs[1]@uniq]]
+                    let r = m[0][1]@follow.a@ref
+                    m[0][0] = rs[2]@uniq
+                    inspect(r)
+                func w21()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    inspect(hs@ref)
+                    touchP(q)
+                func x01()
+                    var x = 1
+                    var y = 2
+                    var arr: Array<DropR> = [DropR.init(r: x@uniq)]
+                    let c = arr[0].r@follow@ref
+                    Kimi.Intrinsics.replace(arr@uniq, with: [DropR.init(r: y@uniq)])
+                    inspect(c)
+                func x02()
+                    var x = 1
+                    var y = 2
+                    var arr: Array<DropR> = [DropR.init(r: x@uniq)]
+                    let q = arr[0].r@follow@uniq
+                    Kimi.Intrinsics.replace(arr@uniq, with: [DropR.init(r: y@uniq)])
+                    inspect(q@follow)
+                func x03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var other = 2
+                    var v = other@ref
+                    label b: do
+                        var hs: Array<uniq/Pair> = [rs[0]@uniq]
+                        v = hs[0]@follow.a@ref
+                    inspect(v)
+                func x03v()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var other = 2
+                    var v = other@ref
+                    label b: do
+                        var hs: [1 of uniq/Pair] = [rs[0]@uniq]
+                        v = hs[0]@follow.a@ref
+                    inspect(v)
+                func x07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq])
+                    touchP(q)
+                """));
+
     // SPEC 15.6, 15.6.1, 15.2.3 (PLAN G405): a Loan is live while a value that carries it may be used, and the carriers are the borrow,
     // its Copies, references derived from it and the aggregates, Closures or storage holding one of these; Origin regions and `outlives`
     // relations never keep a Loan live (15.6), so 15.6.1's Liveness puts a later use of a value whose Type names `y` only in y's Origin's
@@ -593,11 +1283,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // SPEC 14.9, 14.10.3 (F10): Loans flow forward over every path, joined at heads, around loops into the next iteration, and into code
-    // only the checks reach; a holder reassigned before its next use carries nothing across.
+    // only the checks reach; a holder reassigned before its next use carries nothing across. Every check applies in the assumed state: a
+    // Loan formed after a `return` conflicts there (formedAfterReturn), one whose last use precedes the write does not (afterReturnEnded);
+    // a write after a `return` with no live Loan is accepted (checkOnlyWrite, PLAN G106's check-only row) and one after `$abort` meets a
+    // live Loan (abortedWrite); an unreachable parameter's referent is checked as a local is (deadParameter, deadParameterEnded; STATUS's
+    // former R1 limit).
     [Fact]
     public void LoansFlowOverJoinsLoopsAndCheckOnlyCode()
         => Assert.Equal(
-            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2"],
+            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2", "formedAfterReturn: x = 2", "abortedWrite: x = \"new\"", "deadParameter: p@follow = 5"],
             Problems("""
                 func loopCarry(flag: bool)
                     var x = 1
@@ -627,6 +1321,43 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     return 1
                     x = 2
                     inspect(r)
+                    return 2
+                func afterReturnEnded() -> i32
+                    var x = 1
+                    let r = x@ref
+                    return 1
+                    inspect(r)
+                    x = 2
+                    return 2
+                func formedAfterReturn() -> i32
+                    var x = 1
+                    return 1
+                    let r = x@ref
+                    x = 2
+                    inspect(r)
+                    return 2
+                func checkOnlyWrite()
+                    var x = "s"
+                    return
+                    x = "new"
+                    inspect(x@ref)
+                func abortedWrite()
+                    var x = "s"
+                    let r = x@ref
+                    $abort("t")
+                    x = "new"
+                    inspect(r)
+                func deadParameter(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    p@follow = 5
+                    c@follow = 2
+                    return 2
+                func deadParameterEnded(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    c@follow = 2
+                    p@follow = 5
                     return 2
                 """));
 
@@ -936,13 +1667,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // its holder errs at the holder's next use (inspect(w)), as SPEC 15.6.4 decides per argument. Valid: a shared reborrow's parent past
     // the guard (sharedParent), reads through the argument's own holder (peeked, peekedGiven), a loop over an exclusive parameter or a Field
     // then an append (bumped, bagged: their elements hold no Loan) and Milestone24's writer, whose Loan<uniq/u8> refers to Loan-free
-    // storage (the guard stops at it).
+    // storage (the guard stops at it). rawPointee's x ends while storage the body does not own may keep what a chain of reads through p
+    // carries (A5 value redesign U3c; SPEC 15.6.4's composition: p is a raw layer without an Origin that putRaw writes; 23.1.2).
     [Fact]
     public void ACallStoresIntoEveryHolderItsArgumentReaches()
         => Assert.Equal(
             [
                 "twoLayers: b = 3", "twoLayers: inspect(w)", "threeLayers: b = 3", "threeLayers: inspect(w)", "hiddenLayer: b = 3",
-                "hiddenLayer: inspect(w)", "rawPointee: b = 3", "parameterRoute: b = 3", "acrossLayers: z = 5", "acrossLayers: inspect(w)",
+                "hiddenLayer: inspect(w)", "rawPointee: b = 3", "rawPointee: var x = 1", "parameterRoute: b = 3", "acrossLayers: z = 5",
+                "acrossLayers: inspect(w)",
                 "takenOut: s.n = 5", "takenOut: s.r@follow", "keptOut: s.n = 5", "keptOut: s.r@follow", "siblingCopy: x2 = 5",
                 "siblingCopy: w1@follow", "swapped: w2 = x1@ref", "swapped: w1@follow", "escapes: var b = 2",
             ],
@@ -1076,8 +1809,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // three). Each is a Language problem: a self-row returning a route's own Loan to its holder, read twice (twoLayersRead,
     // acrossLayersRead); and through an iterator, whose stored raw layer steps Exclusive and passes the guard through its members' referents
     // (R4-M147), an exclusive iteration over a local collection of shared references, then reads (iterated), or over exclusive elements,
-    // then a shared one (exclusiveElements, MemberThroughLayersTest's program, with the ends of b and the array, whose Loans the iterator's
-    // stores carry to E: its value names b's exclusive Loan, b holding none, so it carries Φ_E by the untracked rule, R4-M116 PQ-2), and an
+    // then a shared one (exclusiveElements, MemberThroughLayersTest's program; the iterator's stores land in b, an exposed holder, and
+    // the array, so the ends of b and the array observe no Loan: the A5 value redesign's U6, where R4-M116 PQ-2's untracked rule carried
+    // them to E), and an
     // exclusive parameter's iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values
     // is formed, R4-M68).
     [Fact]
@@ -1124,8 +1858,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(
             [
                 "twoLayersRead: w@follow@ref", "twoLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref",
-                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive",
-                "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq]", "exclusiveElements: var b = Data.init()", "bumpRefs: values",
+                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive", "bumpRefs: values",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1147,6 +1880,105 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var value = 42
                     let entries = [1: value@ref]
                     value = 99
+                """));
+
+    // SPEC 13.7.1, 14.10.3, 15.6 (DECISIONS R4-M62, per value and so per path; the owner's O-371 (a)): on a path on which an assignment's
+    // right side has no value nothing is destroyed and nothing is written, as for the static `x = fail()` (n1s), so the builder sends
+    // that path around the overwrite's Drop and Use and A5 sees neither there. A Loan of the target that is live after the assignment
+    // conflicts only on the paths that hold the value: where the value path first points the reference elsewhere, the program is valid
+    // (n1, an i32 target; n2, an Array target, with its Drop; fail-before: a conflict at the assignment), and where the value path
+    // writes the borrowed target the conflict stays (n1c, n2c). A reference the assignment replaces on the value path keeps its Loan on
+    // the value-less path, so a write of its referent while it is used afterwards conflicts (k1; fail-before: accepted), not where the
+    // use comes first (k1v). At run time, where the path without a value is no incoming path of the code after (SPEC 14.10.3), n1r and
+    // k1r stay valid.
+    [Fact]
+    public void AnOverwriteWritesOnlyOnThePathsThatHoldItsValue()
+        => Assert.Equal(
+            ["n1c: x = if c => 2", "n2c: a = (", "k1: a = 3"],
+            Problems("""
+                func fail() -> Never => $abort("no")
+                func peekI(r: ref/i32) => ()
+                func peekA(a: ref/Array<i32>) => ()
+                func n1(c: bool)
+                    var x: i32 = 1
+                    var z: i32 = 3
+                    var r: ref/i32 = x@ref
+                    return
+                    x = (label w: do
+                        if c
+                            r = z@ref
+                            exit to w 2
+                        exit to w fail()
+                    )
+                    peekI(r)
+                func n1s(c: bool)
+                    var x: i32 = 1
+                    var r: ref/i32 = x@ref
+                    return
+                    x = fail()
+                    peekI(r)
+                func n1c(c: bool)
+                    var x: i32 = 1
+                    var r: ref/i32 = x@ref
+                    return
+                    x = if c => 2 else => fail()
+                    peekI(r)
+                func n1r(c: bool)
+                    var x: i32 = 1
+                    var z: i32 = 3
+                    var r: ref/i32 = x@ref
+                    x = (label w: do
+                        if c
+                            r = z@ref
+                            exit to w 2
+                        exit to w fail()
+                    )
+                    peekI(r)
+                func n2(c: bool, y: i32)
+                    var a: Array<i32> = [y]
+                    var z: Array<i32> = [y]
+                    var r: ref/Array<i32> = a@ref
+                    return
+                    a = (label w: do
+                        if c
+                            r = z@ref
+                            exit to w [y]
+                        exit to w fail()
+                    )
+                    peekA(r)
+                func n2c(c: bool, y: i32)
+                    var a: Array<i32> = [y]
+                    var r: ref/Array<i32> = a@ref
+                    return
+                    a = (label w: do
+                        if c
+                            exit to w [y]
+                        exit to w fail()
+                    )
+                    peekA(r)
+                func k1(c: bool)
+                    var a: i32 = 1
+                    var b: i32 = 2
+                    var x: ref/i32 = a@ref
+                    return
+                    x = if c => b@ref else => fail()
+                    a = 3
+                    peekI(x)
+                func k1v(c: bool)
+                    var a: i32 = 1
+                    var b: i32 = 2
+                    var x: ref/i32 = a@ref
+                    return
+                    x = if c => b@ref else => fail()
+                    peekI(x)
+                    a = 3
+                func k1r(c: bool)
+                    var a: i32 = 1
+                    var b: i32 = 2
+                    var x: ref/i32 = a@ref
+                    x = if c => b@ref else => fail()
+                    a = 3
+                    peekI(x)
                 """));
 
     // PLAN G255 (C2) (SPEC 4.9.6, 12.4.3, 15.6.4; DECISIONS R8-K1b-2): from the second entry on, a literal's placement is the same one
@@ -1616,6 +2448,143 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     r.n += 1
                 """));
 
+    // SPEC 13.7.2, 11.3.1 (Z11, 2d-2): an update through a setter reserves the setter's receiver where it locates it, the getter and the
+    // standard get read the receiver beside the reservation, and the setter's call activates it. Shared reads coexist with it (the getter's
+    // Borrow, a user operator's operand Borrows, SPEC 13.7.2's `holder.item += delta`, a shared Borrow ended before the update, a written
+    // `@uniq` receiver); a shared Borrow of the receiver live across the write conflicts at the activation, for every receiver: a local, a
+    // parameter's referent, a Field path and an element, in a compound assignment, an increment and with a standard get; a simple assignment
+    // starts no writeback (SPEC 13.7.1). A live `uniq` Loan of the receiver, or of a Field of it, across the update conflicts where the
+    // update first reads the receiver (SPEC 15.6.2), and with a standard get also at its read of the storage; a written `@uniq` receiver
+    // meets a live shared Loan where it is formed.
+    [Fact]
+    public void ASettersReservationProtectsItsReceiverUntilTheWrite()
+        => Assert.Equal(
+            [
+                "iLocal: g.level += 1 CallActivationConflict_Kd", "iParam: g.level += 1 CallActivationConflict_Kd",
+                "iField: h.gauge.level += 1 CallActivationConflict_Kd", "iElement: gs[1].level += 1 CallActivationConflict_Kd",
+                "iPostfix: g.level++ CallActivationConflict_Kd", "iStoredSetter: g.mark += 1 CallActivationConflict_Kd",
+                "iAssign: g.level = 5 CallActivationConflict_Kd", "iUniq: g", "iUniqStoredSetter: g", "iUniqStoredSetter: g.mark += 1",
+                "iUniqField: g", "iUniqIncrement: g", "iWrittenUniq: g@uniq",
+            ],
+            Problems("""
+                struct WGauge
+                    var hits: i32 = 0
+                    public var count: i32 = 0
+                    public var mark: i32 = 0
+                        set(value: i32) -> () => storage = value
+                    public computed level: i32
+                        get() -> i32 => self.hits
+                        set(value: i32) -> () => self.hits = value
+                    public init() => ()
+                struct WRack
+                    public var gauge: WGauge = WGauge.init()
+                    public init() => ()
+                struct WAmount
+                    Self is Addable<WAmount>
+                    associate Addable<WAmount>.Output is WAmount
+                    public let n: i32
+                    public init(n: i32) => self.n = n
+                    public func added(self: ref/Self, right: ref/WAmount) -> WAmount => WAmount.init(self.n + right.n)
+                struct WPurse
+                    var total: i32 = 0
+                    public computed amount: WAmount
+                        get() -> WAmount => WAmount.init(self.total)
+                        set(value: WAmount) -> () => self.total = value.n
+                    public init() => ()
+                func vLocal() -> i32
+                    var g = WGauge.init()
+                    g.level += 2
+                    g.mark *= 3
+                    g.level = 5
+                    _ = ++g.level
+                    return g.level--
+                func vParam(g: uniq/WGauge)
+                    g.level += 1
+                    g.level--
+                func vField()
+                    var h = WRack.init()
+                    h.gauge.level += 1
+                func vElement(i: isize)
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    gs[1].level += 1
+                    var all: Array<WGauge> = [WGauge.init()]
+                    all[i].level += 1
+                func vOperator(delta: WAmount)
+                    var p = WPurse.init()
+                    let other = WPurse.init()
+                    p.amount += delta
+                    p.amount += other.amount
+                func vEnded(g: uniq/WGauge)
+                    let r = g@ref
+                    inspect(r)
+                    g.level += 1
+                func iLocal()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iParam(g: uniq/WGauge)
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iField()
+                    var h = WRack.init()
+                    let r = h.gauge@ref
+                    h.gauge.level += 1
+                    inspect(r)
+                func iElement()
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    let r = gs[1]@ref
+                    gs[1].level += 1
+                    inspect(r)
+                func iPostfix() -> i32
+                    var g = WGauge.init()
+                    let r = g@ref
+                    let old = g.level++
+                    inspect(r)
+                    return old
+                func iStoredSetter()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.mark += 1
+                    inspect(r)
+                func iAssign()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level = 5
+                    inspect(r)
+                func inspectU(value: uniq/WGauge) => ()
+                func inspectI(value: uniq/i32) => ()
+                func vWrittenUniq()
+                    var g = WGauge.init()
+                    g@uniq.level += 1
+                func iUniq()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.level += 1
+                    inspectU(u)
+                func iUniqStoredSetter()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.mark += 1
+                    inspectU(u)
+                func iUniqField()
+                    var g = WGauge.init()
+                    let u = g.count@uniq
+                    g.level += 1
+                    inspectI(u)
+                func iUniqIncrement()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    ++g.level
+                    inspectU(u)
+                func iWrittenUniq()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g@uniq.level += 1
+                    inspect(r)
+                """));
+
     // SPEC 15.6.7 (A3 E1, PLAN G119; 36h, 38a–38c, 38e–38i, 107): while a reservation waits for its call, a write or destruction of its
     // Place's prefix reaches it across references, a destroying activation included, but neither a write of what is not on its route nor of
     // a distinct constant index; replacing a cursor ends the Loan of its old route (38f, SPEC 15.6.3's deepest).
@@ -2041,9 +3010,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     bump(value)
                 """));
 
-    // SPEC 15.6 (A3 E13 (1a); prototype 140, u1-u2, c1): an operand's own value is used by its operation after its access, an rvalue's
-    // single one's too, so moving or reading a holder that carries a Loan on its own part errs where it is evaluated, whether the value is
-    // used later or not; a holder whose Loan is on another root does not.
+    // SPEC 15.6 (A3 E13 (1a) as superseded by (c2); prototype 140, u1-u2, c1): an operand's own value is used by its operation after its
+    // access where the operation keeps it, an rvalue's value operands and a call's inputs, so moving or reading a holder that carries a Loan
+    // on its own part errs where it is evaluated, whether the value is used later or not; a holder whose Loan is on another root does not.
     [Fact]
     public void AnOperandIsCheckedWithItsOwnValue()
         => Assert.Equal(
@@ -2103,6 +3072,76 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var s = S.init(r: z@ref)
                     s.r = s.n@ref
                     let c = func [s@move] () => ()
+                """));
+
+    // SPEC 15.6 ((c2), superseding A3 E13 (1a)'s operand sentence): an operation that keeps none of its operands (a comparison, arithmetic)
+    // uses them at its point and gives a value that carries none, so its read of a holder carrying a Loan on its own Place is checked only
+    // against the values used after it and the values it stores; change3 may store amount, a Copy of item.1, in *target, so value carries
+    // the uniq Loan on itself. Valid: sibling, siblingReturn, u2eq, u2arith; invalid: siblingTwiceV (value, which carries the Loan, is used
+    // after its first read), siblingHolderBad (k), siblingStoredBad (w), u2eqUsed (s), u2call (a call keeps its input).
+    [Fact]
+    public void AnOperationKeepingNoOperandUsesItAtItsPoint()
+        => Assert.Equal(
+            [
+                "siblingTwiceV: value == 8", "siblingHolderBad: value", "siblingStoredBad: value", "siblingStoredBad: value = 3", "u2eqUsed: s.n == 1",
+                "u2eqUsed: s@ref", "u2call: giveN(s.n)",
+            ],
+            Problems(Order + """
+                func change3(target: uniq/i32, amount: i32) => target@follow = amount + 1
+                func giveN(a: i32) => ()
+                func sibling() -> bool
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    return value == 8
+                func siblingReturn() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let b = value == 8
+                    return 1
+                func siblingTwiceV() -> bool
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let b = value == 8
+                    return b and value == 9
+                func siblingHolderBad() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let k = item.1
+                    let w = value
+                    return k + w
+                func siblingStoredBad() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let w = value
+                    value = 3
+                    return w
+                func u2eq() -> bool
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    return s.n == 1
+                func u2eqUsed() -> bool
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    let b = s.n == 1
+                    inspect(s@ref)
+                    return b
+                func u2arith() -> i32
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    return s.n + 1
+                func u2call()
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    giveN(s.n)
                 """));
 
     // SPEC 15.6, 15.6.3, 15.6.7 (A3 E13 (1b), (1c), (1d); prototype a1-a2, rf1-rf2, b1-b2, 41o, d1-d3): an activation takes the other
@@ -2603,14 +3642,17 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the `if` it leaves, is witnessed by its
     // declaration, the value retaining the Loan: a chain between body Origins (OriginRelationDiagnosticTest) and a fixed input's capture
-    // (InputDependentValueCallTest).
+    // (InputDependentValueCallTest), its slot written `during r`: unwritten, a captured `let` local's slot is its own region (PLAN G492-a
+    // (ii)), carried at its candidate, r's published value (the owner's O-385 (a)), while the Closure's signature only names r's region,
+    // which gives no premise there (SPEC 15.6.5's last clause; R7-O2 A1), so the body's store is Unknown and no Loan is followed
+    // (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's hp1 row; whether a `let` bound reads as published is D-993's).
     [Theory]
     [InlineData(
         "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
         "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",
         "let w = 9: Anchor w@ref, Store var keep = h.item")]
     [InlineData(
-        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
+        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start: ref/i32 during r = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
         "        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n",
         "let y: i32 = 5: Anchor y@ref, Store var c = func [var start](n: ref/i32 during r) -> ref/i32 during r")]
     public void AHolderUsedPastTheChainIsWitnessedByItsDeclaration(string source, string problem)
@@ -2630,6 +3672,124 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         "let n = 5: Anchor n@ref, Use o@ref")]
     public void AHolderLeavingADoByItsExitsIsWitnessedByItsUse(string source, string problem)
         => Assert.Equal([problem], Witnessed(source));
+
+    // DIAGNOSTICS A6 `Store` (Z18b, PLAN G396 (4)'s E1): a problem whose element (a Loan, or for err(ended) the guard value's γ_H) the
+    // check found in E names E's store: the nearest location backward from the access, along the edges the forward solve carries a
+    // state on (MirDataflow.Carries), whose entries put the element into E (MirBorrows.Flow's eStores), never past one that ends it. An
+    // access: a write and the storage end (also in a closure's body), a call's W, a derived one (Cause, rule W); a loop's back edge;
+    // err(ended) via E, derived (one save) and shown (two); an activation (its Reservation kept); a raw pointer's store and a
+    // destruction's Keep into E; assumed paths (SPEC 14.10.3: after a return, both sides, and a store there that never reaches the real
+    // path, no problem); a nearer store into E without the Loan (.None) skipped; nested loops; the access's own ending read on the back
+    // edge. Stores that share their text: ALoanFoundInEIsWitnessedByTheStoreOnItsPath; the effect rule's row:
+    // AnEffectOnALoanKeptInEIsWitnessedByItsStore. Fail-before (28ea0beac): each Store was the access's own subject.
+    [Theory]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@ref)\n    short = 3\n" +
+        "    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n",
+        "let short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n" +
+        "    slot@follow = v\nfunc bad(s: uniq/(ref/i32 during q)) -> i32\n    var short = 2\n" +
+        "    put7(s, short@ref, (short@ref, .None))\n    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store put7(s, short@ref, (short@ref, .None))")]
+    [InlineData(
+        "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n" +
+        "    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n" +
+        "        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n",
+        "let short = 2: Anchor short@ref, Store put7(s, short@ref, (short@ref, .None))")]
+    [InlineData(
+        "func put(slot: uniq/(Option<ref/i32 during a>), v: ref/i32 during a) => slot@follow = .Some(v)\n" +
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    put(p, short@ref)\n    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store put(p, short@ref), Cause short@ref")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    while c\n        short = 3\n" +
+        "        p@follow = .Some(short@ref)\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "struct Data\n    public var value: i32 = 0\n    public init() => ()\nenum Packet\n    Data(Data)\n    Empty\n" +
+        "func save(slot: uniq/(ref/Data during s), value: ref/Data during s) -> bool => true\n" +
+        "func escE(slot: uniq/(ref/Data during s))\n    let packet: Packet = .Data(Data.init())\n    match packet\n" +
+        "        .Data(let d) if save(slot, d) => ()\n        _ => ()\n",
+        "let d: Anchor let d, Store save(slot, d), Cause d | let packet: Packet = .Data(Data.init()): Anchor packet, Store save(slot, d), Cause d")]
+    [InlineData(
+        "struct Data\n    public var value: i32 = 0\n    public init() => ()\nenum Packet\n    Data(Data)\n    Empty\n" +
+        "func save(slot: uniq/(ref/Data during s), value: ref/Data during s) -> bool => true\n" +
+        "func escE(slot: uniq/(ref/Data during s))\n    let packet: Packet = .Data(Data.init())\n    match packet\n" +
+        "        .Data(let d) if save(slot, d) and save(slot, d) => ()\n        _ => ()\n",
+        "let d: Anchor let d, Store save(slot, d) | let packet: Packet = .Data(Data.init()): Anchor packet, Store save(slot, d)")]
+    [InlineData(
+        "struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+        "func bad(p: uniq/(Option<ref/Meter during q>)) -> i32\n    var m = Meter.init()\n    p@follow = .Some(m@ref)\n    m.bump()\n" +
+        "    return 0\n",
+        "m.bump(): Anchor m@ref, Store p@follow = .Some(m@ref), Reservation m | var m = Meter.init(): Anchor m@ref, Store p@follow = .Some(m@ref)")]
+    [InlineData(
+        "func bad(p: raw/(raw/i32)) -> i32\n    var short = 2\n    let r: ref/i32 = short@ref\n    unsafe => *p = r@follow@raw\n" +
+        "    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store *p = r@follow@raw")]
+    [InlineData(
+        "struct WriterI\n    public var p: raw/(raw/i32)\n    public var q: raw/i32\n    public init(q: raw/i32)\n" +
+        "        self.p = null\n        self.q = q\n    drop\n        unsafe => *self.p = self.q\nfunc bad(p: raw/(raw/i32)) -> i32\n" +
+        "    var short = 2\n    let r: ref/i32 = short@ref\n    var x = WriterI.init(q: null)\n    x.q = r@follow@raw\n    x.p = p\n" +
+        "    x = WriterI.init(q: null)\n    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store x = WriterI.init(q: null)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@ref)\n    return 0\n" +
+        "    short = 3\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    return 0\n    p@follow = .Some(short@ref)\n" +
+        "    short = 3\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    if c\n        return 0\n" +
+        "        p@follow = .Some(short@ref)\n    short = 3\n    return 1\n",
+        "")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@ref)\n    p@follow = .None\n" +
+        "    short = 3\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool, d: bool) -> i32\n    var short = 2\n    while c\n        short = 3\n" +
+        "        while d\n            p@follow = .Some(short@ref)\n    return 0\n",
+        "short = 3: Anchor short@ref, Store p@follow = .Some(short@ref) | var short = 2: Anchor short@ref, Store p@follow = .Some(short@ref)")]
+    public void ALoanFoundInEIsWitnessedByItsStore(string source, string problems)
+        => Assert.Equal(problems.Length == 0 ? [] : problems.Split(" | ").Order(StringComparer.Ordinal), Witnessed(source).Order(StringComparer.Ordinal));
+
+    // The same rule where a Loan's candidate stores share their text, so each problem's subject and Store are named by line (review C1):
+    // two stores on disjoint paths, each access naming its own path's (never the other path's, Revision 0's least location); a path
+    // whose Loan ended before the access (short = 4) names the other path's store, never the ended one; a second uniq Borrow stored in a
+    // loop names the first store (3), never its own (6).
+    [Theory]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        return 1\n    p@follow = .Some(r)\n    short = 3\n    return 0\n",
+        "8: Anchor short@ref, Store 7 | 2: Anchor short@ref, Store 5")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        short = 3\n        return 1\n    p@follow = .Some(r)\n    return 0\n",
+        "6: Anchor short@ref, Store 5 | 2: Anchor short@ref, Store 8")]
+    [InlineData(
+        "func bad(p: uniq/(Option<ref/i32 during q>), c: bool) -> i32\n    var short = 2\n    let r = short@ref\n    if c\n" +
+        "        p@follow = .Some(r)\n        short = 4\n    else\n        p@follow = .Some(r)\n    short = 3\n    return 0\n",
+        "6: Anchor short@ref, Store 5 | 9: Anchor short@ref, Store 8")]
+    [InlineData(
+        "func bad(p: uniq/(Option<uniq/i32 during q>), c: bool) -> i32\n    var short = 2\n    p@follow = .Some(short@uniq)\n" +
+        "    while c\n        let a = short\n        p@follow = .Some(short@uniq)\n        short = 4\n    return 0\n",
+        "5: Anchor short@uniq, Store 3 | 6: Anchor short@uniq, Store 3 | 7: Anchor short@uniq, Store 3 | 2: Anchor short@uniq, Store 3")]
+    public void ALoanFoundInEIsWitnessedByTheStoreOnItsPath(string source, string problems)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = Analyze(c);
+        int At(SourceRef site) => source.AsSpan(0, c.SyntaxOf(site).Span.Start).Count('\n') + 1;
+        string Fact(ProblemFact f) => f.Kind == ProblemFactKind.Store ? $"Store {At(f.Site)}" : $"{f.Kind} {Line(c, f.Site)}";
+        Assert.Equal(
+            problems.Split(" | ").Order(StringComparer.Ordinal),
+            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0)
+                .Select(x => $"{At(x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(Fact))}").Order(StringComparer.Ordinal));
+    }
 
     // V16 (A3 6.3, shapes 1–6): N Copies of one reference, N loops with three live references and N writes through one reference keep the
     // work linear; a straight line of N borrowed locals, N borrow/write pairs of one root and N borrow/write pairs in loops grow it within
@@ -2690,7 +3850,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // arguments with K holders live across it, N retention rows of one argument carrying K Loans and N rows into one output carrying K cost
     // N + K, not N × K. N × K is linear in each, so the rule is the mixed difference over N = 32, 128 and K = 32, 64, which cancels the
     // terms in N or K alone: within a quarter step per (N, K) pair. The work and ν are also linear in N at K = 32 and, where the shape
-    // builds its K holders linearly (the copies), in K at N = 32.
+    // builds its K holders linearly (the copies), in K at N = 32. N stores into E in a loop of a value carrying K Loans (Z18b's E stores,
+    // gathered at each entry into E: one union per entry, in every pass that plans the location) stay linear in N.
     [Theory]
     [InlineData(
         "func shape()\n«K:    var x{0} = {0}\n»    let t = («K:x{0}@ref, »1)\n    var z = 1\n    let q = z@ref\n    _ = («N:t, »z)\n    inspect(q)\n",
@@ -2707,6 +3868,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         "func fillN(out: uniq/(ref/i32 during a), «N:v{0}: ref/i32 during a, »n: i32) => ()\n" +
         "func shape(flag: bool, v: ref/i32 during a, «K:o{0}: uniq/(ref/i32 during a), »m: i32)\n    var p = o0@follow@uniq\n" +
         "«K:    if flag\n        p = o{0}@follow@uniq\n»    fillN(p, «N:v, »0)\n",
+        false)]
+    [InlineData(
+        "func shape(flag: bool, out: uniq/(ref/i32 during a), «K:x{0}: uniq/i32 during a, »m: i32)\n    var v = x0@follow@ref\n" +
+        "«K:    if flag\n        v = x{0}@follow@ref\n»    while flag\n«N:        out@follow = v\n»",
         false)]
     public void ALocationReadsEachEntryOnce(string template, bool linearInK)
     {
@@ -2769,6 +3934,38 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.True(Grows(bytes, 2), $"bytes {string.Join(", ", bytes)}");
     }
 
+    // V16, DIAGNOSTICS A6 `Store` (Z18b, design review 1's C6): N reads of `short` meet its unique Loan kept in E by one store, each
+    // record's Store that store. The checks cost O(1) per record (81a7be6f5: work 3,439 / 6,387 / 12,343 at N = 32, 64, 128), and each
+    // record's backward search crosses the reads before it, O(records × path), the class of NextUse's O(records × chain), only on a
+    // rejected body (a PLAN open issue): the work stays within the dense bound.
+    [Fact]
+    public void AStoreWitnessCostsItsPath()
+    {
+        var (sizes, work) = (new[] { 32, 64, 128 }, new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var text = new StringBuilder("func bad(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    var short = 2\n    p@follow = .Some(short@uniq)\n");
+            for (var k = 0; k < sizes[i]; k++)
+            {
+                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, "    let a{0} = short\n", k);
+            }
+
+            var c = MirBuildTest.Compile(text.Append("    return 0\n").ToString());
+            var program = c.BuildMir();
+            var stratum = new Stratum(c.Types);
+            stratum.Run(program);
+            work[i] = stratum.Borrows.Work;
+            Assert.Equal(
+                [$"{sizes[i] + 1} p@follow = .Some(short@uniq)"],
+                program.Problems.All.ToArray().Select((x, j) => (x, j)).Where(static x => LoanCodes.Contains(x.x.Code))
+                    .GroupBy(x => string.Join(",", program.Problems.Facts(x.j).ToArray().Where(static f => f.Kind == ProblemFactKind.Store).Select(f => Line(c, f.Site))))
+                    .Select(static g => $"{g.Count()} {g.Key}"));
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+    }
+
     // V16 (re-review): a view's work is its own: after a body of 512 Loans, a small body takes the steps it takes alone, since a view clears
     // only the checks' stamps it uses.
     [Fact]
@@ -2812,7 +4009,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(9, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Equal(10, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code))); // chained's `var y = 1` from U3c.
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 
@@ -2850,15 +4047,45 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // G308 D3, SPEC 13.4: the left operand of a comparison of a DAG Tuple with string leaves is inspected through a shared Loan live while
-    // the right operand is evaluated, so moving it there is rejected; comparing it with another value is accepted.
+    // the right operand is evaluated, so moving it there is rejected; comparing it with another value is accepted. A plain string
+    // operand is inspected the same way: bad2 is rejected and good2 accepted.
     [Fact]
     public void ADagComparisonsInspectionLoanRejectsAMoveOfItsOperand()
     {
         const string Tuple = "(((\"a\", 1), (\"b\", 2)), ((\"c\", 3), (\"d\", 4)))";
         Assert.Equal(
-            ["bad: t"],
+            ["bad: t", "bad2: s"],
             Problems($"func take<T>(value: T) -> T => value@move\nfunc bad() -> bool\n    let t = {Tuple}\n    return t == take(t@move)\n" +
-                $"func good() -> bool\n    let t = {Tuple}\n    let other = {Tuple}\n    return t == other\n"));
+                $"func good() -> bool\n    let t = {Tuple}\n    let other = {Tuple}\n    return t == other\n" +
+                "func bad2() -> bool\n    let s = \"a\"\n    return s == take(s@move)\n" +
+                "func good2() -> bool\n    let s = \"a\"\n    let other = \"b\"\n    return s == other\n"));
+    }
+
+    // SPEC 15.6.2, 15.6.5 (PLAN G215, G403; DECISIONS R7-M115): a Field initializer's Loans are judged in its constructor's body and in a
+    // constructorless layer's body alike: a write under a live shared Loan (l_; accepted before), and a Guard built from a block's local
+    // into the layer's Origin, Refuted in each branch (d_); the valid twins read the value before the write and drop the Guard in the block.
+    [Theory]
+    [InlineData("        var x = 1\n        let r = x@ref\n        let k = r@follow\n        x = 2\n        yield k\n", "")]
+    [InlineData("        var x = 1\n        let r = x@ref\n        x = 2\n        yield r@follow\n", "", ": x = 2")]
+    [InlineData("        var x = 1\n        let r = x@ref\n        x = 2\n        yield r@follow\n", LayerInit, ": x = 2")]
+    [InlineData("        let x = 1\n        do\n            let k = LayerGuard.init(x@ref)\n        yield 0\n", "")]
+    public void AFieldInitializersLoanIsJudgedInItsBody(string block, string constructor, params string[] expected)
+        => Assert.Equal(expected, Problems($"{LayerShapes}    public var n: i32 = if true\n{block}    else => 0\n{constructor}"));
+
+    // d_ (above): the Guard's Field initializer, with a constructor and without one alike: per branch the call Refuted (15.6.5) and
+    // the local's storage ending while the Guard holds its Loan (15.6.6), caused only by that branch's Refuted relation (15.6.5), still
+    // reported since A3 does not read it (AGENTS Diagnostics).
+    [Theory]
+    [InlineData("")]
+    [InlineData(LayerInit)]
+    public void AFieldInitializersGuardIntoTheLayersOriginIsRefutedInEachBranch(string constructor)
+    {
+        var c = MirBuildTest.Compile(Prelude + LayerShapes + "    public let g: LayerGuard during a = if true\n        let x = 1\n" +
+            "        yield LayerGuard.init(x@ref)\n    else\n        let y = 1\n        yield LayerGuard.init(y@ref)\n" + constructor);
+        Assert.Equal(
+            [": LayerGuard.init(y@ref) UnsatisfiedOriginRelation_Kd", ": LayerGuard.init(x@ref) UnsatisfiedOriginRelation_Kd", ": let x = 1",
+                ": let y = 1"],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.UnsatisfiedOriginRelation_Kd]));
     }
 
     // Whether a measure over three sizes, each double the one before, grows over the second doubling at most a factor times as much as
@@ -2981,8 +4208,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // (MirReport keeps the first problem and its facts); Work and Bytes count this instance's A5 runs only.
     private sealed class Stratum
     {
-        private readonly MirDataflow flow = new(new MirReach());
-        private readonly MirMoveData moves = new();
+        private readonly MirDataflow flow;
+        private readonly MirMoveData moves;
         private readonly MirReport obligations = new(); // A4's obligation problems, which A5 does not read.
         private readonly MirCases cases;
         private readonly MirEffects effects;
@@ -2991,7 +4218,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal Stratum(TyCtxt types)
         {
+            this.moves = new(types);
             this.cases = new(types);
+            this.flow = new(new MirReach(), this.cases);
             this.effects = new(types, this.cases, this.flow);
             this.origins = new(types, this.cases);
             this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins);
@@ -3000,6 +4229,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         internal MirBorrows Borrows { get; }
 
         internal MirOrigins Origins => this.origins;
+
+        internal int Walked => this.effects.Walked; // A4's excluded queries' nodes since its last run (V16).
 
         internal bool ViewDependent => this.moves.ViewDependent; // False: MirBorrows' one run of the body covers every view.
 
@@ -3042,9 +4273,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             this.effects.BeginLibrary();
             this.Local(program, program.LibraryBodies);
             this.effects.BeginProgram();
-            this.Local(program, program.ProgramBodies);
+            this.Local(program, program.VersionBodies);
             this.obligations.Clear();
-            Assert.True(this.effects.Run(program, this.obligations, SyntaxTable.LibraryModule + 1));
+            Assert.True(this.effects.Run(program, this.obligations, 0)); // No obligation: A5 reads none, and a library one's body may be unbuilt.
         }
 
         // A segment's bodies' views' local facts.

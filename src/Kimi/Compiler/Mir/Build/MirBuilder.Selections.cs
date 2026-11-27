@@ -19,7 +19,8 @@ internal sealed partial class MirBuilder
     // selection reads by value is secured there where the index builds code (Handle), and storage is lent there by a guard, a shared
     // borrow ended once the index is evaluated, before the element's own access is formed. The guard is the receiver's check at the
     // selection (DECISIONS R4-M56), and the position local is located there, so A1 reports an access through the Index under the same
-    // subject: one problem unless the receiver changed in between.
+    // subject: one problem unless the receiver changed in between. A fixed-array element's constant index, which Binding publishes on the
+    // index's plan row (Folded; SPEC 15.1.3, 15.6.2), is its Index row's Position.
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
@@ -29,22 +30,22 @@ internal sealed partial class MirBuilder
             return this.Unidentified(sequence, index);
         }
 
-        sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
+        sequence = Builds(index.Right, HirTables.AdjustOf(index.Right)) ? this.Handle(sequence, index.Left) : sequence;
         var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
-        var key = ExpansionPlan.Of(index)?.First;
+        var key = ExpansionPlan.Of(compilation.Binding, index)?.First;
         MirPlace position;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
             position = key is null ? this.Boundary(index.Right, this.Length(sequence, index), index) : this.Resolve(key, index, sequence);
         }
-        else if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
+        else if (this.body.TypeOf(sequence) is { IsPointer: true } pointer)
         {
             var count = this.Operand(index.Right, expected: null);
             var offset = this.Temp(pointer, index);
             var start = this.body.AddOperand(MirOperand.Copy(sequence));
             this.body.AddOperand(count);
             this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, proven: true), index);
-            return this.body.Project(offset, MirProjectionKind.Deref, 0);
+            return this.body.Project(compilation.Types, offset, MirProjectionKind.Deref, 0);
         }
         else
         {
@@ -56,7 +57,7 @@ internal sealed partial class MirBuilder
             this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, lent, this.Info(index)));
         }
 
-        return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
+        return this.body.Project(compilation.Types, sequence, MirProjectionKind.Index, position.Root, HirTables.PlanOf(index).Folded is { } constant ? (int)constant : -1);
     }
 
     // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a ^x applied directly, Op Range, as Boundary
@@ -83,7 +84,7 @@ internal sealed partial class MirBuilder
     // maximum there. The local is located at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
     private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
-        var type = this.TypeOf(position) ?? BoundType.ISize;
+        var type = this.TypeOf(position) ?? BoundType.ISize; // An unknown position (derived, PLAN G1073) is taken as isize's: it agrees with any.
         var local = this.Temp(BoundType.ISize, selection);
         if (ReferenceEquals(type, BoundType.ISize) || ReferenceEquals(type, BoundType.Never))
         {
@@ -150,12 +151,13 @@ internal sealed partial class MirBuilder
         {
             this.Evaluate(range is null ? index.Right : range.Start);
             this.Evaluate(range?.End);
-            this.SiteRoots(sequence);
+            this.SiteUses(sequence);
             this.Unsupported(index, destination, index);
             return;
         }
 
-        var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
+        var later = range is null ? Builds(index.Right, HirTables.AdjustOf(index.Right))
+            : (range.Start is { } from && Builds(from, HirTables.AdjustOf(from))) || (range.End is { } to && Builds(to, HirTables.AdjustOf(to)));
         sequence = later ? this.Handle(sequence, index.Left) : sequence;
         var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);
         var length = this.Length(sequence, index);
@@ -170,7 +172,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            var resolved = this.FollowTo(ExpansionPlan.Of(index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right), null);
+            var resolved = this.FollowTo(ExpansionPlan.Of(compilation.Binding, index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right), null);
             (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
                 this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));
         }
@@ -223,9 +225,10 @@ internal sealed partial class MirBuilder
     // at its receiver's Storage (an Opaque value where nothing lends the receiver: Unlent) by where it starts (a key's by its Type,
     // MirTypes.StartsAtStorage; a written range's by its start): at the storage, the view; at a position, the view in a temp its caller
     // holds in its own region (`through`; else the view's Place), displaced by the start, a proven Add at the view's location; open, the
-    // Storage keyed by the start and the key's Type, which each instance decides (LayoutNeeds). The selection builder and a default
-    // copy's fold, whose folded key decides again (Refirst), build by it. Only a Storage is keyed: an Opaque view (it exists only
-    // after a failed Binding) at an open start is the Opaque value alone, and at a position it keeps the Add.
+    // Storage keyed by the start and the key's Type, which each instance decides (LayoutNeeds). The selection builder, a default copy's
+    // fold, whose folded key decides again (Refirst), and Storage.viewStart's call (Form, through Refirst) build by it. Only a Storage
+    // is keyed: an Opaque view (it exists only after a failed Binding) at an open start is the Opaque value alone, and at a position it
+    // keeps the Add.
     private void First(int block, in MirStatement view, in MirOperand start, bool? starts, BoundType? key, MirPlace through)
     {
         if (starts is null && view.Rvalue.Kind == MirRvalueKind.Storage)
@@ -285,7 +288,7 @@ internal sealed partial class MirBuilder
     {
         var length = this.Length(sequence, index);
         var result = this.Hold(key.ReturnType, index);
-        this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(index)!.Value.Evaluated].Source, MirOperand.Copy(length));
+        this.Call(result, key, index, null, (key.ArgumentOperations[ExpansionPlan.Of(compilation.Binding, index)!.Value.Evaluated].Source, MirOperand.Copy(length)));
         return this.Made(result);
     }
 
@@ -298,5 +301,5 @@ internal sealed partial class MirBuilder
     }
 
     // A boundary Field of a ResolvedRange.
-    private MirPlace Bound(MirPlace range, string name) => this.body.Project(range, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(range)!, name));
+    private MirPlace Bound(MirPlace range, string name) => this.body.Project(compilation.Types, range, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(range)!, name));
 }

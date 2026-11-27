@@ -153,12 +153,11 @@ public partial class PropertyBindingTest
         "    public func bump(self: uniq/Self) -> ()\n";
 
     // Dev's records beside those accessors, which a formation failure keeps (AUseOfAWronglyTypedAccessorIsJudgedAgainstItsPropertysType).
-    private const string UnformedGetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd get() -> W<NC>;UnsatisfiedConstraint_Kd W<NC>;" +
-        "UnsatisfiedConstraint_Kd W<NC>;TypeMismatch_Kd return storage;ArithmeticSelection_Kd h.x += 4;UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd let v: i32 = h.x;" +
-        "UnsatisfiedConstraint_Kd h.x";
+    private const string UnformedGetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd W<NC>;" +
+        "TypeMismatch_Kd return storage;ArithmeticSelection_Kd h.x += 4;TypeMismatch_Kd let v: i32 = h.x"; // the getter (a Function at its written result) and the reads `h.x` carry W<NC>: their restating records go (G1278-A, Q13)
 
-    private const string UnformedSetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd W<NC>;UnsatisfiedConstraint_Kd W<NC>;" +
-        "UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd 5;TypeMismatch_Kd h.x += 4";
+    private const string UnformedSetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd W<NC>;" +
+        "TypeMismatch_Kd 5;TypeMismatch_Kd h.x += 4"; // the write `h.x` carries the setter's input Type: its restating record goes (G1278-A, Q13; F's G1278-3)
 
     // A group Property beside a custom `get` of another Type, and a bare update inside its group.
     private const string WrongCountGetter = "group Config\n    public var count: i32 = 0\n        get() -> i64\n            return 1\n";
@@ -177,15 +176,30 @@ public partial class PropertyBindingTest
 
     // The owner's O-44, SPEC 11.9.1: a Property requirement forms no signature either, and one read keeps a failed declaration out of the evidence
     // (SPEC 8.3.1). DECISIONS Q13: c3b's accessor stops at its failed Property, as one that is no witness does; a setter `has get` does not need is
-    // no evidence of the getter.
+    // no evidence of the getter. DECISIONS Z27 (PLAN G1058; SPEC 6.3.4, 13.7.1, 15.1.2): `self.b = Box<S>.init()` over the failed Field Type
+    // locates the constructing `self` (an enclosing use, its own bit set), so the write gives no UninitializedPlace_Kd (fail-before: one at
+    // the write). PLAN G1278 (G1278-A, Q13; F's G1278-4): the Field `b` carries its written `Box<S>` (judged where it is written), so the
+    // write is not failed, places `b` (SPEC 13.7.1) and the constructor's exit gives no UninitializedPlace_Kd (G1184's symptom on this
+    // form; CopiedWitnessNamesItsConformance by the same rule); the carriers' restating records go (CopiedWitness: three of five
+    // InvalidConstraint_Kd; the written `Box<S>` at the Field and at the construction keep theirs).
     [Theory]
     [InlineData(StoredWitnessNamesItsConformance, "clean")]
     [InlineData(ComputedWitnessNamesItsConformance, "clean")]
-    [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 6*InvalidConstraint_Kd 2*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UninitializedPlace_Kd 9*UnsatisfiedConstraint_Kd")]
-    [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd")]
+    [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 6*UnsatisfiedConstraint_Kd")]
+    [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the user of the failed witness rests
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
     public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 11's Type contract): a Property's Type holding a Function Type is formed without the nested
+    // signature (dev: UnprovenConstraint_Kd at the Property, c1pa), so a getter whose Function result differs gets SPEC's TypeMismatch_Kd
+    // at the getter alone (c1pm; dev: only that UnprovenConstraint_Kd, DECISIONS Q13: a SPEC-required record the Unknown formation hid), as
+    // its control without Origins (c1pmd).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n    public computed p: (Option<T during q>) -> i32\n        get() -> (Option<T during q>) -> i32 => func [] (o) => 0\n", "clean")] // c1pa
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n    public computed p: (Option<T during q>) -> i32\n        get() -> (Option<T during q>) -> i64 => func [] (o) => 0\n", "1*TypeMismatch_Kd")] // c1pm
+    [InlineData("struct H\n    public computed p: () -> i32\n        get() -> () -> i64 => func [] () => 0\n", "1*TypeMismatch_Kd")] // c1pmd
+    public void ANestedSignatureInAPropertyTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Theory]
     [InlineData("let", false)]
@@ -459,8 +473,9 @@ public partial class PropertyBindingTest
     // the read Type; its standard `get` reads and its standard `set` writes the Field's Place as the body reads it (MemberRead), as a
     // plain `h.x` does: `x: S` of `HY<i32>`, closed or under `T is PrimitiveInteger`, `x: S.Output` likewise, and a custom `get` with
     // the standard `set`, also of `S.Output` (before, TypeMismatch_Kd "expected S" or "expected S.Output"). Twins: both accessors
-    // custom, a non-generic Field of a generic struct, a bool operand, which stays TypeMismatch_Kd, and `++` of a bool Field, which
-    // gets its own NonNumericOperand_Kd (before, TypeMismatch_Kd "expected S").
+    // custom, a non-generic Field of a generic struct, a bool operand, which has no provider for `+=` (NonNumericOperand_Kd; PLAN G1356,
+    // Q13: before, TypeMismatch_Kd) and stays TypeMismatch_Kd for `|=`, and `++` of a bool Field, which gets its own NonNumericOperand_Kd
+    // (before, TypeMismatch_Kd "expected S").
     [Theory]
     [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += 4", "")]
     [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x |= 4\n    h.x++\n    ++h.x", "")]
@@ -472,9 +487,9 @@ public partial class PropertyBindingTest
     [InlineData(OutputGetter + "func f<T>(h: uniq/HQ<T>, a: T) -> T\n    T is PrimitiveInteger\n    h.x += a\n    h.x |= a\n    --h.x\n    return h.x\n", "var h = HQ<i32>.init(x: 3)\n    let v = f(h@uniq, 4)\n    h.x++", "")]
     [InlineData("", "var h = HB<i32>.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++", "")]
     [InlineData("", "var h = HN<bool>.init(x: 3, s: true)\n    h.x += 4\n    h.x |= 4", "")]
-    [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += true", "TypeMismatch_Kd h.x += true")]
+    [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += true", "NonNumericOperand_Kd h.x += true")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData("func f<T>(h: uniq/HS<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x |= true\n    return\n", "var h = HS<i32>.init(x: 3)\n    f(h@uniq, 4)", "TypeMismatch_Kd h.x |= true")]
-    [InlineData("", "var h = HG<i32>.init(x: 3)\n    h.x += true", "TypeMismatch_Kd h.x += true")]
+    [InlineData("", "var h = HG<i32>.init(x: 3)\n    h.x += true", "NonNumericOperand_Kd h.x += true")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData("", "var h = HY<bool>.init(x: true)\n    h.x++", "NonNumericOperand_Kd h.x++")]
     public void AnUpdateReadsItsStandardSideAsTheBodyReadsTheField(string declarations, string use, string record)
     {
@@ -559,7 +574,7 @@ public partial class PropertyBindingTest
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    h.x = true", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd h.x = true")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 1.5", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd 1.5")]
-    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let b: bool = true\n    h.x += b", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += b")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let b: bool = true\n    h.x += b", "TypeMismatch_Kd get() -> i64;NonNumericOperand_Kd h.x += b")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let s: string = h.x", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd let s: string = h.x")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let n = h.x.nope", "TypeMismatch_Kd get() -> i64;UnresolvedBinding_Kd h.x.nope")]
     [InlineData(WrongGetter + "public func takesBool(b: bool) -> () => ()\n", "var h = HW.init(x: 3)\n    takesBool(h.x)", "TypeMismatch_Kd get() -> i64;NoApplicableOverload_Kd takesBool(h.x)")]
@@ -571,7 +586,7 @@ public partial class PropertyBindingTest
     [InlineData(AddableWrongGetter, "var h = HW.init(x: 3)\n    h.x += Counter.init(2)", "TypeMismatch_Kd get() -> Counter;ArithmeticSelection_Kd h.x += Counter.init(2)")]
     [InlineData(BareCountUpdate, "Config.bump()", "TypeMismatch_Kd get() -> i64;Unsupported_Kd count")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += missing", "TypeMismatch_Kd get() -> i64;UnresolvedBinding_Kd missing")]
-    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += \"a\"", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += \"a\"")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += \"a\"", "TypeMismatch_Kd get() -> i64;NonNumericOperand_Kd h.x += \"a\"")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x = true", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x = true")]
     [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1", "UnresolvedBinding_Kd Missing")]
@@ -617,18 +632,20 @@ public partial class PropertyBindingTest
 
     // SPEC 23.1.2 (PLAN G296): an update beside a custom `set` whose standard side has no Type (a rejected instance, an unresolved Field
     // Type) completes unresolved, a dependent of the reported failure that adds no record (before, a direct TypeMismatch_Kd at `h.x`).
-    // Twins: the standard accessors' update, which added none before either.
+    // Twins: the standard accessors' update, which added none before either. The custom `set` is a call over the receiver (SPEC 11.3,
+    // PLAN G214), so over the rejected instance HS<bool> it reports that Type's constraint at the write, as a method call `h.put(1)`
+    // reports it at its call (`added`; before, no record).
     [Theory]
-    [InlineData(RejectedHolder, "h.x += 1")]
-    [InlineData(RejectedHolder, "h.x |= 1")]
-    [InlineData(RejectedHolder, "h.x++")]
-    [InlineData(UnresolvedHolder, "h.x += 1")]
-    [InlineData(RejectedStandard, "h.x += 1")]
-    [InlineData(UnresolvedStandard, "h.x += 1")]
-    public void AnUpdateWithoutAStoredTypeAddsNoRecord(string holder, string update)
+    [InlineData(RejectedHolder, "h.x += 1", "UnsatisfiedConstraint_Kd")]
+    [InlineData(RejectedHolder, "h.x |= 1", "UnsatisfiedConstraint_Kd")]
+    [InlineData(RejectedHolder, "h.x++", "UnsatisfiedConstraint_Kd")]
+    [InlineData(UnresolvedHolder, "h.x += 1", "")]
+    [InlineData(RejectedStandard, "h.x += 1", "")]
+    [InlineData(UnresolvedStandard, "h.x += 1", "")]
+    public void AnUpdateWithoutAStoredTypeAddsNoRecord(string holder, string update, string added)
     {
         const string Main = "    return\npublic func main() -> ()\n    return\n";
-        Assert.Equal(Errors(holder + Main), Errors(holder + $"    {update}\n" + Main));
+        Assert.Equal(Errors(holder + Main).Concat(added.Length == 0 ? [] : added.Split(' ')), Errors(holder + $"    {update}\n" + Main));
 
         static string[] Errors(string source)
         {
@@ -636,6 +653,98 @@ public partial class PropertyBindingTest
             c.Binding.ReportDiagnostics();
             return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code)];
         }
+    }
+
+    // Two Fields whose custom getters return a non-Copy stored value: each declaration's one UnsatisfiedConstraint_Kd (SPEC 11.1).
+    private const string FailedGetter = "struct Q\n    public var x: i32 = 0\n    public init() => ()\nstruct P\n    public var x: i32 = 0\n    public var inner: Q = Q.init()\n" +
+        "    public init() => ()\nstruct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public var arr: Array<i32> = []\n" +
+        "        get() -> Array<i32> => storage\n    public init() => ()\nfunc take(v: i32) -> i32 => v\npublic func main() => ()\n";
+
+    // SPEC 23.1.2 (D-823): a use of a getter whose declaration validation fails rests on it after its body was bound, and so does every
+    // Place built on that use, which was bound against the use's Type: the program's records are the declarations' and, each getter's
+    // body published whatever its definition's failure (PLAN G1071 gate 1, SPEC 23.1.2), its `storage` read's TransferRequired_Kd, an
+    // independent record (`storage`'s Type resolved; F's C2 ruling 286 (i), Q13). Before D-823 the
+    // Place stayed Resolved over the untyped use, and MIR met a Field rooted in an Error (InternalInvariant_Kd; a nested Place: a located
+    // Unsupported_Kd). The same inside a match Subject that is a call, an arm or a `for` body (no construct takes the Place as its
+    // Subject). Twins: the use itself, and a group, which failed nothing before.
+    [Theory]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.pos.x\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.arr[0]\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.pos.inner.x\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return take(w.pos.x)\n")]
+    [InlineData("func run(w: uniq/W)\n    let h = func [w] (c: bool) -> i32\n        return w.pos.x\n    let k = h(true)\n")]
+    [InlineData("func run(w: uniq/W)\n    let p = w.pos\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return (w.pos).x\n")]
+    [InlineData("func pick(v: i32) -> Option<i32> => .Some(v)\nfunc run(w: uniq/W) -> i32\n    return match pick(w.pos.x)\n        .Some(let n) => n\n        .None => 0\n")]
+    [InlineData("func run(w: uniq/W, k: Option<i32>) -> i32\n    return match k\n        .Some(_) => w.pos.x\n        .None => 0\n")]
+    [InlineData("func run(w: uniq/W, items: ref/Array<i32>) -> i32\n    var total = 0\n    for v in items\n        total += w.pos.x\n    return total\n")]
+    public void APlaceBuiltOnAUseOfAFailedGetterRestsOnIt(string run)
+        => Assert.Equal(
+            [nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), nameof(DiagnosticCode.TransferRequired_Kd)],
+            DiagnosticCorpus.Check(FailedGetter + run).Diagnostics.Select(static x => x.Code));
+
+    // A struct P, non-Copy unless the Copy twin opts in; an owned R for an unrelated local; W's custom getters returning their stored
+    // Option<P>, P, Tuple and fixed array.
+    private const string NonCopyP = "struct P\n    public var x: i32 = 0\n    public var o: Option<i32> = .None\n    public var items: Array<i32> = []\n    public init() => ()\n";
+    private const string OwnedR = "struct R\n    public var n: i32 = 0\n    public init() => ()\nfunc take(r: R) -> i32 => 0\n";
+    private const string OptionGetter = "struct W\n    public var opt: Option<P> = .None\n        get() -> Option<P> => storage\n    public init() => ()\n";
+    private const string PosGetter = "struct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public init() => ()\n";
+    private const string TupleGetter = "struct W\n    public var t: (P, Option<i32>) = (P.init(), .None)\n        get() -> (P, Option<i32>) => storage\n    public init() => ()\n";
+    private const string ArrayGetter = "struct W\n    public var fa: [2 of P] = [P.init(), P.init()]\n        get() -> [2 of P] => storage\n    public init() => ()\n";
+    private const string Run = "func run(w: uniq/W) -> i32\n";
+    private const string RunWithLocal = "func run(w: uniq/W, a: R) -> i32\n";
+    private const string HiddenCaseGetter = "contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A(i32)\n    B\n" +
+        "struct W\n    public var e: E<Source> = .B\n        get() -> E<Source> => storage\n    public init() => ()\n";
+
+    // SPEC 23.1.2, 15.1.6 (D-823, PLAN G1076): a late rest's walk rests nothing of a match, `try` or `for` Subject Place, the use, a group
+    // or a Place built on it: the construct's own binding owns a resting Subject, so each form keeps the records it gave before D-823,
+    // the independent records in its arms or body included (MovedPlace_Kd, TransferRequired_Kd of an unrelated owned local `a`; a
+    // binding `q` of the Subject at a result), except a Field read on the resting use (`w.pos.o`): it is derived from the use's record
+    // with no located Unsupported_Kd (PLAN G1073 rule W at MirBuilder.Field, 3e2acf287; F's C2 ruling 312, Q13).
+    // The rows marked "open: G1076" pin that InternalInvariant_Kd, which G1076's common fix
+    // (the construct's arms and body published with failed-slot Pattern bindings) removes. Twins: a follow Place on a failed handle
+    // getter, which no construct takes as its Subject, rests with the use (the declaration's record alone), and over a Copy P the getter
+    // is valid. Every failed getter's body is published (PLAN G1071 gate 1), so each row but the valid twin has its `storage` read's
+    // TransferRequired_Kd after the declaration's record, independent (`storage`'s Type resolved; F's C2 ruling 286 (i), Q13).
+    [Theory]
+    // open: G1076 (a.mopt, q.moptnob, q.mtup)
+    [InlineData(NonCopyP + OptionGetter + Run + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .Some(let q); InternalInvariant_Kd let q; InternalInvariant_Kd .None")]
+    [InlineData(NonCopyP + OptionGetter + Run + "    return match w.opt\n        .Some(_) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .Some(_); InternalInvariant_Kd .None")]
+    [InlineData(NonCopyP + "struct W\n    public var t: (P, i32) = (P.init(), 1)\n        get() -> (P, i32) => storage\n    public init() => ()\n" + Run + "    return match w.t\n        (_, let b) => 1\n", "UnsatisfiedConstraint_Kd var t: (P, i32) = (P.init(), 1); TransferRequired_Kd storage; InternalInvariant_Kd let b")]
+    [InlineData(NonCopyP + OptionGetter + Run + "    return match (w.opt)\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + OptionGetter + Run + "    let r = match (w.opt)\n        .Some(let q) => q\n        .None => P.init()\n    return r.x\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; TransferRequired_Kd q")]
+    [InlineData(NonCopyP + TupleGetter + Run + "    return match (w.t.1)\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + ArrayGetter + Run + "    return match (w.fa[0])\n        _ => 1\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + PosGetter + Run + "    return match w.pos.o\n        .Some(let n) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + PosGetter + Run + "    return match (w.pos.o)\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + PosGetter + Run + "    return match ((w.pos.o))\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
+    // open: G1076 (`try` over a Place built on the use)
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try w.pos.o\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.o")]
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try (w.pos.o)\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.o")]
+    // G922 tws: a `for` Subject is acquired by the match's rule (SPEC 15.1.6), so a Place built on the use rests as `match (w.pos.o)` does
+    [InlineData(NonCopyP + PosGetter + "func look(v: ref/i32) -> () => ()\nfunc run(w: uniq/W)\n    for v in (w.pos.items) => look(v)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + OwnedR + ArrayGetter + RunWithLocal + "    var total = 0\n    for v in w.fa\n        total += take(a@move)\n    return total\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage; MovedPlace_Kd a")]
+    [InlineData(NonCopyP + OwnedR + ArrayGetter + "func run(w: uniq/W, a: R)\n    for v in w.fa\n        let b = a\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage; TransferRequired_Kd a")]
+    [InlineData(NonCopyP + OwnedR + TupleGetter + RunWithLocal + "    return match (w.t.1)\n        .Some(let n) => n\n        .None => take(a@move) + take(a@move)\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage; MovedPlace_Kd a")]
+    [InlineData(NonCopyP + OwnedR + TupleGetter + RunWithLocal + "    let r = match (w.t.1)\n        .Some(let n) => R.init()\n        .None => a\n    return r.n\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage; TransferRequired_Kd a")]
+    [InlineData(NonCopyP + OwnedR + PosGetter + RunWithLocal + "    return match w.pos.o\n        .Some(let n) => n\n        .None => take(a@move) + take(a@move)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; MovedPlace_Kd a")]
+    // open: G1076 (c1r, c1rloop; D-1163 R1.6): a plan the late recheck refutes over a late-rested Subject (SPEC 9.4.4: E's Constraint
+    // names a non-public contract; 11.1: the getter returns non-Copy storage). D-1163 publishes a late-refuted plan, whose positions keep
+    // their kind and test, so G1076's cause (ii) shows at the function and the positions (on dev: at the match, and at the loop); keeping
+    // such a plan an Error would need a late-only test in HasFacts and lose c1t's fixes (D-1163 R1.6), so G1076's fix moves these rows.
+    // PLAN G1321 (Q13, F's G1321-7): the late recheck judges only the root `.A(let n)`, so `.B`'s InvalidConstraint_Kd, which read E's
+    // failed clause, is gone: G1321's late form, a dependent record as c1t's is (PatternBindingTest). PLAN G1278 (G1278-A, Q13; F's
+    // G1278-1 Q-B (a)): a match never judges its Subject Type, which `w.e` carries, so the root's InvalidConstraint_Kd at `.A(let n)` goes.
+    [InlineData(HiddenCaseGetter + Run + "    return match w.e\n        .A(let n) => n\n        .B => 0\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B")]
+    [InlineData(HiddenCaseGetter + Run + "    var total = 0\n    loop\n        match w.e\n            .A(let n) => total += n\n            .B => exit\n    return total\n", "InaccessibleBinding_Kd enum; InaccessibleBinding_Kd T is Hidden; PrerequisiteUnavailable_Kd var e: E<Source> = .B; InvalidTypeFormation_Kd .B; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .A(let n); InternalInvariant_Kd let n; InternalInvariant_Kd .B")]
+    // open: G1076 (the use itself as the Subject, with an unrelated local's record in an arm)
+    [InlineData(NonCopyP + OwnedR + OptionGetter + RunWithLocal + "    let r = match w.opt\n        .Some(_) => R.init()\n        .None => a\n    return r.n\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W, a: R) -> i32; InternalInvariant_Kd .Some(_); InternalInvariant_Kd .None; TransferRequired_Kd a")]
+    [InlineData(NonCopyP + "struct W\n    public var h: rc/P = P.init()@rc\n        get() -> rc/P => storage\n    public init() => ()\n" + Run + "    return w.h@follow.x\n", "UnsatisfiedConstraint_Kd var h: rc/P = P.init()@rc; TransferRequired_Kd storage")]
+    [InlineData("struct P\n    Self is Copy\n    public var x: i32 = 0\n    public init() => ()\n" + OptionGetter + Run + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "")]
+    public void AMatchTryOrForSubjectIsNotRestedByALateRest(string program, string records)
+    {
+        var source = "public func main() => ()\n" + program;
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]}")));
     }
 
     // SPEC 11.8, 13.7.2, 23.1.1 (PLAN G295): a bare update of a group Property beside a custom accessor, inside its group, completes its
@@ -771,6 +880,17 @@ public partial class PropertyBindingTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);
     }
+
+    // SPEC 9.4, 11.3.2, 23.3 (R7-E2 E2-4b): an absent or inaccessible accessor at a use is located at the use and relates the Property
+    // (RecordAccess): a member access writing a getter-only Property (u4, the one related line dev's member-access arm gave) and an
+    // IdentifierName writing an opened Property's private setter (u5a: dev related nothing). The twin has the setter. Each row lists the
+    // Access records alone (a group's Property is Unsupported_Kd on its own, a boundary outside this rule).
+    [Theory]
+    [InlineData("struct S\n    public computed x: i32\n        get(self: ref/Self) -> i32 => 0\n    public init() => ()\nfunc f(s: uniq/S)\n    s.x = 1\n", "InaccessibleBinding_Kd 6:5 s.x, inaccessible declaration 'x'")] // u4
+    [InlineData("struct S\n    public computed x: i32\n        get(self: ref/Self) -> i32 => 0\n        set(self: uniq/Self, value: i32) -> () => ()\n    public init() => ()\nfunc f(s: uniq/S)\n    s.x = 1\n", "")] // u4t
+    [InlineData("alias G\ngroup G\n    public var x: i32 = 0\n        private set\nfunc f()\n    x = 1\n", "InaccessibleBinding_Kd 6:5 x, inaccessible declaration 'x'")] // u5a
+    public void AnAccessorAtAUseRelatesItsProperty(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n").Where(static x => x.StartsWith("InaccessibleBinding_Kd", StringComparison.Ordinal))));
 
     [Fact]
     public void RefinementsRetainPropertyOperationsByRequirementIdentity()

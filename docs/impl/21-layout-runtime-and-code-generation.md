@@ -2,7 +2,7 @@
 
 [Implementation specification index](../IMPL.md)
 
-This chapter defines the windows-x64 target profile: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. Everything else about generated code is implementation-defined.
+This chapter defines the windows-x64, linux-x64 and x86_64-unknown-none target profiles: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. Everything else about generated code is implementation-defined.
 
 ## 21.1. Storage layout
 
@@ -103,7 +103,9 @@ The allowed `#LibraryImport` signature Types and their C meanings are defined in
 
 At every call into and return from foreign code, the floating-point control state is the Windows x64 default: round to nearest even, denormals not flushed (DAZ and FTZ off), FP exceptions masked. Foreign code that changes it restores it before returning; the runtime never repairs it. Status flags left by Kimigayo code are unspecified. Generated code has no exception handlers (see [§22.6](../spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports) for the no-unwinding promise).
 
-The names `_fltused`, `__chkstk`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. When the program is built for windows-x64, a `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library ([§20.4](20-compilation-configuration.md#204-native-libraries)).
+On linux-x64 an import uses the System V x86-64 C calling convention (LLVM `ccc`) with no `inreg`, `byval` or `sret`; the borrow, `Option` and Unit rules above apply. An `i8` or `i16` parameter or result is sign-extended, and a `u8` or `u16` one zero-extended, to 32 bits (`signext`, `zeroext`), as C compilers for that ABI expect. Each call extends by the Types of the import it calls, so two imports of one symbol that differ only in an 8- or 16-bit Type's signedness share one external declaration and each extend by their own Types. The floating-point control state at every foreign call is the same as on windows-x64.
+
+The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, the names x86_64-unknown-none's `kimi_backend` defines ([§21.6.7](#2167-native-imports-and-backend-support)), and names starting with `__kimi_` or `llvm.`, are reserved on every target. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library (one reserved supply, or one native logical name of one Kotonoha, [§20.4](20-compilation-configuration.md#204-native-libraries)). Signatures agree when their parameters and results agree in physical form: integer Types of one width count as equal, as do all pointers. On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
 
 ```kimi
 group Native
@@ -128,9 +130,11 @@ let a = identity(1)       // Generates identity<i32>.
 let b = identity("x")     // Generates a separate body, identity<string>.
 ```
 
+A volatile access of `i128` or `u128` (`Raw.readVolatile`, `Raw.writeVolatile`, [§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) is two 8-byte accesses in an unspecified order.
+
 ### 21.3.2. Limits
 
-Analysis and generation limits (a Compilation's module count, syntax depth, a syntax node's distance from its module root, a Type's height ([§A.4](appendices/A-compiler-requirements.md#a4-implementation-limits)), instantiation growth, context depth, a function body's size under default and `defer` expansion, analysis storage, string-interpolation nesting) are implementation-defined. Exceeding one is a Resource diagnostic ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) at the affected declaration, call, statement or token (a Type's height: at the expression, written Type or conformance clause that forms the Type; the module count: at the root Project's project file); it never makes the program semantically invalid and does not stop independent checks. A Compilation over the module count analyzes none of its modules: its configuration is still checked, its sources are not, and its result is Completed ([§23.2.2](../spec/23-compiler-services.md#2322-results-and-acceptance)). The body-size limit is checked where an expansion's copy would begin: no copy begins past it, and a copy of known size never ends past it; a refused copy is not built, and the omitting call or the `defer` statement reports it. Other layout failures are classified by [§8.15](../spec/08-generics-constraints-and-contracts.md#815-generic-body-checking) and [§23.1.1](../spec/23-compiler-services.md#2311-categories); inline storage cycles are not generation limits ([§21.1.1](#2111-common-rules)).
+Analysis and generation limits (a Compilation's module count, syntax depth, a syntax node's distance from its module root, a Type's height ([§A.4](appendices/A-compiler-requirements.md#a4-implementation-limits)), resolution work ([§10.6](../spec/10-overload-resolution-and-inference.md#106-usage-legality-and-operators): the checks of nested calls and leading-dot Cases against an expected Type ([§10.5.1](../spec/10-overload-resolution-and-inference.md#1051-argument-kinds)) that one outermost call's resolution starts, those of its nested resolutions included, each part once per distinct expected Type), instantiation growth, context depth, a function body's size under default and `defer` expansion, analysis storage, string-interpolation nesting) are implementation-defined. Exceeding one is a Resource diagnostic ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) at the affected declaration, call, statement or token (a Type's height: at the expression, written Type or conformance clause that forms the Type; resolution work: at the outermost call; the module count: at the root Project's project file); it never makes the program semantically invalid and does not stop independent checks. A Compilation over the module count analyzes none of its modules: its configuration is still checked, its sources are not, and its result is Completed ([§23.2.2](../spec/23-compiler-services.md#2322-results-and-acceptance)). The body-size limit is checked where an expansion's copy would begin: no copy begins past it, and a copy of known size never ends past it; a refused copy is not built, and the omitting call or the `defer` statement reports it. Other layout failures are classified by [§8.15](../spec/08-generics-constraints-and-contracts.md#815-generic-body-checking) and [§23.1.1](../spec/23-compiler-services.md#2311-categories); inline storage cycles are not generation limits ([§21.1.1](#2111-common-rules)).
 
 ### 21.3.3. Checked operations
 
@@ -143,7 +147,7 @@ func half(value: i128) -> i128 => value >> 1    // Supported.
 func third(value: i128) -> i128 => value / 3    // Unsupported on windows-x64.
 ```
 
-Floating-point operations use IEEE semantics without fast-math, reassociation or fusion. Stack exhaustion is detected with stack probes ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)).
+Floating-point operations use IEEE semantics without fast-math, reassociation or fusion. Stack exhaustion is detected with stack probes ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)), except on x86_64-unknown-none ([§21.6.1](#2161-target)).
 
 ### 21.3.4. Kimi implementation Attributes
 
@@ -151,12 +155,12 @@ The Kimi Kotonoha this compiler provides ([§22.1](../spec/22-core-execution-and
 
 | Attribute | Identifies |
 | --- | --- |
-| `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1, a published operation ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects), [§22.10.1](../spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter)), or an internal declaration the compiler calls, lays out or links; each Name is declared once |
+| `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1; a published operation ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects), [§22.10.1](../spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter)); an internal declaration the compiler calls, lays out or links; or an internal function whose calls the compiler writes as a form, never as a call (below). Each Name is declared once |
 | `#Intrinsic("Name")`, `#Intrinsic("Fail", "Code")` | a function whose definition the compiler generates; a `Fail` intrinsic Aborts with the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) |
 | `#CallerLocation` | a function whose failures report the invoking user expression ([§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location)), which its private ABI carries |
 | `#Unsupported` | a declaration whose every use this implementation reports as Unsupported at the use ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) |
 
-A Kimi function or constructor without a definition (§22.1: its Body omitted or holding only its leading region) carries `#Intrinsic` or `#Unsupported`, or is a constructor whose `#Lang` Name the compiler links to an internal function with the same parameters and premises, whose body defines it. Imports (`#LibraryImport`, §22.6) and Containers with empty bodies ([§6.1.1](../spec/06-declarations-and-containers.md#611-source-root-and-nested-containers)) are bodiless by their own rules.
+A Kimi function or constructor without a definition (§22.1: its Body omitted or holding only its leading region) is one of these: it carries `#Intrinsic` or `#Unsupported`; it is a constructor whose `#Lang` Name the compiler links to an internal function with the same parameters and premises, whose body defines it; or it is a `#Lang` function whose calls the compiler writes as a form, never as a call (`ViewStart`: the address `storage + start` ([§5.3](../spec/05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing)) at which a view ([§4.8.4](../spec/04-arrays-indexing-and-slices.md#484-views-and-uniqslice)) starts, whether or not the view has an element there). Imports (`#LibraryImport`, §22.6) and Containers with empty bodies ([§6.1.1](../spec/06-declarations-and-containers.md#611-source-root-and-nested-containers)) are bodiless by their own rules.
 
 ## 21.4. Windows x64 runtime
 
@@ -190,7 +194,7 @@ let n = Counter.next(2147483647)
 
 ### 21.4.3. Memory
 
-Allocation uses the process heap (`HeapAlloc`, `HeapFree`). Every heap allocation, including every `Raw.allocate` result of nonzero size, is aligned to 16 bytes. The largest alignment `Raw.allocate` supports is 16 ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)). The maximum object size is 2^63 − 1 bytes. A zero-byte `Raw.allocate` does not allocate. Allocation, release and size failures Abort with the codes of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes).
+Allocation uses the runtime's allocator over memory pages that the platform maps (`VirtualAlloc` and `VirtualFree` on windows-x64). A block of up to 256 KiB, its 16-byte header included, is taken from 1 MiB regions in power-of-two sizes and kept for reuse after it is released. A larger block is mapped alone; when released, one of at most 1 MiB is kept in place of any block kept before, which is unmapped; one above 1 MiB is unmapped. A later block of the kept block's number of pages takes it instead of being mapped. Every heap allocation, including every `Raw.allocate` result of nonzero size, is aligned to 16 bytes. The largest alignment `Raw.allocate` supports is 16 ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)). The maximum object size is 2^63 − 1 bytes. A zero-byte `Raw.allocate` does not allocate. Allocation, release and size failures Abort with the codes of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes).
 
 ```kimi
 let p = Raw.allocate<u64>(4)    // 32 bytes, 16-byte aligned on windows-x64.
@@ -219,6 +223,98 @@ In steady state, task calls, waits, timers, channel operations, `shield` and rep
 
 ### 21.4.7. Native imports and backend support
 
-The runtime imports `kernel32` functions such as `GetProcessHeap`, `HeapAlloc`, `HeapFree`, `GetStdHandle`, `WriteFile`, `GetLastError` and `ExitProcess`; the reserved `kernel32` supply is defined in [§20.4](20-compilation-configuration.md#204-native-libraries).
+The runtime imports `kernel32` functions such as `VirtualAlloc`, `VirtualFree`, `GetStdHandle`, `WriteFile`, `GetLastError` and `ExitProcess`; the reserved `kernel32` supply is defined in [§20.4](20-compilation-configuration.md#204-native-libraries).
 
-The profile's backend support archive supplies `memcmp`, `memcpy`, `memmove`, `memset` and `__chkstk`, and every module defines `_fltused`. Toolchain adoption verifies that generated code needs no unsupplied backend helper; a missing helper fails adoption, never the linking of an individual program.
+Every module defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated code may call ([§21.2](#212-foreign-function-abi) reserves the names). A member of a supplied library that is linked into the program and gives a non-weak definition of one of them is an error at the link whatever the library's name ([§20.4](20-compilation-configuration.md#204-native-libraries): never resolved by link order); a weak definition there yields to the module's. The profile's backend support archive supplies only `__chkstk`. Every module defines `_fltused`. Toolchain adoption verifies that generated code needs no unsupplied backend helper; a missing helper fails adoption, never the linking of an individual program.
+
+## 21.5. Linux x64 runtime
+
+A linux-x64 Application is a static ELF executable for `x86_64-unknown-linux-musl` ([§20.3.2](20-compilation-configuration.md#2032-builds-and-artifacts)); storage is laid out as on windows-x64 ([§21.1](#211-storage-layout)). `emit` and `build` produce it whatever the host's profile target; `run` and running tests need it to be the host's profile target ([§20.3](20-compilation-configuration.md#203-commands)). This section describes the runtime of the modules the compiler generates for it.
+
+### 21.5.1. Target
+
+The linux-x64 runtime targets `x86_64-unknown-linux-musl` with the baseline x86-64 CPU and SSE2; no other CPU feature is assumed. Code is generated for a static ELF executable without position-independent code or an interpreter. Generated functions carry unwind tables (`.eh_frame`) for stack walking; they implement no language exception or cleanup. Generated functions probe the stack inline ([§21.3.3](#2133-checked-operations)). The minimum kernel is Linux 5.10; no version is checked at run time.
+
+### 21.5.2. Process entry and exit
+
+The runtime calls no C function: its platform operations (process setup, memory pages, writing, the clock and exit) are Linux system calls. An Application whose modules declare no `#LibraryImport` ([§22.6](../spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) defines the external entry `__kimi_start` and uses no C runtime startup. An Application whose modules declare any `#LibraryImport`, called or not, also requires the reserved supply `c` ([§20.4](20-compilation-configuration.md#204-native-libraries)) and defines `main` instead, which the C library's startup calls after initializing the C library. Either start ignores `SIGPIPE`, so a write to a closed pipe fails with `EPIPE`, then runs the program body ([§22.4](../spec/22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage)), completes shutdown and ends with exit status 0: `__kimi_start` calls `exit_group(0)`, and `main` returns 0 to the C library, whose `exit` runs `atexit` handlers. A Library defines no entry. An Abort writes the report of [§21.4.2](#2142-process-entry-and-exit) to standard error (file descriptor 2), with ` (errno=N)` in place of ` (win32=N)`, and calls `exit_group(1)` on either path, so no `atexit` handler runs.
+
+### 21.5.3. Memory
+
+Allocation follows [§21.4.3](#2143-memory) over anonymous private pages that `mmap` maps and `munmap` releases. A mapping that starts below 64 KiB is released and treated as a failed allocation.
+
+### 21.5.4. Console output
+
+`Console.writeLine` ([§22.7](../spec/22-core-execution-and-foreign-functions.md#227-console-output)) writes to file descriptor 1 with `write`, without a NUL terminator. A partial write continues after the bytes written, and an interrupted one (`EINTR`) is retried.
+
+### 21.5.5. Elapsed time
+
+`Time.Stopwatch` ([§22.8.2](../spec/22-core-execution-and-foreign-functions.md#2282-stopwatch)) reads the `clock_gettime` system call's `CLOCK_MONOTONIC` clock as a counter of nanoseconds, with frequency 10^9. A failed read or a negative value is a clock failure (`KIMI_E_CLOCK`, [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes)).
+
+### 21.5.6. Native imports and backend support
+
+The runtime defines `memcmp`, `memcpy`, `memmove` and `memset` as on windows-x64: a member of a supplied library that the link loads and that gives a non-weak definition of one of them is an error at the link, and a weak one yields to the module's ([§21.4.7](#2147-native-imports-and-backend-support)). linux-x64 has no backend support archive: generated functions probe the stack inline ([§21.5.1](#2151-target)), and a module defines no `_fltused`. `c` is defined in [§20.4](20-compilation-configuration.md#204-native-libraries); a program that links it starts through its startup files ([§21.5.2](#2152-process-entry-and-exit)).
+
+## 21.6. x86_64-unknown-none runtime
+
+An x86_64-unknown-none Application is a static ELF executable for `x86_64-unknown-none`, which a boot loader starts without an operating system; storage is laid out as on windows-x64 ([§21.1](#211-storage-layout)). Its program supplies its platform ([§22.4.5](../spec/22-core-execution-and-foreign-functions.md#2245-platform)). No host runs its executables, so `run` and running its tests are Unsupported ([§20.3](20-compilation-configuration.md#203-commands)). This section describes the runtime of the modules the compiler generates for it.
+
+### 21.6.1. Target
+
+The x86_64-unknown-none runtime targets `x86_64-unknown-none` with the baseline x86-64 CPU without MMX or SSE; `f32` and `f64` operations call the backend support archive's routines (soft float). Code is generated for the kernel code model and a static ELF executable linked at 0xFFFFFFFF80000000. Generated functions use no red zone and no stack check or probe: stack exhaustion is undefined behavior ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)'s freestanding exception). Unwind tables are as on linux-x64 ([§21.5.1](#2151-target)).
+
+### 21.6.2. Entry and boot
+
+The executable follows the Limine boot protocol, base revision 6 (Limine's `PROTOCOL.md` at limine-protocol commit c5a7f597a,
+implemented by Limine v11.2.1): it carries the base-revision tag and the higher-half direct map and memory map requests, and its entry is
+`__kimi_start`, which expects 64-bit mode with the image mapped as linked and `.bss` zeroed, on the stack the loader provides (at least
+64 KiB), which the entry realigns. If the loader did not accept the revision or left either request unanswered, the processor halts with
+interrupts disabled before `start`. Otherwise `Boot.directMapOffset` is the direct map's offset, and `Boot.regions` points to
+`regionCount` pointers, each to one entry of the loader's memory map, a `Boot.Region` whose `address`, `length` and `kind` are the
+entry's `base`, `length` and `type` as Limine numbers them. The stack, the loader's page tables and its responses, the memory map's
+entries included, lie in bootloader-reclaimable memory: a platform must not return them from `mapPages` or otherwise reuse them while
+the program runs. The loader leaves the interrupt descriptor table undefined: until the program installs one, the effect of a processor
+exception is undefined.
+
+### 21.6.3. The platform
+
+The runtime calls the program's platform members with these meanings:
+
+- `mapPages(bytes)`: the start of a run of at least `bytes` bytes (the runtime passes a multiple of 4,096), 4,096-aligned, readable and
+  writable, which nothing else uses until `releasePages` releases it; null, a result below 64 KiB and a result not 4,096-aligned are a
+  failed allocation, and the runtime does not release such a result.
+- `releasePages(run, bytes)` and `write(stream, text)`: 0 is a success; −1 a failure without a code; any other result a failure whose
+  code, when it is positive, the Abort report prints as ` (platform=N)`; a negative code prints no number. `releasePages` receives a
+  whole run that `mapPages(bytes)` returned, with the same `bytes`; `write` returns 0 only after writing every byte of `text`.
+- `clock()`: monotonic nanoseconds; a negative result is a failure.
+- `terminate(status)`: never returns.
+
+While a member runs, an allocation, the runtime's call of a member (for pages, `Console` output or a clock read) and an Abort halt
+the processor with interrupts disabled, without a report; a member's own call of another member is an ordinary call.
+
+The runtime keeps the platform value that `start` returns, called once before the startup body with the loader's `Boot`
+([§21.6.2](#2162-entry-and-boot)), in storage of the platform struct's layout, which is not a static slot and is never destroyed
+([§22.4.5](../spec/22-core-execution-and-foreign-functions.md#2245-platform)); every other member is called on that value, as its
+`self`. `write`'s `text` is the bytes the runtime writes, as a `Text.Utf8Slice`.
+
+### 21.6.4. Memory
+
+Allocation follows [§21.4.3](#2143-memory) over the runs that the platform's `mapPages` maps and its `releasePages` releases
+([§21.6.3](#2163-the-platform)).
+
+### 21.6.5. Console output and elapsed time
+
+`Console.writeLine` ([§22.7](../spec/22-core-execution-and-foreign-functions.md#227-console-output)) writes with the platform's
+`write` to stream 1. An Abort writes the report of [§21.4.2](#2142-process-entry-and-exit) with `write` to stream 2, with
+` (platform=N)` in place of ` (win32=N)`, and then calls `terminate(1)`; a failed write truncates the report. `Time.Stopwatch`
+([§22.8.2](../spec/22-core-execution-and-foreign-functions.md#2282-stopwatch)) reads the platform's `clock` as a counter of
+nanoseconds, with frequency 10^9; its failure is a clock failure (`KIMI_E_CLOCK`,
+[§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes)).
+
+### 21.6.6. Integer addresses
+
+On x86_64-unknown-none, a raw pointer converted from an integer address reaches the memory or device at that address, with the provenance and authority the program's platform documents ([§5.5](../spec/05-raw-pointers-and-unsafe-memory.md#55-integer-addresses)). Every value a read of a device location of an integer Type gives is an initialized value of that Type, within that provenance. The guarantee names the storage an access reaches and the values placed within it; it does not fix the number or order of accesses ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)'s volatile accesses do).
+
+### 21.6.7. Native imports and backend support
+
+The runtime imports no function and the profile has no C library: the runtime's platform operations call the program's platform ([§21.6.3](#2163-the-platform)). The runtime defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated code may call ([§21.2](#212-foreign-function-abi) reserves the names), and a module defines no `_fltused`. The profile's backend support archive ([§21.6.1](#2161-target)) is `kimi_backend` ([§20.4](20-compilation-configuration.md#204-native-libraries)), a static library built from compiler-rt 22.1.8's soft-float builtins for the profile's ABI (soft float, no red zone, the kernel code model), with no MMX, SSE or x87 instruction. It defines only the routines that generated floating-point operations call, the comparison routines their members define beside them, and the rounding-mode and inexact-flag helpers their members call: `__adddf3`, `__addsf3`, `__subdf3`, `__subsf3`, `__muldf3`, `__mulsf3`, `__divdf3`, `__divsf3`, `__cmpdf2`, `__cmpsf2`, `__eqdf2`, `__eqsf2`, `__nedf2`, `__nesf2`, `__ltdf2`, `__ltsf2`, `__ledf2`, `__lesf2`, `__gtdf2`, `__gtsf2`, `__gedf2`, `__gesf2`, `__unorddf2`, `__unordsf2`, `__extendsfdf2`, `__truncdfsf2`, `__fixdfsi`, `__fixdfdi`, `__fixsfsi`, `__fixsfdi`, `__fixunsdfsi`, `__fixunsdfdi`, `__fixunssfsi`, `__fixunssfdi`, `__floatsidf`, `__floatdidf`, `__floatsisf`, `__floatdisf`, `__floatunsidf`, `__floatundidf`, `__floatunsisf`, `__floatundisf`, `__fe_getround` and `__fe_raise_inexact`. A program's static library must be compiled for the same ABI.

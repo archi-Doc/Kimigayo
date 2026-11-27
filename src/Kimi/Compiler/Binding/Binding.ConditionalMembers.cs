@@ -25,26 +25,20 @@ public sealed partial class Binding
             : this.ImportedEnvironment(callee) is { } environment ? environment
             : member.Scope.Owner is StructKoto or EnumKoto || member.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } ? this.SelfType(member.Scope.Owner.BoundSymbol!) : null;
 
-    private ConstraintProof ProveMemberConditions(BindingSymbol member, BoundType? declaringType, BindingScope scope)
+    private ConstraintProof ProveMemberConditions(BindingSymbol member, BoundType? declaringType, BindingScope scope, QuerySite site)
     {
         if (member.ConditionalDeclaration is not { } declaration)
         {
             return ConstraintProof.Proven;
         }
 
-        if (this.scopes[declaration].Constraints is { Invalid: true } invalid)
-        {
-            return this.InvalidEnvironment(invalid);
-        }
-
-        if (declaration.BindingState == BindingState.Invalid ||
-            this.InvalidDeclarationCause(member.Declaration) is not null)
+        if (this.ReadFailedDeclaration(declaration) is not null || this.ReadFailedDeclaration(member.Declaration) is not null)
         {
             return ConstraintProof.Error;
         }
 
         declaringType ??= this.SelfType(member.Scope.Owner.BoundSymbol!);
-        return this.ProveConditionalPremises((SyntaxFormKoto)declaration.Operands[1], declaringType, scope);
+        return this.ProveConditionalPremises((SyntaxFormKoto)declaration.Operands[1], declaringType, scope, site);
     }
 
     private void ValidateConditionalBlock(SyntaxFormKoto syntax, DeclarationContainerKoto owner)
@@ -76,7 +70,7 @@ public sealed partial class Binding
         if (!valid)
         {
             this.Fail(syntax, BindingFailure.InvalidConstraint);
-            (this.scopes[syntax].Constraints ??= new()).Fail(syntax);
+            this.FailFacts(this.scopes[syntax], syntax); // R7-C3: the invalid block's premises fail with its judgment
         }
     }
 
@@ -89,10 +83,9 @@ public sealed partial class Binding
                 continue;
             }
 
-            // The block's declaring path is the one its clause registered in this pass (DECISIONS BU-220): a path an earlier pass
-            // registered and this one did not is not a conformance, and the end-of-Bind sweep pools it.
+            // The block's declaring path is the one its clause registered in this pass (TryPath's guarantee, ImplTable's contract).
             var scope = this.scopes[syntax];
-            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.impls.TryPath(owner.BoundSymbol!, contract, target, contract) is { Active: true } path)
+            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.impls.TryPath(owner.BoundSymbol!, contract, target, contract) is { } path)
             {
                 scope.ConformancePath = path;
             }
@@ -101,8 +94,9 @@ public sealed partial class Binding
             {
                 if (block.Items[i] is IsKoto { IsAssociatedConstraint: true } clause)
                 {
+                    // Whether it names one of the path's associated Types is read where the path's members are keyed (PrepareAssociatedBindings).
                     this.BindAssociatedSpecification(clause, scope, owner.BoundSymbol!);
-                    if (scope.ConformancePath is not { } declaringPath || this.AssociatedIdentity(clause.Left.BoundType) is not { } identity || !declaringPath.RootContract.Contract!.SeenRequirements.Contains(identity))
+                    if (scope.ConformancePath is null || this.AssociatedIdentity(clause.Left.BoundType) is null)
                     {
                         this.Fail(clause, BindingFailure.InvalidAssociatedType);
                     }

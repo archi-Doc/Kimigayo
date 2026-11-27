@@ -185,12 +185,20 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6.4's reach rule (DECISIONS R4-M170; G264 (S) S1′): an abstract part in a holder's own storage writes by provenance. Past it
     // a call writes the holders its exclusive Loans and addresses name and what is reached on from them by reads through no shared layer
     // (laterWriterBad: x addresses slot; chainBad: x → pp → slot), never a holder only a shared Loan names (count, TheGuardReadsEachPart),
-    // and E only where E was reached through no shared layer (Φ_W): an untied result (laterWriterOk and clearRcOk err, the owner's 「Yes,
-    // writable」), a raw pointer it derives from (allocBad, alloc2Bad, allocOptBad, allocTupBad, allocViaUBad), a parameter or a capture
-    // (ownParamBad, ownParamGen, directParamGen, exchGen, capGen, nestGen); sharedRawGen's false error stays (no strip at a shared Deref of a
-    // `ref/` parameter, an open issue). A generic Writer (writerBad) errs by its call's own raw-argument retention, an exclusive reference
+    // and E only where E was reached through no shared layer (Φ_W): an untied result (laterWriterOk, clearRcOk and sharedRawGen err, the
+    // owner's 「Yes, writable」; sharedRawGen's `T.make` result is tied to no argument, so x reaches E writable, item 5; a tied result read
+    // through a `ref/` parameter's Deref reaches E for reads only, tiedShRefOk), a raw pointer it derives from (allocBad, alloc2Bad,
+    // allocOptBad, allocTupBad, allocViaUBad), and a parameter or a capture (ownParamBad, ownParamGen, directParamGen, exchGen, capGen,
+    // nestGen). A generic Writer (writerBad) errs by its call's own raw-argument retention, an exclusive reference
     // (paramBad) past it by the write fact, and a live exclusive Loan (uniqBad) by the store. Every row errs on dev too, there through the
-    // owner's Q1 (a), which the owner's G264 (S) instruction of 2026-11-04 overrides; writerOk is valid on both.
+    // owner's Q1 (a), which the owner's G264 (S) instruction of 2026-11-04 overrides; writerOk is valid on both. gSetQBad (PLAN G935):
+    // a generic callee whose contract hands `setQ`, a requirement with a Self receiver, may call `dst.setQ(p)`, a call through a value
+    // of its abstract T that writes the holders x's addresses name (slot), so slot may keep w's address and `y@follow = 5` errs.
+    // fMake's contract hands only `make`, whose result may keep p in `*dst` (15.6.4 "through its result"), whatever Type T is bound to:
+    // with T = Wk, whose only Field no handed signature names, mkConcBad (x read after `y = 5`) errs and mkConcOk (x read before) is
+    // valid, though rejected at `y = 5` again since c3-5 as on fcd6a5381 (x.k carries no holder's address; a known limit of this tree's A5, which maps the key past a hidden layer to storage the body does not own: open issue "A5's Φ_E exclusion past a hidden layer", PLAN G935 c3-5). A `ref/Self` receiver writes
+    // nothing (15.6.4 "never through a shared Loan"): setQRefParamOk is valid (fail-before on prototype 16: `y = 5`), its `uniq/Self`
+    // twin setQUniqParamBad errs.
     [Fact]
     public void AnAbstractPartWritesByProvenance()
     {
@@ -217,9 +225,31 @@ public sealed partial class MirBorrowsTest
                 func setQ(self: uniq/Self, q: raw/u8)
             contract SetQ
                 func setQ(self: uniq/Self, q: raw/u8)
+            contract MakeQ
+                func make(p: raw/(raw/u8), q: raw/u8) -> Self
+                func setQ(self: uniq/Self, q: raw/u8)
             func usep(p: raw/u8) => ()
             func consume<T>(x: T) => ()
             func idp(p: raw/u8) -> raw/u8 => p
+            func fSetQ<T>(dst: uniq/T, p: raw/u8)
+                T is MakeQ
+                return
+            struct Wk
+                Self is MakeR
+                public var k: raw/(raw/(raw/u8))
+                public init() => self.k = null
+                public func make(p: raw/(raw/u8), q: raw/u8) -> Self => Wk.init()
+            func fMake<T>(dst: uniq/T, p: raw/u8)
+                T is MakeR
+                return
+            contract SetQR
+                func setQ(self: ref/Self, q: raw/u8)
+            func fSetQR<T>(dst: uniq/T, p: raw/u8)
+                T is SetQR
+                return
+            func fSetQU<T>(dst: uniq/T, p: raw/u8)
+                T is SetQ
+                return
             func writerBad<T>()
                 T is MakeR
                 var y: i32 = 1
@@ -416,13 +446,515 @@ public sealed partial class MirBorrowsTest
                 consume(a@move)
                 y = 5
                 usep(slot)
+            func gSetQBad<T>(y: uniq/i32)
+                T is MakeQ
+                let w = y@follow@ref
+                var slot: raw/u8 = null
+                var x = T.make(p: slot@raw, q: null)
+                fSetQ(x@uniq, w@raw@raw/u8)
+                y@follow = 5
+                usep(slot)
+                consume(x@move)
+            func mkConcBad()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var x = Wk.init()
+                fMake(x@uniq, w@raw@raw/u8)
+                y = 5
+                inspect(x@ref)
+            func mkConcOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var x = Wk.init()
+                fMake(x@uniq, w@raw@raw/u8)
+                inspect(x@ref)
+                y = 5
+            func setQRefParamOk<X>(x: uniq/X)
+                X is SetQR
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                fSetQR(x, w@raw@raw/u8)
+                y = 5
+            func setQUniqParamBad<X>(x: uniq/X)
+                X is SetQ
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                fSetQU(x, w@raw@raw/u8)
+                y = 5
             """);
         Assert.Equal(
             [
-                "writerBad: y = 5", "laterWriterBad: y = 5", "laterWriterOk: y = 5", "chainBad: y = 5", "allocBad: y = 5", "alloc2Bad: y = 5",
-                "allocOptBad: y = 5", "allocTupBad: y = 5", "allocViaUBad: y = 5", "paramBad: y = 5", "ownParamBad: y = 5",
-                "ownParamGen: y = 5", "directParamGen: y = 5", "sharedRawGen: y = 5", "exchGen: y = 5", "capGen: y = 5", "nestGen: y = 5",
-                "uniqBad: y = 5", "clearRcOk: y = 5", "clearRcBad: y = 5",
+                "writerBad: y = 5", "laterWriterBad: y = 5", "laterWriterOk: y = 5", "chainBad: y = 5", "allocBad: y = 5",
+                "alloc2Bad: y = 5", "allocOptBad: y = 5", "allocTupBad: y = 5", "allocViaUBad: y = 5", "paramBad: y = 5",
+                "ownParamBad: y = 5", "ownParamGen: y = 5", "directParamGen: y = 5", "sharedRawGen: y = 5", "exchGen: y = 5",
+                "capGen: y = 5", "nestGen: y = 5", "uniqBad: y = 5", "clearRcOk: y = 5", "clearRcBad: y = 5", "gSetQBad: y@follow = 5",
+                "mkConcBad: y = 5", "mkConcOk: y = 5", "setQUniqParamBad: y = 5",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 8.2.3 ("identity is closed under replacement inside any Type"), 15.6.4 ("only where the premises make it one"; PLAN G935
+    // c3-2, class 1): the callee's own abstract Type is kept only in the form its function's view gives it. Under `T is Option<V>`
+    // storage of T is an Option<V>, whose payload keeps `value: V` (idFormBad: m holds spare, read after `kk = 2`), and a `value: T`
+    // holds a V by value, which storage of V keeps (idFormInBad); under `T is E`, E the enclosing Type's parameter, `h.value` is
+    // storage of E, which the receiver's instance completes, a `raw/(raw/u8)` the caller states by `uniq` (idEnclBad). Fail-before on
+    // fce0d5078: the three were accepted (the storage walk kept T against the key walk's View). Their valid twins: a `raw/u8` input
+    // that is no V (idFormOtherOk), the holder read before the write (idFormInOk, idAbsOk), the Origin stated only by `ref`
+    // (idEnclOk). The callee without the premise (idEnclNoPremBad) errs too since c3-5: its own T holds no `raw/u8`, but the holder
+    // T's layer addresses, `*u`, is reached, hidden or not (the owner's O-312 (a); F's ruling 30). Two own abstract Types a premise
+    // identifies (`T is V`) both stay kept and fit each other (idAbsBad, rejected before c3-2 too). A raw layer a premise shows
+    // steps by its binder's declared inputs (DECISIONS BU-113): under `T is raw/(raw/u8) during a`, p is a layer stating `a`, which
+    // x states by `uniq` (idRawStepBad: fr may store v into `*x`) or only by `ref` (idRawStepOk: no write authority, 5.2.1
+    // condition 3). A generic caller whose own premise gives its X the form is read alike (idFormGenBad, idFormGenOk). A handed
+    // callable's result under `T is U` is a T (retIdWBad: mk's RetW may hold w's address, so dst is used after `y = 5`; F's ruling 52,
+    // fail-before on 5f22c9b6c: accepted), as it is under `mk: (E) -> T` (retPlainWBad); without the premise f cannot store mk's U in
+    // dst (retNoIdWOk). Identity is closed under replacement inside any Type: under `E is D` a writer `set: (uniq/T, BxI<D>)` takes
+    // `y: BxI<E>` (structIdBad; F's ruling 55, fail-before on a6e0d4be4: accepted), as `set: (uniq/T, BxI<E>)` does with no premise
+    // (structPlainBad); without the premise BxI<E> and BxI<D> are distinct and nothing keeps the pointer in dst (structNoIdOk). The view
+    // is the body the comparison stands in (F's ruling 57): in nested g's kept reading g's own `E is D` makes `(T, E)` `(T, D)` though T
+    // is the outer function's (nestIdBad; fail-before on b826b8c05: accepted), the components swapped alike (nestId2Bad), as with no
+    // premise (nestPlainBad), and without it too (nestNoIdBad; the owner's O-423 (i), 15.6.4 "decided per argument, never per Origin":
+    // set takes a T, which g may take from y, and writes what T hides, so T's hidden storage may keep y's Loans, p's included, as a part
+    // y holds by value; formerly nestNoIdOk); outer's `T is U` holds in g's view, its instantiated reading at outer's S
+    // included (nestOuterIdBad, nestOuterNoIdOk). U's requirement setQ, handed to fReq's body, may store q through PlainR's own raw
+    // layer in storage the body does not own, so `y = 5` conflicts (rvNoIdReqOk, G964's twin, I by SPEC 15.6.4). Its `var o` record is
+    // a known pre-existing over-retention, dev's and b826b8c05's too (open issue PLAN G989): o is recorded as retaining its own `o@uniq`
+    // Loan, though 15.6.4 excludes the own value of the argument through which the call writes and a self-link is no retention, so no
+    // storage retains that Loan; the record goes when G989 is fixed, a correction and not a weakening.
+    [Fact]
+    public void AKeptTypeIsReadInItsFunctionsView()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func fo<T, V>(slot: uniq/(uniq/T during a), value: V)
+                T is Option<V>
+                return
+            func fw<T, V>(slot: uniq/(uniq/T during a), value: raw/u8, w: V)
+                T is Option<V>
+                return
+            func fi<T, V>(slot: uniq/(uniq/V during a), value: T)
+                T is Option<V>
+                return
+            func fa<T, V>(slot: uniq/(uniq/T during a), value: V)
+                T is V
+                return
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+            struct Host<E>
+                var e: E
+                public init(e: E) => self.e = e@move
+                public func put3<T>(self: ref/Self, h: uniq/Wrap<T>, v: raw/u8)
+                    T is E
+                    return
+                public func put3n<T>(self: ref/Self, h: uniq/Wrap<T>, v: raw/u8) => ()
+            func fr<T>(x: uniq/(raw/u8) during a, p: uniq/T, v: raw/u8)
+                T is raw/(raw/u8) during a
+                return
+            func frr<T>(x: ref/(raw/u8) during a, p: uniq/T, v: raw/u8)
+                T is raw/(raw/u8) during a
+                return
+            struct RetW
+                public var q: raw/u8
+                public init(q: raw/u8) => self.q = q
+            func mkRetW(q: raw/u8) -> RetW => RetW.init(q: q)
+            func fmkT<T, E>(dst: uniq/T, p: E, mk: (E) -> T) -> ()
+                return
+            func fmkU<T, U, E>(dst: uniq/T, p: E, mk: (E) -> U) -> ()
+                T is U
+                return
+            func fmkN<T, U, E>(dst: uniq/T, p: E, mk: (E) -> U) -> ()
+                return
+            struct BxI<X>
+                public var item: X
+                public init(item: X) => self.item = item@move
+            func setRetW(x: uniq/RetW, b: BxI<raw/u8>) => ()
+            func fsId<T, E, D>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<D>) -> ()) -> ()
+                E is D
+                return
+            func fsPlain<T, E>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<E>) -> ()) -> ()
+                return
+            func fsNo<T, E, D>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<D>) -> ()) -> ()
+                return
+            func idFormBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: Option<raw/u8> = .None
+                var x = m@uniq
+                fo(x@uniq, spare)
+                kk = 2
+                inspect(m@ref)
+            func idFormOtherOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: Option<u64> = .None
+                var x = m@uniq
+                fw(x@uniq, spare, 0@u64)
+                kk = 2
+                inspect(m@ref)
+            func idFormInBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fi(x@uniq, Option.Some(spare))
+                kk = 2
+                inspect(m@ref)
+            func idFormInOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fi(x@uniq, Option.Some(spare))
+                inspect(m@ref)
+                kk = 2
+            func idAbsBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fa(x@uniq, spare)
+                kk = 2
+                inspect(m@ref)
+            func idAbsOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fa(x@uniq, spare)
+                inspect(m@ref)
+                kk = 2
+            func idEnclBad(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = Wrap.init(u@follow@raw)
+                let host = Host.init(r@follow@raw)
+                host.put3(h@uniq, w@raw@raw/u8)
+                z = 5
+            func idEnclOk(r: ref/(raw/u8) during a, r2: ref/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = Wrap.init(r2@follow@raw)
+                let host = Host.init(r@follow@raw)
+                host.put3(h@uniq, w@raw@raw/u8)
+                z = 5
+            func idEnclNoPremBad(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = Wrap.init(u@follow@raw)
+                let host = Host.init(r@follow@raw)
+                host.put3n(h@uniq, w@raw@raw/u8)
+                z = 5
+            func idRawStepBad(u: uniq/(raw/u8))
+                var z = 3
+                let w = z@ref
+                var q = u@follow@raw
+                fr(u, q@uniq, w@raw@raw/u8)
+                z = 5
+            func idRawStepOk(r: ref/(raw/u8))
+                var z = 3
+                let w = z@ref
+                var q = r@follow@raw
+                frr(r, q@uniq, w@raw@raw/u8)
+                z = 5
+            func idFormGenBad<X>(m: uniq/X)
+                X is Option<raw/u8>
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x = m
+                fo(x@uniq, spare)
+                kk = 2
+                inspect(x@ref)
+            func idFormGenOk<X>(m: uniq/X, p: raw/u8)
+                X is Option<raw/u8>
+                var x = m
+                fo(x@uniq, p)
+                inspect(x@ref)
+            func retPlainWBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fmkT(dst@uniq, w@raw@raw/u8, mkRetW)
+                y = 5
+                inspect(dst@ref)
+            func retIdWBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fmkU(dst@uniq, w@raw@raw/u8, mkRetW)
+                y = 5
+                inspect(dst@ref)
+            func retNoIdWOk()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fmkN(dst@uniq, w@raw@raw/u8, mkRetW)
+                y = 5
+                inspect(dst@ref)
+            func structIdBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fsId(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
+                y = 5
+                inspect(dst@ref)
+            func structPlainBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fsPlain(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
+                y = 5
+                inspect(dst@ref)
+            func structNoIdOk()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fsNo(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
+                y = 5
+                inspect(dst@ref)
+            func nestIdBad<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
+                func gId<S, E, D>(slot: uniq/S, y: (T, E), set: (uniq/S, (T, D)) -> ()) -> ()
+                    E is D
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gId<RetW, raw/u8, raw/u8>(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestId2Bad<T>(t: T, wr: (uniq/RetW, (raw/u8, T)) -> ())
+                func gId2<S, E, D>(slot: uniq/S, y: (E, T), set: (uniq/S, (D, T)) -> ()) -> ()
+                    E is D
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gId2<RetW, raw/u8, raw/u8>(dst@uniq, (p, t@move), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestPlainBad<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
+                func gPlain<S, E>(slot: uniq/S, y: (T, E), set: (uniq/S, (T, E)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gPlain<RetW, raw/u8>(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestNoIdBad<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
+                func gNo<S, E, D>(slot: uniq/S, y: (T, E), set: (uniq/S, (T, D)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gNo<RetW, raw/u8, raw/u8>(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestOuterIdBad<T, U, S>(t: T, d: S, wr: (uniq/S, (U, raw/u8)) -> ())
+                T is U
+                func gOuter(slot: uniq/S, y: (T, raw/u8), set: (uniq/S, (U, raw/u8)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = d@move
+                let p: raw/u8 = w@raw@raw/u8
+                gOuter(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestOuterNoIdOk<T, U, S>(t: T, d: S, wr: (uniq/S, (U, raw/u8)) -> ())
+                func gOuterNo(slot: uniq/S, y: (T, raw/u8), set: (uniq/S, (U, raw/u8)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = d@move
+                let p: raw/u8 = w@raw@raw/u8
+                gOuterNo(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            contract SetQ
+                func setQ(self: uniq/Self, q: raw/u8)
+            struct PlainR
+                Self is SetQ
+                public var p: raw/(raw/u8)
+                public init() => self.p = null
+                public func setQ(self: uniq/Self, q: raw/u8)
+                    unsafe => *((*self.p)@raw/(raw/u8)) = q
+            struct Bx<T>
+                public var item: T
+                public init(item: T) => self.item = item@move
+            func usep<T>(p: raw/T) => ()
+            func fReq<T, U>(x: Bx<T>, u: uniq/U, q: raw/u8) -> ()
+                U is SetQ
+                return
+            func rvNoIdReqOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = PlainR.init()
+                x.p = slot@raw
+                var o = PlainR.init()
+                fReq(Bx.init(item: x@move), o@uniq, w@raw@raw/u8)
+                usep(slot)
+                y = 5
+            """);
+        Assert.Equal(
+            [
+                "idFormBad: kk = 2", "idFormBad: m@ref", "idFormInBad: kk = 2", "idAbsBad: kk = 2", "idEnclBad: z = 5",
+                "idEnclBad: let host = Host.init(r@follow@raw)", "idEnclNoPremBad: z = 5",
+                "idEnclNoPremBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5",
+                "idRawStepBad: var q = u@follow@raw",
+                "idFormGenBad: kk = 2", "retPlainWBad: y = 5", "retIdWBad: y = 5", "structIdBad: y = 5", "structPlainBad: y = 5",
+                "nestIdBad: y0 = 5", "nestId2Bad: y0 = 5", "nestPlainBad: y0 = 5", "nestNoIdBad: y0 = 5", "nestOuterIdBad: y0 = 5",
+                "rvNoIdReqOk: y = 5", "rvNoIdReqOk: var o = PlainR.init()",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 15.6.4 (route 1: "the holders its exclusive Loans and addresses name"; "adds no reach of its own"), 5.7 Calls (a raw layer
+    // in a parameter, "a Type argument's ... included"; with an Origin, what the borrows it belongs to admit), the owner's O-312 (a)
+    // ("the carried addresses are reached, hidden or not"; PLAN G935 c3-5, class 1): storage of the callee's own Type parameter takes
+    // only the callee's terms' rows, but a holder that a raw layer of its binding addresses is reached, and the call may store there
+    // what that holder admits. w, addressed by F's `raw/(raw/u8)` in a Tuple (hidPunUseEntryBad, the Middle's) or by U's in a struct's
+    // Field (hidPunUnstatedWrapBad), may hold spare and is read after `kk = 2`; h, addressed by U's layer, may be replaced by wa, so
+    // `h@follow = spare` stores into storage the body does not own (o312p2Bad, the owner's O-312 program 2); cell, addressed by T's
+    // layer past `raw/T`, is read after the write (keepTCellUsedBad), and so it is where hop, an address of cell, is used after it
+    // (keepTHopUsedBad: SPEC 15.6, a use of an address of a holder uses the holder; invalid by the owner's O-389 (a), which corrects
+    // O-353 (a)'s line for it); w, whose plain address `t.0` carries, may hold z's borrow (hidAddrBad); and a layer stating an Origin
+    // reaches no less: `*u`, which the caller states by `uniq`, may hold v and is read after `z = 5` (hidStatedUseBad). Fail-before
+    // on 4b788f544: all seven were accepted (c2 kept the callee's Type past every layer its binding holds); fcd6a5381 rejected them.
+    // The valid twins: a pointee that admits no pointer (hidPunU8PointeeOk), the holder read only before the write (hidPunEarlyOk,
+    // keepTCellEarlyOk) or not at all (hidPunUnusedOk; keepTUnusedOk, the owner's O-353 (a)).
+    [Fact]
+    public void TheHoldersAKeptBindingAddressesAreReached()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct WrapH<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+            func usePtrH<T>(p: raw/T) => ()
+            func usePPH(p: raw/(raw/u8)) => ()
+            func touchH<F>(t: uniq/(F, u8), v: raw/u8) => ()
+            func wrapH<U>(w: uniq/WrapH<U>, v: raw/u8) => ()
+            func waH<U>(p: raw/U) => ()
+            func keepTH<T>(slot: raw/T, value: raw/u8) => ()
+            func putAnyH<U, V>(t: uniq/U, v: V) => ()
+            func hidPunUseEntryBad()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                let z8: u8 = 0
+                var t = (w@raw@raw/(raw/u8), z8)
+                touchH(t@uniq, spare)
+                kk = 2
+                usePtrH(w)
+            func hidPunEarlyOk()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                let z8: u8 = 0
+                var t = (w@raw@raw/(raw/u8), z8)
+                touchH(t@uniq, spare)
+                usePtrH(w)
+                kk = 2
+            func hidPunUnusedOk()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                let z8: u8 = 0
+                var t = (w@raw@raw/(raw/u8), z8)
+                touchH(t@uniq, spare)
+                kk = 2
+            func hidPunU8PointeeOk()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var b: u8 = 0
+                let z8: u8 = 0
+                var t = (b@raw, z8)
+                touchH(t@uniq, spare)
+                kk = 2
+                usePtrH(b@raw)
+            func hidPunUnstatedWrapBad()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                var h = WrapH.init(w@raw@raw/(raw/u8))
+                wrapH(h@uniq, spare)
+                kk = 2
+                usePtrH(w)
+            func o312p2Bad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var a: raw/u8 = null
+                var b: raw/u8 = null
+                var m = a@uniq
+                var h = b@uniq
+                var x: (raw/(uniq/(raw/u8)), raw/(raw/(raw/u8))) = (m@raw, h@raw@raw/(raw/(raw/u8)))
+                waH(x@raw)
+                h@follow = spare
+                kk = 2
+            func keepTCellUsedBad(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+                usePtrH(cell)
+            func keepTCellEarlyOk(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                usePtrH(cell)
+                y@follow = 5
+            func keepTHopUsedBad(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+                usePPH(hop)
+            func keepTUnusedOk(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+            func hidAddrBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@raw, 0)
+                putAnyH(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func hidStatedUseBad(u: uniq/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = WrapH.init(u@follow@raw)
+                wrapH(h@uniq, w@raw@raw/u8)
+                z = 5
+                usePtrH(u@follow)
+            """);
+        Assert.Equal(
+            [
+                "hidPunUseEntryBad: kk = 2", "hidPunUnstatedWrapBad: kk = 2", "o312p2Bad: kk = 2", "keepTCellUsedBad: y@follow = 5",
+                "keepTHopUsedBad: y@follow = 5", "hidAddrBad: z = 5", "hidStatedUseBad: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -431,31 +963,35 @@ public sealed partial class MirBorrowsTest
     // by value through no shared layer, an Option payload and a Tuple element included, so r's setQ may store w's address where m points,
     // storage the body does not own, and `y = 5` and S's end err (as tiedRawBad does with a raw input; tiedOk, whose r holds only the
     // shared Loan on s, is valid). FAIL-FIRST: S1′ alone accepts tiedOptBad and tiedTupBad (Binding's retention keeps a raw-typed input
-    // only, BU-66 rule 3); BU's raw-sources Binding unit closes them, and S1′ lands with or after it.
+    // only, BU-66 rule 3); BU's raw-sources Binding unit closes them, and S1′ lands with or after it. A raw pointer read through a `ref/`
+    // parameter's Deref has no write authority (SPEC 5.2.1 condition 3, 15.6.4 item 1; DECISIONS R4-M249, G415-N3 P1): the parameter's
+    // slot reaches E for reads only, so tiedShRefOk is valid (PLAN G419's false error before P1), and its `uniq/` twin tiedUniqRefBad errs.
     [Theory]
     [InlineData("tiedOptBad", "r.absorb(.Some(m))")]
     [InlineData("tiedTupBad", "r.absorbT((m, 1))")]
     [InlineData("tiedRawBad", "r.absorbR(m)")]
     [InlineData("tiedOk", "")]
-    public void ATiedAbstractValueRetainsARawLayerAnInputHoldsByValue(string name, string absorb)
+    [InlineData("tiedShRefOk", "r.absorbR(rr@follow)", ", rr: ref/(raw/u8)")]
+    [InlineData("tiedUniqRefBad", "r.absorbR(rr@follow)", ", rr: uniq/(raw/u8)")]
+    public void ATiedAbstractValueRetainsARawLayerAnInputHoldsByValue(string name, string absorb, string parameters = "")
     {
-        var c = MirBuildTest.Compile(Prelude + """
-            contract Mk
-                associate R(source) is Abs for ref/Self during source
-                func opn(self: ref/Self during source) -> Self.R(source)
-            contract Abs
-                func absorb(self: uniq/Self, v: Option<raw/u8>)
-                func absorbR(self: uniq/Self, v: raw/u8)
-                func absorbT(self: uniq/Self, v: (raw/u8, i32))
-                func setQ(self: uniq/Self, q: raw/u8)
-            func consume<T>(x: T) => ()
-
-            """ + $"func {name}<S>(s: S)\n    S is Mk\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n" +
-            (absorb.Length > 0 ? $"    var m: raw/u8 = Raw.allocate<u8>(1)\n    var r = s.opn()\n    {absorb}\n" : "    var r = s.opn()\n") +
-            "    r.setQ(w@raw@raw/u8)\n    consume(r@move)\n    y = 5\n");
+        var c = MirBuildTest.Compile(Tied(name, absorb, parameters));
         Assert.Equal(
-            name == "tiedOk" ? [] : [$"{name}: y = 5", $"{name}: S"],
+            name.EndsWith("Ok", StringComparison.Ordinal) ? [] : [$"{name}: y = 5", $"{name}: S"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // A warm A5 run over a parameter that reaches E for reads only (tiedShRefOk's program; its slot's {Φ_E} is one more interned set per
+    // run) allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmReadOnlyParameterAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(Tied("tiedShRefOk", "r.absorbR(rr@follow)", ", rr: ref/(raw/u8)"));
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
+        Assert.Empty(Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // The same retention per raw source (DECISIONS BU-66, A2; the owner's 「A2 を Chain の案でGO」): a raw layer past an exclusive borrow
@@ -750,7 +1286,8 @@ public sealed partial class MirBorrowsTest
     // Item>` is `BaseI<raw/u8>`, completed before the mark) and a store into the Field such a base clause holds (derf, as its twin derg,
     // each a moved parameter), a holder whose declaration writes the subject's argument (hh2, also through a condition, hhc), a nested
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
-    // verdict is its written twin ER's (eh, er: no Loan is held past `.A(null)`). Where the parameter's Type expression writes the subject's
+    // verdict is its written twin ER's (eh, er: `z = 5` errs, PLAN G841's rule 4 (4), the owner's O-373 (a): through A's payload layer,
+    // which the declaration states, `put` may store what a raw layer it writes retains, 5.7 Calls). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
     // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
     // accepted the stated forms, DECISIONS BU-46) until R6-check H10b deleted it.
@@ -861,7 +1398,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "derf: z = 5", "derg: z = 5", "ha: z = 5", "ha2: z = 5", "hha: z = 5", "inh: z = 5", "derq: z = 5", "hh2: z = 5", "hhc: z = 5",
-                "nest: z = 5", "esrc: z = 5", "hsrc: z = 5",
+                "nest: z = 5", "esrc: z = 5", "eh: z = 5", "er: z = 5", "hsrc: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
         var old = MinimalEmissionTest.Analyze(source);
@@ -957,18 +1494,37 @@ public sealed partial class MirBorrowsTest
         static string[] Records(Compilation c) => [.. c.Problems.Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {x.Code}")];
     }
 
-    // SPEC 23.1.1 (DECISIONS R4-M147): a call whose W reaches a holder the guard leaves undecided (MirWrites.Limit: a supplied layer whose
-    // Origin steps Exclusive, whose members Binding does not publish, over a Loan-free pointee) is one located Unsupported_Kd at the call,
-    // never a Language problem, and the view's independent problems stay: a Field (flat), a nested instance's Field (nested), a Case
-    // payload (optionNested), each call in a loop with an independent conflict beside it (looped: `k = 2`), a constructor lending the holder
-    // and a call through it (reachedByStep), and a layer whose Origin is a shared borrow (sharedSupplied, valid, the Limit's cost until
-    // Binding publishes its members). A typed pointee decides the guard (nestedPointee errs; touched, valid as on dev), as does an exclusive
-    // part beside the layer (mixed errs, no record). A raw layer outside an instance reads its pointee (R4-M120): tupleW is accepted, its
-    // typed twin errs (an open issue, PLAN G148). Where a call's pair holds (DECISIONS R4-M154, Revision 4), a callee its instantiated
+    // SPEC 5.7 Origins, Authority, Calls, 15.6.4 item 1 (PLAN G148 (1), R7 plan Z6; DECISIONS R4-M177): through a raw layer stating an
+    // Origin a call may store what the Referent Type of each borrow that Origin belongs to admits (Binding.AtomMembers: a body atom's
+    // published Borrows, an input's or a slot's by its declaration, a local region's by the local's own borrow Type), and only by an
+    // exclusive Loan of it (W skips holders only a shared Loan names), whether the instance's declaration states the layer or a Type
+    // argument supplies it; the pointee is no second admission. So the layer over w's exclusive borrow lets the call store z's borrow into
+    // w, used after (`z = 5`, `inspect(w)`): a Field (flat, reborrow through rr), a nested instance's Field (nested), a Case payload
+    // (optionNested), each call in a loop beside an independent conflict (looped: `k = 2`), a written `during r` local (duringUniq), one
+    // whose value is null (duringNull: by the letter, the Origin decides), a part beside a shared one (twoUniq: v), a Tuple's or a struct's
+    // part (tuplePartD, fieldPartD: b) and a Field beside a static raw part (twoStatic, which also takes storage-end records at y, w and
+    // x: dependent records on a program rejected anyway, DECISIONS Q13; F1's open issue); the same over a shared borrow, a borrow of an
+    // i32, or a referent that holds no Loan stores nothing: sharedSupplied, paramShared, paramUniq (an input's referent
+    // `ref/i32 during a` admits no local borrow), methodShared, methodUniq, ctorShared, i32Referent, loopShared, twoShared, tuplePart and
+    // fieldPart (a part's referent i32), slotPart and slotKept (a slot's keeper's referent i32), paramSlot and t11 (one root, two part
+    // borrows); a constructor lending the holder (reachedByStep) stores z's borrow, but nothing holding it is used after `z = 5` (SPEC 15.4;
+    // Z6's O5-4). An address taken past the shared s whose atom also has an exclusive borrow keeps the located Unsupported_Kd (mixedAtom,
+    // t11s, valid: Z6's named limit R6.1, R6.8 (b2); removal: route (a)), as does duringShared (valid): `during s` names s's own region,
+    // which Binding states by another atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
+    // the whitelist's cost; removal: D-1116 (1)'s one atom). A claim states its atom; an address
+    // carries no mode, so a claimed atom with an exclusive member stays the located Unsupported_Kd (claimUniq, invalid; removal: per-layer
+    // address provenance in A5), and one whose borrows are all shared stores nothing (claimShared, claimMixed, claimRaw, claimRawMixed: a
+    // later exclusive borrow of w is P[w]'s, not s's region's; claimInput). A raw layer's region slot in a `var` local assigned from two
+    // borrows (regionRaw, invalid) stays the located Unsupported_Kd (R7 plan Z6b). Unchanged: a typed pointee decides (nestedPointee;
+    // touched, valid), as does an exclusive part beside the layer (mixed errs). A raw layer outside an instance reads its pointee (R4-M120):
+    // tupleW is accepted, its typed twin errs. Where a call's pair holds (DECISIONS R4-M154, Revision 4), a callee its instantiated
     // signature admits may store z's borrow into w or v through the instance's uniq or raw layers, whose local regions may coincide, so
-    // nestedPointee, mixed and tupleTyped also err at `z = 5`.
+    // nestedPointee and mixed also err at `z = 5`. tupleTyped's `putAny<U, V>(t: uniq/U, v: V)` errs there too: `t.0` carries w's address
+    // by a raw layer of U's binding (SPEC 15.6.4; the owner's O-312 (a); PLAN G935 c3-5). FAIL-FIRST: on the base every row above that now
+    // errs or is accepted was the located Unsupported_Kd at the call (sharedSupplied's the Limit's cost), claimRaw and claimRawMixed a false
+    // `z = 5`. Labels: Z6's design tables (p01-p20, t01-t11, n01-n04, t08*).
     [Fact]
-    public void AStoreTheGuardLeavesUndecidedIsUnsupported()
+    public void AStoreThroughARawLayerReadsItsOriginsBorrows()
     {
         var c = MirBuildTest.Compile(Prelude + """
             struct Wrap<E>
@@ -976,6 +1532,50 @@ public sealed partial class MirBorrowsTest
                 public init(value: E) => self.value = value@move
                 public func put<U>(self: uniq/Self, v: U) => ()
                 public func touch(self: uniq/Self) => ()
+            struct Two<E, F>
+                var a: E
+                var b: F
+                public init(a: E, b: F)
+                    self.a = a@move
+                    self.b = b@move
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct FG {a}
+                public var f: i32
+                public var g: ref/i32 during a
+                public init(f: i32, g: ref/i32 during a)
+                    self.f = f
+                    self.g = g
+            struct HSlot {s}
+                var b: Wrap<raw/u8 during s>
+                var k: uniq/i32 during s
+                public init(k: uniq/i32 during s)
+                    self.b = Wrap.init(k@follow@raw@raw/u8)
+                    self.k = k
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct BoxS {a}
+                public var w: ref/i32 during a
+                public init(w: ref/i32 during a) => self.w = w
+                public func methodShared(self: ref/Self)
+                    var z = 3
+                    var h = Wrap.init(self.w@raw@raw/u8)
+                    h.put(z@ref)
+                    z = 5
+            struct BoxU {a}
+                public var w: ref/i32 during a
+                public init(w: ref/i32 during a) => self.w = w
+                public func methodUniq(self: uniq/Self)
+                    var z = 3
+                    var h = Wrap.init(self.w@raw@raw/u8)
+                    h.put(z@ref)
+                    z = 5
+            struct BoxK {a}
+                public var w: uniq/i32 during a
+                public init(w: uniq/i32 during a) => self.w = w
+                public func slotKept(self: uniq/Self)
+                    var z = 3
+                    var h = Wrap.init(self.w@follow@raw@raw/u8)
+                    h.put(z@ref)
+                    z = 5
             struct Outer<P>
                 var w: Wrap<P>
                 public init(w: Wrap<P>) => self.w = w@move
@@ -1098,13 +1698,305 @@ public sealed partial class MirBorrowsTest
                 putAny(t@uniq, z@ref)
                 z = 5
                 inspect(w)
+            func mixedAtom()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var h = Wrap.init(s@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+                var u = w@uniq
+                u@follow = y@ref
+                inspect(w)
+            func duringShared()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                let q: raw/u8 during s = s@follow@raw@raw/u8
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func duringUniq()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var r = w@uniq
+                let q: raw/u8 during r = r@follow@raw@raw/u8
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func duringNull()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var r = w@uniq
+                let q: raw/u8 during r = null
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func paramShared(y: ref/(ref/i32 during a))
+                var z = 3
+                var h = Wrap.init(y@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+            func paramUniq(y: uniq/(ref/i32 during a))
+                var z = 3
+                var h = Wrap.init(y@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+            func paramSlot(y: ref/(uniq/i32 during a))
+                var z = 3
+                var h = Wrap.init(y@follow@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+            func ctorShared()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var h = Wrap.init(s@follow@raw@raw/u8)
+                var g = G.init(h@uniq)
+                g.put(z@ref)
+                z = 5
+                inspect(w)
+            func i32Referent()
+                var x = 1
+                var z = 3
+                var r = x@uniq
+                var h = Wrap.init(r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(x)
+            func loopShared(n: i32)
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var h = Wrap.init(s@follow@raw@raw/u8)
+                var i = 0
+                while i < n
+                    h.put(z@ref)
+                    i += 1
+                z = 5
+                inspect(w)
+            func twoShared()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var r = v@uniq
+                var h = Two.init(s@follow@raw@raw/u8, r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func twoUniq()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var r = v@uniq
+                var h = Two.init(s@follow@raw@raw/u8, r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func twoStatic()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var y: raw/u8 during static = null
+                var r = w@uniq
+                var h = Two.init(r@follow@raw@raw/u8, y@uniq)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func reborrow()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var r = w@uniq
+                var rr = r@follow@uniq
+                var h = Wrap.init(rr@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func tuplePart()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var b = (0, w)
+                var r = b.0@uniq
+                var h = Wrap.init(r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(b)
+            func tuplePartD()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var b = (0, w)
+                var r = b.1@uniq
+                var h = Wrap.init(r@follow@raw)
+                h.put(z@ref)
+                z = 5
+                inspect(b)
+            func fieldPart()
+                var x = 1
+                var z = 3
+                var b = FG.init(0, x@ref)
+                var r = b.f@uniq
+                var h = Wrap.init(r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(b)
+            func fieldPartD()
+                var x = 1
+                var z = 3
+                var b = FG.init(0, x@ref)
+                var r = b.g@uniq
+                var h = Wrap.init(r@follow@raw)
+                h.put(z@ref)
+                z = 5
+                inspect(b)
+            func slotPart()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (0, w)
+                var hs = HSlot.init(t.0@uniq)
+                hs.put(z@ref)
+                z = 5
+                inspect(t)
+            func t11()
+                var y = 2
+                var z = 3
+                var b = (1, y@ref)
+                var r = b.0@uniq
+                var h = Wrap.init(r@follow@raw@raw/u8)
+                h.put(z@ref)
+                var u = b.1@uniq
+                u@follow = y@ref
+                z = 5
+                inspect(b)
+            func t11s()
+                var y = 2
+                var z = 3
+                var b = (1, y@ref)
+                let s = b.0@ref
+                var h = Wrap.init(s@follow@raw@raw/u8)
+                h.put(z@ref)
+                var u = b.1@uniq
+                u@follow = y@ref
+                z = 5
+                inspect(b)
+            func claimShared()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var q: raw/u8 during s = null
+                unsafe => q = w@raw@(raw/u8 during s)
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func claimMixed()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var q: raw/u8 during s = null
+                unsafe => q = w@raw@(raw/u8 during s)
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+                var u = w@uniq
+                u@follow = y@ref
+                inspect(w)
+            func claimRaw()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var q: raw/(raw/u8) during s = null
+                unsafe => q = w@raw@(raw/(raw/u8) during s)
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func claimRawMixed()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var q: raw/(raw/u8) during s = null
+                unsafe => q = w@raw@(raw/(raw/u8) during s)
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+                var u = w@uniq
+                u@follow = y@ref
+                inspect(w)
+            func claimUniq()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var r = w@uniq
+                var q: raw/u8 during r = null
+                unsafe => q = w@raw@(raw/u8 during r)
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func claimInput(y: ref/(ref/i32 during a))
+                var c: ref/i32 = y@follow
+                var z = 3
+                var q: raw/u8 during y = null
+                unsafe => q = c@raw@(raw/u8 during y)
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(c)
+            func regionRaw(c: bool)
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                var r = w@uniq
+                var u = v@uniq
+                var q = r@follow@raw@raw/u8
+                if c => q = u@follow@raw@raw/u8
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
             """);
         Assert.Equal(
             [
-                "flat: h.put(z@ref) Unsupported_Kd", "nested: o.put(z@ref) Unsupported_Kd", "optionNested: putAny(o@uniq, z@ref) Unsupported_Kd",
-                "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
-                "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: z = 5",
-                "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5", "tupleTyped: inspect(w)",
+                "flat: z = 5", "flat: inspect(w)", "nested: z = 5", "nested: inspect(w)", "optionNested: z = 5",
+                "optionNested: inspect(w)", "looped: k = 2", "looped: z = 5", "looped: inspect(w)",
+                "nestedPointee: z = 5", "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5",
+                "tupleTyped: inspect(w)", "mixedAtom: h.put(z@ref) Unsupported_Kd", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
+                "duringUniq: inspect(w)", "duringNull: z = 5", "twoUniq: z = 5", "twoUniq: inspect(v)", "twoStatic: z = 5", "twoStatic: inspect(w)",
+                "twoStatic: var y: raw/u8 during static = null", "twoStatic: var w: ref/i32 = x@ref", "twoStatic: var x = 1", "reborrow: z = 5",
+                "reborrow: inspect(w)", "tuplePartD: z = 5", "tuplePartD: b", "fieldPartD: z = 5", "fieldPartD: b",
+                "t11s: h.put(z@ref) Unsupported_Kd",
+                "claimUniq: h.put(z@ref) Unsupported_Kd", "regionRaw: h.put(z@ref) Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1117,7 +2009,30 @@ public sealed partial class MirBorrowsTest
     // erred at `z = 5`. The exclusive routes still write: the exclusive part's holder read after (ss8m, ss8vb), an exclusive and a shared
     // Loan on parts of one holder (ss8g, by value ss8gv; shared at the first step and exclusive past h, r1a), w's plain address (ss8a; one
     // level down through r1cv's callee, r1c), an exclusive Loan past a holder beside a shared one (ss8c) and the holder a second argument
-    // reaches exclusively (ss8two); a write while s's Loan lives errs (ss8w).
+    // reaches exclusively (ss8two); a write while s's Loan lives errs (ss8w). r1cv, whose q addresses another holder, is invalid too (A5
+    // value redesign U3c): t.0, a `raw/(ref/i32 during a)`, is a raw layer without an Origin in storage stp writes, so stp may write its
+    // own pointer there and store v through it in storage the body does not own, used after every point (SPEC 15.6.4's composition,
+    // example twoLayers; 5.7 Calls: also as a Tuple element; dev accepted it), and that storage keeps what a chain of reads through t
+    // carries, so the storage ends of the holders it names conflict (r1c's and r1cv's; SPEC 23.1.2).
+    // PLAN G935 (the owner's O-360 (a)): `putAny<U, V>(t: uniq/U,
+    // v: V)` and `putTwo<U, V, W>(t: U, u: uniq/V, v: W)` store v nowhere in their own terms (`*t`, `*u` are storage of the callee's own
+    // U or V, which holds no V or W), so `z = 5` no longer errs in ss8two (valid as a whole: `*u` is putTwo's own V). But a holder that
+    // U's binding names by an exclusive Loan or addresses is no storage of U: "a safe reference the binding holds is no such layer, and
+    // the routes above apply to it" (SPEC 15.6.4 route 1, PLAN G935 B2), and so is a raw layer's (the owner's O-312 (a), c3-5). putAny
+    // may write it with z's borrow, so `z = 5` errs again, as on fcd6a5381, where that holder is read after: ss8m (v), ss8g (g.1), ss8c
+    // (v, reached through r's exclusive layer), r1a (g.1 through h), ss8a (w's plain address, t.1), and hidRefBad (w), the same through
+    // a reference to a reference (hidRefNestBad) and with U the reference itself (hidRefDirectBad). FAIL-FIRST on 768d6899d: ss8g, ss8c,
+    // r1a and the three hidRef rows lost their `z = 5` (c2 kept the referent as storage of U). The `inspect(w)` records of the hidRef
+    // rows are a known false record (D-776, the safe reference in a kept binding): hidRefEarlyOk, valid (w read before `z = 5`, t not
+    // used after), has only it. The valid ss8, ss8s and ss8mv are valid before this rule is read. The rule's two directions are kept by
+    // the concrete twins, whose callee writes the Tuple Type in its own signature (putAnyV's by-value rows still read the binding):
+    // cs8s (no raw layer in `*t`) and the by-value cs8vr and cs8mvr (stAV and stMV write no layer of the caller's storage, and their
+    // t.0 is w's address read through the shared s) are valid; cs8m, cs8g, cs8a, cs8c, cs8two and cr1a err at `z = 5`, and cs8m and
+    // cs8a also at the storage ends of the holders the callee's storage keeps, as r1c and r1cv (independent records, SPEC 23.1.2). A callee taking
+    // such a Tuple through `uniq` with a raw layer without an Origin in `*t` is no valid twin: it may write its own pointer at t.0 and
+    // store v through it in storage the body does not own (SPEC 15.6.4's composition and its twoLayers example; 5.7 Calls "also as a
+    // Tuple element"). Those programs (the `uniq` forms of cs8vr and cs8mvr, and this test's older r1cv, which the A5 chain relabels)
+    // are rejected only with the chain's reader (PLAN G935's class 1 list), so no row here expects one accepted beyond r1cv.
     [Fact]
     public void AStoreWritesNoHolderOnlyASharedLoanNames()
     {
@@ -1130,6 +2045,13 @@ public sealed partial class MirBorrowsTest
             func putAnyV<U, V>(t: U, v: V) => ()
             func putTwo<U, V, W>(t: U, u: uniq/V, v: W) => ()
             func stp(t: uniq/((raw/(ref/i32 during a), uniq/((raw/(ref/i32 during a), i32)) during c)) during e, v: ref/i32 during a) => ()
+            func stAV(t: (raw/(ref/i32 during a), i32), v: ref/i32 during a) => ()
+            func stMV(t: (raw/(ref/i32 during a), uniq/(ref/i32 during a) during c), v: ref/i32 during a) => ()
+            func stS(t: uniq/((ref/(ref/i32 during a) during b, uniq/(ref/i32 during a) during c)) during e, v: ref/i32 during a) => ()
+            func stM(t: uniq/((raw/(ref/i32 during a), uniq/(ref/i32 during a) during c)) during e, v: ref/i32 during a) => ()
+            func stAA(t: uniq/((raw/(ref/i32 during a), raw/(ref/i32 during a))) during e, v: ref/i32 during a) => ()
+            func stC(t: uniq/((ref/(ref/i32 during a) during b, uniq/(uniq/(ref/i32 during a) during c) during d)) during e, v: ref/i32 during a) => ()
+            func stTwo(t: ref/(ref/i32 during a) during b, u: uniq/(ref/i32 during a) during c, v: ref/i32 during a) => ()
             func ss8()
                 var x = 1
                 var z = 3
@@ -1297,18 +2219,521 @@ public sealed partial class MirBorrowsTest
                 putAny(t@uniq, z@ref)
                 w = y@ref
                 inspect(s)
+            func cs8vr()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                stAV((s@follow@raw, 0), z@ref)
+                z = 5
+                inspect(w)
+            func cs8s()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var t = (s, v@uniq)
+                stS(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func cs8mvr()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                stMV((s@follow@raw, v@uniq), z@ref)
+                z = 5
+                inspect(w)
+            func cs8m()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var t: (raw/(ref/i32), uniq/(ref/i32)) = (s@follow@raw, v@uniq)
+                stM(t@uniq, z@ref)
+                z = 5
+                inspect(v)
+            func cs8g()
+                var x = 1
+                var y = 2
+                var z = 3
+                var g: (ref/i32, ref/i32) = (x@ref, y@ref)
+                var t = (g.0@ref, g.1@uniq)
+                stS(t@uniq, z@ref)
+                z = 5
+                inspect(g)
+            func cs8a()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var t: (raw/(ref/i32), raw/(ref/i32)) = (s@follow@raw, w@raw)
+                stAA(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func cs8c()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                let s = w@ref
+                var t = (s, r@uniq)
+                stC(t@uniq, z@ref)
+                z = 5
+                inspect(v)
+            func cs8two()
+                var x = 1
+                var y = 2
+                var z = 3
+                var g: (ref/i32, ref/i32) = (x@ref, y@ref)
+                stTwo(g.0@ref, g.1@uniq, z@ref)
+                z = 5
+                inspect(g)
+            func cr1a()
+                var x = 1
+                var y = 2
+                var z = 3
+                var g: (ref/i32, ref/i32) = (x@ref, y@ref)
+                var h = g.1@uniq
+                var t = (g.0@ref, h@uniq)
+                stC(t@uniq, z@ref)
+                z = 5
+                inspect(g)
+            func hidRefBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@uniq, 0)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func hidRefEarlyOk()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@uniq, 0)
+                putAny(t@uniq, z@ref)
+                inspect(w)
+                z = 5
+            func hidRefNestBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var w2 = w@uniq
+                var t = (w2@uniq, 0)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func hidRefDirectBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var u = w@uniq
+                putAny(u@uniq, z@ref)
+                z = 5
+                inspect(w)
             """);
         Assert.Equal(
             [
-                "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5",
-                "ss8c: z = 5", "ss8c: inspect(v)", "ss8two: z = 5", "r1a: z = 5", "r1a: g", "r1c: z = 5", "ss8w: w = y@ref",
+                "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5", "ss8c: z = 5",
+                "ss8c: inspect(v)", "r1a: z = 5", "r1a: g", "r1c: z = 5", "r1c: var q: (raw/(ref/i32), i32) = (w@raw, 0)", "r1c: var w: ref/i32 = x@ref",
+                "r1c: var x = 1", "r1cv: z = 5", "r1cv: var q: (raw/(ref/i32), i32) = (u@raw, 0)", "r1cv: var w: ref/i32 = x@ref", "r1cv: var y = 2",
+                "r1cv: var x = 1", "ss8w: w = y@ref", "cs8m: z = 5", "cs8m: inspect(v)", "cs8m: var v: ref/i32 = y@ref", "cs8m: var w: ref/i32 = x@ref",
+                "cs8m: var y = 2", "cs8m: var x = 1", "cs8g: z = 5", "cs8g: g", "cs8a: z = 5", "cs8a: var w: ref/i32 = x@ref", "cs8a: var x = 1", "cs8c: z = 5",
+                "cs8c: inspect(v)", "cs8two: z = 5", "cr1a: z = 5", "cr1a: g", "hidRefBad: z = 5", "hidRefBad: inspect(w)", "hidRefEarlyOk: inspect(w)",
+                "hidRefNestBad: z = 5", "hidRefNestBad: inspect(w)", "hidRefDirectBad: z = 5", "hidRefDirectBad: inspect(w)",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 5.7 Fits and claims, Calls, 5.2.1 condition 3, 15.6.4 item 1 (PLAN G148 (1), R7 plan Z6 Revisions 6-7.1; the owner's O-498
+    // 「O-498 Q1 i, Q2 b」): the named limits keep the located Unsupported_Kd where the stated Origin's borrows do not bound what a raw
+    // layer holds. A value of another Origin fitted into the holder's layer keeps its source's authority (Q1 (i)), so the layer is read by
+    // its stated Origin only where nothing else is fitted into it (Q2 (b)): an assignment (fitAssigned, invalid: `put` may store z's borrow
+    // in v), a written Type (fitWritten), a fit narrowing to another Origin (fitNarrowed: q still writes w), a public Field write
+    // (fitField) and a write through a reference (fitThrough), each invalid, keep it; the typed twin keeps its pointee's records
+    // (fitAssignedTyped); fitWrittenSame (valid) is the whitelist's cost. An address taken past a shared path writes nothing (SPEC 5.2.1
+    // condition 3), which an atom's members do not show: sharedFollow, sharedImplicit and sharedProjection (valid) keep it, and the typed
+    // twin keeps the pointee's records (sharedFollowTyped, a pre-existing conservative pair; removal: route (a)). Decided now (FAIL-FIRST:
+    // the located Unsupported_Kd at the call): nestedExclusive (invalid: q's address is r's, `z = 5` found; its storage-end records at w and
+    // x are dependent, DECISIONS Q13), anchored (invalid, SPEC
+    // 5.2.2's anchor: `z = 5`) and a layer over an exclusive Field's address whose referent admits no local borrow (fieldExclusive, valid).
+    // `null` is never a fitted value (nullFit, valid). The fit mark is LimitMarks.FittedIntoHolder (Z6-F2), whose paths (a call's
+    // argument, a generic result, a clause) TyCtxtTest.AFitFromAnotherOriginMarksTheHoldersAtoms asserts. Z6 Revision 8 on the owner's
+    // O-507 (B) (a slot judged by the Type declaration that binds it; LimitMarks.FittedExclusive, which also reaches the holder's own
+    // region): a declared layer whose slot keeps only `ref` Loans gives no write authority whatever was fitted (slotRefKept, valid, as on
+    // dev), nor does a layer an abstract callee's Type does not show (slotAbstract, valid, SPEC 15.6.4); a `uniq`-kept slot's layer holding
+    // r's exclusive address keeps it (slotUniqKept), its shared twin not (slotUniqShared, valid), and so does a pointer copied out of it
+    // into a Type argument's layer (slotUniqCopied) or into a second `uniq`-kept holder (slotUniqChained). Those three are valid by the
+    // owner's O-512 R1 (SPEC 5.7 Calls: what the layer's Origin belongs to is judged where it is bound, HU's slot kept by an i32's `uniq`
+    // Loan, so `put` may store only an i32 through it, never z's borrow): their located Unsupported_Kd is the whitelist's cost. Further
+    // rows of that cost (O-498 Q2 (b); valid, the located Unsupported_Kd, Q13 moves named on Q-702): the
+    // same copy out of a `ref`-kept layer (slotCopied, SPEC 5.2.1 condition 3's declared-layer sentence; dev limits it too), and into a
+    // `uniq`-kept slot's layer, which dev accepts (slotUniqFromRefKept); a pointer read from a `uniq`-kept holder's layer fitted into a
+    // second one, its source past a shared path (slotUniqChainedShared, SPEC 5.2.1 condition 3's first limit) or `null`
+    // (slotUniqChainedNull: the holder's region may write by its `uniq` keeper, judged where it is bound); and any value of another
+    // Origin fitted straight into a `uniq`-kept slot's layer by FittedIntoHolder, a shared address too (slotUniqSet, Z6's M3a).
+    [Fact]
+    public void ANamedLimitKeepsTheLocatedUnsupportedWhereTheStatedOriginDoesNotBoundTheLayer()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct Pub<E>
+                public var value: E
+                public init(value: E) => self.value = value@move
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct Cell {o}
+                var p: raw/u8 during o
+                var k: uniq/i32 during o
+                public init(p: raw/u8 during o, k: uniq/i32 during o)
+                    self.p = p
+                    self.k = k
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct HF {s}
+                var p: raw/u8 during s
+                var k: ref/i32 during s
+                public init(k: ref/i32 during s, q: raw/u8 during s)
+                    self.p = q
+                    self.k = k
+                public func put<U>(self: uniq/Self, v: U) => ()
+            struct HU {s}
+                public var p: raw/u8 during s
+                var k: uniq/i32 during s
+                public init(k: uniq/i32 during s, q: raw/u8 during s)
+                    self.p = q
+                    self.k = k
+                public func put<U>(self: uniq/Self, v: U) => ()
+                public func setp(self: uniq/Self, q: raw/u8 during s) => self.p = q
+            struct HP {s}
+                public var p: raw/u8 during s
+                var k: ref/i32 during s
+                public init(k: ref/i32 during s, q: raw/u8 during s)
+                    self.p = q
+                    self.k = k
+            func putg<H>(h: uniq/H, v: ref/i32) => ()
+            struct HB {s}
+                var k: ref/i32 during s
+                var m: uniq/i32 during s
+                public init(k: ref/i32 during s, m: uniq/i32 during s)
+                    self.k = k
+                    self.m = m
+                public func fieldExclusive(self: uniq/Self)
+                    var z = 3
+                    var h = Wrap.init(self.m@follow@raw@raw/u8)
+                    h.put(z@ref)
+                    z = 5
+            func fitAssigned(c: bool)
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var r = v@uniq
+                var h = Wrap.init(s@follow@raw@raw/u8)
+                if c => h = Wrap.init(r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func fitAssignedTyped(c: bool)
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var r = v@uniq
+                var h = Wrap.init(s@follow@raw)
+                if c => h = Wrap.init(r@follow@raw)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func fitWritten(c: bool)
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var r = v@uniq
+                var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)
+                if c => h = Wrap.init(r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func fitWrittenSame()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let s = w@ref
+                var h: Wrap<raw/u8 during s> = Wrap.init(s@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func fitNarrowed()
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                var k = v@uniq
+                var r = w@uniq
+                let q: raw/u8 during k = r@follow@raw@raw/u8
+                var h = Wrap.init(q)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func fitField(c: bool)
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var r = v@uniq
+                var h = Pub.init(s@follow@raw@raw/u8)
+                if c => h.value = r@follow@raw@raw/u8
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func fitThrough(c: bool)
+                var x = 1
+                var y = 2
+                var z = 3
+                var w: ref/i32 = x@ref
+                var v: ref/i32 = y@ref
+                let s = w@ref
+                var r = v@uniq
+                var h = Wrap.init(s@follow@raw@raw/u8)
+                if c
+                    let hr = h@uniq
+                    hr@follow = Wrap.init(r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func sharedFollow()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var r = w@uniq
+                let c = r@ref
+                var h = Wrap.init(c@follow@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func sharedFollowTyped()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var r = w@uniq
+                let c = r@ref
+                var h = Wrap.init(c@follow@follow@raw)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func sharedImplicit()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@uniq, 0)
+                let c = t@ref
+                var h = Wrap.init(c.0@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func sharedProjection()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@uniq, 0)
+                let c = t@ref
+                var h = Wrap.init(c@follow.0@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func nestedExclusive()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var r = w@uniq
+                var q = r@follow@raw@raw/u8
+                var h = Wrap.init(q@raw)
+                h.put(z@ref)
+                z = 5
+                inspect(w)
+            func anchored()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                let pw = w@raw
+                unsafe
+                    let e = (*pw)@uniq
+                    var h = Wrap.init(e@follow@raw@raw/u8)
+                    h.put(z@ref)
+                z = 5
+                inspect(w)
+            func nullFit()
+                var z = 3
+                var b = (0, 1)
+                var k = b.0@uniq
+                let s = k@ref
+                let a = s@follow@follow@raw@raw/u8
+                var h = Cell.init(null, k)
+                h.put(z@ref)
+                z = 5
+                inspect(b)
+            func slotRefKept()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HF.init(x@ref, r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotAbstract()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HF.init(x@ref, r@follow@raw@raw/u8)
+                putg(h@uniq, z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqKept()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HU.init(x@uniq, r@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqShared()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                let sv = v@ref
+                var h = HU.init(x@uniq, sv@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqCopied()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HU.init(x@uniq, r@follow@raw@raw/u8)
+                var w = Wrap.init(h.p)
+                w.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotCopied()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h = HP.init(x@ref, r@follow@raw@raw/u8)
+                var w = Wrap.init(h.p)
+                w.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqFromRefKept()
+                var x = 1
+                var y = 2
+                var z = 3
+                var n = 4
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var hf = HP.init(x@ref, r@follow@raw@raw/u8)
+                var hu = HU.init(n@uniq, hf.p)
+                hu.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqSet()
+                var x = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                let sv = v@ref
+                var h = HU.init(x@uniq, null)
+                h.setp(sv@follow@raw@raw/u8)
+                h.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqChained()
+                var x1 = 1
+                var x2 = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var r = v@uniq
+                var h1 = HU.init(x1@uniq, r@follow@raw@raw/u8)
+                var h2 = HU.init(x2@uniq, h1.p)
+                h2.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqChainedShared()
+                var x1 = 1
+                var x2 = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                let sv = v@ref
+                var h1 = HU.init(x1@uniq, sv@follow@raw@raw/u8)
+                var h2 = HU.init(x2@uniq, h1.p)
+                h2.put(z@ref)
+                z = 5
+                inspect(v)
+            func slotUniqChainedNull()
+                var x1 = 1
+                var x2 = 1
+                var y = 2
+                var z = 3
+                var v: ref/i32 = y@ref
+                var h1 = HU.init(x1@uniq, null)
+                var h2 = HU.init(x2@uniq, h1.p)
+                h2.put(z@ref)
+                z = 5
+                inspect(v)
+            """);
+        Assert.Equal(
+            [
+                "fitAssigned: h.put(z@ref) Unsupported_Kd", "fitAssignedTyped: z = 5", "fitAssignedTyped: inspect(v)", "fitWritten: h.put(z@ref) Unsupported_Kd",
+                "fitWrittenSame: h.put(z@ref) Unsupported_Kd", "fitNarrowed: h.put(z@ref) Unsupported_Kd", "fitField: h.put(z@ref) Unsupported_Kd",
+                "fitThrough: h.put(z@ref) Unsupported_Kd", "sharedFollow: h.put(z@ref) Unsupported_Kd", "sharedFollowTyped: z = 5",
+                "sharedFollowTyped: inspect(w)", "sharedImplicit: h.put(z@ref) Unsupported_Kd", "sharedProjection: h.put(z@ref) Unsupported_Kd",
+                "nestedExclusive: z = 5", "nestedExclusive: inspect(w)", "nestedExclusive: var w: ref/i32 = x@ref", "nestedExclusive: var x = 1",
+                "anchored: z = 5", "slotUniqKept: h.put(z@ref) Unsupported_Kd", "slotUniqCopied: w.put(z@ref) Unsupported_Kd",
+                "slotCopied: w.put(z@ref) Unsupported_Kd", "slotUniqFromRefKept: hu.put(z@ref) Unsupported_Kd",
+                "slotUniqSet: h.setp(sv@follow@raw@raw/u8) Unsupported_Kd", "slotUniqSet: h.put(z@ref) Unsupported_Kd",
+                "slotUniqChained: h2.put(z@ref) Unsupported_Kd", "slotUniqChainedShared: h2.put(z@ref) Unsupported_Kd",
+                "slotUniqChainedNull: h2.put(z@ref) Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // V16 (DECISIONS R4-M147, R4-M140): after a rebind clears the holding memo, A5's guard walks again over a program whose holders reach
     // an Exclusive layer's members (an Array's and a Dictionary's exclusive iteration), an Own layer's Type arguments (a Dictionary's
-    // owning iterator), the stored parts of a nested instance and the Limit, and allocates nothing.
+    // owning iterator), the stored parts of a nested instance and the Limit (an address taken past the shared c, Z6's named limit R6.1),
+    // and allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void TheGuardsWalkAllocatesNothingWarm()
@@ -1352,7 +2777,8 @@ public sealed partial class MirBorrowsTest
                 var z = 3
                 var w: ref/i32 = x@ref
                 var r = w@uniq
-                var o = Outer.init(Wrap.init(r@follow@raw@raw/u8))
+                let c = r@ref
+                var o = Outer.init(Wrap.init(c@follow@follow@raw@raw/u8))
                 o.put(z@ref)
                 var t = Wrap.init(r@follow@raw)
                 t.put(z@ref)
@@ -1369,4 +2795,22 @@ public sealed partial class MirBorrowsTest
         }));
         Assert.Contains("limited: o.put(z@ref) Unsupported_Kd", Problems(c, program!, [DiagnosticCode.Unsupported_Kd]));
     }
+
+    // The tied rows' program: `name` over S is Mk (with `parameters` after s), r tied to s absorbing an input, then r's setQ storing w's
+    // address, r consumed and y written.
+    private static string Tied(string name, string absorb, string parameters)
+        => Prelude + """
+            contract Mk
+                associate R(source) is Abs for ref/Self during source
+                func opn(self: ref/Self during source) -> Self.R(source)
+            contract Abs
+                func absorb(self: uniq/Self, v: Option<raw/u8>)
+                func absorbR(self: uniq/Self, v: raw/u8)
+                func absorbT(self: uniq/Self, v: (raw/u8, i32))
+                func setQ(self: uniq/Self, q: raw/u8)
+            func consume<T>(x: T) => ()
+
+            """ + $"func {name}<S>(s: S{parameters})\n    S is Mk\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n" +
+            (absorb.Length > 0 ? $"    var m: raw/u8 = Raw.allocate<u8>(1)\n    var r = s.opn()\n    {absorb}\n" : "    var r = s.opn()\n") +
+            "    r.setQ(w@raw@raw/u8)\n    consume(r@move)\n    y = 5\n";
 }

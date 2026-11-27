@@ -9,8 +9,9 @@ namespace Kimi.Compiler.Mir;
 //   premises make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
 //   Adapts; an operator takes its operands in the operator table's domain, Operates; a keyed Storage's key is one whose start is
 //   open by the one rule of the start, MirTypes.StartsAtStorage: Keyed); every Semantics case view resolves each
-//   Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); and the temps whose
-//   Type the tier reads as unknown (Unknown).
+//   Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); each view borrows a
+//   Closure callee in the receiver its case admits (Receivers, SPEC 7.7.3); and the temps whose Type the tier reads as unknown
+//   (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
 //   and their Places; the body's case views (MirCases).
 // - Outputs: Type, Operation and SharedPath findings; the case sites for Views (caseSites: the Adapts whose Places and token are in range
@@ -22,6 +23,11 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirValidator
 {
     private bool[] unknown = [];
+
+    // Whether an rvalue takes its Type from its operands, a Use, a unary operator, an arithmetic, bit or shift operator: an unknown first
+    // operand makes it unknown (Unknown), and an unknown operand agrees with it.
+    private static bool Propagates(in MirRvalue rvalue)
+        => rvalue is { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } or { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq };
 
     // The temps an Opaque value defines, whose Type is the replaced syntax's, which Binding may not know (an Error node has none), and those a
     // Use, a unary operator or an arithmetic, bit or shift operator of such a temp defines, whose Type is that operand's: the Type tier reads
@@ -49,9 +55,7 @@ internal sealed partial class MirValidator
 
                 if (rvalue.Kind != MirRvalueKind.Opaque)
                 {
-                    if (rvalue is not { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } and not
-                        { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq } ||
-                        (uint)rvalue.Start >= (uint)operands.Length)
+                    if (!Propagates(rvalue) || (uint)rvalue.Start >= (uint)operands.Length)
                     {
                         continue;
                     }
@@ -77,15 +81,20 @@ internal sealed partial class MirValidator
         // MirValidator.SharedPaths); a PairAcquire's Place, where the view makes it Reborrow (MirCases.Reborrows; SPEC 3.5's rows, the owner
         // case's target included, DECISIONS R5-M139's (b2) line), passes none either; one finding per Adapt or PairAcquire, at the first
         // view that breaks one of them.
-        internal void Views(MirCases cases)
+        internal void Views(MirCases cases, ulong[]? reached)
         {
             var views = MirCases.Count(body);
-            foreach (var (site, source) in caseSites)
+            foreach (var (site, source, block) in caseSites)
             {
                 this.at = source;
                 for (var view = 0L; view < views; view++)
                 {
                     var assignment = cases.Select(body, view);
+                    if (reached is not null && (reached[block] & (1UL << (int)view)) == 0)
+                    {
+                        continue; // R7 plan Z23: a site on a case branch's side the view does not take (MirValidator.BlockViews).
+                    }
+
                     if (site.Kind == MirRvalueKind.Use)
                     {
                         ref readonly var acquire = ref body.Operands[site.Start];
@@ -101,7 +110,7 @@ internal sealed partial class MirValidator
                     var resolved = cases.Adapt(site, out var operation);
                     var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
                         ? cases.Type(stored) : null;
-                    if (operation == ConversionBinding.None || (borrowed is not null && !MirTypes.Agrees(body, resolved.Type!.Components[0], borrowed)))
+                    if (operation == ConversionBinding.None || (borrowed is not null && !MirTypes.Agrees(types, body, resolved.Type!.Components[0], borrowed)))
                     {
                         this.Report(MirViolation.Operation);
                         break;
@@ -117,6 +126,44 @@ internal sealed partial class MirValidator
             }
         }
 
+        // SPEC 7.7.3 (PLAN G13): a value call borrows its Closure callee as the view's case admits. A callee operand whose case Type is a
+        // reference to C, a Closure with the call receiver input (TyCtxt.HasReceiverInput), in a view whose case of C has a Shared or
+        // Exclusive receiver (TyCtxt.ClosureReceiverIn) other than the reference's breaks the builder's contract (MirBuilder.Calls: each
+        // side of a by-case call is reached in the views of its receiver): `uniq/C` acquires more than a Shared receiver admits and `ref/C`
+        // supplies no Exclusive call. A callee of unknown Type (TypeOf: an Opaque value's, where Binding failed its acquisition) is not
+        // read. One finding per call, at the first view that breaks it, only in views that reach its block.
+        internal void Receivers(MirCases cases, ulong[]? reached)
+        {
+            var views = MirCases.Count(body);
+            for (var block = 0; block < body.Blocks.Length; block++)
+            {
+                var call = body.Blocks[block].Terminator;
+                if (call is not { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value })
+                {
+                    continue;
+                }
+
+                this.at = call.Source;
+                var operand = this.TypeOf(call.Operand);
+                for (var view = 0L; view < views; view++)
+                {
+                    if (reached is not null && (reached[block] & (1UL << (int)view)) == 0)
+                    {
+                        continue; // A call on a case branch's side the view does not take (MirValidator.BlockViews).
+                    }
+
+                    _ = cases.Select(body, view);
+                    if (cases.KnownType(operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var closure] } callee &&
+                        types.HasReceiverInput(callee) && types.ClosureReceiverIn(closure) is (SemanticsKind.Ref or SemanticsKind.Uniq) and var receiver &&
+                        receiver != callee.Semantics)
+                    {
+                        this.Report(MirViolation.Operation);
+                        break;
+                    }
+                }
+            }
+        }
+
         // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type; an integer one converts Types
         // with the integer operators, concrete or generic (MirTypes.IsArithmeticInteger).
         private static bool Casts(MirCastKind kind, BoundType source, BoundType target) => kind switch
@@ -125,8 +172,8 @@ internal sealed partial class MirValidator
             MirCastKind.Floating => source.IsFloatingPoint && target.IsFloatingPoint,
             MirCastKind.Numeric or MirCastKind.Bits => source.IsFloatingPoint
                 ? MirTypes.IsArithmeticInteger(target) : MirTypes.IsArithmeticInteger(source) && target.IsFloatingPoint,
-            MirCastKind.Pointer => source.Semantics == SemanticsKind.Raw && (target.Semantics == SemanticsKind.Raw || ReferenceEquals(target, BoundType.USize)),
-            MirCastKind.IntToPointer => MirTypes.IsArithmeticInteger(source) && target.Semantics == SemanticsKind.Raw,
+            MirCastKind.Pointer => source.IsPointer && (target.IsPointer || ReferenceEquals(target, BoundType.USize)),
+            MirCastKind.IntToPointer => MirTypes.IsArithmeticInteger(source) && target.IsPointer,
             MirCastKind.Upcast => source.Semantics == target.Semantics && (source.HandleMode is not null || source.IsObjectBorrow),
             MirCastKind.Erasure => source.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && target.Kind == BoundTypeKind.Function,
             _ => false,
@@ -139,7 +186,7 @@ internal sealed partial class MirValidator
         // SPEC 13.4, 8.2.3: what a comparison BinaryOp's operand compares: its Type as the body's premises make it (MirTypes.Premised, the
         // premising Binding.OperandTerminal applies too), before the walk, so a layer a premise gives is walked too, down to a raw layer,
         // which stops the walk; unknown (null) for the Never value. A check over Binding's decision, never a reader of it.
-        private readonly BoundType? PremisedTerminal(BoundType? type) => type is null ? null : Terminal(MirTypes.Premised(body, type));
+        private readonly BoundType? PremisedTerminal(BoundType? type) => type is null ? null : Terminal(MirTypes.Premised(types, body, type));
 
         // SPEC 13.2-13.4, 5.3, 8.2.3: an operator rvalue's operation takes its operand at its premised terminal (PremisedTerminal; the
         // Backend's column reads the instance's terminal too), the right one's where the left is the Never value, whose unknown Type takes
@@ -163,7 +210,7 @@ internal sealed partial class MirValidator
 
         private readonly void Agree(BoundType? expected, BoundType? actual)
         {
-            if (!MirTypes.Agrees(body, expected, actual))
+            if (!MirTypes.Agrees(types, body, expected, actual))
             {
                 this.Report(MirViolation.Type);
             }
@@ -171,8 +218,8 @@ internal sealed partial class MirValidator
 
         // The Type of an aggregate's operand, as its shape (Shape) gives it: its element, or the base, then the Fields of its parts.
         private readonly BoundType? Component(in AggregateShape shape, int index) => shape.Element ?? (shape.Base is null
-            ? body.ProjectedType(shape.Parts, MirProjectionKind.Field, index)
-            : index == 0 ? shape.Base : body.ProjectedType(shape.Parts, MirProjectionKind.Field, index - 1));
+            ? body.ProjectedType(types, shape.Parts, MirProjectionKind.Field, index)
+            : index == 0 ? shape.Base : body.ProjectedType(types, shape.Parts, MirProjectionKind.Field, index - 1));
 
         // SPEC 8.14: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
         // into its target Type. A Place or a constant out of range is the walk's finding.
@@ -210,23 +257,24 @@ internal sealed partial class MirValidator
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
                     >= MirBinaryOp.Eq => MirTypes.Agree(this.PremisedTerminal(first), this.PremisedTerminal(second)),
-                    MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
-                    _ => MirTypes.Agrees(body, first, second),
+                    MirBinaryOp.Add or MirBinaryOp.Sub when first is { IsPointer: true } => second is null || ReferenceEquals(second, BoundType.ISize),
+                    _ => MirTypes.Agrees(types, body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
-                // O-92 (a): exactly the built-in range-selection receivers, never through a reference; a raw pointer to their element.
+                // O-92 (a): exactly the built-in range-selection receivers, never through a reference, and a raw pointer, whose elements
+                // start at its value (SPEC 5.3; Storage.viewStart's form, MirBuilder.Calls); a raw pointer to their element.
                 MirRvalueKind.Storage => (rvalue.Type, place is null ||
-                    (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
-                    rvalue.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var element] } &&
-                    MirTypes.Agrees(body, element, place.Components[0]) && this.Keyed(operands, first))),
+                    ((place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice || place.IsPointer) &&
+                    rvalue.Type is { IsPointer: true, Components: [var element] } &&
+                    MirTypes.Agrees(types, body, element, place.Components[0]) && this.Keyed(operands, first))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||
-                    (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && MirTypes.Agrees(body, referent, place) &&
+                    (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && MirTypes.Agrees(types, body, referent, place) &&
                     (MirRefKind)rvalue.Op switch
                     {
                         MirRefKind.Shared => reference.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef,
-                        MirRefKind.Raw => reference.Semantics == SemanticsKind.Raw,
+                        MirRefKind.Raw => reference.IsPointer,
                         _ => MirTypes.IsExclusive(reference),
                     })),
                 _ => (rvalue.Type, true),
@@ -242,18 +290,18 @@ internal sealed partial class MirValidator
                 this.Agree(second, first); // Binding's source Type, the token, is the operand's.
                 if (second is not null && this.IsValid(operands[0].Place) && this.IsValid(rvalue.Place))
                 {
-                    caseSites.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
+                    caseSites.Add((rvalue, this.at, this.atBlock)); // Its case views resolve it: its Places and token are in range.
                 }
             }
             else if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0 } && operands[0] is { Kind: MirOperandKind.PairAcquire } acquire &&
                 this.IsValid(acquire.Place))
             {
-                caseSites.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
+                caseSites.Add((rvalue, this.at, this.atBlock)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
             }
 
             if (rvalue.Kind == MirRvalueKind.Aggregate)
             {
-                var shape = Shape(rvalue); // Its Count is the operands' (Rvalue's Arity).
+                var shape = this.Shape(rvalue); // Its Count is the operands' (Rvalue's Arity).
                 for (var i = 0; i < operands.Length; i++)
                 {
                     this.Agree(this.Component(shape, i), this.TypeOf(operands[i]));

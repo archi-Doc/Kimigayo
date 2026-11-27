@@ -12,9 +12,16 @@ public sealed partial class Binding
     private readonly PropertyUpdateStorageRows propertyUpdateStorage;
     private readonly PropertyUpdateInputRows propertyUpdateInputs;
 
-    internal static bool IsGetterResult(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
-            KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
+    // SPEC 13.7.1: whether a node, taken as its outermost group (Grouped), is the target of `=` (write) or of a compound assignment,
+    // `++` or `--` (an update): a Property use's write role, read by its binding and IsGetterResult (UseOf reads the same role from the
+    // parent's HirOp: D-827).
+    internal static bool IsWriteTarget(Koto node, out bool write)
+    {
+        var target = Grouped(node);
+        var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+        write = assignment && target.Parent!.Akind == KotoKind.Equals;
+        return assignment || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+    }
 
     // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
     // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
@@ -39,18 +46,47 @@ public sealed partial class Binding
     internal InvocationKoto? PropertyCall(Koto node, PropertyAccessorKind kind)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        if (node.BindingState != BindingState.Resolved || node.BoundSymbol?.Property is not { } property ||
-            (IsSpecialField(node, out var special) && special.IsConstructor))
+        if (node.BindingState != BindingState.Resolved || node.BoundSymbol?.Property is not { } property)
         {
             return null;
         }
 
-        return !(kind == PropertyAccessorKind.Get ? property.Getter : property.Setter).IsStandard &&
+        return !StorageAccess(node, kind == PropertyAccessorKind.Get ? property.Getter : property.Setter) &&
             this.propertyCalls.GetValueOrDefault((node, kind)) is { BindingState: BindingState.Resolved } call ? call : null;
     }
 
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
+
+    // SPEC 6.3.4, 11.2, 11.7: whether an accessor is the storage at a node, no call: a constructor's own Field (its first placement writes
+    // the storage, a custom setter included) or a standard accessor. Read per accessor by PropertyCall (its guard), the access binding
+    // (Binding.Names), BindPropertyUpdate's two sides, CallsAccessor and DirectAccess.
+    private static bool StorageAccess(Koto node, BoundAccessor accessor) => (IsSpecialField(node, out var special) && special.IsConstructor) || accessor.IsStandard;
+
+    // Whether Binding accesses a stored Property's storage directly at a node it did not refuse: the operation's accessor (an update's
+    // `get`), and an update's `set`, are the storage there (StorageAccess); otherwise the access binding binds their calls. Read by the
+    // access binding and by FailedField, for which it is the Field Op's storage fact, not an Op decision.
+    private static bool DirectAccess(Koto node, BoundProperty property)
+    {
+        var update = IsWriteTarget(node, out var write) && !write;
+        return StorageAccess(node, write ? property.Setter : property.Getter) && (!update || StorageAccess(node, property.Setter));
+    }
+
+    // SPEC 11.3.1, 13.7.1, 13.7.2: whether a write's or an update's target calls an accessor of its Property, each present one its
+    // operation uses that is no storage access (StorageAccess): the `set` of a write or an update, and an update's `get` (step 2; a write
+    // calls no `get`, 13.7.1 step 2); each call takes its receiver whole.
+    private static bool CallsAccessor(Koto node, BoundProperty property) => IsWriteTarget(node, out var write) &&
+        ((property.Setter.IsPresent && !StorageAccess(node, property.Setter)) || (!write && property.Getter.IsPresent && !StorageAccess(node, property.Getter)));
+
+    // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
+    // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
+    // is standard. That target locates the Field's Place, and the target's own getter is not called for it; an update's read by the
+    // getter is a value, which no Place walk takes. A getter result, and every path rooted in it, stays a root (11.5). Read by
+    // NextPathStep, PlaceOriginSource, ElementAccess's path roots and ClosureEffects' owned-part climb; NextPathStep's InlinePart case,
+    // IsBarePlace, IsStaticField and TakeJudgment still decide the Field's Place on their own (D-827).
+    private static bool IsGetterResult(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
+            place.BoundSymbol?.Property is { Getter.IsStandard: false } property && !(property.Setter.IsStandard && IsWriteTarget(place, out _));
 
     // PLAN G949 S1-e: every library accessor with a body gets its executing function, numbered, by the last declaration step, after the
     // headers gave its Types: the set the MIR builder executes (MirBuilder.Module), so no later phase numbers a library node (c17).
@@ -81,7 +117,7 @@ public sealed partial class Binding
     private bool ValidPropertyWritePath(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        while (node is BinaryKoto projection && (projection is MemberAccessKoto || ElementAccess.IsSyntax(projection)))
+        while (node is BinaryKoto projection && (projection is MemberAccessKoto || this.IsSyntax(projection)))
         {
             node = KotoHelper.UnwrapParentheses(projection.Left);
             if (node.BoundType?.Semantics != SemanticsKind.Owner)
@@ -104,14 +140,16 @@ public sealed partial class Binding
     // complete theirs: the read Type (the node's) and the destination Type (its computed input's, PropertyUpdateDestination), to which
     // the update's operation fits its result. A standard `get` reads and a standard `set` writes the Field's Place as the body reads it
     // (MemberRead), which also types the storage node; a custom accessor's Type is its call's. A side without a Type leaves the update
-    // unresolved, as the read is. The storage is reached through the receiver the target names: a bare static Property names none, so
-    // its update is the located Unsupported_Kd until P42 binds a static Property's update (the qualified form is the later phases' limit).
+    // unresolved, as the read is. The storage is reached through the receiver the target names, located once as an exclusive borrow of
+    // the referent below its safe value-reference layer (LayerBelow; a pair layer followed as its accessor calls follow it, PLAN G1112):
+    // a bare static Property names none, so its update is the located Unsupported_Kd until P42 binds a static Property's update (the
+    // qualified form is the later phases' limit).
     private BoundType? BindPropertyUpdate(Koto target, BindingScope scope)
     {
         var property = target.BoundSymbol!.Property!;
         var stored = this.MemberRead(target, property.Symbol, scope);
-        var result = property.Getter.IsStandard ? stored : this.AccessorUseType(target, property.Getter);
-        var destination = property.Setter.IsStandard ? stored : this.AccessorUseType(target, property.Setter);
+        var result = StorageAccess(target, property.Getter) ? stored : this.AccessorUseType(target, property.Getter);
+        var destination = StorageAccess(target, property.Setter) ? stored : this.AccessorUseType(target, property.Setter);
         if (result is null || destination is null)
         {
             return Complete(target, null);
@@ -124,7 +162,7 @@ public sealed partial class Binding
 
         Complete(this.propertyUpdateInputs[node], destination);
         var owner = node.Left.BoundType!;
-        var referent = owner is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? owner.Components[0] : owner;
+        var referent = this.LayerBelow(owner, scope) ?? owner;
         var type = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
         if (!this.AdaptInput(node.Left, FixedPattern.Open(type), owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
@@ -157,7 +195,7 @@ public sealed partial class Binding
     // `get`'s result (the read Type).
     private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
         => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
-            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind)) is { } setter && this.CallOf(setter) is { ArgumentOperations.Length: > 0 } call
                 ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
@@ -212,9 +250,10 @@ public sealed partial class Binding
             var mistyped = this.AccessorTypeMismatch(accessor);
             var inputType = accessor.Input is { } declaredInput ? Signature(mistyped ? accessor.Property.Type! : declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
-            // is the declaration error of SPEC 11.3, not a limit of this path.
-            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
-                (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
+            // is the declaration error of SPEC 11.3, not a limit of this path. A receiver's Type comes from the declaring Type the
+            // member selection published (LookupMember), as a method call's does (CallDeclaringType): any struct, the compiler-managed
+            // Array, Dictionary and Slice included; a requirement member selected without one stays Unsupported.
+            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (receiverType.SafeReferent is null || declaringType is null);
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
                 Signature(mistyped && accessor.Kind == PropertyAccessorKind.Get ? accessor.Property.Type! : declaredResult) is not { } result ||
                 (accessor.Input is not null && inputType is null) || inputType is { CarriesAnyOrigin: true } ||
@@ -247,7 +286,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                var proof = selection.Path is null ? ConstraintProof.Proven : ProjectedReceiverProof(accessor.Property.Symbol, accessor);
+                var proof = selection.Path is null ? ConstraintProof.Proven : this.ProjectedReceiverProof(accessor.Property.Symbol, accessor);
                 if (proof != ConstraintProof.Proven)
                 {
                     this.Fail(node, proof == ConstraintProof.Unknown ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
@@ -263,6 +302,9 @@ public sealed partial class Binding
                 receiverOperation = new(receiver, actual, adapted, kind, quality, selection.Path, 0, proof);
             }
 
+            // SPEC 13.7.1: the input the update at `node` computed (its propertyUpdateInputs row) stands for an operand the expansion
+            // already evaluated, the call's Evaluated argument; a write's input is its source operand.
+            var evaluated = input is not null && ReferenceEquals(input, this.propertyUpdateInputs.GetValueOrDefault(node));
             if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
                 call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
                 (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
@@ -270,7 +312,7 @@ public sealed partial class Binding
             {
                 var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
                 Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
-                call = new(node, method, arguments) { CallStorage = new() { Evaluated = input is EvaluatedKoto ? 0 : -1 } };
+                call = new(node, method, arguments) { CallStorage = new() { Evaluated = evaluated ? 0 : -1 } };
                 this.propertyCalls[(node, accessor.Kind)] = call;
             }
 
@@ -283,7 +325,7 @@ public sealed partial class Binding
             var count = 0;
             if (input is not null)
             {
-                if (input is EvaluatedKoto)
+                if (evaluated)
                 {
                     Complete(input, inputType); // The update supplies its checked Output, never the original RHS.
                 }
@@ -327,7 +369,7 @@ public sealed partial class Binding
 
                 result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
 
-                call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
+                call.CallStorage!.Set(this, function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
                 for (var i = 0; i < count; i++)
                 {
@@ -340,6 +382,8 @@ public sealed partial class Binding
                     Binding = this, Call = call, Binder = function, Origins = origins, Inputs = inputs, DeclaringType = declaringType, Rows = rows.AsSpan(0, count),
                 };
                 this.JudgeSelectedCall(call, solution, operations.AsSpan(0, count + 1), []);
+                this.RequireResultPremises(function, result, call); // SPEC 15.6.1, 15.6.4 step 3: the getter's result premises.
+                this.AddSynthesizedCall(node, call); // SPEC 11.3, 15.6.4 step 3: its Types' formation, judged as every call's, at the use (Check).
                 Complete(call, result);
                 return true;
             }

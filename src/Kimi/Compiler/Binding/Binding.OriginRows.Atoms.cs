@@ -2,7 +2,7 @@
 
 // The C1-F4 view's atom table (2a0-D §3, D4, D7; DECISIONS R4-M101 E4, E5): an atom's identity (resolved at its use, a meet canonical),
 // its class in a body by §3's precedence, first match deciding, the part of a constructor's slice it belongs to (E4), and the index MIR
-// reads an atom by (OriginAtomIn, at a MIR site).
+// reads an atom by (OriginAtomIn, at a MIR site; MeetOperandIn, an operand of a table meet as the meet holds it).
 // Input: an atom, the slice it is interned in and the use or MIR site it is resolved at. Output: the atom's index in the slice's table and
 // its part (OriginRowSet.InLayer).
 // Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives, and a Dependent atom (an end a
@@ -10,7 +10,8 @@
 // a complete compilation (BrokenContract, DECISIONS BU-102); roots by the forming body for non-declaration binders and by slot role for
 // declaration binders; an atom's part is its forming unit's on every path (PartOf; DECISIONS R4-M114, BU-102): a declaration atom or
 // another body's names none, and a unit names a non-Fixed atom of its own part or none (else a broken contract). An atom is stored only
-// after its class's check passes, and the part check runs at every read.
+// after its class's check passes, and the part check runs at every read. A table atom is resolved once, when it is interned: nothing
+// resolves a table atom or a part of one again (PLAN G492-a (ii), the owner's O-385 (a)).
 // Must not: let a slot or binder leave the view (only ProjectionRole does, D7).
 
 using Kimi.Compiler.Parsing;
@@ -29,6 +30,18 @@ public sealed partial class Binding
         return this.InternAtom(slice, atom, use, PartOf(atom, slice));
     }
 
+    // An operand of a meet atom of a body's table (TyCtxt.MeetOperand: MeetNode's rule and A5's meet law), as the meet holds it. The meet
+    // was resolved once, when it was interned (a row's end as the row reads it, a MIR Origin at its site), and its operands with it, so
+    // an operand is interned as it is and never resolved again: a `let` region a Compared row names stays the region (PLAN G492-a (ii)).
+    // The site only locates a broken contract, which the meet's classification excludes (it classed every operand when it was interned).
+    // A row-6 local region's operands are its solved value's, the value itself when it is no meet (OriginAtomEntry.HeldOperand).
+    internal int MeetOperandIn(ExecutableBody body, int meet, int index, SourceRef site)
+    {
+        var slice = this.OriginRows(body);
+        var operand = slice.Atoms[meet].HeldOperand(index);
+        return this.InternAtom(slice, operand, this.compilation.SyntaxOf(site), PartOf(operand, slice));
+    }
+
     // SPEC 15.3.6: the canonical meet of two atoms of a body's table (TyCtxt.MeetAtom), interned and classed there like every atom.
     internal int MeetAtomIn(ExecutableBody body, int a, int b, SourceRef site)
     {
@@ -36,6 +49,12 @@ public sealed partial class Binding
         var meet = this.Meet(slice.Atoms[a].Atom, slice.Atoms[b].Atom);
         return this.InternAtom(slice, meet, this.compilation.SyntaxOf(site), PartOf(meet, slice));
     }
+
+    // The view's rows 1 and 9 for a declaration's atom, a universal or per-call Origin: Fixed in body B when its binder is B's contract
+    // (its or an enclosing declaration's), else another declaration's atom, Unclassed: an end no row of B judges (ClassifyAtom). Obligation
+    // formation reads the same predicate: a relation with such an end is its nested signature's declaration row, in no body (ForeignEnd).
+    internal bool ForeignDeclarationAtom(BoundOrigin atom, ExecutableBody body)
+        => atom.Kind is OriginKind.Parameter or OriginKind.Input && !this.InContract(atom.Binder, body);
 
     // E4 (DECISIONS R4-M114, BU-102): an atom's part in a constructor's slice, the part whose unit formed it (1 the body's own, 2 its
     // layer's, the Field initializers'), a meet its operands' parts; a declaration atom or another body's names none, as no unit forms it.
@@ -70,16 +89,17 @@ public sealed partial class Binding
     };
 
     // Whether an atom is a root of a body, by the body that formed it (a non-declaration binder) or by its slot's role (E5): parameter j
-    // of f is a root of f's body and of each template (f, i) with j < i; a receiver and a helper borrow of their own body; an environment
-    // binding and a call result of their Closure's; a Closure literal's value of the body that evaluates it; an accessor's self and value
-    // of the accessor's; a Property's storage of each of its accessors' (one atom, whichever formed it first).
+    // of f is a root of f's body and of each template (f, i) with j < i, and a receiver and a helper borrow of f's body alone (SPEC 7.2.3,
+    // ParameterInScope); an environment binding and a call result of their Closure's; a Closure literal's value of the body that
+    // evaluates it; an accessor's self and value of the accessor's; a Property's storage of each of its accessors' (one atom, whichever
+    // formed it first).
     private static bool RootOf(BoundOrigin atom, ProjectionRole role, ExecutableBody body) => role switch
     {
         ProjectionRole.None or ProjectionRole.Place => atom.Body == body,
         ProjectionRole.Storage => body.Definition?.Declaration is PropertyAccessorKoto { Parent: var property } && ReferenceEquals(property, atom.Binder),
         ProjectionRole.ClosureValue => body.IsBody && EvaluatingBody(new(atom.Binder!.BoundSymbol)) == body,
-        ProjectionRole.Parameter when atom.Binder is FunctionKoto => DeclaredBy(atom, body) && (body.Index < 0 || (uint)atom.Slot < (uint)body.Index),
-        ProjectionRole.Receiver or ProjectionRole.Helper => DeclaredBy(atom, body) && body.Index < 0,
+        ProjectionRole.Parameter or ProjectionRole.Receiver or ProjectionRole.Helper when atom.Binder is FunctionKoto
+            => DeclaredBy(atom, body) && ParameterInScope(atom.Slot, body.Index),
         _ => DeclaredBy(atom, body),
     };
 
@@ -107,6 +127,7 @@ public sealed partial class Binding
     // checked before the atom is stored.
     private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte unit)
     {
+        atom = this.CompletedOrigin(atom); // R7-O2 O2-F: a deferred slot's atom Final proved enters the view as its completion.
         IOriginRowSetBuilder builder = slice;
         if (!builder.Index.TryGetValue(atom, out var index))
         {
@@ -143,8 +164,7 @@ public sealed partial class Binding
                 // DECISIONS BU-100: fixed in every body; its callers prove every choice, so only `static` can carry it into one.
                 return new(atom, OriginAtomKind.Fixed, ProjectionRole.None);
             case OriginKind.Parameter or OriginKind.Input:
-                // Rows 1 and 9: B's contract (its or an enclosing declaration's), or another declaration's universal atom.
-                return new(atom, this.InContract(atom.Binder, slice.Body) ? OriginAtomKind.Fixed : OriginAtomKind.Unclassed, ProjectionRole.None);
+                return new(atom, this.ForeignDeclarationAtom(atom, slice.Body) ? OriginAtomKind.Unclassed : OriginAtomKind.Fixed, ProjectionRole.None);
             case OriginKind.Intersection:
                 return this.ClassifyMeet(atom, slice);
             case OriginKind.Unbound:
@@ -176,7 +196,9 @@ public sealed partial class Binding
 
         if (EnclosingAtom(atom, slice.Body))
         {
-            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom)); // Row 6: an enclosing body's atom, and whether it is a call region.
+            // Row 6: an enclosing body's atom, whether it is a call region, and for a region B carries, in turn included, its value
+            // (CarriedRegion; R7-O2 A1): A5 judges a relation the region fails at a longer end as the value's (PLAN G492-a (ii)).
+            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom), this.CarriedRegion(atom, slice.Body.Definition?.Declaration, out var value) ? value : null);
         }
 
         return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.
@@ -231,7 +253,8 @@ public sealed partial class Binding
         return new(meet, kind, ProjectionRole.None, region);
     }
 
-    // SPEC 15.3.4: a declaration atom is B's contract when its binder owns B's definition or a scope enclosing it.
+    // SPEC 15.3.4: a declaration atom is B's contract when its binder owns B's definition or a scope enclosing it; SPEC 8.13.2: a verified
+    // specialization keeps its original's call contract, so the original's binders (an inherited result-only Origin) are its contract too.
     private bool InContract(Koto? binder, ExecutableBody body)
     {
         if (this.BodyRoot(body) is not { } root)
@@ -247,6 +270,6 @@ public sealed partial class Binding
             }
         }
 
-        return ReferenceEquals(root, binder);
+        return ReferenceEquals(root, binder) || (root is FunctionKoto function && ReferenceEquals(this.GetSpecializationOriginal(function), binder));
     }
 }

@@ -33,7 +33,24 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
     private readonly HoverBudget budget = new(maximumWork: 4 * HoverLimits.Work);
 
     internal static HoverSnapshot Create(Compilation compilation)
-        => compilation.HoverFailure is { } failure ? throw new InvalidOperationException(failure) : new HoverBuilder(compilation.Semantics).Build();
+    {
+        if (compilation.HoverFailure is { } failure)
+        {
+            throw new InvalidOperationException(failure);
+        }
+
+        // PLAN G651 U2b R5 (C-R3): the one editor entry to Binding's after-pass readers is a body site whose marks are dropped (a query
+        // follows publication, SPEC 23.4).
+        var site = compilation.Types.OpenBodySite(default);
+        try
+        {
+            return new HoverBuilder(compilation.Semantics).Build();
+        }
+        finally
+        {
+            _ = compilation.Types.CloseBodySite(site);
+        }
+    }
 
     private HoverSnapshot Build()
     {
@@ -52,7 +69,8 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
             }
         }
 
-        foreach (var module in compilation.SourceModules.Append(query.Library.Kotonoha))
+        var (sources, library) = compilation.BoundModules;
+        foreach (var module in sources.Append(library))
         {
             foreach (var source in module.SourceDocuments)
             {
@@ -604,7 +622,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         parts[1] = this.OriginIdentity(type.Origin);
         parts[2] = this.LengthIdentity(type.LengthExpression);
         // Hidden storage still depends on the complete static context, even when the public signature is unchanged.
-        parts[3] = type.ClosureContext is { } context ? this.SubstIdentity(context) : HoverKey.Missing;
+        parts[3] = type.InstanceContext is { } context ? this.SubstIdentity(context) : HoverKey.Missing;
         var index = 4;
         foreach (var component in type.Components)
         {

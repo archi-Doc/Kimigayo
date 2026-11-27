@@ -16,7 +16,8 @@ namespace Kimi.Compiler.Mir;
 /// entry), then each block's statements and terminator. Every line that comes from syntax ends with it, <c>@id</c> (<c>@module:id</c>
 /// outside module 0, <c>@Kimi:id</c> in the library), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
 /// statement starts. Types and lengths are spelled as diagnostics spell them (TyCtxt.Name). Places: <c>(*p)</c> Deref,
-/// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
+/// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index (<c>p[_3 = 5]</c> with its constant index), <c>p[2]</c> ConstIndex,
+/// <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
 /// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; a view's start <c>storage(_1)</c>, keyed
 /// <c>storage(_1, copy _2, const type R)</c>; an Opaque value <c>opaque 0: T</c>; a case
 /// adaptation <c>adapt(copy _1, const type T) payload (_1@b0): s/T shorthand</c>, its payload where it is not the operand's Place and
@@ -100,10 +101,11 @@ internal static partial class MirDump
         for (var i = 0; i < body.OpaqueSites.Length; i++)
         {
             var site = body.OpaqueSites[i];
-            Source(text.Append("  opaque ").Append(i), site.Source).Append(':');
-            foreach (var root in body.OpaqueRoots.Slice(site.Start, site.Count))
+            Source(text.Append("  opaque ").Append(i), site.Source).Append(site.Kept > 0 ? $" kept {site.Kept}" : string.Empty)
+                .Append(site.Enclosing > 0 ? $" enclosing {site.Enclosing}" : string.Empty).Append(':');
+            foreach (var use in body.OpaqueUses.Slice(site.Start, site.Count))
             {
-                Place(text.Append(' '), body, new(root));
+                Place(text.Append(' '), body, use);
             }
 
             text.Append('\n');

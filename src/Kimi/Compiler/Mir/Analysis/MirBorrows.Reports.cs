@@ -9,17 +9,16 @@ namespace Kimi.Compiler.Mir;
 // next use in its chain or, past it, its declaration, the location for a value an access takes, a transit value's or E's store; none for
 // a destruction's own hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, the
 // default's operation (Evaluated) with the outermost omitting call as subject (D13); the limit records, through the one recorder Limit
-// (R4-M153): a located Unsupported_Kd where the stratum classifies nothing, and in a view PD13 holds (MirBorrows.CallRows' held; R4-M126
-// (iii), R4-M148) at every rejection's subject, and OwnershipDepthLimit_Kd where a check's verdict rests on a part past a walk's bound, a
-// conflict only the drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an own-step Warning only the drop
-// tier gives (DroppedDeparture); one per failure, recorded where its check fails (one check's facts met at its one verdict are joined
-// first, MirOutcome.Join), so independent checks at one subject keep their own records (SPEC 23.1.2);
-// InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136). Every rejection but a limit record is
-// recorded through
-// Record(code, requirement, subject, facts), so the hold is one rule there: a Loan conflict through Report(code, anchor, via, at,
-// reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
-// MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement, never
-// through the hold (R4-M116 PQ-8), with no Loan fact (G673).
+// (R4-M153): a located Unsupported_Kd where the stratum classifies nothing, and OwnershipDepthLimit_Kd where a check's verdict rests on
+// a part past a walk's bound, a conflict only the drop tier gives at its drop-live holder's declaration (Report, Ended), as beside an
+// own-step Warning only the drop tier gives (DroppedDeparture); one per failure, recorded where its check fails (one check's facts met
+// at its one verdict are joined first, MirOutcome.Join), so independent checks at one subject keep their own records (SPEC 23.1.2);
+// InternalInvariant_Kd at a Value call whose declared signature does not number its operands (G136) and where E holds what a check found
+// but no store of the body put it there (Found). Every rejection but a limit record is recorded through
+// AddProblem(code, requirement, subject, facts): a Loan conflict through Found(code, found, via, at, reservation, effect), keyed by what
+// the check found, A5-F9's template rules (MirBorrows.Defaults) with their parameter. The own-step Warning (OwnStepDeparture_Kd,
+// MirBorrows.OwnSteps), which is no Loan problem and rejects nothing, is recorded through Departure under its own requirement
+// (R4-M116 PQ-8), with no Loan fact (G673).
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -39,33 +38,28 @@ internal sealed partial class MirBorrows
 
         var tags = found.Tags;
         var live = taking <= Activating ? (tags.Flags & Based) != 0 && Activation(tags.Via) != taking : (tags.Flags & (Based | Stored)) != 0;
-        this.Report(code, this.Site(found.Loan), live ? tags.Via : Taken, at, reservation, effect);
+        this.Found(code, this.loanBase + found.Loan, live ? tags.Via : Taken, at, reservation, effect);
     }
 
-    // A Loan problem at a location (A3 6.4): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes'
-    // requirement.
-    private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation, ProblemFact? effect)
+    // A Loan problem at a location (A3 6.4) of what the check found (a Loan's or a guard marker's element, None for a destruction's own
+    // hold): its subject and facts as MirBorrows.Witnesses builds them, recorded under the four Loan codes' requirement; where E holds it
+    // and no store of the body put it there (no facts), a broken contract, InternalInvariant_Kd at the location.
+    private void Found(DiagnosticCode code, int found, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
-        var (subject, count) = this.Facts(anchor, via, at, reservation, effect);
-        this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.CauseFacts(count));
-    }
-
-    // A rejection with its facts (D7, R4-M98): in a view PD13 holds (R4-M126 (iii), R4-M148) the located Unsupported_Kd at its subject
-    // instead.
-    private void Record(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<ProblemFact> facts)
-    {
-        if (this.held)
+        var (subject, count) = this.Facts(found, via, at, reservation, effect);
+        if (count == 0)
         {
-            this.Limit(subject, MirOutcome.Limit);
+            this.causes.Clear();
+            this.Internal(at);
             return;
         }
 
-        this.AddProblem(code, requirement, subject, facts);
+        this.AddProblem(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.CauseFacts(count));
     }
 
-    // The own-step Warning at a location (SPEC 5.2.1 condition 3, MirBorrows.OwnSteps), under its own requirement, never through the hold
-    // (PQ-8): its subject and, inside an inline default copy, the default's operation (MirBorrows.Witnesses' Evaluated); no Anchor or
-    // witness, which name a Loan, since a pointer formed through an own step creates none (SPEC 5.4; G673).
+    // The own-step Warning at a location (SPEC 5.2.1 condition 3, MirBorrows.OwnSteps), under its own requirement (PQ-8): its subject
+    // and, inside an inline default copy, the default's operation (MirBorrows.Witnesses' Evaluated); no Anchor or witness, which name a
+    // Loan, since a pointer formed through an own step creates none (SPEC 5.4; G673).
     private void Departure(MirLocation at)
     {
         var (subject, count) = this.Evaluated(at, 0);
@@ -80,12 +74,12 @@ internal sealed partial class MirBorrows
         this.Limit(this.Declaration(holder), MirOutcome.Deep);
     }
 
-    // A problem with its facts in the body's views.
+    // A problem with its facts in the body's views (D7, R4-M98).
     private void AddProblem(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<ProblemFact> facts)
         => this.program.Problems.Add(new(code, DiagnosticRequirement.Ownership(requirement), subject, this.body.Ordinal, this.views), facts);
 
     // A broken contract at a location (G136, R4-M148: a Value call's declared signature does not number its operands): InternalInvariant_Kd
-    // at it, which no hold takes.
+    // at it.
     private void Internal(MirLocation at)
     {
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
@@ -93,10 +87,10 @@ internal sealed partial class MirBorrows
     }
 
     // A limit record at a subject (SPEC 23.1.1; R4-M153), what leaves a check there undecided: a Limit, the located Unsupported_Kd (a form
-    // the stratum does not classify, and PD13's held rejection), or Deep, the depth limit (the owner's 「G272: (1)」, a part past a walk's
-    // bound or a call's retention limit); no fact, a conflict's causes (rule W) dropped with it, never held, and kept at its operation inside
-    // an inline default copy, since it depends on the concrete instantiation (R4-M69, R4-M71). The outcome is one check's answer, the Join
-    // of what met at its verdict; nothing for none (and none for decided, which its check records as a Language problem).
+    // the stratum does not classify), or Deep, the depth limit (the owner's 「G272: (1)」, a part past a walk's bound or a call's retention
+    // limit); no fact, a conflict's causes (rule W) dropped with it, and kept at its operation inside an inline default copy, since it
+    // depends on the concrete instantiation (R4-M69, R4-M71). The outcome is one check's answer, the Join of what met at its verdict;
+    // nothing for none (and none for decided, which its check records as a Language problem).
     private void Limit(SourceRef subject, MirOutcome outcome)
     {
         this.causes.Clear();

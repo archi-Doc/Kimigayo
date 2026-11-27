@@ -49,12 +49,12 @@ public sealed partial class Binding
         // SPEC 3.4.3, 4.7, 12.5.1: metadata shares access through safe value references to the sequence; a raw pointer or
         // an object handle is not followed.
         var layers = 0;
-        for (; ReferenceTypes.IsReference(receiver); layers++)
+        for (; receiver?.SafeReferent is { } referent; layers++)
         {
-            receiver = receiver!.Components[0];
+            receiver = referent;
         }
 
-        var utf8 = FormattingTypes.IsUtf8Slice(receiver);
+        var utf8 = receiver?.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice;
         if (!utf8 && receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary))
         {
             return false; // A ResolvedRange exposes its fields and computed Properties through the library struct (SPEC 4.6.2).
@@ -85,20 +85,31 @@ public sealed partial class Binding
     private BoundType? BindIteration(ForKoto source, BindingScope scope)
     {
         var iterable = this.BindNode(source.Iterable, scope);
-        source.Iteration?.Decomposition.Reset(null);
-        var followed = this.PairSubject(source.Iterable, iterable, scope);
-        iterable = followed ?? iterable;
-        source.Mode = this.SubjectModeOf(source.Iterable, iterable);
+        var iteration = source.Iteration ??= new(source);
+        iteration.Decomposition.Reset(null);
+        iteration.Scope.Parent = scope;
+        iteration.Scope.Function = scope.Function;
+        this.ResetSynthetic(iteration.Subject);
+
+        // SPEC 15.1.6, 14.6.2: the Subject acquired by the match's rule; one borrowed in place is the Subject Place `$for.subject`, the
+        // entry call's input at the Place's Type, and any other the iterable itself.
+        var operand = this.BorrowsInPlace(source.Iterable, iterable) ? iteration.Subject : source.Iterable;
+        iterable = this.AcquireSubject(source, source.Iterable, iterable, out var borrow, out var mode);
+        source.Mode = mode;
+        if (ReferenceEquals(operand, iteration.Subject))
+        {
+            this.BindIterationSubject(iteration, iterable!);
+        }
 
         // Every loop uses its Subject's Kimigayo entry, selected by the Subject mode, and iterator: a Dynamic Array's, Dictionary's,
         // fixed array's and Slice's (SPEC 14.6.2, 22.1.2.5) and a ResolvedRange's RangeIterator<isize> (SPEC 4.6.4) included.
         BoundType? element = null;
-        var userEntry = iterable is not null && this.BindUserIteration(source, scope, iterable, out element);
+        var userEntry = iterable is not null && this.BindUserIteration(source, scope, iterable, operand, out element);
 
         // SPEC 14.6.2, 15.1.6: Some delivers one owned item, independently of the entry mode, which the ordinary match plan
         // decomposes: a parenthesized binding by the item's Tuple position and one Binding position per slot, each selected by the
         // Pattern layer step; a single slot binds the item unchanged.
-        var decomposition = userEntry ? this.BeginIterationStep(source, element!) : null;
+        var decomposition = userEntry ? this.BeginIterationStep(source, element!, borrow) : null;
         var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: true);
         var tuple = element;
         if (decomposition is not null && source.IsTupleBinding)
@@ -134,7 +145,7 @@ public sealed partial class Binding
 
             if (decomposition is not null && slot is not null)
             {
-                // Acquired by the match's rule, when the match's bindings are (CompleteIterationAcquisitions).
+                // Acquired by the match's rule, when the match's bindings are (AcquireReferenceBindings, CompleteIterationAcquisitions).
                 var parent = source.IsTupleBinding ? 1 : 0;
                 var position = new BoundPattern(name, slot, BoundPatternKind.Binding, parent, parent * i, decomposition.Positions.Count + 1);
                 decomposition.PositionStorage.Add(position with
@@ -151,6 +162,7 @@ public sealed partial class Binding
         if (decomposition is not null)
         {
             this.EndIterationStep(source, decomposition, tuple);
+            this.AcquireReferenceBindings(decomposition); // Before the body, which states the item bindings' atoms.
         }
 
         this.BindNode(source.Body, scope);
@@ -184,18 +196,20 @@ public sealed partial class Binding
     private BoundType? FailIterationSubject(ForKoto source, BindingScope scope, BoundType subject)
     {
         var entry = this.IterationEntry(source, scope, ref subject, out _);
-        var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope);
+        var proposition = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry));
+        var proof = this.ProveConstraint(proposition, scope, source);
         if (proof == ConstraintProof.Proven)
         {
             return this.Fail(source, BindingFailure.Unsupported);
         }
 
-        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && source.Iterable.BindingFailure == BindingFailure.None && IsRangeShape(subject))
-        {
-            (this.rangeIterationFailures ??= new(ReferenceEqualityComparer.Instance))[source.Iterable] = (subject, entry);
-        }
-
-        this.Fail(source.Iterable, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint);
+        // SPEC 4.6.4: a range Subject's record relates its selected entry (role 2, "entry") and keeps the proposition, whose boundary Types
+        // it shows; the constraint family's record (RecordConstraint), whose read keeps an iterable's first failure (RangeDiagnosticTest's
+        // `missing..3`).
+        this.RecordConstraint(
+            source.Iterable,
+            proof,
+            proof != ConstraintProof.Error && IsRangeShape(subject) ? [new(ProblemFactKind.Related, this.FactSite(entry.Declaration), 2), this.PropositionFact(source.Iterable, proposition)] : []);
         return Complete(source, null);
     }
 
@@ -217,7 +231,7 @@ public sealed partial class Binding
         return source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
     }
 
-    private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
+    private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, Koto operand, out BoundType? item)
     {
         item = null;
         var entry = this.IterationEntry(source, scope, ref subject, out var crossed);
@@ -236,22 +250,24 @@ public sealed partial class Binding
         // (SPEC 4.6.4).
         // A built-in Type's entry conformance is the witness table's (SPEC 22.1): it adds no member, so its requirement is the call.
         var library = WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null;
-        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
-                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
+        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } && this.SelectConformance(subject, entry, scope, source, out _) is not null &&
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope, source) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
         if (!nominal && !this.PremiseRefines(subject, entry, scope))
         {
             return false;
         }
 
+        // The entry call is bound in the loop's scope, as its next call is (BindIterationNext): its input may be the Subject Place.
         this.projectionUses.Add((source, subject, entry));
-        if ((library ? this.BindEntryRequirement(source, scope, subject, entry) : this.BindEntryMember(source, scope, method)) is not { } iterator)
+        var loop = source.Iteration!.Scope;
+        if ((library ? this.BindEntryRequirement(source, loop, subject, operand, entry) : this.BindEntryMember(source, loop, operand, method)) is not { } iterator)
         {
             return false;
         }
 
         this.projectionUses.Add((source, iterator, this.Library.LendingIterator));
-        if (this.BindIterationNext(source, scope, iterator) is not { Components.Count: 1 } option || !ReferenceEquals(option.Symbol, this.Library.Option))
+        if (this.BindIterationNext(source, iterator) is not { Components.Count: 1 } option || !ReferenceEquals(option.Symbol, this.Library.Option))
         {
             return false;
         }
@@ -263,19 +279,19 @@ public sealed partial class Binding
 
     // SPEC 14.6.2, 22.1: a built-in Type's entry conformance (a witness-table row) adds no member, so its entry is the requirement call at
     // the Subject, selected and instantiated as an operator's: the row's witness at a closed Self, the requirement at an abstract one.
-    private BoundType? BindEntryRequirement(ForKoto source, BindingScope scope, BoundType subject, BindingSymbol entry)
+    private BoundType? BindEntryRequirement(ForKoto source, BindingScope scope, BoundType subject, Koto operand, BindingSymbol entry)
     {
-        var call = source.EntryCall = this.BindSelectedRequirement(source, source.EntryCall, [source.Iterable], subject, entry, entry.Contract!.OwnRequirement()!, scope);
-        return call.BindingFailure == BindingFailure.None && call.BoundCall is { } plan ? plan.ReturnType : null;
+        var call = source.EntryCall = this.BindSelectedRequirement(source, source.EntryCall, [operand], subject, entry, entry.Contract!.OwnRequirement()!, scope);
+        return call.BindingFailure == BindingFailure.None && this.CallOf(call) is { } plan ? plan.ReturnType : null;
     }
 
     // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. A declared or abstract entry is the ordinary member call,
     // which keeps receiver acquisition, substitutions and Origins; no method-name fallback grants conformance (ValidateIterationWitnesses).
-    private BoundType? BindEntryMember(ForKoto source, BindingScope scope, string method)
+    private BoundType? BindEntryMember(ForKoto source, BindingScope scope, Koto operand, string method)
     {
-        if (source.EntryCall is not { Method: MemberAccessKoto { Right: IdentifierNameKoto name } } call || name.IdentifierName != method)
+        if (source.EntryCall is not { Method: MemberAccessKoto { Right: IdentifierNameKoto name } written } call || name.IdentifierName != method || !ReferenceEquals(written.Left, operand))
         {
-            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, method));
+            var member = new MemberAccessKoto(source, operand, new IdentifierNameKoto(source, method));
             source.EntryCall = call = new InvocationKoto(source, member, []);
         }
         else
@@ -296,7 +312,8 @@ public sealed partial class Binding
         for (var i = 0; i < this.userIterations.Count; i++)
         {
             var (loop, subject, iterator, entry) = this.userIterations[i];
-            if (loop.EntryCall?.BoundCall is { } call && loop.Iteration?.Next.BoundCall is { } next &&
+            if (loop.EntryCall is { } entryCall && this.CallOf(entryCall) is { } call && loop.Iteration is { } iteration &&
+                this.CallOf(iteration.Next) is { } next &&
                 !(this.SelectsWitness(call.Target, subject, entry) && this.SelectsWitness(next.Target, iterator, this.Library.LendingIterator)))
             {
                 this.Fail(loop, BindingFailure.Ambiguous);
@@ -305,12 +322,12 @@ public sealed partial class Binding
     }
 
     // SPEC 14.6.2, 15.1.6: a user iteration's item bindings are acquired by the match's rule (AcquireBinding) at the same point, after the
-    // declaration checks its Copy proof reads; a loop's plan has no written Pattern Type to recheck.
+    // declaration checks (an owned item's part Moves and asks no Copy); a loop's plan has no written Pattern Type to recheck.
     private void CompleteIterationAcquisitions()
     {
         for (var i = 0; i < this.userIterations.Count; i++)
         {
-            var plan = BoundMatch.Of(this.userIterations[i].Loop);
+            var plan = BoundMatch.Of(this, this.userIterations[i].Loop);
             for (var p = 0; plan is not null && p < plan.PositionStorage.Count; p++)
             {
                 if (plan.PositionStorage[p].Kind == BoundPatternKind.Binding)
@@ -341,9 +358,9 @@ public sealed partial class Binding
         var unverified = false;
         for (var i = 0; i < identities.Count; i++)
         {
-            for (var p = 0; p < identities[i].PathStorage.Count; p++)
+            for (var p = 0; p < this.impls.PathsOf(identities[i]).Count; p++)
             {
-                var path = identities[i].PathStorage[p];
+                var path = this.impls.PathsOf(identities[i])[p];
                 if (!path.IsVerified)
                 {
                     unverified = true; // The conformance reports its own failure.
@@ -364,11 +381,21 @@ public sealed partial class Binding
         return unverified;
     }
 
-    private BoundType? BindIterationNext(ForKoto source, BindingScope scope, BoundType iterator)
+    // SPEC 15.1.6, 14.6.2: the Subject Place of a Subject borrowed in place, a local of the loop's Type `subject` (AcquireSubject's), as
+    // the iterator is (BindIterationNext).
+    private void BindIterationSubject(BoundIteration plan, BoundType subject)
     {
-        var plan = source.Iteration ??= new(source);
-        plan.Scope.Parent = scope;
-        plan.Scope.Function = scope.Function;
+        var symbol = plan.SubjectDeclaration.BoundSymbol ??= new BindingSymbol("$for.subject", BindingSymbolKind.Local, plan.SubjectDeclaration, plan.Scope);
+        symbol.Type = subject;
+        plan.Scope.Values[symbol.Name] = symbol;
+        plan.Subject.BoundSymbol = symbol;
+        Complete(plan.SubjectDeclaration, subject);
+        Complete(plan.Subject, subject);
+    }
+
+    private BoundType? BindIterationNext(ForKoto source, BoundType iterator)
+    {
+        var plan = source.Iteration!;
         var symbol = plan.Iterator.BoundSymbol ??= new BindingSymbol("$for.iterator", BindingSymbolKind.Local, plan.Iterator, plan.Scope);
         symbol.Type = iterator;
         plan.Scope.Values[symbol.Name] = symbol;
@@ -383,7 +410,7 @@ public sealed partial class Binding
 
     // SPEC 14.6.2: Some delivers one owned item, independently of the entry mode. Reuse the ordinary match decomposition and its
     // acquisition validation; the synthetic nodes never replace source parents. The plan starts with its Some position, owned.
-    private BoundMatch? BeginIterationStep(ForKoto source, BoundType item)
+    private BoundMatch? BeginIterationStep(ForKoto source, BoundType item, BoundType? borrow)
     {
         var plan = source.Iteration!;
         if (plan.Next.BoundType is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||
@@ -396,6 +423,7 @@ public sealed partial class Binding
         var match = plan.Decomposition;
         match.Reset(plan.Match);
         match.Mode = SubjectMode.ByValue;
+        match.SubjectBorrow = borrow; // The loop's Subject Borrow (AcquireSubject), read by HIR's and RawOrigins' ForKoto rows and MIR's For.
         match.Coverage = new(MatchCoverageState.Exhaustive);
         Complete(plan.Match, BoundType.Unit);
         Complete(plan.Match.Arms[1].Body, BoundType.Unit);
@@ -420,8 +448,9 @@ public sealed partial class Binding
 
         var plan = source.Iteration!;
         var some = match.PositionStorage[0];
-        var none = AdtDef.Case(some.MatchedType, this.Library.OptionNone);
-        match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, some.MatchedType, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
+        var option = some.MatchedType!; // The synthesized Some position's, the item's Option.
+        var none = AdtDef.Case(option, this.Library.OptionNone);
+        match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, option, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
         match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
         match.ArmStorage.Add(new(plan.Match.Arms[1], some.End));
     }

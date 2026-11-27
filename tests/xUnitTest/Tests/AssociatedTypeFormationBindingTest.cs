@@ -32,7 +32,8 @@ public class AssociatedTypeFormationBindingTest
     // SPEC 8.5.2 (PLAN G727): only the suffix `.(C).` names a projection's Contract; `T.C.X` and `T.P.C.X` are ordinary paths (9.6).
     // Each invalid row has its valid twin and was accepted by the old unparenthesized reading, except S.C.Item(source): its Origins
     // application was rejected by a rule of that reading, and is now rejected as an ordinary path. q01 and q02 were rejected by the
-    // reading, q01p faulted.
+    // reading, q01p faulted. A Type parameter prefix forms no Type of its own (PLAN G1156): `T.Item.make()` (Item unique under
+    // `T is Holder`) is a projection's static requirement, and `T.size.count` fails at `T.size`; both faulted on a member-access left.
     [Theory]
     [InlineData(ItemC + "func f<T>(x: T.C.Item) -> i32\n    T is C\n    return 0", "UnresolvedBinding_Kd")]
     [InlineData(ItemC + "func f<T>(x: T.(C).Item) -> i32\n    T is C\n    return 0", null)]
@@ -50,6 +51,8 @@ public class AssociatedTypeFormationBindingTest
     [InlineData(OuterK + "func f<T>(v: T.(K).Item) -> i32\n    T is Outer\n    T is K\n    T.(K).Item is i32\n    return v", null)]
     [InlineData(OriginC + "S.C.Item(source) => 42", "UnresolvedBinding_Kd")]
     [InlineData(OriginC + "S.(C).Item(source) => 42", null)]
+    [InlineData("contract Maker\n    func make() -> i32\ncontract Holder\n    associate Item is Maker\nfunc f<T>() -> i32\n    T is Holder\n    return T.Item.make()", null)]
+    [InlineData("contract Reader\n    property size: i32 has get\nfunc f<T>() -> i32\n    T is Reader\n    return T.size.count", "UnresolvedBinding_Kd")]
     public void OnlyTheParenthesizedSuffixNamesAProjectionsContract(string source, string? code)
     {
         var c = MinimalEmissionTest.Check(source, output: OutputKind.Library);
@@ -94,15 +97,20 @@ public class AssociatedTypeFormationBindingTest
     }
 
     [Theory]
-    [InlineData("contract C\n    associate Item is Box<string>\nstruct S\n    Self is C")]
-    [InlineData("contract Parent\n    associate Item is Box<string>\ncontract C: Parent\nstruct S\n    Self is C")]
-    [InlineData("contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Box<string>")]
-    public void FixedInheritedAndConditionalDefinitionsValidateFormation(string declaration)
+    // R7-C3 C3-1b (F's C2 rulings 301, 302, DECISIONS Q13): row 2's path (the parent Contract's fixed definition) stays verified after
+    // that specification fails its formation at the Definition deadline, unlike row 1's (C's own): PLAN issue (a path verification
+    // keeps a later Failed fact). Row 3 (S's own conditional binding) is verified as O-54 (a) has it: the binding fails where written
+    // (InvalidAssociatedDefinitionFailsWhereWritten). No use is accepted through either: the review's twins atf2.use and atf3.use keep
+    // every use record and mismatch, atf2.v and atf3.v are accepted (C3\review-code).
+    [InlineData("contract C\n    associate Item is Box<string>\nstruct S\n    Self is C", false)]
+    [InlineData("contract Parent\n    associate Item is Box<string>\ncontract C: Parent\nstruct S\n    Self is C", true)]
+    [InlineData("contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Box<string>", true)]
+    public void FixedInheritedAndConditionalDefinitionsValidateFormation(string declaration, bool verified)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\n" + declaration);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
+        Assert.All(Definition(c).Paths, path => Assert.Equal(verified, path.IsVerified));
     }
 
     [Theory]

@@ -81,5 +81,9 @@ public sealed class StringLiteralKoto : ExpressionKoto
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Decoding at the library pass's end reports its escape problems before the freeze counts the library's records.</remarks>
+    internal override void CompleteLazyFields() => _ = this.Literal;
+
     internal void WriteContentTo(ref IndentedStringBuilder builder) => builder.AppendVerbatim(this.rawLiteral);
 }

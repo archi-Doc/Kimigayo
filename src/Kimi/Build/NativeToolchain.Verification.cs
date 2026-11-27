@@ -1,43 +1,30 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
-using System.Text.Json;
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
-using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
 
 internal static partial class NativeToolchain
 {
-    // Installation and explicit verification cover the entire distributed tool set.
-    private static readonly string[] InstallationTools =
-        ["clang", "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj", "llvm-objdump", "llvm-lib", "llvm-dlltool"];
-
-    internal static string RequireInstalledFile(string path)
+    // toolchain verify (IMPL 20.3; Tatara decision 20 Q3 (a)): a self-check of what the compiler carries, which reads no directory and
+    // runs no tool. Two steps: its Tatara (Tatara.Instance: loaded, bound, its start check); each compiler supply's file's embedded
+    // bytes against the catalog's SHA-256 and, once they match, its stored facts against those bytes (VerifySupply), every row's in one
+    // form (the Tatara plan's B7b7, C-469 n1; SupplyFacts). A load or start-check failure and a supply's mismatch, of its bytes or its
+    // facts, are the toolchain's InvalidDataException (the catalog row and facts row tests own the supplies' invariants; a mismatch means
+    // a defective build of Kimi). Each statement is reported as an Information line. The report (--Report) is written first as
+    // incomplete; at the end it is passed, or failed with the error for the toolchain's failure or a cancellation, and a fault (a
+    // malformed facts file among them) leaves it incomplete.
+    internal static void Verify(string? reportPath, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException($"Toolchain file not found: {path}. Run src/backend/windows-x64/setup.ps1 for the selected toolchain.", path);
-        }
-
-        return path;
-    }
-
-    internal static async Task Verify(
-        string? configuredRoot, string? configuredBin, string? reportPath, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
-    {
-        var root = ToolchainResolver.ResolveRoot(configuredRoot);
-        var bin = configuredBin is null ? root : ResolvePath(configuredBin, Directory.GetCurrentDirectory());
         var timer = Stopwatch.StartNew();
-        var identities = new JsonObject();
+        var supplies = new JsonArray();
         var record = new JsonObject
         {
-            ["status"] = "incomplete", ["toolchainVerification"] = "failed", ["compilerVersion"] = CompilerRelease.Version,
-            ["llvmVersion"] = ToolchainIdentity.LlvmVersion, ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
-            ["root"] = Redact(root, Directory.GetCurrentDirectory()), ["llvmBin"] = Redact(bin, Directory.GetCurrentDirectory()),
-            ["tools"] = identities,
+            ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
         };
         if (reportPath is not null)
         {
@@ -48,69 +35,24 @@ internal static partial class NativeToolchain
 
         try
         {
-            var installationFile = RequireInstalledFile(Path.Combine(root, "installation.json"));
-            using var installation = JsonDocument.Parse(await File.ReadAllBytesAsync(installationFile, cancellationToken));
-            var installed = installation.RootElement;
-            if (installed.GetProperty("schemaVersion").GetInt32() != 1 || installed.GetProperty("profile").GetString() != WindowsProfile.Name)
+            cancellationToken.ThrowIfCancellationRequested();
+            var tatara = Tatara.Instance;
+            record["tatara"] = new JsonObject { ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion };
+            report(DiagnosticSeverity.Information, $"Tatara: build {tatara.Build}, ABI {tatara.Abi}, LLVM {tatara.LlvmVersion}");
+            record["supplies"] = supplies;
+            foreach (var supply in ToolchainIdentity.Supplies)
             {
-                throw new InvalidDataException("Invalid toolchain installation record. Run setup.ps1 again.");
-            }
-
-            foreach (var name in InstallationTools)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var path = RequireInstalledFile(Path.Combine(bin, name + ".exe"));
-                var hash = Hash(path);
-                var identity = new JsonObject { ["path"] = Redact(path, Directory.GetCurrentDirectory()), ["sha256"] = hash };
-                identities.Add(name, identity);
-                if (name is not ("llvm-lib" or "llvm-dlltool"))
+                foreach (var file in supply.Files)
                 {
-                    var banner = await ExecuteTool(path, ["--version"], root, report, cancellationToken, showErrors: false);
-                    var actual = ParseVersion(banner);
-                    identity["actualVersion"] = actual;
-                    identity["expectedVersion"] = ToolchainIdentity.LlvmVersion;
-                    identity["versionMatched"] = actual == ToolchainIdentity.LlvmVersion;
-                    if (actual != ToolchainIdentity.LlvmVersion)
-                    {
-                        record["reportedVersionsMatched"] = false;
-                        throw new InvalidDataException($"LLVM version mismatch: tool={path}; expected={ToolchainIdentity.LlvmVersion}; actual={actual}.");
-                    }
-                }
-
-                var expected = installed.GetProperty("tools").GetProperty(name).GetString();
-                identity["expectedSha256"] = expected;
-                identity["hashMatched"] = hash == expected;
-                if (hash != expected || (name == Kernel32Imports.Generator && hash != Kernel32Imports.DlltoolSha256))
-                {
-                    throw new InvalidDataException($"Tool executable SHA-256 mismatch: {path}. Run setup.ps1 after an intentional update.");
+                    report(DiagnosticSeverity.Information, $"{Subject(supply.Row, supply.Supply.Name, file)}: {VerifySupply(supply, file, supplies)} (the catalog's), facts matched");
                 }
             }
 
-            record["reportedVersionsMatched"] = true;
-            // Supporting DLLs are part of the installed tool inputs, not project inputs.
-            foreach (var dll in installed.GetProperty("supportingDlls").EnumerateObject())
-            {
-                if (Path.GetFileName(dll.Name) != dll.Name || Hash(RequireInstalledFile(Path.Combine(bin, dll.Name))) != dll.Value.GetString())
-                {
-                    throw new InvalidDataException("Toolchain supporting DLL SHA-256 mismatch: " + dll.Name);
-                }
-            }
-
-            var backend = RequireInstalledFile(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile));
-            var backendHash = Hash(backend);
-            record["backendSha256"] = backendHash;
-            if (backendHash != ToolchainIdentity.BackendSha256)
-            {
-                throw new InvalidDataException("Adopted backend SHA-256 mismatch: " + backend);
-            }
-
-            await VerifyKernel32(root, bin, record, report, cancellationToken);
-            record["toolchainVerification"] = "passed";
-            record["unverifiedToolchain"] = false;
             record["status"] = "passed";
         }
         catch (Exception ex) when (IsToolchainFailure(ex) || ex is OperationCanceledException)
         {
+            record["status"] = "failed";
             record["error"] = Redact(ex.Message, Directory.GetCurrentDirectory());
             throw;
         }
@@ -124,24 +66,36 @@ internal static partial class NativeToolchain
         }
     }
 
-    // The installed kernel32 import library: its recorded generation conditions and hash, its definition, and the DLL, architecture and
-    // symbol set the tools read from it. The record keeps the installation's entry.
-    private static async Task VerifyKernel32(
-        string root, string bin, JsonObject record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
+    // One file of a compiler supply: the SHA-256 of its embedded bytes against its catalog's, then, once they match, its stored facts
+    // loaded with that hash through the build's loader (SupplyFacts, never LinkInputs: verify states facts it opened and keeps no
+    // entry); its entry naming the supply, the row and the file is added to the report's supplies with factsMatched false before either
+    // check can throw, and set true once the facts load ("facts matched": they name these bytes and parse; that they are the current
+    // Tatara's reading is NativeToolchainTest's facts row's). Returns the hash.
+    internal static string VerifySupply(CompilerSupply supply, SupplyFile file, JsonArray supplies)
     {
-        var kernel = RequireInstalledFile(Path.Combine(root, "windows_x64", "kernel32.lib"));
-        var metadataFile = RequireInstalledFile(Path.ChangeExtension(kernel, ".json"));
-        using var metadata = JsonDocument.Parse(await File.ReadAllBytesAsync(metadataFile, cancellationToken));
-        var entry = metadata.RootElement;
-        Kernel32Imports.ValidateInstallation(entry, Hash(kernel));
-        if (Hash(RequireInstalledFile(Path.ChangeExtension(kernel, ".def"))) != Kernel32Imports.DefinitionSha256)
+        string hash;
+        using (var bytes = file.Open())
         {
-            throw new InvalidDataException("Installed kernel32 definition SHA-256 mismatch.");
+            hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         }
 
-        var importedDll = await ExecuteTool(Path.Combine(bin, "llvm-dlltool.exe"), ["-I", kernel], root, report, cancellationToken);
-        var inspection = await ExecuteTool(Path.Combine(bin, "llvm-readobj.exe"), ["--file-headers", kernel], root, report, cancellationToken);
-        Kernel32Imports.ValidateLibrary(importedDll, inspection);
-        record["kernel32"] = JsonNode.Parse(entry.GetRawText());
+        var entry = new JsonObject
+        {
+            ["name"] = supply.Supply.Name, ["row"] = supply.Row.Name, ["file"] = file.Name, ["sha256"] = hash, ["expectedSha256"] = file.Sha256,
+            ["hashMatched"] = hash == file.Sha256, ["factsMatched"] = false,
+        };
+        supplies.Add((JsonNode)entry);
+        var subject = Subject(supply.Row, supply.Supply.Name, file);
+        if (hash != file.Sha256)
+        {
+            throw new InvalidDataException($"The compiler's {subject} does not match its catalog SHA-256.");
+        }
+
+        SupplyFacts(subject, file, hash);
+        entry["factsMatched"] = true;
+        return hash;
     }
+
+    // A file's subject in the statements: its row, supply and catalog name.
+    private static string Subject(TargetProfile row, string supply, SupplyFile file) => $"{row.Name} {supply} {file.Name}";
 }

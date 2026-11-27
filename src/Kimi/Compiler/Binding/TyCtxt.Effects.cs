@@ -10,11 +10,13 @@ namespace Kimi.Compiler;
 // per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
-    private readonly Dictionary<Koto, CopyFacts> copies = new(ReferenceEqualityComparer.Instance); // By premises node (a view, ResetViews).
+    private readonly Dictionary<BindingSymbol, CopyFacts> copies = new(); // By the definition's declaration symbol, never an instance's (a symbol is its declaration's identity, MirDefKey's), a view (ResetViews).
+    private CopyFacts? topLevelCopies; // A module's top-level statements' (definition null): the library root's premises (a view, ResetViews).
     private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
 
     // SPEC 8.11.2, 22.1, 22.6: what a function without a MIR body is, the one decider, from facts fixed when Binding is final: an
-    // intrinsic or a shim by its Definition (the library's `#Intrinsic`, Binding.PrepareBuiltinTargets); a definition Binding rejected
+    // intrinsic, a shim or a form by its Definition (the library's `#Intrinsic`, Binding.PrepareBuiltinTargets, a catalog entry's Form
+    // row); a definition Binding rejected
     // (R4-M18: its parts are not published) or whose Body the parser recorded missing (SPEC 14.2.1; MissingBody is set with its record;
     // PLAN G890) a dependent of that error; a foreign function (`#LibraryImport`) an import; any other is unclassified. Its readers, A4
     // (MirEffects, which reads an intrinsic's MirDescriptors row by its Definition's IntrinsicId) and the instance collector
@@ -23,10 +25,17 @@ internal sealed partial class TyCtxt
     {
         { Definition.Kind: DispositionKind.Intrinsic } => BodylessKind.Intrinsic,
         { Definition.Kind: DispositionKind.Shim } => BodylessKind.Shim,
+        { Definition.Kind: DispositionKind.Form } => BodylessKind.Form,
         { Declaration.BindingState: not BindingState.Resolved } or { Declaration: FunctionKoto { MissingBody: true } } => BodylessKind.Dependent,
         { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => BodylessKind.Import,
         _ => BodylessKind.Unclassified,
     };
+
+    // SPEC 8.7.5: whether a dispatching callee is `tryResolve`, the one requirement a closed Contract declares, whose every implementation
+    // reads only its boundaries and the length and has no other effect (Binding.DispatchBounds: every bound; A4's Discharged). The `format`
+    // they inherit is Utf8Format's and takes its bound from their effect item.
+    internal static bool ClosedRequirement(BindingSymbol callee)
+        => callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange;
 
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
     // parameter On, the parameter below which it destroys, -1 for none, whether it destroys that target in place (`replace`), and the
@@ -66,23 +75,33 @@ internal sealed partial class TyCtxt
     internal bool? DispatchBounds(BindingSymbol? definition, BindingSymbol callee, BoundType? self, BindingSymbol? contract)
         => binding.DispatchBounds(definition, callee, self, contract);
 
-    // SPEC 8.11.4: whether confined is available to a call through an abstract Callable input, null where it has several signatures
+    // SPEC 8.11.4: whether confined is available to a call through an abstract Callable input with the signature the call selected
     // (Binding.CallableBounds).
-    internal bool? CallableBounds(BindingSymbol? definition, BoundType input, SemanticsKind receiver)
-        => binding.CallableBounds(definition, input, receiver);
+    internal bool CallableBounds(BindingSymbol? definition, BoundType input, BoundType signature, SemanticsKind receiver)
+        => binding.CallableBounds(definition, input, signature, receiver);
+
+    // SPEC 4.9.6, 8.10: the one signature a published row's Callable input declares in its operation's terms (Binding.OneCallable),
+    // which CheckCallsRows guarantees.
+    internal BoundType CallsSignature(BindingSymbol operation, int calls)
+        => binding.OneCallable(operation, this.Signature(operation, null, calls, out _)!)!.Value.Signature;
 
     // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
 
-    // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per node its premises are read at (Binding.DefinitionUse),
-    // a view memo (ResetViews; DECISIONS BU-88).
+    // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per definition, whose premises are read at its
+    // declaration (Binding.DefinitionUse), a view memo (ResetViews; DECISIONS BU-88): a view keyed by its definition, as the other views,
+    // since a library definition's facts are the program's proofs, which the frozen library's node columns cannot hold.
     internal CopyFacts Copies(BindingSymbol? definition)
     {
-        var use = binding.DefinitionUse(definition);
-        if (!this.copies.TryGetValue(use, out var facts))
+        if (definition is null)
+        {
+            return this.topLevelCopies ??= new(binding, binding.EffectPremises(null));
+        }
+
+        if (!this.copies.TryGetValue(definition, out var facts))
         {
             facts = new(binding, binding.EffectPremises(definition));
-            this.copies.Add(use, facts);
+            this.copies.Add(definition, facts);
         }
 
         return facts;
@@ -90,7 +109,7 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.7.2, 16.3.3: whether a Type is proven Sealed, whose handle's destruction runs only its own destructor, under a definition's
     // premises.
-    internal bool Sealed(BindingSymbol? definition, BoundType type) => binding.ProveSealed(type, binding.EffectPremises(definition)) == ConstraintProof.Proven;
+    internal bool Sealed(BindingSymbol? definition, BoundType type) => binding.ProveSealed(type, binding.EffectPremises(definition), Binding.QuerySite.AfterPass) == ConstraintProof.Proven;
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index) => binding.Implementation(function, subst, index);
@@ -105,7 +124,7 @@ internal sealed partial class TyCtxt
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             if (entry.Row is { Calls: >= 0 and var calls } && library.GetSymbol(entry.Id) is { } operation &&
-                binding.CallableReceiver(operation, Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
+                binding.OneCallable(operation, this.Signature(operation, null, calls, out _)!) is not { Receiver: SemanticsKind.Ref })
             {
                 throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
             }
@@ -126,7 +145,7 @@ internal sealed partial class TyCtxt
         {
             if (!this.proven.TryGetValue(type, out var copy))
             {
-                copy = binding.CopiesInEveryCase(type, premises); // SPEC 8.14, 8.15.2: per Semantics case (G642).
+                copy = binding.ProveCopy(type, premises, Binding.QuerySite.AfterPass) == ConstraintProof.Proven; // SPEC 8.14, 8.15.2: per Semantics case (G642).
                 this.proven.Add(type, copy);
             }
 

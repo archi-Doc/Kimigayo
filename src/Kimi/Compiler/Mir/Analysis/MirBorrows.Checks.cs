@@ -4,12 +4,13 @@ namespace Kimi.Compiler.Mir;
 
 // A5's conflicts relation (A3 5's hits and conflicts, with E1, E3, E11, R4-M68 and R4-M92): what an access does (AccessKind), a Call's or
 // Drop's effect rows included; the first Loan of its check set on the access's root it conflicts with, by mode (a reservation the call
-// activates is unique at its effect rows, W6) and syntactically by Place prefix, with the route rule for a Loan in its reservation holder,
-// never a raw Place borrow's Loan, its fresh anchor's (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), a Loan its template owns skipped
-// (MirBorrows.Defaults' Covered, D11, R4-M97); and err(ended) (E7): at a guard candidate's EndBorrow, a value live after it that keeps its
-// guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12). A candidate or marker a real pass
-// found is the decided answer, and one only the drop tier found (MirBorrows.CheckSets) the Deep one: a check joins what met
-// (MirOutcome) and is the depth limit only where the Join is Deep (R4-M153).
+// activates is unique at its effect rows, W6) and syntactically by Place prefix up to an Unproven index (Meets), a Loan through an Array's
+// element on its steps up to that element's index call's receiver, the Array (Loan.ReceiverSteps, SPEC 4.7.1), with the route rule for a
+// Loan in its reservation holder, never a raw Place borrow's Loan, its fresh anchor's (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), a Loan its
+// template owns skipped (MirBorrows.Defaults' Covered, D11, R4-M97); and err(ended) (E7): at a guard candidate's EndBorrow, a value live
+// after it that keeps its guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12). A candidate
+// or marker a real pass found is the decided answer, and one only the drop tier found (MirBorrows.CheckSets) the Deep one: a check joins
+// what met (MirOutcome) and is the depth limit only where the Join is Deep (R4-M153).
 // Must not list or classify a location's accesses (MirBorrows.Accesses) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -37,17 +38,30 @@ internal sealed partial class MirBorrows
         EffectWrite, // A write key or an unknown effect: it meets a Loan in any mode.
     }
 
-    // Two steps after equal prefixes may select the same storage (A3 3): a runtime index meets every index; distinct Fields, constant
-    // indices, bases and Downcasts are disjoint.
-    private static bool Meets(in MirStep left, in MirStep right)
+    // Whether two paths may select the same storage (SPEC 15.6.2, D-910): their steps compared in order up to the shorter one's length,
+    // disjoint at the first pair proven distinct (distinct Fields, bases or Downcasts, distinct constant indices: a ConstIndex step, also
+    // a fixed array's Index at a constant index, MirSteps), else they meet: every pair is the same step, or a pair holds an index other
+    // than a constant one, which proves nothing, so the comparison stops there and no later step proves the paths disjoint (Unproven).
+    // The parents' trie states the same stop in its walk (MirBorrows.Activations' Below). An Array's or Slice's element has no constant
+    // index, so a part of one meets every part of every element of that sequence; a Loan through an Array's element is met at its
+    // receiver, the whole Array (Loan.ReceiverSteps: Hits and Through compare it on the steps before the element, SPEC 4.7.1, D-920).
+    private static bool Meets(ReadOnlySpan<MirStep> left, ReadOnlySpan<MirStep> right)
     {
-        if (left.Kind == MirProjectionKind.Index || right.Kind == MirProjectionKind.Index)
+        for (var i = 0; i < Math.Min(left.Length, right.Length); i++)
         {
-            return left.Kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex &&
-                right.Kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex;
+            if (left[i].Kind == MirProjectionKind.Index || right[i].Kind == MirProjectionKind.Index)
+            {
+                return left[i].Kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex &&
+                    right[i].Kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex;
+            }
+
+            if (left[i].Kind != right[i].Kind || (left[i].Kind != MirProjectionKind.Deref && left[i].Arg != right[i].Arg))
+            {
+                return false;
+            }
         }
 
-        return left.Kind == right.Kind && (left.Kind == MirProjectionKind.Deref || left.Arg == right.Arg);
+        return true;
     }
 
     // A step's key in the parents' trie (MirBorrows.Activations), Meets' relation as a key: a Deref or an Index step by its kind alone (an
@@ -116,7 +130,9 @@ internal sealed partial class MirBorrows
     // it (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), whatever k; else within(A, X), or within(X, A) where the access is deep, or no borrow Deref
     // of X lies below A, or it writes, destroys or activates in place a prefix of a Loan that sits in its reservation holder across borrow
     // Derefs (E1, SPEC 15.6.7); err(destroy) hits what a deep access does and the write does not (E11). At a parent Loan's Place the access is
-    // every parent on the root at once, through the parents' trie (MirBorrows.Activations' Through), shallow, as no steps of its own.
+    // every parent on the root at once, through the parents' trie (MirBorrows.Activations' Through), shallow, as no steps of its own. X's
+    // steps are those up to its receiver (Loan.ReceiverSteps): a Loan through an Array's element is its index call's receiver Loan, of the
+    // Array, past the element's Deref too (SPEC 4.7.1, 15.6.2, 15.6.3; Through states the same).
     private bool Hits(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, in Candidate candidate)
     {
         ref readonly var loan = ref this.loans[candidate.Loan];
@@ -130,22 +146,19 @@ internal sealed partial class MirBorrows
             return this.Through(root, loan);
         }
 
-        for (var i = 0; i < Math.Min(steps.Length, loan.Count); i++)
+        if (!Meets(steps, this.loanSteps.AsSpan(loan.Start, loan.ReceiverSteps)))
         {
-            if (!Meets(steps[i], this.loanSteps[loan.Start + i]))
-            {
-                return false;
-            }
+            return false;
         }
 
         var past = kind == AccessKind.ObservePast; // The write's hits, negated.
-        if (steps.Length >= loan.Count || Deep(kind))
+        if (steps.Length >= loan.ReceiverSteps || Deep(kind))
         {
             return !past;
         }
 
         var route = kind is AccessKind.Write or AccessKind.Destroy or AccessKind.ActivateInPlace or AccessKind.ObservePast && this.Reserved(candidate, kind);
-        for (var i = steps.Length; i < loan.Count; i++)
+        for (var i = steps.Length; i < loan.ReceiverSteps; i++)
         {
             if (!route && this.loanSteps[loan.Start + i].Class is MirStepClass.Shared or MirStepClass.Uniq)
             {
@@ -188,8 +201,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var anchor = this.body.Subject(this.body.Locals[candidate].Source);
         this.EndedCauses(candidate, mark);
-        this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1, null);
+        this.Found(DiagnosticCode.ComparisonLoanConflict_Kd, mark, this.markVia[mark], at, -1, null);
     }
 }

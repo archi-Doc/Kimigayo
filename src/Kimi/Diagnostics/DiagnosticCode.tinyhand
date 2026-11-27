@@ -11,9 +11,9 @@
     Category="Language"
     Message="Name '{0}' requires a qualifier in {1}"
     Arguments="name:Text,container:Text"
-    Evidence="namespace:Enumeration,cause:Enumeration,instance:Boolean|namespace:Enumeration,cause:Enumeration,instance:Boolean,base:Text"
+    Evidence="namespace:Enumeration,cause:Enumeration,instance:Boolean|namespace:Enumeration,cause:Enumeration,instance:Boolean,base:Text|cause:Enumeration"
     Label="qualify {0} explicitly"
-    Note="An unqualified Name supplies no receiver and cannot select an inherited declaration; lookup stops at this Container"
+    Note="An unqualified Name never selects an enum Case, supplies no receiver and cannot select an inherited declaration; lookup stops at this Container"
 
   + Name="BorrowOriginKeyword_Kd"
     Category="Language"
@@ -166,6 +166,7 @@
   + Name="InvalidTypeFormation_Kd"
     Category="Language"
     Message="The resolved declaration or Semantics target cannot form this type"
+    Evidence="declared:Number,written:Number"
 
   + Name="InvalidConstraint_Kd"
     Category="Language"
@@ -544,7 +545,7 @@
 
   + Name="ConflictingImportSupply_Kd"
     Category="Language"
-    Message="LibraryImport declarations of one external symbol must agree on their requirement Kind, which selects dllimport generation"
+    Message="LibraryImport declarations of one external symbol must name one providing library: the same reserved supply, or the same logical name of one Kotonoha"
 
   + Name="DirectCallFunctionValue_Kd"
     Category="Language"
@@ -553,7 +554,7 @@
 
   + Name="UnavailableReservedImport_Kd"
     Category="Language"
-    Message="The reserved kernel32 supply exports only the reviewed project-owned definition; extending it requires a definition and profile update"
+    Message="A reserved supply provides only its implementation-defined symbol set, and no profile's supply of this name provides the symbol"
 
   + Name="MissingNativeRequirement_Kd"
     Category="Input"
@@ -600,6 +601,14 @@
   + Name="InvalidStartupMain_Kd"
     Category="Language"
     Message="Startup main must be a safe, bodyful, non-imported public function with no parameters, generics, Origins or constraints, returning Unit"
+
+  + Name="MultiplePlatforms_Kd"
+    Category="Language"
+    Message="An Application cannot declare more than one platform"
+
+  + Name="InvalidPlatform_Kd"
+    Category="Language"
+    Message="A platform must be a non-generic struct without Origin parameters"
 
   + Name="LibraryRuntimeBody_Kd"
     Category="Language"
@@ -797,6 +806,16 @@
     Message="A Type formed here is higher than the implementation limit of {0}"
     Arguments="limit:Number"
 
+  + Name="AnalysisLimit_Kd"
+    Category="Resource"
+    Message="A judgment here is not decided within the implementation limit of {0} {1}"
+    Arguments="limit:Number,bound:Text"
+
+  + Name="ResolutionWorkLimit_Kd"
+    Category="Resource"
+    Message="The resolution of this call checks more than the implementation limit of {0} nested arguments against distinct expected Types"
+    Arguments="limit:Number"
+
   + Name="ExpansionLimit_Kd"
     Category="Resource"
     Message="This expansion is not built: its function body has passed, or would pass, the implementation limit of 65536 MIR statements"
@@ -841,7 +860,7 @@
 
   + Name="TestTargetUnavailable_Kd"
     Category="Input"
-    Message="The tests of this project are not checked: testing requires a configured Windows x64 target"
+    Message="The tests of this project are not checked: testing requires a target with an executable profile"
 
   + Name="DocumentDesynchronized_Kd"
     Category="Input"
@@ -1017,7 +1036,8 @@
   + Name="InvalidVirtualDeclaration_Kd"
     Category="Language"
     Message="This declaration cannot introduce or implement a virtual slot"
-    Evidence="cause:Enumeration"
+    Evidence="cause:Enumeration,rule:Text"
+    Label="{1}"
 
   + Name="MissingOverrideTarget_Kd"
     Category="Language"

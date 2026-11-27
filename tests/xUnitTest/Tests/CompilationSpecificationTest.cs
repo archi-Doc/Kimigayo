@@ -88,6 +88,10 @@ public class CompilationSpecificationTest
     [InlineData("x86_64h-apple-macosx", "macos", "unknown", 64)]
     [InlineData("x86_64-unknown-freebsd13.2", "unknown", "x86_64", 64)]
     [InlineData("x86_64-unknown-linuxfoo", "unknown", "x86_64", 64)]
+    [InlineData("x86_64-unknown-none", "none", "x86_64", 64)]
+    [InlineData("x86_64-unknown-none1.0", "none", "x86_64", 64)]
+    [InlineData("aarch64-unknown-none", "none", "aarch64", 64)]
+    [InlineData("x86_64-unknown-nonex", "unknown", "x86_64", 64)]
     [InlineData("x86_64-unknown-unrecognized", "unknown", "x86_64", 64)]
     public void PreparedTargetValuesAreCanonicalAndConsistent(string target, string os, string arch, int width)
     {
@@ -188,6 +192,21 @@ public class CompilationSpecificationTest
         }
     }
 
+    // SPEC 19.2.1: `os` is the target's OS family (IMPL 20.2.1), "none" for x86_64-unknown-none, so the block is selected there; on
+    // windows-x64 it is excluded and the later use names an unknown name. A Library, so its records come from the Condition alone.
+    [Theory]
+    [InlineData("x86_64-unknown-none", "")]
+    [InlineData("x86_64-pc-windows-msvc", "UnresolvedBinding_Kd")]
+    public void AnOsConditionSelectsTheBlockOfItsFamily(string target, string errors)
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.Project.ProjectFile.OutputKind = OutputKind.Library;
+        Assert.True(compilation.Prepare(target));
+        compilation.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "#if os == \"none\"\n    group Free\n        public func value() -> i32 => 1\ngroup Use\n    public func used() -> i32 => Free.value()"));
+        compilation.Check();
+        Assert.Equal(errors, string.Join(" ", TestDiagnostics.Of(compilation).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code)));
+    }
+
     [Theory]
     [InlineData("Feature", "FEATURE")]
     [InlineData("FEATURE", "Feature")]
@@ -235,7 +254,7 @@ public class CompilationSpecificationTest
     // SPEC 23.1.2: the language version and each compile-time setting are independent records; an unsupported target leaves out the
     // settings, which are checked against the fixed Condition names, whatever the target.
     [Theory]
-    [InlineData(WindowsProfile.Target, new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd" })]
+    [InlineData("x86_64-pc-windows-msvc", new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd" })]
     [InlineData(
         "unknown-none-elf",
         new[] { "InvalidCompileTimeSetting_Kd", "InvalidCompileTimeSetting_Kd", "UnsupportedLanguageVersion_Kd", "UnsupportedTarget_Kd" })]

@@ -489,7 +489,7 @@ public class ConditionalConformanceBindingTest
     // the base clause fails, and the Base's own valid conformance keeps no record (it had one before C2).
     [Theory]
     [InlineData("    origin y outlives x\n", "clean")]
-    [InlineData("", "1*InvalidTypeFormation_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData("", "1*InvalidTypeFormation_Kd 1*UnprovenOriginRelation_Kd")] // the base clause's record is the judge's at the base node (the Hold, H12; DECISIONS Q13, counted by code)
     public void AnInheritedConformancesBridgeIsComparedUnderTheDerivedTypesPremises(string premise, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
@@ -1106,29 +1106,55 @@ public class ConditionalConformanceBindingTest
         Assert.Equal(source.IndexOf(clause, StringComparison.Ordinal), diagnostic.Span.Start);
     }
 
-    // PLAN G949 S1-b1 (the review's N1; DECISIONS BU-220): a conditional block's declaring path is the path its clause registered in this
-    // pass. An edit making the clause's subject T keeps the conformance's key but registers it no more (SPEC 8.6.2, 8.8.2: a conditional
-    // conformance's subject is Self; InvalidConstraint_Kd): the next pass leaves the block no declaring path, and its records equal a
-    // cold compile's (before: the block kept the unregistered path, which the end-of-Bind sweep then pools).
+    // R7-E2 E2-5a (B's O8, M1; labelled from SPEC first): a Self clause whose conjunction names a closed Contract and ObjectPayload fails
+    // two independent requirements, 8.7 (a closed Contract's conforming Types are fixed) and 8.7.1 (ObjectPayload is decided by the
+    // Type's structure), so each is its own record at the clause (SPEC 23.1.2; dev kept the first only); either order is the same rule.
+    // Twins: either conjunct beside a Contract the struct may declare gives its one record.
+    [Theory]
+    [InlineData("m1r", "struct S\n    Self is PrimitiveInteger and ObjectPayload", "ClosedContractConformance_Kd: Self is PrimitiveInteger and ObjectPayload | InvalidSelfClause_Kd: Self is PrimitiveInteger and ObjectPayload")]
+    [InlineData("m1s", "struct S\n    Self is ObjectPayload and PrimitiveInteger", "ClosedContractConformance_Kd: Self is ObjectPayload and PrimitiveInteger | InvalidSelfClause_Kd: Self is ObjectPayload and PrimitiveInteger")]
+    [InlineData("m1rt", "contract Marker\nstruct S\n    Self is PrimitiveInteger and Marker", "ClosedContractConformance_Kd: Self is PrimitiveInteger and Marker")]
+    [InlineData("m1st", "contract Marker\nstruct S\n    Self is ObjectPayload and Marker", "InvalidSelfClause_Kd: Self is ObjectPayload and Marker")]
+    public void AClauseFailingTwoIntrinsicRequirementsKeepsBothRecords(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
+
+    // R7-E2 E2-5a (B's O8, the touched path's allocation row): the clause's two problems are the report's kept rows, so a warm rebind of
+    // the rejected program allocates nothing.
+    [Trait("Purpose", "Allocation")]
     [Fact]
-    public void AnEditThatUnregistersAConditionalConformanceLeavesItsBlockNoDeclaringPath()
+    public void AClauseWithTwoRecordsRebindsWithoutAllocation()
     {
-        const string Contract = "contract K\n    associate E\n    func get(self: ref/Self) -> i32\n";
-        const string Declared = "struct S<T>\n    Self is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
-        const string Edited = "struct S<T>\n    T is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
-        var c = CompilationTestHelper.ParseSuccess(Contract + Declared);
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        var syntax = Container(c, "S").Members.OfType<SyntaxFormKoto>().Single();
-        Assert.NotNull(c.Binding.ConstraintScope(syntax).ConformancePath);
-        var target = (IsKoto)syntax.Operands[0];
-        var donor = ((IsKoto)Container(CompilationTestHelper.ParseSuccess(Edited), "S").Members.OfType<SyntaxFormKoto>().Single().Operands[0]).Left;
-        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
-        Assert.True(KotoHelper.Replace(target, target.Left, donor));
-        Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Binding.ConstraintScope(syntax).ConformancePath);
-        var cold = CompilationTestHelper.ParseSuccess(Contract + Edited);
-        Assert.False(cold.Bind().IsComplete);
-        Assert.Equal(Records(cold), Records(c));
+        var c = MinimalEmissionTest.Analyze("struct S\n    Self is PrimitiveInteger and ObjectPayload\npublic func main() => ()");
+        var rejected = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
+        Assert.True(rejected);
+        Assert.Equal(2, c.Binding.Issues.Count);
+    }
+
+    // R7-E2 E2-5a (probe c4, labelled from SPEC 8.7 and 23.1.2 first): each closed-Contract clause is its own failed requirement, and the
+    // clause's unsatisfied use rests on its own rejected registration, which it reads: no UnsatisfiedConstraint_Kd beside them (the slot's
+    // first failure until R7-E5, D-924). A regression row for the records E2-5's first prototype published at each clause.
+    [Theory]
+    [InlineData("c4", "struct S\n    Self is PrimitiveInteger\n    Self is PrimitiveInteger", "ClosedContractConformance_Kd: Self is PrimitiveInteger")]
+    public void ARepeatedClosedClauseAddsNoUnsatisfiedRecord(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
+
+    // PLAN G949 S1-b1 (the review's N1; DECISIONS BU-220) guarded a conditional block's declaring path after an edit that keeps its
+    // clause's key but registers the conformance no more: the clause's subject `Self` made `T`. Under SPEC Appendix F (normative) that
+    // program is invalid syntax: F.6.2's ConditionalConformance is `"Self" "is" ContractReference "when" ConformanceConditions` and SPEC
+    // 8.8.1 lets a generic struct or enum declare `Self is C when P`, so `T is K when T is Copy` is Parsing's ExpectedSyntax_Kd at its
+    // subject (PB3). An F.6.2 head in a generic Type registers unless its key changes, so the registration path S1-b1 guarded is
+    // unreachable through valid syntax; S1-b1's rule (the block's path is the one registered in this pass) stands. The row states the
+    // SPEC verdict on the program it edited (F's ruling 182).
+    [Fact]
+    public void ASubjectOtherThanSelfCannotUnregisterAConditionalConformance()
+    {
+        const string Edited = "contract K\n    associate E\n    func get(self: ref/Self) -> i32\nstruct S<T>\n    T is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
+        var record = Assert.Single(TestDiagnostics.Of(CompilationTestHelper.Parse(Edited, "Hello.kimi"), "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains("Self as a conditional conformance's subject", record.Message, StringComparison.Ordinal);
+        Assert.Equal(Edited.IndexOf("T is K", StringComparison.Ordinal), record.Span.Start);
+        Assert.Equal(1, record.Span.Length);
     }
 
     private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);
@@ -1138,8 +1164,4 @@ public class ConditionalConformanceBindingTest
     private static FunctionKoto Function(Compilation c, string name, bool implementation) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name && x.IsRequirement != implementation);
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
-
-    // A bound compilation's Binding records as `Code: node`, sorted (an edited tree holds a donor's document, so its published records
-    // cannot be read by path).
-    private static string[] Records(Compilation c) => [.. c.Binding.Issues.Select(static x => $"{x.Code}: {x.Node}").Order(StringComparer.Ordinal)];
 }

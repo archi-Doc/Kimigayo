@@ -24,7 +24,7 @@ public partial class KimiLibraryShapeTest
     private const string Milestone31 = "tests/milestones/Milestone31.kimi";
 
     // The empty program's check, the reference of every row; not the Library compilation the other tests read, which is bound only.
-    private static readonly Lazy<Compilation> EmptyProgram = new(() => Check(Compilation.CreateForTest(), string.Empty, WindowsProfile.Target));
+    private static readonly Lazy<Compilation> EmptyProgram = new(() => Check(Compilation.CreateForTest(), string.Empty, TargetProfile.Windows.Target));
 
     private static readonly Lazy<(string Fact, string[] Lines)[]> EmptyProgramFacts = new(() => Facts(EmptyProgram.Value));
 
@@ -44,13 +44,14 @@ public partial class KimiLibraryShapeTest
     [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
     public void TheLibraryIsIndependentOfTheProgram(string program)
     {
-        var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
+        var c = Check(Compilation.CreateForTest(), program, TargetProfile.Windows.Target);
         SameAsTheEmptyPrograms(c);
     }
 
-    // The inputs a compilation gives besides the program: C9's test build (Binding) and target (the frozen library's key, design §4, so a
-    // library that came to read it would move this row to a comparison per target), and C11's parse-time inputs: the compile-time
-    // variables (Debug; Parser.Directives) and the documentation and hover collection, which the LSP sets together (Project.cs).
+    // The inputs a compilation gives besides the program: C9's test build (Binding) and target (the frozen library's key, design §4; the
+    // library reads it since the Tatara plan's B7b6, whose Conditions select its declarations, so this row compares per target: with the
+    // empty program checked for its own target), and C11's parse-time inputs: the compile-time variables (Debug; Parser.Directives) and the
+    // documentation and hover collection, which the LSP sets together (Project.cs).
     [Theory]
     [InlineData("test build")]
     [InlineData("32-bit target")]
@@ -58,7 +59,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("documentation and hover")]
     public void TheLibraryIsIndependentOfTheInputs(string input)
     {
-        var (c, target) = (Compilation.CreateForTest(), WindowsProfile.Target);
+        var (c, target) = (Compilation.CreateForTest(), TargetProfile.Windows.Target);
         switch (input)
         {
             case "test build":
@@ -90,13 +91,13 @@ public partial class KimiLibraryShapeTest
         var c = Checked(ModuleBindingTest.Create(source, "public group Api\n    public func value() => ()", configure: static (root, _) =>
         {
             root.Alias = ["Lib.Api"];
-            root.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+            root.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         }));
-        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha));
-        Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[WindowsProfile.Target]["codec"]);
+        Assert.Contains("Lib.Api", c.DefaultAliases(c.Kotonoha).Select(static x => x.Path));
+        Assert.NotNull(c.Configuration(c.Kotonoha)!.NativeRequirements[TargetProfile.Windows.Target]["codec"]);
         Assert.NotNull(c.References(c.Kotonoha));
         var library = c.Library.Kotonoha;
-        Assert.Equal(["Kimi"], c.DefaultAliases(library));
+        Assert.Equal(["Kimi"], c.DefaultAliases(library).Select(static x => x.Path));
         Assert.Null(c.Configuration(library));
         Assert.Null(c.References(library));
         SameAsTheEmptyPrograms(c);
@@ -104,7 +105,7 @@ public partial class KimiLibraryShapeTest
 
     // PLAN G951 U2, row LM (R8-M32's "library MIR" fact under demand; the design's §1.2): a compilation's check builds the library bodies
     // its program reaches (the source modules' root range, DECISIONS R9-M9), each equal to that body in the library check's build, its
-    // A2 table included, and the empty program builds none. With the library MIR the rows above compare (every library body, the library
+    // A2 table included, at the same ordinal within the same library range (PLAN G951 U2-K), and the empty program builds none. With the library MIR the rows above compare (every library body, the library
     // check's build per program) it is the fact that the library's MIR is the same in every program. Fail-before: Compilation built
     // every library body, so the empty program built them all.
     [Theory]
@@ -113,16 +114,21 @@ public partial class KimiLibraryShapeTest
     [InlineData(Milestone31)]
     public void ACompilationsLibraryBodiesAreTheLibraryChecks(string program)
     {
-        var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
+        var c = Check(Compilation.CreateForTest(), program, TargetProfile.Windows.Target);
         var (own, library) = (c.BuildMir(), MirBuildTest.LibraryRange(c));
         var built = own.Bodies.ToArray().Where(static x => x.Source.IsLibrary).ToArray();
         Assert.Equal(program.Length == 0, built.Length == 0);
         Assert.All(built, x => Assert.Equal(MirDumpTest.Unsited(library, library[x.Key]!), MirDumpTest.Unsited(own, x)));
+        Assert.All(built, x => Assert.Equal(library[x.Key]!.Ordinal, x.Ordinal));
+        Assert.Equal(library.LibraryCount, own.LibraryCount);
     }
 
     // M-N4, R2-N5: the library declares no parameter default, for a function or an `init`, so after its Final Bind its published HIR holds
     // no default and its MIR no default template. Temporary: a frozen library would have to freeze a template's omission facts (Recursive,
-    // Failed, Reads), which the builder's omission graph reads; removal: U5b or a later unit freezes them, and this pin goes.
+    // Failed, Reads), which the builder's omission graph reads; removal: U5b or a later unit freezes them, and this pin goes. It is also
+    // R7-N5 B6b's first premise: a query reaches another module's node only through an omitted default argument, and StructuralCompletion's
+    // query memos are working-state families the frozen library refuses, so the unit that removes this pin keeps such a query off the
+    // library's columns first (TheGuessRuleAnswersNoneAtAFrozenNode is the second).
     [Fact]
     public void TheLibraryDeclaresNoParameterDefault()
     {
@@ -132,6 +138,19 @@ public partial class KimiLibraryShapeTest
         Assert.Empty(functions.Where(static x => x.Parameters.Any(static y => y.DefaultValue is not null)).Select(Line));
         Assert.Empty(c.Library.Kotonoha.Syntax.Hir.Defaults!);
         Assert.DoesNotContain(c.ConstructMir().Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Kind == MirBodyKind.DefaultTemplate);
+    }
+
+    // Row M3-T (C-381 M3; PLAN G950-K): the library declares no reassignable static (a group's `var` Property), so a library body kept
+    // across a compilation's versions (PLAN G951 U2-K-b) reads no library state a program changes: its facts are a function of the library
+    // alone (DECISIONS R5-M168, R8-M50). The premise: the library declares statics (Time.counterFrequency). Beside R8-M32's Temporary 2
+    // tripwire TheLibraryDeclaresNoParameterDefault; a change that adds one reopens the kept list's premise.
+    [Fact]
+    public void TheLibraryDeclaresNoMutableStaticField()
+    {
+        var properties = KotoTree.Walk(EmptyProgram.Value.Library.Kotonoha.RootKoto).OfType<PropertyKoto>();
+        BindingSymbol[] statics = [.. properties.Select(static x => HirTables.Symbol(x)).OfType<BindingSymbol>().Where(static x => Binding.IsStatic(x))];
+        Assert.NotEmpty(statics);
+        Assert.Empty(statics.Where(static x => Binding.Reassignable(x)).Select(static x => x.Name));
     }
 
     // A program read from the repository, checked.
@@ -150,9 +169,12 @@ public partial class KimiLibraryShapeTest
         return c;
     }
 
+    // The facts compared with the empty program's for the same target: windows-x64's, the reference read once, or the empty program
+    // checked for another target (the library is that target's freeze, design §4, its declarations selected by its Conditions).
     private static void SameAsTheEmptyPrograms(Compilation c)
     {
-        foreach (var ((fact, expected), (_, actual)) in EmptyProgramFacts.Value.Zip(Facts(c)))
+        var reference = c.TargetTriple == EmptyProgram.Value.TargetTriple ? EmptyProgramFacts.Value : Facts(Check(Compilation.CreateForTest(), string.Empty, c.TargetTriple.Value));
+        foreach (var ((fact, expected), (_, actual)) in reference.Zip(Facts(c)))
         {
             var line = 0;
             while (line < expected.Length && line < actual.Length && expected[line] == actual[line])
@@ -174,12 +196,13 @@ public partial class KimiLibraryShapeTest
         var library = c.Library;
         var table = library.Kotonoha.Syntax;
         var printer = new Printer(true);
+        printer.Attach(c);
         printer.Visit(library.Kotonoha.RootKoto);
         var symbols = new List<string>();
         var scopes = new HashSet<BindingScope>(ReferenceEqualityComparer.Instance);
         for (var id = 1; id <= table.Count; id++)
         {
-            if (table.Nodes[id]!.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, table.Nodes[id]))
+            if (c.Binding.Semantics.SymbolOf(table.Nodes[id]!) is { } symbol && ReferenceEquals(symbol.Declaration, table.Nodes[id]))
             {
                 scopes.Add(symbol.Scope);
                 if (id <= table.ParsedCount)
@@ -206,13 +229,13 @@ public partial class KimiLibraryShapeTest
             ("library MIR", mir.ToString().Split('\n')),
             ("library obligations", [.. obligations.Where(static x => x.Subject.IsLibrary).Select(x => $"{x.Code} {x.Requirement} at " +
                 $"{Where(c.SyntaxOf(x.Subject))} owes {Where(x.Definition)} callable={x.Callable is not null}").Order(StringComparer.Ordinal)]),
-            ("synthesized nodes", Synthesized(table, printer)),
+            ("synthesized nodes", Synthesized(c, table, printer)),
         ];
     }
 
     // A declaration's own symbol state, which each pass rewrites (design C3) and the tree's lines do not print.
     private static string State(BindingSymbol s, Printer printer)
-        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={printer.Type(s.ContractSelf)} receiver={s.ReceiverIndex}" +
+        => $"{s.Kind}:{s.Name} type={printer.Type(s.Type)} whole={printer.Type(s.WholeType)} self={Where(s.SelfSymbol)}:{printer.Type(s.SelfSymbol?.Type)} receiver={s.ReceiverIndex}" +
             $" next={Where(s.Next)} selfOf={Where(s.SelfOf)} pair={Where(s.Pair)} optOut={Where(s.ObjectPayloadOptOut)} scope={Where(s.Scope.Owner)}" +
             $" contract={s.Contract is not null} property={s.Property is not null} case={s.EnumCase?.Ordinal} schema={s.Schema is not null}" +
             $" adt={s.Adt is not null} source={s.SourceState} resolving={s.Resolving} slot={s.Slot}" +
@@ -220,28 +243,30 @@ public partial class KimiLibraryShapeTest
 
     // A scope's members and facts: a program pass that added to a library scope would show here.
     private static string Scope(BindingScope scope)
-        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] values=[{Names(scope.Values)}]" +
+        => $"{Where(scope.Owner)} {scope.Owner.Akind} parent={Where(scope.Parent?.Owner)} types=[{Names(scope.Types)}] parameters=[{Names(scope.Parameters?.Types)}] values=[{Names(scope.Values)}] lengths=[{Names(scope.Parameters?.Values)}]" +
             $" origins=[{string.Join(',', scope.Origins?.Keys.Order(StringComparer.Ordinal) ?? Enumerable.Empty<string>())}]" +
             $" constraints={scope.Constraints is not null}" +
             $" premises={Where(scope.ImplementationPremises?.Owner)} path={scope.ConformancePath is not null}";
 
-    private static string Names(Dictionary<string, BindingSymbol> names)
-        => string.Join(',', names.OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
+    private static string Names(Dictionary<string, BindingSymbol>? names)
+        => string.Join(',', (names ?? new()).OrderBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}@{Where(x.Value)}"));
 
     private static string Where(BindingSymbol? symbol) => Where(symbol?.Declaration);
 
     private static string Where(Koto? node) => node is null ? "-" : $"{CompilationTestHelper.Location(node)}+{node.Span.Length}";
 
-    // Each synthesized node by id: its line, its HIR row and its own symbol's state.
-    private static string[] Synthesized(SyntaxTable table, Printer types)
+    // Each synthesized node by id: its line, its HIR row (of the compilation's Binding) and its own symbol's state.
+    private static string[] Synthesized(Compilation c, SyntaxTable table, Printer types)
     {
         var facts = new List<string>();
         for (var id = table.ParsedCount + 1; id <= table.Count; id++)
         {
             var (line, row, node) = (new Printer(false), new Printer(true), table.Nodes[id]!);
+            line.Attach(c);
             line.Node(node);
+            row.Attach(c);
             row.Node(node);
-            var own = node.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
+            var own = c.Binding.Semantics.SymbolOf(node) is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
             facts.Add($"{line.ToString().TrimEnd('\n')} | {row.Hir.TrimEnd('\n')} | {own}");
         }
 

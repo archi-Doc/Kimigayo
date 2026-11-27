@@ -16,10 +16,9 @@ public class InlineLayoutTest
     private const string BindingCycle = "contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct S\n    Self is C\n";
     private const string BorrowSlot = "contract C\n    associate Item\nstruct Box<T> {s}\n    T is C\n";
     private const string M2Records = "InvalidTypeFormation_Kd struct | UnsatisfiedConstraint_Kd B<Box<D>> | InvalidConstraint_Kd B<Box<D>> | " +
-        "InvalidConstraint_Kd Box<D> | InvalidConstraint_Kd Box<D>";
-
-    private const string T08Records = "InvalidTypeFormation_Kd struct | UnprovenConstraint_Kd B<Box<D>> | InvalidConstraint_Kd Box<D> | " +
         "InvalidConstraint_Kd Box<D>";
+
+    private const string T08Records = "InvalidTypeFormation_Kd struct | UnprovenConstraint_Kd B<Box<D>> | InvalidConstraint_Kd Box<D>";
 
     private const string Heir = "contract C\n    associate Item\nopen struct B<X>\n    Self is C\n    associate C.Item is X\n" +
         "struct Box<T>\n    T is C\n    public var next: T.(C).Item\n";
@@ -52,6 +51,28 @@ public class InlineLayoutTest
         var published = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.DeclarationContainerKoto>()
             .Where(static x => x.SymbolOf()?.Adt is { InlineCycle: true }).Select(static x => x.Name).Order(StringComparer.Ordinal);
         Assert.Equal(cyclic.Split(','), published);
+    }
+
+    // R7-E2 E2-1 (SPEC 6.2, 6.7.1, 23.1.2): a C-layout struct split over two fragments that also stores itself by value fails two
+    // independent requirements, the split Field's and its own inline cycle, and both are reported, the cycle beside the struct's
+    // InvalidTypeFormation_Kd that stands for the split (ValidateLayoutFragments' Transitional) and the split Field's own record, also
+    // beside a syntax error in that Field's initializer, which the Field's record, held before its frame read it, does not rest on (PLAN
+    // G1141's q1e); with the split fixed the cycle alone stays, and with the cycle fixed the split alone
+    // (LayoutAttributeBindingTest.ASplitCLayoutStructIsReportedBesideItsFieldsSyntaxError, r1). C-545 B2 (F's twins rv3-f and rv3-s,
+    // labelled before any run by SPEC 6.2, 23.1.2): the cycle check reads the Field Types only, so a struct's cycle is reported beside a
+    // syntax error in its conformance clause, which its walk reads after the cycle's record is held; with the clause well formed, the
+    // clause's InvalidConstraint_Kd rests on the struct's failure (a dependent record SPEC lets report).
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n    var next: P\nstruct P\n    var b: i32 = 0\n", "InvalidInlineLayout_Kd|InvalidTypeFormation_Kd|SplitCLayoutStorage_Kd")]
+    [InlineData("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\nstruct P\n    var b: i32 = 1 +\n    var next: P\n", "InvalidInlineLayout_Kd|InvalidTypeFormation_Kd|MissingSyntax_Kd|SplitCLayoutStorage_Kd")]
+    [InlineData("struct P\n    var a: i32 = 0\n    var next: P\n", "InvalidInlineLayout_Kd")]
+    [InlineData("contract K<X>\n    func k(self: ref/Self) -> i32\nstruct R\n    Self is K<i32\n    var next: R\n    public func k(self: ref/Self) -> i32 => 0\npublic func main() => ()\n", "InvalidInlineLayout_Kd|MissingSyntax_Kd")]
+    [InlineData("contract K<X>\n    func k(self: ref/Self) -> i32\nstruct R\n    Self is K<i32>\n    var next: R\n    public func k(self: ref/Self) -> i32 => 0\npublic func main() => ()\n", "InvalidConstraint_Kd|InvalidInlineLayout_Kd")]
+    public void ASplitStructsInlineCycleIsItsOwnRecord(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(records.Split('|'), CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
     // PLAN G310 (DECISIONS BU-65): one verdict in every declaration order (all orders up to four declarations, else each rotation of the
@@ -137,8 +158,9 @@ public class InlineLayoutTest
     // the heir's conformance, its base clause, once, used or not, through any number of bases, nested or transformed arguments, mutual or
     // generic heirs, a fixed array or a refinement; an heir whose binding closes no cycle is valid where it is stored. A base clause that
     // fails by its own checks keeps their records whether or not the cycle is there (m2: B's premise refuted; t08: SPEC 8.3.3; their twins
-    // store the projection in an Array): the record is written after them. A later writer at an inherited path's Use
-    // (ValidateBoundConformanceAgreement, SPEC 8.9.2: G<Z> and G<i32> disagree at Z = i32) still reports there.
+    // store the projection in an Array): the record is written after them. In m2 the base clause's own check (Unsatisfied) and the use
+    // walk's one judgment of the written B<Box<D>> (Invalid: it reads D's failed base) are two checks (R7-V1c). A later writer at an
+    // inherited path's Use (ValidateBoundConformanceAgreement, SPEC 8.9.2: G<Z> and G<i32> disagree at Z = i32) still reports there.
     [Theory]
     [InlineData(Heir + "struct D : B<i32>\nstruct U\n    public var b: Box<D>\n", "")]
     [InlineData(Heir + "struct D : B<Box<D>>\n", "InvalidInlineLayout_Kd B<Box<D>>")]

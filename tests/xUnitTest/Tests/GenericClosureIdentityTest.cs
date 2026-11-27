@@ -24,6 +24,15 @@ public class GenericClosureIdentityTest
 
     private static readonly string[] TaggedBox = [.. Tagged, "struct Box<T>", "    T is Tag", "    public var n = func [] () -> isize => T.tag()", "    public init() => ()"];
 
+    // A struct whose stored Field initializer's Closure returns the Item of a function declared in it, which returns T's tag and takes
+    // a ref/T; each instance's Item called, and one erased.
+    private static readonly string[] HeldItem =
+    [
+        .. Tagged, "struct Box<T>", "    T is Tag", "    public let p = func ()", "        func pk(x: ref/T) -> isize => T.tag()", "        return pk", "    public init() => ()",
+        "let a = A.init()", "let b = B.init()", "let f = Box<A>.init().p()", "let g = Box<B>.init().p()", "let e: (ref/B) -> isize = Box<B>.init().p()",
+        "require f(a@ref) * 100 + g(b@ref) * 10 + e(b@ref) == 122 else => $abort(\"item\")", Ok,
+    ];
+
     // The form and its program lines.
     public static TheoryData<string, string[]> HeldCases => new()
     {
@@ -46,7 +55,7 @@ public class GenericClosureIdentityTest
         {
             "Generic",
             [
-                .. TaggedBox, "func through<U>(box: Box<U>) -> isize", "    U is Tag", "    let g = box.n", "    let e: () -> isize = box.n", "    return g() * 10 + e()",
+                .. TaggedBox, "func through<U>(box: Box<U>) -> isize", "    U is Tag and Owned", "    let g = box.n", "    let e: () -> isize = box.n", "    return g() * 10 + e()",
                 "require through(Box<A>.init()) == 11 and through(Box<B>.init()) == 22 else => $abort(\"through\")", "Console.writeLine(\"ok\")",
             ]
         },
@@ -76,7 +85,7 @@ public class GenericClosureIdentityTest
             "Projection",
             [
                 .. TaggedBox, "contract HasItem", "    associate Item", "struct SrcA", "    Self is HasItem", "    associate HasItem.Item is A", "    public init() => ()",
-                "func viaWrap<S>(s: S) -> isize", "    S is HasItem", "    S.(HasItem).Item is Tag", "    let e: () -> isize = Box<S.Item>.init().n",
+                "func viaWrap<S>(s: S) -> isize", "    S is HasItem", "    S.(HasItem).Item is Tag and Owned", "    let e: () -> isize = Box<S.Item>.init().n",
                 "    let f: () -> isize = Box<A>.init().n", "    let b = Box<S.Item>.init()", "    let g = b.n", "    return e() * 100 + f() * 10 + g()",
                 "require viaWrap(SrcA.init()) == 111 else => $abort(\"projection\")", "Console.writeLine(\"ok\")",
             ]
@@ -153,13 +162,13 @@ public class GenericClosureIdentityTest
         var c = MinimalEmissionTest.Analyze(Identity + "_ = identity([1, 2])\n_ = identity([3, 4])\n_ = identity([5])");
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "identity").Select(x => x.CallOf()!).ToArray();
-        var first = c.Binding.InstantiateStorageType(closure, calls[0])!;
-        var same = c.Binding.InstantiateStorageType(closure, calls[1])!;
-        var different = c.Binding.InstantiateStorageType(closure, calls[2])!;
+        var first = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[0]))!;
+        var same = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[1]))!;
+        var different = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[2]))!;
         Assert.Same(first, same);
         Assert.NotSame(first, different);
-        Assert.False(Binding.FitsType(first, different));
-        Assert.False(Binding.FitsType(different, first));
+        Assert.False(c.Binding.FitsType(first, different));
+        Assert.False(c.Binding.FitsType(different, first));
         Assert.Empty(first.Components);
     }
 
@@ -171,10 +180,10 @@ public class GenericClosureIdentityTest
         var c = MinimalEmissionTest.Analyze(TwoClosures);
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var call = nodes.OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pair").CallOf()!;
-        var closures = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(x => c.Binding.InstantiateStorageType(x.ClosureOf()!.EnvironmentType!, call)!).ToArray();
+        var closures = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(x => c.Types.ReadableInstance(x.ClosureOf()!.EnvironmentType!, c.Types.StorageSubst(call))!).ToArray();
         Assert.Equal(2, closures.Length);
-        Assert.Same(closures[0].ClosureContext, closures[1].ClosureContext);
-        Assert.Same(c.Types.SubstOf(call), closures[0].ClosureContext);
+        Assert.Same(closures[0].InstanceContext, closures[1].InstanceContext);
+        Assert.Same(c.Types.SubstOf(call), closures[0].InstanceContext);
         ScalarEmissionTest.EmitFixture("GenericClosureIdentityTwo", TwoClosures, string.Empty);
     }
 
@@ -203,6 +212,25 @@ public class GenericClosureIdentityTest
     [MemberData(nameof(HeldCases))]
     public void AFieldInitializersClosureRunsInItsTypesInstance(string name, string[] lines)
         => ScalarEmissionTest.EmitFixture("GenericClosureHeld" + name, string.Join('\n', lines) + "\n", "ok\n");
+
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G846, G856): a held Closure read through `Box<U>` holds U in its
+    // instantiation, so its erasure needs U Owned (HeldCases' "Generic" and "Projection" without the Owned premise, accepted until G856).
+    [Theory]
+    [InlineData("func through<U>(box: Box<U>) -> isize\n    U is Tag\n    let e: () -> isize = box.n\n    return e()\n", "box.n")]
+    [InlineData("contract HasItem\n    associate Item\nfunc viaWrap<S>(s: S) -> isize\n    S is HasItem\n    S.(HasItem).Item is Tag\n    let e: () -> isize = Box<S.Item>.init().n\n    let f: () -> isize = Box<A>.init().n\n    return e() + f()\n", "Box<S.Item>.init().n")]
+    public void AHeldClosuresErasureNeedsItsInstancesArgumentOwned(string use, string at)
+    {
+        var source = string.Join('\n', TaggedBox) + "\n" + use + Ok + "\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("UnprovenConstraint_Kd", at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 3.2.1, 6.1.3, 8.13.3 (PLAN G846; the owner's O-258 (a)): the Item of a function declared in a Field initializer's Closure
+    // holds its Type's instance: read through Box<A> and Box<B> it runs A's and B's bodies and takes an A and a B, called and erased
+    // (before: the EnclosingInstance gap, and TypeMismatch_Kd for the signature read with Box's formal T).
+    [Fact]
+    public void AFieldInitializersFunctionItemRunsInItsTypesInstance()
+        => ScalarEmissionTest.EmitFixture("GenericClosureHeldItem", string.Join('\n', HeldItem) + "\n", "ok\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]

@@ -8,20 +8,26 @@ namespace Kimi.Compiler.Mir;
 // Call assembly (SPEC 7.3): a node's call, its callee, receiver and arguments in their order, and its Call terminator.
 internal sealed partial class MirBuilder
 {
-    // SPEC 7.3: the parameters a function's signature declares, an accessor's self and value included (TyCtxt.Signature's count; a slot
-    // past them asks for no Type).
-    private static int Arity(BindingSymbol function)
+    // The value an expansion evaluated for a node (Call's given), null for another node.
+    private static MirOperand? Evaluated(ReadOnlySpan<(Koto? Node, MirOperand Value)> given, Koto? node)
     {
-        _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
-        return count;
+        foreach (var (evaluated, value) in given)
+        {
+            if (evaluated is not null && ReferenceEquals(evaluated, node))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.7.1); a constructor's builds its
     // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1); a direct line's is Line's (SPEC 22.7).
     private void Call(MirPlace destination, Koto node)
     {
-        var call = (ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node))!;
-        if (call.ArgumentOperations is [{ Source: { } text }] && HirTables.Op(text) == HirOp.Interpolation && ExpansionPlan.Of(text) is { Direct: true })
+        var call = (ExpansionPlan.Of(compilation.Binding, node) is { } plan ? plan.Second : CallPlan.Of(compilation.Binding, node))!;
+        if (call.ArgumentOperations is [{ Source: { } text }] && HirTables.Op(text) == HirOp.Interpolation && ExpansionPlan.Of(compilation.Binding, text) is { Direct: true })
         {
             this.Line(destination, call, node, text);
             return;
@@ -38,29 +44,51 @@ internal sealed partial class MirBuilder
 
     // SPEC 7.3, 7.7.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
-    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), each read where it is evaluated (SPEC 12.2:
+    // takes it for its parameter's Type or as the value an expansion evaluated for its node (given), each read where it is evaluated (SPEC 12.2:
     // secured before a later argument that builds code or that the operand order puts before it: a named one (SPEC 10.1.1), an unbound
     // reference's receiver supplied after earlier parameters (SPEC 7.3.4), a setter's receiver after its value (SPEC 13.7.1), A3 E13 (2);
     // or in its pending slot), then its omitted defaults (Defaults), passed by parameter slot, the receiver first. A compiler function is its
-    // intrinsic where its Definition gives one (its declaration's `#Intrinsic`), naming its library declaration (A3 E14), with the operands
-    // it takes beyond the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
-    // names. A call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call
-    // whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
-    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the
-    // Never value (DECISIONS R4-M62).
-    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
+    // MIR form where its Definition is a Form (Form), its intrinsic where its Definition gives one (its declaration's `#Intrinsic`), naming
+    // its library declaration (A3 E14), with the operands it takes beyond the written arguments (Extra), $abort's at its macro (SPEC
+    // 22.5.1), and a direct base call the implementation the virtual selection names. A call of a Never function or a diverging intrinsic
+    // has no runtime successor and continues for the checks (SPEC 14.10); a call whose operand does not complete enters no callee at run
+    // time (SPEC 15.6.7), but for the checks it continues where that operand's code continues, its later operands, defaults and activation
+    // checked there (SPEC 14.10.3), each operand as built: a Never form's is the Never value (DECISIONS R4-M62). A value call whose Closure
+    // receiver is by case (HirTables.CaseDecider; SPEC 7.7.3, PLAN G13) is a frame's owner (MirBuilder.Cases) where its decision splits the
+    // side's views: the call is assembled on each side into the one destination.
+    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, params ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
     {
-        var function = call.Kind == CalleeKind.Value ? null : call.Target;
-        var receiver = function is null ? null : call.Receiver;
-        var count = function is null ? call.Signature.Components[0].Components.Count : Arity(function);
-        var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
-        if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
-            (receiver is not null && function!.ReceiverIndex < 0))
+        if (!call.Covers())
         {
-            this.Unsupported(node, destination); // A plan whose operations do not cover the parameters (an expansion supplies them).
+            this.Invariant(node, destination); // CallPlan.Covers: HasFacts states it for a plain call, an expansion's plan holds it.
             return;
         }
 
+        var decider = call.Kind == CalleeKind.Value ? HirTables.CaseDecider(compilation.Binding, node) : null;
+        var decision = decider is null ? 0 : this.Decision(decider);
+        if ((this.Views & decision) == 0 || (this.Views & ~decision) == 0)
+        {
+            this.Assemble(destination, call, node, first, given);
+            return;
+        }
+
+        var frame = this.Open(node, decider!, decision, this.located.Count); // Its CaseSwitch takes the statement start (Info).
+        var info = this.Info(node);
+        this.Assemble(destination, call, node, first, given);
+        this.Turn(frame, info);
+        this.Assemble(destination, call, node, first, given);
+        this.Close(frame, info);
+    }
+
+    // A call's code on the side being built (Call): a by-case value call's callee taken as that side's views acquire it, by the shared
+    // receiver Binding publishes (CallPlan.SharedReceiver, the callee's plan-row take) where they are outside its decider's decision, else
+    // by the call's receiver operation (the column's take).
+    private void Assemble(MirPlace destination, CallPlan call, Koto node, Koto? first, ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
+    {
+        var function = call.Kind == CalleeKind.Value ? null : call.Target;
+        var receiver = function is null ? null : call.Receiver;
+        var count = call.Arity();
+        var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         var source = call.ReceiverOperation.Source ?? call.CalleeValue;
         var pending = this.arguments.Count;
         var subst = compilation.Types.SubstOf(call);
@@ -69,7 +97,10 @@ internal sealed partial class MirBuilder
         if (function is null)
         {
             // The callee value, pending while the arguments are evaluated.
-            var operand = this.Operand(source, call.ReceiverOperation.AdaptedType, input: true);
+            var shared = HirTables.CaseDecider(compilation.Binding, node) is { } decider && (this.Views & this.Decision(decider)) == 0;
+            var operand = shared
+                ? this.Operand(source, HirTables.PlanOf(source).Adjust, call.SharedReceiver.AdaptedType, input: true)
+                : this.Operand(source, call.ReceiverOperation.AdaptedType, input: true);
             this.arguments.Add(last > -2 ? this.Secure(operand, source) : operand);
         }
 
@@ -80,15 +111,15 @@ internal sealed partial class MirBuilder
         if (receiver is not null)
         {
             // A direct base call's receiver is its implementation's (the selection adapted it to the slot's declaring Type).
-            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : TyCtxt.Signature(
+            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : compilation.Types.Signature(
                 direct!,
                 subst,
                 direct!.ReceiverIndex,
                 out _);
             var slot = defaults ? this.Slot(parameter, receiver) : (MirPlace?)null;
             var view = ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter;
-            var operand = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: false } ? this.Dispatched(receiver, view!, slot)
-                : this.Operand(receiver, view, input: true, slot);
+            var operand = Evaluated(given, receiver) ?? (call is { Kind: CalleeKind.Virtual, VirtualIsDirect: false }
+                ? this.Dispatched(receiver, view!, slot) : this.Operand(receiver, view, input: true, slot));
             operand = slot is null && last > -2 ? this.Secure(operand, receiver) : operand;
             this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
         }
@@ -101,7 +132,7 @@ internal sealed partial class MirBuilder
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
                     var slot = defaults ? this.Slot(argument.ParameterType, argument.Source!) : (MirPlace?)null;
-                    var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(
+                    var operand = Evaluated(given, argument.Source) ?? this.Operand(
                         argument.Source!,
                         argument.AdaptedType ?? argument.ParameterType,
                         input: true,
@@ -121,6 +152,12 @@ internal sealed partial class MirBuilder
         }
 
         var disposition = function?.Definition ?? default;
+        if (disposition.Kind == DispositionKind.Form)
+        {
+            this.Form(destination, function!, subst, start, node);
+            return;
+        }
+
         if (this.Extra(disposition) is { } extra)
         {
             this.arguments.Add(extra);
@@ -140,14 +177,14 @@ internal sealed partial class MirBuilder
             callee,
             start,
             node,
-            MirTypes.IsNever(this.body, call.ReturnType) || MirDescriptors.Of(disposition.Id).Diverges,
+            MirTypes.IsNever(compilation.Types, this.body, call.ReturnType) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
     }
 
     // SPEC 12.2: the last argument of a call that builds code, in evaluation order (the receiver -2, first -1, the others in order), and,
     // appended to leastAfter by argument, the least position of the arguments evaluated after it.
-    private int Order(CallPlan call, BindingSymbol? function, Koto? first, Koto? given)
+    private int Order(CallPlan call, BindingSymbol? function, Koto? first, ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
     {
         var (last, after, least, earliest) = (-2, this.leastAfter.Count, int.MaxValue, -1);
         CollectionsMarshal.SetCount(this.leastAfter, after + call.ArgumentOperations.Length);
@@ -161,13 +198,13 @@ internal sealed partial class MirBuilder
             }
 
             (this.leastAfter[after + i], least) = (least, Math.Min(least, MirCallee.Position(function, argument.ParameterIndex)));
-            last = last == -2 && !ReferenceEquals(argument.Source, given) && Builds(argument.Source!) ? i : last;
+            last = last == -2 && Evaluated(given, argument.Source) is null && Builds(argument.Source!, HirTables.AdjustOf(argument.Source!)) ? i : last;
         }
 
         if (earliest >= 0)
         {
             this.leastAfter[after + earliest] = least;
-            last = last == -2 && !ReferenceEquals(first, given) && Builds(first!) ? -1 : last;
+            last = last == -2 && Evaluated(given, first) is null && Builds(first!, HirTables.AdjustOf(first!)) ? -1 : last;
         }
 
         return last;
@@ -191,6 +228,27 @@ internal sealed partial class MirBuilder
 
         var borrowed = this.body.AddOperand(this.Operand(receiver, whole, input: true));
         return this.Temporary(view, MirRvalue.Cast(MirCastKind.Upcast, borrowed, view) with { Proven = true }, receiver, slot);
+    }
+
+    // SPEC 5.3, 8.15.3 (PLAN G597's L2; the owner's O-490 (a)): a Form function's call, the MIR form its lang item names, on the operands
+    // pushed since start: Storage.viewStart<P, R>(storage, start)'s is the view's first element's address from the raw pointer Place
+    // `storage` (First), decided by the substitution's R as a copy's fold decides its key again (Refirst). An operand that is no Place's
+    // copy or move (a constant: `viewStart(null, 0)`, SPEC 5.3) is held in a temp first, whose Place the Storage reads. Another lang item
+    // or no R is a broken contract.
+    private void Form(MirPlace destination, BindingSymbol function, Subst? subst, int start, Koto node)
+    {
+        var (storage, offset) = (this.arguments[start], this.arguments[start + 1]);
+        this.arguments.RemoveRange(start, this.arguments.Count - start);
+        if (function.LibraryDeclaration != KimiDeclarationId.ViewStart || subst is not { Types: [_, { } key] })
+        {
+            this.Invariant(node, destination);
+            return;
+        }
+
+        var place = storage.Kind is MirOperandKind.Copy or MirOperandKind.Move ? storage.Place
+            : this.Temporary(this.TypeOf(storage), MirRvalue.Use(this.body.AddOperand(storage)), node).Place;
+        var view = MirStatement.Assign(destination, MirRvalue.Storage(place, this.body.TypeOf(place)!), this.Info(node));
+        this.Refirst(view, offset, key);
     }
 
     // A Call terminator of a callee on the operands pushed since start, into the destination; one that diverges continues for the checks

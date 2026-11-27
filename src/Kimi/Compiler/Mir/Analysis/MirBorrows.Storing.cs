@@ -32,6 +32,10 @@ namespace Kimi.Compiler.Mir;
 // layer stepping Unstated or Static is written there, joined over the storage) and gives i neither Value nor a pair:
 // UnretainedRawStore_Kd at the store, with no fact (MirBorrows.Locations; DECISIONS Q13: an Anchor reads as a Loan's, and an own part
 // formed by `@raw` has none).
+// A body whose own contract is Deep (CallRetention.IsDeep: its rows a lower bound, with a part past a walk's bound beside them) is read
+// on its decided rows as on exact ones; where the rule refuses there, a missing Value or pair row is not conclusive, so the store takes
+// OwnershipDepthLimit_Kd instead, the record a Deep call takes (MirBorrows.Reports' Limit): the body's own check, independent of each
+// caller's record at its call (SPEC 23.1.2; the Middle's G408-B A5 ruling 1).
 // Never where the value's own part is the destination's layer, reached through no own step (a self-link, O-56 (a), SPEC 5.2.1).
 // The own step applies only at a destination whose own address holds raw layers none of which states an Origin (MirBorrows.PunKeys'
 // RawInline and not AnyStated over TyCtxt.OwnLayers; `static` counts as stated). At any other destination (a stated, mixed or
@@ -42,7 +46,8 @@ namespace Kimi.Compiler.Mir;
 // `unsafe` scope, and an address of it gives Past(i).
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
 // and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
-// exposure lost, a landing any redirect may have moved, and a record Binding joins over a storage where another position lets i by Value.
+// exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
+// and a body whose own contract is the Limit (no rows; O-62 (a)).
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
@@ -55,7 +60,6 @@ internal sealed partial class MirBorrows
     private int mustValue; // M of the value the location's Assign stores (Plan), read by the rule.
     private int mustKept; // What that store gives its whole destination: mustValue, or ∅ for an exposed one (Commit).
     private int overstored; // The input local whose own value the location's store puts where the contract refuses it, or 0 (Check).
-    private bool replaying; // Whether Carry runs the checks replay.
     private bool owning; // Whether the body forms an input's own part without a Loan (a raw address, a by-value pointer part): Run's producer.
 
     private static int Past(int input) => (2 * input) + 1;
@@ -117,14 +121,15 @@ internal sealed partial class MirBorrows
     }
 
     // The body's own contract, where the rule reads the body: a Fn or Test body whose signature bound, with an input whose case Type may hold
-    // a raw layer, whose contract is no Limit and writes an untied storage; else none. Then the landing fact (Redirects).
+    // a raw layer, whose contract is no Limit (a Deep one, its decided rows) and writes an untied storage; else none. Then the landing
+    // fact (Redirects).
     private void BeginStoring()
     {
         (this.contract, this.overstored, this.owning) = (null, 0, false);
         this.ownKeys.Clear();
         this.ownIndex.Clear();
         if (this.body.Key is not { Kind: MirBodyKind.Fn or MirBodyKind.Test, Decl: { } declaration } || !this.ReadsRaw(declaration) ||
-            types.Retains(declaration, null, declaration) is not { IsLimit: false } retention || !WritesUntied(retention))
+            types.Retains(declaration, null, declaration, []) is not { IsLimit: false } retention || !WritesUntied(retention))
         {
             return;
         }
@@ -136,15 +141,15 @@ internal sealed partial class MirBorrows
     // Whether a function's signature bound (a failed one has no contract) and an input of the body may hold a raw layer.
     private bool ReadsRaw(BindingSymbol function)
     {
-        var complete = TyCtxt.Signature(function, null, -1, out var count) is not null;
+        var complete = types.Signature(function, null, -1, out var count) is not null;
         for (var slot = 0; complete && slot < count; slot++)
         {
-            complete = TyCtxt.Signature(function, null, slot, out _) is not null;
+            complete = types.Signature(function, null, slot, out _) is not null;
         }
 
         for (var i = 1; complete && i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
-            if (MirTypes.HoldsRaw(cases.Type(this.body.Locals[i].Type), this.seen))
+            if (MirTypes.HoldsRaw(types, cases.KnownType(this.body.Locals[i].Type), this.seen))
             {
                 return true;
             }
@@ -165,7 +170,7 @@ internal sealed partial class MirBorrows
     {
         MirDataflow.Grow(ref this.redirected, this.body.Locals.Length);
         Array.Fill(this.redirected, int.MaxValue, 0, this.body.Locals.Length);
-        var all = !this.body.OpaqueRoots.IsEmpty;
+        var all = this.body.HasOpaque; // An Opaque site rests on an error, whatever it names: a part it reads reaches its form (DECISIONS Z17).
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
             ref readonly var data = ref this.body.Blocks[block];
@@ -257,8 +262,9 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included).
-    private bool PointerType(MirPlace place) => this.Holds(cases.TypeOf(place), out _);
+    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included); none of no Type, a whole
+    // write's destination (MirCases.KnownTypeOf, PLAN G1073).
+    private bool PointerType(MirPlace place) => this.Holds(cases.KnownTypeOf(place), out _);
 
     // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0).
     private void EnterStoring()
@@ -316,7 +322,7 @@ internal sealed partial class MirBorrows
         }
 
         if (this.StoringInput(place.Root) && cases.TypeOf(this.body.Operands[index]) is var type &&
-            (MirTypes.IsReference(type) || type.Semantics == Parsing.SemanticsKind.Raw) && this.Depth(place) == 0)
+            (MirTypes.IsReference(type) || type.IsPointer) && this.Depth(place) == 0)
         {
             return this.sets.Add(0, this.Own(place.Root, place.Projection));
         }
@@ -389,7 +395,7 @@ internal sealed partial class MirBorrows
         // The own step applies only where the destination holds raw layers and none states an Origin; elsewhere a part reads as its
         // layer's (the owner's O-190 (b)).
         var count = this.placeSteps.Walk(place, reborrow: false, ref this.mustSteps);
-        var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)))] is { RawInline: true, AnyStated: false };
+        var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)), 0)] is { RawInline: true, AnyStated: false };
         var at = stepped ? part : LayerPart(part);
         var own = false;
         foreach (var element in this.sets.Elements(this.mustValue))

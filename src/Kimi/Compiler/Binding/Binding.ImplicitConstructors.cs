@@ -39,14 +39,6 @@ public sealed partial class Binding
     private readonly ImplicitConstructorDecisionRows implicitConstructorDecisions;
     private readonly List<FunctionKoto> judgedConstructors = new();
     private readonly List<FunctionKoto> withdrawnConstructors = new();
-    private Dictionary<FunctionKoto, OmittedBaseSelection>? omittedBaseQueries;
-
-    /// <summary>Gets or sets a value indicating whether each declaration pass records the omitted base query of every explicit
-    /// constructor whose base clause is omitted, for comparison with its bound base call.</summary>
-    internal bool CaptureOmittedBaseQueries { get; set; }
-
-    /// <summary>Gets the omitted base queries of the latest declaration pass when <see cref="CaptureOmittedBaseQueries"/> is set.</summary>
-    internal IReadOnlyDictionary<FunctionKoto, OmittedBaseSelection>? OmittedBaseQueries => this.omittedBaseQueries;
 
     // SPEC 6.3.6: the omitted base clause's ordinary selection over the direct base's constructors with no arguments, made from the
     // derived constructor's scope with the evaluation and classification of a call (Binding.CallSelection), without publishing. The
@@ -55,59 +47,27 @@ public sealed partial class Binding
     internal OmittedBaseSelection SelectOmittedBaseConstructor(FunctionKoto constructor)
     {
         var call = constructor.BaseInitializer!;
-        if (this.BaseConstructorGroup(constructor, out _) is not { } group)
+        // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the selection forms its Types in a site frame at the base call (located at the base clause,
+        // SPEC 6.2.2) where none is open, so a Type past the limit formed there is refused at it, for CompleteImplicitConstructors and
+        // RevalidateImplicitConstructors alike.
+        var site = this.OpenQuerySite(call);
+        if (this.BaseConstructorGroup(constructor, out var parent) is not { } group)
         {
-            return new(OmittedBaseOutcome.NoBaseConstructor);
+            this.CloseQuerySite(site);
+
+            // SPEC 23.1.2 (PLAN G651 a2, B5): a clause that gives the selection no base rests the selection on the struct's records.
+            return parent is null ? new(OmittedBaseOutcome.Dependent, Cause: constructor.BoundSymbol!.Scope.Owner) : new(OmittedBaseOutcome.NoBaseConstructor);
         }
 
         var candidates = FunctionGroup.Of(group);
+        var evaluated = this.RentCandidates(candidates, call.Method, this.scopes[constructor]);
         var shape = MeasureCandidates(candidates, true);
-        var obligationCount = this.obligations.Count;
-        var acquisition = this.acquisitionFailure;
-        var failedCause = this.failedCause;
-        var requirementContract = this.activeRequirementContract;
-        var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
-        var frame = this.infer.Rent(Math.Max(1, shape.Generics));
-        var mapping = this.indexScratch.Rent(1);
-        var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
-        var origins = this.originScratch.Rent(shape.Origins);
-        var inputs = this.originScratch.Rent(shape.InputOrigins);
-        var evaluated = this.candidateScratch.Rent(shape.Count);
-        var operations = this.argumentOperationScratch.Rent(shape.Count);
-        var childSlices = this.indexScratch.Rent(shape.Count * 2); // R3: each candidate's (empty) slice; the call has no argument.
+        var query = this.BeginSelectionQuery();
+        var evaluation = this.RentEvaluation(call, call.Method, null, this.scopes[constructor], null, shape); // The call has no argument.
+        evaluation.Evaluated = evaluated;
         try
         {
-            var evaluation = new CallEvaluation
-            {
-                Call = call,
-                Callee = call.Method,
-                Scope = this.scopes[constructor],
-                Frame = frame,
-                ExplicitTypes = [],
-                ExplicitLengths = [],
-                Mapping = mapping,
-                Used = used,
-                Origins = origins,
-                Inputs = inputs,
-                Evaluated = evaluated,
-                Operations = operations,
-                ChildSlices = childSlices,
-                OperationStride = 1,
-                AllTypes = [],
-                AllLengths = [],
-                AllMaps = [],
-                AllOrigins = [],
-                AllInputs = [],
-                MaxGenerics = shape.Generics,
-                OriginSlots = shape.Origins,
-                InputSlots = shape.InputOrigins,
-                Winner = -1,
-                PremisesOnly = true,
-            };
-            this.acquisitionFailure = null;
-            this.failedCause = null;
-            this.EvaluateCallCandidates(ref evaluation, candidates);
-            var (selection, winner) = this.ClassifySelection(ref evaluation);
+            var (selection, winner) = this.SelectAt(ref evaluation, candidates);
 
             // A winner whose own slots stay unsolved is selected as by a written base call, whose binding then reports them.
             return selection switch
@@ -118,7 +78,7 @@ public sealed partial class Binding
                 CallSelection.Selected => new(OmittedBaseOutcome.Selected, (FunctionKoto)evaluated[winner].Symbol!.Declaration),
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),
-                CallSelection.Unproven => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
+                CallSelection.Unproven or CallSelection.UnformedSplit => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
                 CallSelection.InvalidDeclaration => new(OmittedBaseOutcome.Dependent, Cause: evaluation.InvalidDeclaration ?? this.TakeFailedCause().Use),
                 CallSelection.FailedSignature => new(OmittedBaseOutcome.Dependent, Cause: evaluation.FailedPendingSignature),
                 _ => new(OmittedBaseOutcome.Dependent, Cause: evaluation.IncompleteSignature),
@@ -126,24 +86,9 @@ public sealed partial class Binding
         }
         finally
         {
-            for (var i = obligationCount; i < this.obligations.Count; i++)
-            {
-                this.obligationSet.Remove(this.obligations[i]);
-            }
-
-            this.obligations.RemoveRange(obligationCount, this.obligations.Count - obligationCount);
-            this.acquisitionFailure = acquisition;
-            this.failedCause = failedCause;
-            this.activeRequirementContract = requirementContract;
-            (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
-            this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.indexScratch.Return(childSlices);
-            this.candidateScratch.Return(evaluated, clearArray: true);
-            this.originScratch.Return(inputs, clearArray: true);
-            this.originScratch.Return(origins, clearArray: true);
-            this.flagScratch.Return(used);
-            this.indexScratch.Return(mapping);
-            this.infer.Return(frame);
+            this.EndSelectionQuery(query);
+            this.ReturnEvaluation(evaluation);
+            this.CloseQuerySite(site);
         }
     }
 
@@ -181,7 +126,7 @@ public sealed partial class Binding
         var selection = new OmittedBaseSelection(OmittedBaseOutcome.Dependent, Cause: clause);
         this.implicitConstructorDecisions.Add(structure, selection);
         if (this.inheritanceStates.TryGetValue(structure.BoundSymbol!, out var state) && state == 2 && clause.BoundType is { } baseType &&
-            this.CheckTypeConstraints(baseType, this.scopes[structure]) == ConstraintProof.Proven)
+            this.CheckTypeConstraints(baseType, this.scopes[structure], structure) == ConstraintProof.Proven)
         {
             // A base synthesized constructor that does not exist for a reason other than absence leaves this one resting on that reason.
             if (baseType.Symbol?.Declaration is StructKoto parent && (parent.ImplicitConstructorPending || this.implicitConstructorDecisions.ContainsKey(parent)) &&
@@ -242,7 +187,7 @@ public sealed partial class Binding
             var obligation = this.obligations[i];
             if (this.WithinWithdrawnConstructor(obligation.Use))
             {
-                this.obligationSet.Remove(obligation);
+                this.obligationSet.Remove(new(obligation));
                 continue;
             }
 
@@ -276,22 +221,9 @@ public sealed partial class Binding
             var structure = (StructKoto)constructor.Parent!;
             var decision = this.implicitConstructorDecisions[structure];
             if (this.SelectOmittedBaseConstructor(constructor) != decision ||
-                (decision.Winner is { } winner && constructor.BaseInitializer?.BoundCall is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
+                (decision.Winner is { } winner && constructor.BaseInitializer is { } initializer && this.CallOf(initializer) is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
             {
                 this.Fail(structure.BaseClause!, BindingFailure.Unsupported);
-            }
-        }
-    }
-
-    // Records the omitted base query of every explicit constructor whose base clause is omitted (CaptureOmittedBaseQueries).
-    private void CaptureOmittedBases()
-    {
-        this.omittedBaseQueries?.Clear();
-        for (var i = 0; i < this.nodes.Count; i++)
-        {
-            if (this.nodes[i] is FunctionKoto { IsConstructor: true, HasOmittedBaseInitializer: true } constructor && this.scopes.ContainsKey(constructor))
-            {
-                (this.omittedBaseQueries ??= new(ReferenceEqualityComparer.Instance))[constructor] = this.SelectOmittedBaseConstructor(constructor);
             }
         }
     }

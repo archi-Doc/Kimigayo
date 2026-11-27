@@ -7,6 +7,7 @@
 
 using System.Numerics;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
@@ -71,6 +72,17 @@ public enum BoundTypeKind : byte
     Array,
     Dictionary,
     FunctionItem,
+
+    // DECISIONS BU-240 (temporary, removed with BU-240's representation (R); the owner's O-428 (a), G812 ruling 143): the canonical case's Type
+    // (its one component) at a position a split binding decides, formed only by a split call's completion (Binding.OpenForm); every
+    // check that reads it rests, as rule W's failed part does. Never a node's published Type (the split call's completion unmarks what
+    // it publishes, CompleteOnSplit; the HIR publisher lists one that holds it as Broken, InternalInvariant_Kd).
+    Open,
+
+    // PLAN G924 AF-3b v3-A (the owner's O-499 (a)): an open atom, the slot Symbol of the candidate at owner level Length, which no
+    // evidence binds at an open position (Binding.OpenSlots: OpenType forms it, TyCtxt.OpenSlot interns it). No components, no Origin;
+    // never a Parameter: identical only to itself, and nothing binds it. Never a node's published Type (the HIR publisher's Broken check).
+    OpenSlot,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.7.2).</summary>
@@ -117,9 +129,11 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
     /// <summary>Collects the pair binders in scope of a body (SPEC 8.15): those of its own declaration, of its containers and, for a
     /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
     /// set; the MIR body's binders, which give its Semantics cases.</summary>
+    /// <remarks>The Semantics cases component's published entry for a body's binders, which Mir/Build reads (COMPILER_ARCHITECTURE).</remarks>
+    /// <param name="binding">The reader's Binding, whose pass bound the body.</param>
     /// <param name="body">The body's declaration.</param>
     /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
-    internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
+    internal static void Collect(Binding binding, Koto body, List<PairBinder> binders) => binding.PairBinders(body, binders);
 
     /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.15).</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
@@ -164,6 +178,8 @@ internal enum BindingFailure : byte
     Unsupported,
     CaseLimit,
     TypeHeightLimit,
+    AnalysisLimit,
+    ResolutionWorkLimit,
     InvalidAssignment,
     InvalidLiteral,
     Access,
@@ -288,6 +304,14 @@ internal enum BindingFailure : byte
     Internal,
 }
 
+// The analysis limits under BindingFailure.AnalysisLimit (OQ1's one shared record AnalysisLimit_Kd; the owner's O-484 (3 ii); SPEC 8.3.3
+// Limits): each a row of Binding.AnalysisLimitOf, its bound and the text naming it.
+internal enum AnalysisBound : byte
+{
+    PremiseClosure,
+    InferenceStates,
+}
+
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
 public sealed class BindingSymbol
 {
@@ -358,15 +382,34 @@ public sealed class BindingSymbol
     // requirement checked at the conformance, never a reference input condition (SPEC 6.1.4, 8.7.1).
     internal bool IsGenericInput => this.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter && this.SelfOf is null;
 
-    // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
+    // SPEC 6.1.5, 8.4, 9.1: the declaration whose Self this symbol is: a Contract's dedicated Self Type parameter (the conforming-Type
+    // binder), a struct's or enum's Self (Kind Type, the declaration with all its bindings); null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
 
-    // SPEC 8.4: the dedicated Self Type parameter of a Contract, created at its first use.
-    internal BoundType? ContractSelf { get; set; }
+    // SPEC 6.1.5, 9.5: the Self this declaration's scope declares beside its formal parameters (BindingScope.Parameters), made once and
+    // kept: a Contract's Self Type parameter (Binding.ContractSelfType), a struct's or enum's Self symbol (Binding.DeclareSelf).
+    internal BindingSymbol? SelfSymbol { get; set; }
+
+    // SPEC 6.1.5, 9.1: the declaration this selection names: a struct's or enum's Self names its declaration (SelfOf); every other symbol,
+    // a Contract's Self (a binder, BU-150) among them, names itself. Read where a selection's declaration facts (its raw Type, Schema or
+    // identity) are asked, never its Type as written (a Self symbol's Type is the declaration applied to its own parameters).
+    internal BindingSymbol Named => this.SelfOf is { Declaration: not ContractKoto } declaration ? declaration : this;
+
+    // SPEC 9.1, 9.7: the symbol's own generic arity, which a written argument list must match: a Type declaration's generic parameter
+    // count (length slots included); none for a Self, which takes no Type arguments, and for every other symbol.
+    internal int GenericArity => this.SelfOf is null && this.Declaration is DeclarationContainerKoto container ? container.GenericParameterNodes.Count : 0;
 
     internal BindingSymbol? Pair { get; set; }
 
     internal BindingScope Scope { get; set; }
+
+    /// <summary>Gets or sets the executable body that declares this function or local, which EvaluatingBody returns for a function
+    /// (SPEC 15.3.4; Binding.ExecutableBodies.cs): a Closure's evaluating body, which binds its header and captures, written by its header
+    /// scope (ClosureHeaderScope) before any header binding; a named function's declaring body (DeclareFunction: a root function's is its
+    /// module's top-level statements; none for a Type's member) and a local's, always a body (IndexNode), written by the index walk that
+    /// declares it; no body for any other symbol. A local's declaration is formed in it whoever demands it (FormingBodyOf, the one reader
+    /// for a local; PLAN G1369). MIR never reads it.</summary>
+    internal ExecutableBody DeclaringBody { get; set; }
 
     internal SyntaxFormKoto? ConditionalDeclaration { get; set; }
 
@@ -400,15 +443,40 @@ public sealed class BindingSymbol
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <returns>The state, NotStarted when set in another pass.</returns>
-    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
+    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => Binding.Current(this.queryPass, (uint)pass) ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
 
-    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
+    /// <summary>Gets a value indicating whether the declaration's query states are its library pass's, stamped Frozen by PLAN G949
+    /// S1-1's freeze (Binding.DeclQuery's Frozen column); read only by Binding.DeclQuery and SignatureVerdict's per-use path
+    /// (Binding.CheckSignatureTypeConstraints), which never completes a frozen verdict.</summary>
+    internal bool QueriesFrozen => this.queryPass == Binding.Frozen32;
+
+    /// <summary>Gets whether the declaration's query states were set in a pass, or never (PLAN G949 S1-1's freeze verifies it).</summary>
+    /// <param name="pass">The pass stamp.</param>
+    /// <returns>Whether no earlier pass set them.</returns>
+    internal bool QueriesFrom(ulong pass) => this.queryPass == 0 || Binding.Current(this.queryPass, (uint)pass);
+
+    /// <summary>Stamps the declaration's query states Frozen, kept as they are (PLAN G949 S1-1's freeze; Binding.DeclQuery only).</summary>
+    internal void FreezeQueries() => this.queryPass = Binding.Frozen32;
+
+    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only). A declaration of a frozen table (the library's,
+    /// PLAN G949 S1-1) is never written: a Running or NotStarted write leaves its states, and a Done write is a broken contract (a library
+    /// fact completed in a program pass), whether or not the freeze stamped the symbol (s11-design 3.1, rev. 1 N2).</summary>
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <param name="state">The state.</param>
     internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
     {
-        if ((uint)pass != this.queryPass)
+        if (this.Declaration.SyntaxOwner is { Frozen: true })
+        {
+            if (state is DeclState.Done or DeclState.Error)
+            {
+                throw new InvalidOperationException($"A program pass completed the {kind} query of the frozen library declaration `{this.Name}` (InternalInvariant; PLAN G949 S1-1).");
+            }
+
+            return;
+        }
+
+        if (!Binding.Current(this.queryPass, (uint)pass))
         {
             this.queries = 0;
             this.queryPass = (uint)pass;
@@ -429,6 +497,11 @@ public sealed class BoundType : IEquatable<BoundType?>
     // primitives in CreatePrimitives' order, Range, then the twelve wrapping Scalars; each compilation's TyCtxt numbers its own after them.
     internal const int StaticCount = 32;
 
+    // The width in bits of isize and usize for every Compilation, with or without a target: the profile's (SPEC 22, O-79 (a); IMPL
+    // 21.1.3; DECISIONS BU-130), from IrTarget's row for its triple, read once by Row; every reader of their width asks the Type (Width).
+    // A target's own width is only the pointerWidth Condition's (SPEC 19.2). Declared before the static Types, whose rows read it.
+    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(TargetProfile.Windows.Target)).PointerWidth;
+
     private readonly NumericCategory numeric;
     private readonly byte width;
 
@@ -446,11 +519,13 @@ public sealed class BoundType : IEquatable<BoundType?>
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
-    private readonly bool containsClosure;
+    private readonly bool containsNested;
+    private readonly bool containsOpen;
+    private readonly bool containsOpenSlot;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
-    internal BoundType(int id, string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null, Koto? binder = null)
+    internal BoundType(int id, string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? instanceContext = null, Koto? binder = null)
     {
         this.Id = id;
         this.Name = name;
@@ -462,7 +537,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.Length = length;
         // DECISIONS BU-24, BU-46: the slot's role is the layer's. Holder and Unstated only in the raw role (Unstated, a kept part's mark
         // of a layer its declaration writes without `during`, Binding.WithUnstatedOrigins).
-        if (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
+        if (!this.IsPointer && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
         {
             throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }
@@ -471,12 +546,12 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
-        this.ClosureContext = closureContext;
+        this.InstanceContext = instanceContext;
         (this.numeric, this.width) = kind == BoundTypeKind.Primitive ? Row(name) : default;
         this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
-        var raw = semantics == SemanticsKind.Raw && origin is not null;
+        var raw = this.IsPointer && origin is not null;
         var found = (origin is not null && !raw) || originArguments is { Length: > 0 };
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
@@ -484,8 +559,10 @@ public sealed class BoundType : IEquatable<BoundType?>
         var pair = this.IsPairLayer;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
-        var closure = kind == BoundTypeKind.Closure;
-        var height = closureContext is null ? 0 : closureContext.Height + 1;
+        var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
+        var open = kind == BoundTypeKind.Open;
+        var openSlot = kind == BoundTypeKind.OpenSlot || lengthExpression is { ContainsOpenSlot: true };
+        var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
@@ -494,7 +571,9 @@ public sealed class BoundType : IEquatable<BoundType?>
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
-            closure |= components[i].containsClosure;
+            nested |= components[i].containsNested;
+            open |= components[i].containsOpen;
+            openSlot |= components[i].containsOpenSlot;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -506,6 +585,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         foreach (var argument in this.LengthArguments)
         {
             parameter |= argument is { IsConstant: false };
+            openSlot |= argument is { ContainsOpenSlot: true };
         }
 
         // R8-W2: a fixed array's interpolation-bound term over abstract value Types is an abstract part, open until its instance folds it.
@@ -517,7 +597,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
         // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
         // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
-        if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))
+        if (instanceContext is { Declaring: { } held } && ReferenceEquals(instanceContext.Target, symbol))
         {
             parameter |= held.containsParameter;
             pair |= held.containsPairLayer;
@@ -526,7 +606,9 @@ public sealed class BoundType : IEquatable<BoundType?>
 
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
-        this.containsClosure = closure;
+        this.containsNested = nested;
+        this.containsOpen = open;
+        this.containsOpenSlot = openSlot;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -576,7 +658,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     public BoundLength? LengthExpression { get; }
 
     /// <summary>Gets the Origin of a borrow, handle, Slice, pair or Parameter layer; never a raw layer's (its <see cref="RawOrigin"/>).</summary>
-    public BoundOrigin? Origin => this.Semantics == SemanticsKind.Raw ? null : this.origin;
+    public BoundOrigin? Origin => this.IsPointer ? null : this.origin;
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
@@ -625,7 +707,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
     // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
-    internal Subst? ClosureContext { get; }
+    internal Subst? InstanceContext { get; }
 
     // SPEC 8.10, 15.3.4: a Function Type's per-call binder, the Function Type syntax that declares it, while it quantifies the outer
     // Origin of one of its own direct inputs; null where it quantifies none and on every other kind. An Input Origin of another
@@ -637,7 +719,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated; Unstated only on a kept part's layer its declaration writes
     /// without `during`, DECISIONS BU-46); null on any other layer (DECISIONS BU-24).</summary>
-    internal BoundOrigin? RawOrigin => this.Semantics == SemanticsKind.Raw ? this.origin : null;
+    internal BoundOrigin? RawOrigin => this.IsPointer ? this.origin : null;
 
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin (<see cref="Origin"/>).</summary>
     /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
@@ -681,15 +763,28 @@ public sealed class BoundType : IEquatable<BoundType?>
     internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
         (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
-    // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
-    internal bool ContainsClosure => this.containsClosure;
+    // Whether this subtree may contain a nested definition's Type, which an instance closes (Binding.CloseNestedTypes; DECISIONS BU-60,
+    // PLAN G846): a Closure Type, or the Item of a function that is no Container's member. A gate, a superset of the Items
+    // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
+    internal bool ContainsNested => this.containsNested;
+
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
+    internal bool ContainsOpen => this.containsOpen;
+
+    // PLAN G924 AF-3b v3-A (Binding.OpenSlots): whether this subtree holds an open atom, of a Type or of a length (BoundLength.OpenSlot).
+    internal bool ContainsOpenSlot => this.containsOpenSlot;
+
+    /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
+    /// wrapping integer Core (SPEC 3.1.1); no layer is followed. The one definition every phase reads: Binding, the MIR builder's
+    /// recorded values, MirValidator's testRecordValue row, A5's pun Types and the Backend's static-storage row.</summary>
+    internal bool IsScalar => ReferenceEquals(this, Boolean) || ReferenceEquals(this, Char) || this.IsNumeric;
 
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
     /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>
     internal bool IsSigned => this.numeric == NumericCategory.Signed;
 
     /// <summary>Gets the width in bits of an integer or wrapping integer Type (SPEC 3.1's storage size; <c>Wrapping&lt;T&gt;</c> has T's,
-    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="ScalarTypes.SizeWidth"/>); 0 for every other Type, among them
+    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="SizeWidth"/>); 0 for every other Type, among them
     /// a Type whose instance decides its width (SPEC 8.7.4).</summary>
     internal int Width => this.width;
 
@@ -725,6 +820,16 @@ public sealed class BoundType : IEquatable<BoundType?>
     /// <summary>Gets a value indicating whether this is an objref or objuniq borrow of an object.</summary>
     internal bool IsObjectBorrow => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };
 
+    /// <summary>Gets the referent of a safe value reference <c>ref/T</c> or <c>uniq/T</c> (SPEC 3.4), whatever the referent; null for
+    /// any other Type, a raw pointer, an object borrow or a pair layer among them. The one test of a safe reference layer every phase
+    /// reads; no further layer is followed.</summary>
+    internal BoundType? SafeReferent => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent : null;
+
+    /// <summary>Gets a value indicating whether this is a raw pointer <c>raw/T</c> (SPEC 5.1: a Copy address value; null is its only
+    /// literal), whatever the pointee; false for any other Type, a safe reference or an object borrow among them. The one test of a raw
+    /// layer every phase reads; no further layer is followed.</summary>
+    internal bool IsPointer => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
+
     /// <inheritdoc/>
     public bool Equals(BoundType? other) => ReferenceEquals(this, other);
 
@@ -742,7 +847,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     // compared here: no identity treats it as open, omitted or inferred (DECISIONS BU-24).
     internal bool SameExceptOrigins(BoundType other)
         => this.Kind == other.Kind && ReferenceEquals(this.Symbol, other.Symbol) && this.Name == other.Name && this.Semantics == other.Semantics && this.Length == other.Length &&
-            ReferenceEquals(this.LengthExpression, other.LengthExpression) && ReferenceEquals(this.ClosureContext, other.ClosureContext) &&
+            ReferenceEquals(this.LengthExpression, other.LengthExpression) && ReferenceEquals(this.InstanceContext, other.InstanceContext) &&
             this.LengthArguments.AsSpan().SequenceEqual(other.LengthArguments) && this.Components.Count == other.Components.Count &&
             this.OriginArguments.Count == other.OriginArguments.Count && ReferenceEquals(this.RawOrigin, other.RawOrigin);
 
@@ -755,13 +860,13 @@ public sealed class BoundType : IEquatable<BoundType?>
         "i32" => (NumericCategory.Signed, 32),
         "i64" => (NumericCategory.Signed, 64),
         "i128" => (NumericCategory.Signed, 128),
-        "isize" => (NumericCategory.Signed, (byte)ScalarTypes.SizeWidth),
+        "isize" => (NumericCategory.Signed, (byte)SizeWidth),
         "u8" => (NumericCategory.Unsigned, 8),
         "u16" => (NumericCategory.Unsigned, 16),
         "u32" => (NumericCategory.Unsigned, 32),
         "u64" => (NumericCategory.Unsigned, 64),
         "u128" => (NumericCategory.Unsigned, 128),
-        "usize" => (NumericCategory.Unsigned, (byte)ScalarTypes.SizeWidth),
+        "usize" => (NumericCategory.Unsigned, (byte)SizeWidth),
         "f32" or "f64" => (NumericCategory.Float, 0),
         _ => default,
     };
@@ -802,16 +907,43 @@ public sealed class BoundType : IEquatable<BoundType?>
 // LinkVersion, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class BindingScope(Koto owner)
 {
+    private readonly bool declares;
     private BindingScope? parent;
     private ConstraintEnvironment? constraints;
     private BoundConformancePath? conformancePath;
+    private BindingScope? evaluatedPremises;
+
+    // A scope formed for `declaration`'s own premises (Declaration).
+    internal BindingScope(Koto owner, Koto declaration)
+        : this(owner)
+    {
+        this.Declaration = declaration;
+        this.declares = true;
+    }
 
     internal Koto Owner { get; } = owner;
+
+    // SPEC 8.2.1, 8.3.3: the declaration whose premise closure the requests made in this scope extend, the one that reaches a limit of
+    // that closure, published where the scope is formed, never found by a walk: a scope formed for a constrained declaration's own
+    // premises names it (the two-argument constructor: a named function's, an accessor's, a Container's or a conditional conformance's
+    // scope, Binding.Scopes; a function's implementation premises; the Type's for an overlap of two of its conformances, SPEC 8.9.2),
+    // and every other scope extends its Parent's closure and takes its Parent's as it is linked: a block, an `if`, `do`, `while` or
+    // `for` body, a match arm and an anonymous function (its body an ExecutableBody, SPEC F.9.1, with no generic parameters, 7.7.1)
+    // state no premises, and a conformance path's or a function requirement's premises extend the declaration's whose premises they
+    // extend (ImplTable.Register: a conditional conformance's, else the Type's). A scope never linked is a chain's root, its own.
+    internal Koto Declaration { get; private set; } = owner;
 
     internal BindingScope? Parent
     {
         get => this.parent;
-        set => this.Link(ref this.parent, value);
+        set
+        {
+            this.Link(ref this.parent, value);
+            if (!this.declares)
+            {
+                this.Declaration = value?.Declaration ?? this.Owner;
+            }
+        }
     }
 
     // The number of changes of this scope's link.
@@ -824,8 +956,15 @@ internal sealed class BindingScope(Koto owner)
 
     internal FunctionKoto? Function { get; set; }
 
+    // The scope's Type-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
 
+    // SPEC 9.1, 9.5, 9.6, 4.4.1: the formal parameters the scope's declaration declares, by namespace as its members are, found by the
+    // stage walk at their declaring position and never a member a path or an opening alias reaches; null until the scope declares one
+    // (AddParameters), so a scope that declares none allocates no table.
+    internal ScopeParameters? Parameters { get; private set; }
+
+    // The scope's Value-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
@@ -841,19 +980,33 @@ internal sealed class BindingScope(Koto owner)
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
 
+    // An override's header layer (R7-C2c2 c2-4a): the virtual group's common premises its inputs and result bind under (SPEC 6.4.2),
+    // its Parent the function's scope; never the body's premises, which the slot's settle point decides.
+    internal BindingScope? HeaderPremises { get; set; }
+
+    // A member access's left reading's layer (R7-N1 c-b, Binding.EvaluateProjection; SPEC 8.3.2): its Parent this use scope, it holds
+    // what the Contracts of the left's proved projections supply (AddContractPremises), which the former adds to this scope only once
+    // the reading is decided; kept with this scope and reset with it each pass, so a warm pass forms none.
+    internal BindingScope EvaluatedPremises => this.evaluatedPremises ??= new(this.Owner) { Parent = this, Function = this.Function };
+
     internal BoundConformancePath? ConformancePath
     {
         get => this.conformancePath;
         set => this.Link(ref this.conformancePath, value);
     }
 
+    internal ScopeParameters AddParameters() => this.Parameters ??= new();
+
     internal void Reset()
     {
         this.Types.Clear();
+        this.Parameters?.Types.Clear();
+        this.Parameters?.Values?.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+        this.evaluatedPremises?.Reset();
     }
 
     private void Link<T>(ref T? field, T? value)
@@ -865,6 +1018,17 @@ internal sealed class BindingScope(Koto owner)
             this.LinkVersion++;
         }
     }
+}
+
+// A scope's formal parameters by namespace (BindingScope.Parameters): Type parameters, pair targets and their binders in Types, a
+// function's length slots (SPEC 4.4.1) in Values, null until the scope declares one (AddValues), as Parameters itself is.
+internal sealed class ScopeParameters
+{
+    internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
+
+    internal Dictionary<string, BindingSymbol>? Values { get; private set; }
+
+    internal Dictionary<string, BindingSymbol> AddValues() => this.Values ??= new(StringComparer.Ordinal);
 }
 
 /// <summary>How a check judged a repair condition from its own facts (SPEC 23.1.3); a refuted condition withholds the candidate.</summary>
@@ -891,16 +1055,18 @@ public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
     internal int Problem { get; init; } = -1;
 }
 
-/// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>
-public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount)
+/// <summary>Summarizes the current pass. Provisional completion never certifies a final program; a Final pass is complete when it rejected
+/// no part: no node Unresolved or Invalid and no Resolved node with a published problem of its own (LimitedCount: a located limit beside
+/// its Resolved node, PLAN G254c, or a report's Defect, an Internal record).</summary>
+public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount, int LimitedCount = 0)
 {
-    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
+    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0 && this.LimitedCount == 0;
 }
 
-/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol and the supply kind
-/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6).</summary>
+/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol, the supply kind
+/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6), and its physical signature (ImportAbi).</summary>
 // R5-M25: the extern names its definition the way MirDefKey does; a syntax reader takes Decl.Declaration.
-internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind);
+internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind, string Signature);
 
 /// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
 /// position, at the value that supplies the longer end; <c>Refuted</c> when the longer end is a body-local finite Origin.</summary>
@@ -913,31 +1079,24 @@ internal enum OriginJudgment : byte
     Unrepresentable,
 }
 
-// SPEC 10.5: why a single generic function reference's slots did not bind from its fixed expected call signature, for the Note of its
-// TypeMismatch_Kd: no binding fits structurally, a bound argument fails its Constraints, the bindings of one slot differ only in their
-// Origins, or a bound argument would hold an input Origin that is bound at each call.
+// SPEC 10.5: whether a generic function reference's slots bound from its fixed expected call signature, the one fact its readers need:
+// Unbound (a single candidate's TypeMismatch_Kd then reads the declaration's own signature), or SlotVariables (any candidate): a slot's
+// distinct bindings would take slot variables, which a reference does not solve, the located Unsupported_Kd (G1128).
 internal enum ReferenceSlotFailure : byte
 {
     None,
-    Structure,
-    Constraint,
-    OriginConflict,
-    InputOrigin,
+    Unbound,
+    SlotVariables,
 }
 
 // SPEC 15.6.1, 23.1: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
 // comparison, never a call-time Origin of the implementation.
 internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
 
-// SPEC 23.1.2: a record of a node beyond its first, of either Origin kind: a failed chain of an Origin relation (Relation) or a failed
-// condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind.
+// SPEC 23.1.2: an Origin record of a node, its first included, of either kind: a failed chain of an Origin relation (Relation) or a failed
+// condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind. A
+// Constraint record keeps one as the Origin relation it shows (an Owned record's, a Callable record's contract; R7-E4 E4e).
 internal readonly record struct OriginRecord(OriginRelationFact? Relation, OriginContractFact? Contract);
-
-// SPEC 15.2.3, 23.1: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
-// which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
-// capture entry and closure it belongs to, the Borrow that supplies a captured binding's Origin, and whether the failure is Refuted (a
-// body-local Origin) rather than Unknown.
-internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, string Member, BoundType MemberType, BoundOrigin? Origin, CaptureKoto? Entry, FunctionKoto? Closure, Koto? Borrow, bool Refuted);
 
 internal enum ObjectCountingStep : byte
 {
@@ -963,8 +1122,7 @@ internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
 // `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
 // `Supplier` is the atom (or meet operand) that supplied `Longer` at the use: the end after the Origin declarations and local initializers
 // and before any Closure's receiver resolution (Binding.SuppliedAtUse); the record's Borrow is the one whose Origin is it, by identity
-// (BorrowSource; DECISIONS R4-M133). `Condition` is the Semantics case a fit's position exists in (0: every case), which the
-// dependence query reads (DECISIONS BU-69).
+// (BorrowSource; DECISIONS R4-M133).
 internal readonly record struct OriginRelationFact(
     Koto At, BoundOrigin Longer, BoundOrigin Supplier, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null,
-    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false, ulong Condition = 0);
+    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);

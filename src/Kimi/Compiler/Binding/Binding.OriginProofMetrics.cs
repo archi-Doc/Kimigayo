@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Parsing;
-
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
@@ -16,8 +14,7 @@ public sealed partial class Binding
 /// </summary>
 internal sealed class OriginProofMetrics
 {
-    private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter, Koto Use)> queries = new();
-    private readonly long[] edges = new long[(int)OriginPremiseRule.LocalPlace + 1];
+    private readonly long[] edges = new long[(int)OriginPremiseRule.Value + 1];
 
     /// <summary>Gets the top-level proof requests: requests made while no premise environment was active.</summary>
     internal long Requests { get; private set; }
@@ -25,8 +22,16 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets every proof request, nested ones included.</summary>
     internal long Entries { get; private set; }
 
-    /// <summary>Gets the premise environments built: requests the structural instances did not answer, one closure each.</summary>
+    /// <summary>Gets the premise closures: one per request the structural instances did not answer.</summary>
     internal long Closures { get; private set; }
+
+    /// <summary>Gets the premise environments built for requests: one per request outside a premise session, one per anchor and Origin
+    /// state within one (PLAN G778).</summary>
+    internal long Environments { get; private set; }
+
+    /// <summary>Gets the premise edges written for requests: an environment's when it is built and a session request's own, the
+    /// construction work a premise session shares among the requests at one anchor (PLAN G778).</summary>
+    internal long WrittenEdges { get; private set; }
 
     /// <summary>Gets the environments built while another one was being built.</summary>
     internal long NestedClosures { get; private set; }
@@ -49,9 +54,24 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the local regions the fixed-fixed oracle read through their bounds (<c>UniversalRelations.Outlives</c>).</summary>
     internal long RegionReads { get; private set; }
 
+    /// <summary>Gets the carried-region walks formed (<c>Binding.CarriedWalk</c>: one per Closure per region-graph version).</summary>
+    internal long CarriedWalks { get; private set; }
+
+    /// <summary>Gets the admissions of a Closure's own entry's region (<c>Binding.AdmittedEntry</c>: while a body is bound, one per
+    /// enclosing Closure the region is carried through; at Final, one per entry per walk).</summary>
+    internal long CarriedAdmissions { get; private set; }
+
+    /// <summary>Gets the reads of a region's value in a body that were computed (<c>Binding.ValueIn</c>: once per Origin and body per
+    /// region-graph version once no body is being bound).</summary>
+    internal long ValueInReads { get; private set; }
+
     /// <summary>Gets the declaration judge's chain work (<c>TyCtxt.OriginChains.Work</c> of its graphs, PLAN G318): the core's only, as
     /// the minimal-condition rule at a last edge is quadratic in its key's conditions by design (at most 64 binders), as the copy's was.</summary>
     internal long ChainWork { get; private set; }
+
+    /// <summary>Gets the parts the well-formedness walks visited: a pattern part beside its Type at the use, above a borrow layer or
+    /// below one (R7-O1 d).</summary>
+    internal long WellFormedParts { get; private set; }
 
     /// <summary>Gets the worklist insertions of all closures.</summary>
     internal long Insertions { get; private set; }
@@ -69,9 +89,6 @@ internal sealed class OriginProofMetrics
     /// meet incidences (proposal §3.7); always zero.</summary>
     internal long BoundViolations { get; private set; }
 
-    /// <summary>Gets the distinct normalized relations proven at a use.</summary>
-    internal int DistinctQueries => this.queries.Count;
-
     /// <summary>Gets the premise edges a catalog rule introduced in all environments.</summary>
     /// <param name="rule">The rule.</param>
     /// <returns>The edge count.</returns>
@@ -82,6 +99,8 @@ internal sealed class OriginProofMetrics
         this.Requests = 0;
         this.Entries = 0;
         this.Closures = 0;
+        this.Environments = 0;
+        this.WrittenEdges = 0;
         this.NestedClosures = 0;
         this.Nodes = 0;
         this.Edges = 0;
@@ -94,23 +113,41 @@ internal sealed class OriginProofMetrics
         this.BoundViolations = 0;
         this.ClosureTicks = 0;
         this.ChainWork = 0;
+        this.WellFormedParts = 0;
+        this.CarriedWalks = 0;
+        this.CarriedAdmissions = 0;
+        this.ValueInReads = 0;
         Array.Clear(this.edges);
-        this.queries.Clear();
     }
 
     internal void RegionRead() => this.RegionReads++;
 
+    internal void CarriedWalk() => this.CarriedWalks++;
+
+    internal void CarriedAdmission() => this.CarriedAdmissions++;
+
+    internal void ValueInRead() => this.ValueInReads++;
+
     internal void Chained(long work) => this.ChainWork += work;
 
-    internal void Enter(BoundOrigin longer, BoundOrigin shorter, Koto use, int depth)
+    internal void WellFormedPart() => this.WellFormedParts++;
+
+    internal void Enter(int depth)
     {
         this.Entries++;
         if (depth == 0)
         {
             this.Requests++;
         }
+    }
 
-        this.queries.Add((longer, shorter, use));
+    internal void Construction(int edges, bool built)
+    {
+        this.WrittenEdges += edges;
+        if (built)
+        {
+            this.Environments++;
+        }
     }
 
     internal void Closure(OriginPremiseClosure closure, bool nested, long ticks)

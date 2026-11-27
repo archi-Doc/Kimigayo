@@ -1,18 +1,28 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 // Owns the failure of a common Function conversion whose subject is not proven Owned (SPEC 7.7.4, 15.2.3), a Constraint failure: one
 // on a failed part (an Error's cause, or the failed operand context of a subject no work judged) is derived from it (SPEC 23.1.2,
-// DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (an
-// OwnedConversionFact), chosen where the erasure decides (OwnedMember), at the converted value (DECISIONS BU-107). Before the capability
-// engine judges (an inferred Field's header), a subject no work judged is the located limit.
-// Input: the erasure's Owned proof with its rest (the capability engine's parts that are not Proven, R4-M161); the erasure's outcome for
-// the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
-// Output: the explaining member; the use failed, or false when the erasure failed another part; a derived use, settled in Binding.Check's
-// Final prologue (SettleDerivedUses). Must not prove Owned again or select a conversion.
+// DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (RecordOwned's
+// facts), chosen where the erasure decides (OwnedMember), at the converted value (DECISIONS BU-107). Before the capability
+// engine judges (an inferred Field's header), a subject no work judged is the located limit. A call's applicability reads the same
+// fact for its erased arguments at every argument position, a Tuple or array literal's elements included (ErasedArgumentsEnvironment,
+// SPEC 10.1 step 5, 10.5.1). Limit (SPEC 10.5.1's last paragraph): a join formed part by part ranks one class per typed position, a
+// source-less operation, so step 5 sees none of its parts' erasures; each part's erasure is judged after selection, at its value.
+// Input: the erasure's Owned proof with its rest (the subject's work, whose parts the capability engine records at every path,
+// CapabilityWork.Part; R4-M161), each leaf Origin judged by the relation judge at the use (JudgeOriginRelation with `static` as the
+// shorter end, SPEC 15.6.5); the call's retention for the result's independence of the receiver (ReceiverIndependence); the erasure's
+// outcome for the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
+// Output: the explaining member and the Owned fact (Refuted, Final); the Owned record through the constraint family's recorder
+// (RecordOwned: the kept `S is Owned`, the member row, an inherited member's Type or Origin, the Origin relation the erasure judged, a
+// captured binding's Borrow), or false when the erasure failed another part; a derived use, settled in Binding.Check's Final prologue
+// (SettleDerivedUses); a candidate's erased arguments' environment verdict, with a ComponentSite at each limited argument
+// (LimitErasedArgument, BU-22's L). The record must not prove Owned again, select a conversion or form text (the adapter's,
+// ReportOwnedConversion).
 public sealed partial class Binding
 {
     // The uses FailDerived failed in this pass, each with its held cause's candidates at failure, its first and the rest (none for an
@@ -20,12 +30,23 @@ public sealed partial class Binding
     // once the erasure's Owned failure is decided after the prologue).
     private List<(Koto Use, Koto? First, ICheckCause? Next, ICheckCause? ReentrySite)>? derivedUses;
 
+    // SPEC 15.2.3, 7.7.4: the kind of the member an Owned record names, its Reason fact's row, with the member's ordinal above its byte: a
+    // Closure's capture, an Item's bound Type argument (its component), or a nested definition's inherited Type argument or inherited
+    // Origin (its CapabilityParts ordinal).
+    private enum OwnedMemberKind : byte
+    {
+        Capture,
+        TypeArgument,
+        InheritedTypeArgument,
+        InheritedOrigin,
+    }
+
     // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction), which records an Owned
     // failure here at the converted value; a recorded mismatch of a Closure or Item against a Function Type always follows its erasure, so
-    // a missing outcome is a broken contract. A use records one failure: its erasure's record, made where it was judged, is that record, so
-    // a consumer reporting the same value or a second binding of it (an inferred Field's initializer in PrepareStorage) adds nothing. An
-    // Owned failure that no work judged returned on its subject's failed operand context (RequestCapability). The member is a capture of a
-    // closure or a bound Type argument of an Item.
+    // a missing outcome is a broken contract. A consumer reporting the same value, or a second binding of it (an inferred Field's
+    // initializer in PrepareStorage), judges it again; RecordConstraint keeps the use's first failure (R7-M95: the use's slot is not this
+    // check's input). An Owned failure that no work judged returned on its subject's failed operand context (RequestCapability). The
+    // member is a capture of a closure or a bound Type argument of an Item.
     private bool FailOwnedConversion(BoundType implementation, BoundType required, Koto at, Koto use)
     {
         if (this.ErasureOf(implementation, required) is not { } erasure)
@@ -37,11 +58,6 @@ public sealed partial class Binding
         if (erasure.Part != ErasurePart.Owned)
         {
             return false;
-        }
-
-        if (use.BindingFailure != BindingFailure.None)
-        {
-            return true;
         }
 
         if (erasure.Owned.Cause is { } held)
@@ -59,26 +75,164 @@ public sealed partial class Binding
 
         if (erasure.Owned is not { Member: >= 0 and var i, Origin: var origin } owned)
         {
-            return false; // No part failed: the failure rests on no member (the Type mismatch keeps its Note).
+            return false; // No part failed: the failure rests on no member (the Type mismatch stays the record).
         }
 
-        var closure = implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
-        var captures = BoundClosure.Of(implementation)?.Captures;
         // ErasureSubject's member i, in the callable's own numbering (CapabilityParts): a Closure's capture i; an Item's bound argument,
-        // its Contract reference's Type and Origin arguments being that reference's.
-        var index = CapabilityParts.MemberAt(implementation, i);
-        var member = implementation.Components[index];
-        var name = captures is null ? $"{Ordinal(index + 1)} Type argument" : captures[i].Environment.Name;
-
-        // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
-        var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
-            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
-        var entry = closure is null ? null : CaptureEntryOf(closure, name);
-        var fact = new OwnedConversionFact(at, implementation, name, member!, origin, entry, closure, borrow, owned.Refuted);
-        this.FailExplained(ref this.ownedConversions, use, fact.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, fact);
+        // its Contract reference's Type and Origin arguments being that reference's (its component's ordinal); a nested definition's
+        // inherited argument (member Components.Count, SPEC 6.1.3; InheritedArguments, readable since the erasure judged it), a bound
+        // generic argument of a Closure too. An inherited member is kept as read, the record's Actual fact: its Type, or its Origin,
+        // which is reported as an Origin that is not static (SPEC 15.2.3).
+        var (part, partOrigin, index) = CapabilityParts.At(implementation, this.InheritedArguments(implementation) ?? BoundType.Unit, i);
+        var (kind, kept) = index != implementation.Components.Count ? (BoundClosure.Of(implementation) is not null ? OwnedMemberKind.Capture : OwnedMemberKind.TypeArgument, -1L)
+            : part is null ? (OwnedMemberKind.InheritedOrigin, this.report.Keep(partOrigin!)) : (OwnedMemberKind.InheritedTypeArgument, this.report.Keep(part));
+        this.RecordOwned(at, use, implementation, (kind, kind == OwnedMemberKind.TypeArgument ? index : i, kept), origin, owned.Refuted);
         return true;
+    }
 
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    // SPEC 15.2.3, 23.1 (R7-E4 E4e): the Owned record at the converted value `at`, of `use`, through the constraint family's recorder
+    // (RecordConstraint: Refuted is UnsatisfiedConstraint_Kd, Unknown UnprovenConstraint_Kd): the kept `S is Owned` (Constraint); the
+    // member row (Reason: its kind, and above its byte its ordinal in the kind's numbering), whose text the adapter forms
+    // (ReportOwnedConversion); an inherited member's Type or Origin as the check read it (Actual: the member's kept side, Kept, -1 for
+    // another member; F's ruling 50); when the member names an Origin, the relation the erasure judged, `Origin outlives static` with
+    // the Origin read at the use as both its longer end and its supplier, refuted where RefutedStatic refuted it, else the engine's
+    // Unknown it kept (OriginRecord; F's ruling 47 C2); and a captured binding initialized by a Borrow of that Origin, that Borrow
+    // (Related, role 3, "origin"; SPEC 15.6.5). The capture entry is syntax the adapter reads (CaptureEntryOf), never a fact.
+    private void RecordOwned(Koto at, Koto use, BoundType subject, (OwnedMemberKind Kind, int Ordinal, long Kept) member, BoundOrigin? origin, bool refuted)
+    {
+        var site = this.FactSite(at);
+        var proposition = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: this.Library.Owned));
+        Span<ProblemFact> facts = [new(ProblemFactKind.Constraint, site, this.report.Keep(proposition)), new(ProblemFactKind.Reason, site, (long)member.Kind | ((long)member.Ordinal << 8)), default, default, default];
+        var count = 2;
+        if (member.Kept >= 0)
+        {
+            facts[count++] = new(ProblemFactKind.Actual, site, member.Kept);
+        }
+
+        if (origin is not null)
+        {
+            facts[count++] = new(ProblemFactKind.OriginRecord, site, this.report.Keep(new OriginRecord(new OriginRelationFact(at, origin, origin, BoundOrigin.Static, false, null, refuted), null)));
+        }
+
+        var captures = member.Kind == OwnedMemberKind.Capture ? BoundClosure.Of(subject)!.Captures : null;
+        if (captures is not null && origin is not null && captures[member.Ordinal].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
+            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow && ReferenceEquals(borrow.BoundType?.Origin, origin))
+        {
+            facts[count++] = new(ProblemFactKind.Related, this.FactSite(borrow), 3);
+        }
+
+        this.RecordConstraint(use, refuted ? ConstraintProof.Refuted : ConstraintProof.Unknown, facts[..count]);
+    }
+
+    // SPEC 7.7.4, 15.2.3, 23.1.2 (C-359 B4; G812 rulings 89-91, the owner's O-369 (a)): a reference at a common Function Type whose
+    // signature rests on an unformed split (DECISIONS BU-240) is still erased in its environment, whose Owned proof reads only the bound Type
+    // arguments, never the unformed signature: a Language failure of its own, recorded at its own node, as on dev. A written Type argument
+    // (the reference's own, or its container's for a member) not proven Owned is recorded there, and the reference, a verdict over that
+    // failed child, adds no record; with none written, the one candidate's inferred arguments (its trial frame) make the reference's
+    // record. The erasure fails once, at its first argument not proven Owned (one record, as on dev). One with an Error proof rests on
+    // that Error. `use` is the reference wherever its erasure is judged: a reference at S (one candidate or a group: the written
+    // arguments are every candidate's) or an argument part the one resting candidate of a call erases.
+    private void FailUnformedOwned(Koto use, BoundType required, SlotFrame? trial)
+    {
+        var written = KotoHelper.UnwrapParentheses(use) switch
+        {
+            GenericsKoto generics => generics,
+            MemberAccessKoto { Left: GenericsKoto container } => container,
+            _ => null,
+        };
+
+        if (written is null && trial is { } frame)
+        {
+            for (var i = 0; i < frame.Types.Length; i++)
+            {
+                if ((frame.Types[i] ?? frame.Selectors[i]) is not { } inferred)
+                {
+                    continue;
+                }
+
+                var unproven = this.ProveOwned(inferred, use, out _);
+                if (unproven is not (ConstraintProof.Unknown or ConstraintProof.Refuted))
+                {
+                    continue;
+                }
+
+                this.RecordOwned(use, use, required, (OwnedMemberKind.TypeArgument, i, -1), null, unproven == ConstraintProof.Refuted);
+                return;
+            }
+        }
+
+        for (var i = 0; written is not null && i < written.TypeArguments.Count; i++)
+        {
+            if (written.TypeArguments[i] is not { BoundType: { } type } argument)
+            {
+                continue;
+            }
+
+            var proof = this.ProveOwned(type, argument, out _);
+            if (proof is not (ConstraintProof.Unknown or ConstraintProof.Refuted))
+            {
+                continue;
+            }
+
+            this.RecordOwned(argument, argument, required, (OwnedMemberKind.TypeArgument, i, -1), null, proof == ConstraintProof.Refuted);
+            return;
+        }
+    }
+
+    // SPEC 7.7.4, 15.2.3 (C-359 C2): the Owned part of an erasure whose signature part rests on an unformed split (DECISIONS BU-240), judged
+    // and recorded as the erasure's own is (ProveErasedOwned, FailOwnedConversion): whether the environment is not proven Owned.
+    private bool FailErasedOwned(Koto node, BoundType actual, BoundType expected)
+    {
+        if (this.ProveErasedOwned(actual, node, this.formingBody, out var owned) == ConstraintProof.Proven)
+        {
+            return false;
+        }
+
+        (this.erasureOutcomes ??= new())[(actual, expected)] = new(ErasurePart.Owned, owned);
+        this.FailOwnedConversion(actual, expected, node, node);
+        return true;
+    }
+
+    // SPEC 15.2.3, 8.3.3 Finality (R7-O2 A1+A2; the owner's O-471 (a)): an erasure's Owned obligation (BindingObligationKind.Owned, recorded
+    // by ErasesToFunction and RequireObjectErasure when the proof read a region with no answer yet while a body is bound), judged by
+    // JudgeObligations in Binding.Check's Final prologue, once no body is being bound, so every candidate it reads is complete (RegionValue,
+    // CarriedRegion's walk). Its subject is the obligation's Type and the use's published erasure the other half: a function erasure's
+    // expected Type is the use's ErasedFunctionType over the use's own Type, an object view's its objectErasures row over its Source, and an
+    // obligation whose Type is not that subject (a trial's, or a use that erased nothing at last) records nothing. A function erasure's record
+    // facts are judged in the obligation's body (RefutedStatic) and its failure recorded at the converted value as at the literal
+    // (FailOwnedConversion); an object view's failure is its Constraint record at the use, as at the literal, its evidence withdrawn. A value
+    // failed since is judged like any other, and RecordConstraint keeps its first failure. A function erasure whose target names a deferred
+    // result slot's atom refuted at Final (R7-O2 O2-F, DeferredAtomIn) read that failed slot: it rests on it with no record (FailDerived).
+    // No region bound is recorded after it at Final (ProduceFailures).
+    private void JudgeErasedOwned(in BindingObligation obligation)
+    {
+        var (node, actual) = (obligation.Use, obligation.Type!);
+        if (actual.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
+        {
+            if (this.objectErasures.TryGetValue(node, out var row) && ReferenceEquals(row.Source, actual) &&
+                this.ProveOwned(actual, node) is not ConstraintProof.Proven and var unowned)
+            {
+                this.objectErasures[node] = default;
+                this.RequireConstraint(node, unowned, this.capabilityMode, proposition: this.InternConstraint(new(ConstraintKind.Contract, actual, contract: this.Library.Owned)));
+            }
+
+            return;
+        }
+
+        if (node.ErasedFunctionType is { } target && this.DeferredAtomIn(target) is { Binder: { BindingFailure: not BindingFailure.None } slot })
+        {
+            // R7-O2 O2-F: the conversion's target Type names a slot refuted at Final, so the check read a failed part: a derived
+            // failure with no record (BU-75), the value's Type kept for MIR's published inputs.
+            this.FailDerived(node, slot);
+            return;
+        }
+
+        if (node.ErasedFunctionType is { } expected && ReferenceEquals(node.BoundType, actual) &&
+            this.ProveErasedOwned(actual, node, obligation.Body, out var owned) != ConstraintProof.Proven)
+        {
+            (this.erasureOutcomes ??= new())[(actual, expected)] = new(ErasurePart.Owned, owned);
+            this.FailOwnedConversion(actual, expected, node, node);
+        }
     }
 
     // SPEC 23.1.2 (DECISIONS BU-75, BU-76): a conversion whose own check failed because a part it judged failed is a derived failure, with
@@ -147,37 +301,142 @@ public sealed partial class Binding
         }
     }
 
+    // A part walk's visited works (OwnedMember), kept across walks so a warm rebind allocates nothing.
+    private readonly HashSet<CapabilityWork> ownedWalk = new(ReferenceEqualityComparer.Instance);
+
+    // SPEC 7.7.4's second bullet, 10.1 step 5, 10.5.1, 15.6.1: the erased arguments' environment conditions at applicability, at every
+    // argument position: each argument, then the element positions each fit recorded (Positions: each element of a Tuple or array literal
+    // argument, recursively, is an argument at its position), each verdict computed once (ErasedArgumentEnvironment): a refuted one makes
+    // the candidate inapplicable whatever another's limit says; else a limited one is the located limit at its source
+    // (LimitErasedArgument); else every verdict is judged after selection, an Unknown an obligation. A join formed part by part has one
+    // source-less operation at its typed position (FitsPosition), so none of its parts' erasures is read here (SPEC 10.5.1's last
+    // paragraph): the limit the file header names.
+    private ConstraintProof ErasedArgumentsEnvironment(ReadOnlySpan<BoundArgumentOperation> arguments)
+    {
+        var positions = CollectionsMarshal.AsSpan(this.positionOperations);
+        var count = arguments.Length;
+        foreach (ref readonly var argument in arguments)
+        {
+            count += positions[argument.Positions].Length;
+        }
+
+        var operations = this.argumentOperationScratch.Rent(count); // The arguments, then each one's element positions.
+        var limits = this.flagScratch.Rent(count); // Whether each position's verdict is the limit.
+        try
+        {
+            arguments.CopyTo(operations);
+            count = arguments.Length;
+            foreach (ref readonly var argument in arguments)
+            {
+                var elements = positions[argument.Positions];
+                elements.CopyTo(operations.AsSpan(count));
+                count += elements.Length;
+            }
+
+            var limited = false;
+            for (var i = 0; i < count; i++)
+            {
+                var verdict = this.ErasedArgumentEnvironment(operations[i]);
+                if (verdict == ConstraintProof.Refuted)
+                {
+                    return ConstraintProof.Refuted;
+                }
+
+                limits[i] = verdict == ConstraintProof.Error;
+                limited |= limits[i];
+            }
+
+            for (var i = 0; limited && i < count; i++)
+            {
+                if (limits[i])
+                {
+                    this.LimitErasedArgument(operations[i].Source!);
+                }
+            }
+
+            return limited ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+        finally
+        {
+            this.flagScratch.Return(limits, clearArray: true);
+            this.argumentOperationScratch.Return(operations, clearArray: true);
+        }
+    }
+
+    // An argument's environment condition, the erasure row's verdict at applicability and the one fact the record reads too
+    // (ErasesToFunction): its complete Owned fact (ProveErasedOwned, OwnedMember) and its result's independence of the receiver
+    // (ReceiverIndependence). Refuted: the engine's own Refuted (a decided leaf: raw storage's TryLeafCapability row, a summary excluding
+    // Owned), a refuted leaf or a dependence; Error: a part decided only once the body is bound (Final) or a retention past its limits;
+    // else Proven, its verdict judged after selection. An argument that is no Closure's or Function Item's erasure is Proven.
+    private ConstraintProof ErasedArgumentEnvironment(in BoundArgumentOperation operation)
+    {
+        if (operation is not { Adaptation: ArgumentAdaptation.Erasure, Source: { } source, SourceType: { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } actual })
+        {
+            return ConstraintProof.Proven;
+        }
+
+        var held = this.failedCause;
+        var proof = this.ProveErasedOwned(actual, source, this.formingBody, out var owned);
+        this.failedCause = held;
+        var independence = this.ReceiverIndependence(actual);
+        return proof == ConstraintProof.Refuted || (proof == ConstraintProof.Unknown && owned.Refuted) || independence == ConstraintProof.Refuted ? ConstraintProof.Refuted
+            : (proof == ConstraintProof.Unknown && owned.Final) || independence == ConstraintProof.Error ? ConstraintProof.Error
+            : ConstraintProof.Proven;
+    }
+
+    // The located limit at a limited erased argument (BU-22's L): a site of its own at `source`, each such argument its own (SPEC
+    // 23.1.2); the call rests on the first.
+    private void LimitErasedArgument(Koto source)
+    {
+        var site = new ComponentSite(this.neededSites) { Use = source };
+        if (this.failedCause is null)
+        {
+            this.failedCause = site;
+        }
+        else
+        {
+            site.Rest();
+        }
+    }
+
     // SPEC 7.7.4, 15.2.3: the erasure's one Owned proof (ErasesToFunction), of its subject (ErasureSubject), the channel cleared before it;
     // an Error's cause is held for the conversion's record (FailOwnedConversion), never rested here, and a failure names its member
-    // (OwnedMember).
-    private ConstraintProof ProveErasedOwned(BoundType actual, Koto node, out OwnedFact owned)
+    // (OwnedMember), its record facts judged in `body`: the forming body at the literal and at applicability, the obligation's at Final.
+    private ConstraintProof ProveErasedOwned(BoundType actual, Koto node, ExecutableBody body, out OwnedFact owned)
     {
         this.failedCause = null;
         var proof = this.ProveOwned(this.ErasureSubject(actual), node, out var rest);
-        owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(proof == ConstraintProof.Error ? this.HoldCause() : null, rest);
+        owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(proof == ConstraintProof.Error ? this.HoldCause() : null, rest, node, body);
         return proof;
     }
 
     // SPEC 7.7.4, 15.2.3 (DECISIONS BU-73): an erasure's subject, its callable's complete environment, its parts (CapabilityParts) as one
     // environment Tuple (EnvironmentTuple): a Closure's captures, whose members are their indices, or a Function Item's bound arguments, a
-    // requirement Item's Contract-reference Origin arguments included. Its call signature, and what a nested function's Item inherits, are
-    // the required Function Type's to state, never a part of the proof. A callable without parts has the empty environment, Unit, which no
-    // work needs to judge, also before the engine judges (an inferred Field's header, SPEC 11.6).
+    // requirement Item's Contract-reference Origin arguments included, then a nested definition's inherited arguments (InheritedArguments,
+    // SPEC 6.1.3). Its call signature, and an enclosing function's Origin that a nested function's signature names (InheritedEnvironment),
+    // are the required Function Type's to state, never a part of the proof. A callable without parts has the empty environment, Unit,
+    // which no work needs to judge, also before the engine judges (an inferred Field's header, SPEC 11.6). A nested definition whose
+    // instance is withheld is its own subject: its Owned proof answers the located limit (StructuralCapability).
     private BoundType ErasureSubject(BoundType callable)
     {
-        if (callable.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
+        if (callable.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || this.InheritedArguments(callable) is not { } inherited)
         {
             return callable;
         }
 
-        var reference = RequirementReference(callable);
-        var types = this.RentTypes(callable.Components.Count + (reference?.Components.Count ?? 0));
-        var origins = this.originScratch.Rent(reference?.OriginArguments.Count ?? 0);
+        var t = 0;
+        var o = 0;
+        foreach (var (part, _, _) in new CapabilityParts(callable, inherited))
+        {
+            (t, o) = part is null ? (t, o + 1) : (t + 1, o);
+        }
+
+        var types = this.RentTypes(t);
+        var origins = this.originScratch.Rent(o);
         try
         {
-            var t = 0;
-            var o = 0;
-            foreach (var (part, origin, _) in new CapabilityParts(callable))
+            (t, o) = (0, 0);
+            foreach (var (part, origin, _) in new CapabilityParts(callable, inherited))
             {
                 if (part is not null)
                 {
@@ -198,33 +457,97 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.2.3, 15.6.1 (BU's n6): the member an Owned failure names, from the parts the engine found not Proven: each member in member
-    // order with the Origin of its first part; the first whose Origin is Refuted in the forming body (a body-local borrow) wins, else the
-    // first. -1 when no part failed; -2 when no work judged the subject.
-    private OwnedFact OwnedMember(ICheckCause? cause, in OwnedRest rest)
+    // SPEC 15.2.3, 15.6.5 (BU's n6; G379 R4, R5): the Owned engine's complete fact over the subject's parts that are not Proven, at any
+    // depth (a part with a Type through its own work's parts, OwnedWork; every engine path records its parts, CapabilityWork.Part), each
+    // leaf Origin classified at `use` (RefutedStatic): Refuted when one is; else Final when one is decided only once the body is bound,
+    // or when no part is known: no work judged the subject, or its work was forgotten (its evaluation's answer depends on an open
+    // obligation, ForgetDependentCapabilities; rulings-g 3). The member it names is the first member with a refuted leaf, with that leaf, else the
+    // first member with its first Origin. -1 when no part failed; -2 when no work judged the subject. A part's Origin is read once, at the
+    // erasure's use, where it is taken from its part (SuppliedAtUse: a `let` region of the use's own body is its value, PLAN G492-a (ii)),
+    // before the receiver resolution, as a record's Supplier is.
+    private OwnedFact OwnedMember(ICheckCause? cause, in OwnedRest rest, Koto use, ExecutableBody body)
     {
-        var first = new OwnedFact(cause, rest.Judged ? -1 : -2, null, false);
+        var first = new OwnedFact(cause, rest.Work is null ? -2 : -1, null, false, false);
         var refuted = first;
-        var parts = rest.Parts;
+        var final = rest.Work is null or { Depends: true };
+        var parts = rest.Work?.Parts;
+        this.ownedWalk.Clear();
         for (var p = 0; parts is not null && p < parts.Count; p++)
         {
-            var (member, origin) = parts[p];
-            var earlier = false;
-            for (var q = 0; q < p && !earlier; q++)
+            var (member, written, type) = parts[p];
+            var origin = written is null ? null : this.SuppliedAtUse(written, use);
+            var leaf = this.RefutedLeaf(type, origin, rest.Scope, use, body, ref final);
+            if (first.Member < 0 || member < first.Member)
             {
-                earlier = parts[q].Member == member;
+                first = new(cause, member, origin, false, false);
             }
 
-            if (earlier)
+            if (leaf is not null && (refuted.Member < 0 || member < refuted.Member))
             {
-                continue; // A member is explained by its first part.
+                refuted = new(cause, member, leaf, true, false);
             }
-
-            var fact = new OwnedFact(cause, member, origin, origin is not null && BodyLocalIn(origin, this.formingBody));
-            first = first.Member < 0 || member < first.Member ? fact : first;
-            refuted = fact.Refuted && (refuted.Member < 0 || member < refuted.Member) ? fact : refuted;
         }
 
-        return refuted.Member >= 0 ? refuted : first;
+        return (refuted.Member >= 0 ? refuted : first) with { Final = final };
+    }
+
+    // The first leaf Origin refuted under a part that is not Proven: an Origin part is its leaf; a part with a Type, each part of its
+    // work, at any depth; a Type without a work (a leaf the engine decided, or a limit) and a limit part keep the engine's verdict.
+    // `final` collects a leaf decided only once the body is bound. `origin` arrives read at the use; a nested work's part is read here, as
+    // OwnedMember reads a subject's part.
+    private BoundOrigin? RefutedLeaf(BoundType? type, BoundOrigin? origin, BindingScope scope, Koto use, ExecutableBody body, ref bool final)
+    {
+        if (type is null)
+        {
+            return origin is not null && this.RefutedStatic(origin, use, body, ref final) ? origin : null;
+        }
+
+        if (this.OwnedWork(type, scope) is not { Result: not ConstraintProof.Proven } work || !this.ownedWalk.Add(work))
+        {
+            return null; // A recursive Type's cycle adds no leaf (SPEC 15.3.5).
+        }
+
+        for (var i = 0; work.Parts is { } parts && i < parts.Count; i++)
+        {
+            var supplied = parts[i].Origin is { } written ? this.SuppliedAtUse(written, use) : null;
+            if (this.RefutedLeaf(parts[i].Type, supplied, scope, use, body, ref final) is { } leaf)
+            {
+                return leaf;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 15.6.5: whether a leaf Origin cannot outlive `static`, read from the relation's judge in `body` at `use` (the forming body, or
+    // an Owned obligation's at Final, JudgeErasedOwned)
+    // (JudgeOriginRelation with `static` as the shorter end: the Origin at the use, a local region through its recorded sources,
+    // JudgeLocalRegion, an atom by JudgeOriginAtoms); a Refuted verdict is final (a recorded bound is never removed). A leaf with a local
+    // region the forming body judges whose bounds are not complete (RegionBounded) that is not refuted is decided only once the body is
+    // bound (`final`: its later bounds may refute it); any other leaf keeps the engine's verdict.
+    private bool RefutedStatic(BoundOrigin origin, Koto use, ExecutableBody body, ref bool final)
+    {
+        if (this.JudgeOriginRelation(origin, BoundOrigin.Static, use, body) == OriginJudgment.Refuted)
+        {
+            return true;
+        }
+
+        final |= this.formingBody.IsBody && this.RegionLeaf(this.OriginAtUse(origin, use), this.formingBody);
+        return false;
+    }
+
+    // Whether an Origin, or an operand of its meet, is a local region `body` judges (RegionIn) whose bounds are not complete yet
+    // (RegionBounded): the region of the erasure's Final class (RefutedStatic).
+    private bool RegionLeaf(BoundOrigin origin, ExecutableBody body)
+    {
+        for (var i = 0; origin.Kind == OriginKind.Intersection && i < origin.Operands.Count; i++)
+        {
+            if (this.RegionLeaf(origin.Operands[i], body))
+            {
+                return true;
+            }
+        }
+
+        return RegionIn(origin, body) && !this.RegionBounded(origin);
     }
 }

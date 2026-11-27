@@ -7,10 +7,29 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5's raw addresses (SPEC 15.6 Addresses and reach, 5.2.2, 5.7; DECISIONS R4-M95, R4-M116): a raw pointer carries the holders it
-/// addresses and the Loans it was formed through, a write through it reaches them, a stored raw layer is classed by its step, and the
-/// located Unsupported_Kd of a Borrow or read of a `during self` layer's enclosing Place.</summary>
+/// addresses and the Loans it was formed through, a write through it reaches them, a stored raw layer is classed by its step, and a read
+/// of a `during self` layer or of a Place enclosing one carries its owner's own-step entry.</summary>
 public sealed partial class MirBorrowsTest
 {
+    // Z5-R2's shapes beside LentShapes: a holder of a Type argument beside an enclosing Tuple, a fixed array of enclosing Tuples, and a
+    // holder whose Type argument holds a raw pointer (no `self`, SPEC 5.7 Origins).
+    private const string EnclosingShapes = """
+        func usen(n: i32) => ()
+        struct Hp<T>
+            internal var v: T
+            internal var pair: (raw/u8 during self, i32)
+            public init(v: T)
+                self.v = v@move
+                self.pair = (null, 0)
+        struct Arr
+            internal var ta: [2 of (raw/u8 during self, i32)]
+            public init() => self.ta = [(null, 1), (null, 2)]
+        struct W<T>
+            internal var v: T
+            public init(v: T) => self.v = v@move
+
+        """;
+
     // The raw shapes: a box whose raw Field states no Origin, a cursor over a Type argument, an owning buffer, a Field written by a call
     // the contract ties to nothing, a layer inside a Tuple Field, and the calls through them.
     private const string RawShapes = """
@@ -469,8 +488,10 @@ public sealed partial class MirBorrowsTest
     // arrConsumeBad), so `slot` may keep w's address and with it y's Loan: each errs at `y = 5` as its borrowed twin does (fail-before:
     // accepted). viaUntiedBad leaves `x.p` as `Plain.init` made it, which by that contract may address storage the body does not own, so
     // the write may keep y's Loan there (R4-M116 S2's hiddenInit), however `slot` is used; so do three forms that use it before `y = 5`
-    // by a constructor's contract: genUntiedBad and boxUntiedBad box x after `x.p = slot@raw`, and `Bx.init`'s result is untied, so the
-    // box's `item.p` may address such storage and writeG or writeBP may store w's address there; deepUntiedBad hands `Plain.init(q: w..)`
+    // by a constructor's contract: boxUntiedBad boxes x after `x.p = slot@raw`, and `Bx.init`'s result is untied, so the box's `item.p`
+    // may address such storage and writeBP may store w's address there; genUntiedBad's writeG<T> is a valid program, rejected again since c3-5 as on fcd6a5381 (a known limit of this tree's A5, which maps the key past a hidden layer to storage the body does not own: open issue "A5's Φ_E exclusion past a hidden layer", PLAN G935 c3-5): `x.item` is a T, whose
+    // binding's raw Field adds no reach of its own, and q is no T; slot, the holder that Field addresses, may take q but is used only
+    // before `y = 5` (SPEC 15.6.4, the owner's O-360 (a) and O-312 (a)); deepUntiedBad hands `Plain.init(q: w..)`
     // to `Outer.init`, which may write that chain, y's Loan with it, through `inner.p` as `Plain.init` left it (the reviews' genPOk,
     // boxPlainOk and deepOk). Valid: a Tuple no untied constructor built, used before `y = 5` (tupOk), and arguments whose chain carries
     // no Loan (viaQuietOk, consumeQuietOk).
@@ -642,14 +663,18 @@ public sealed partial class MirBorrowsTest
     // storage that can hold a part or a borrow formed through the argument keeps its Loans, and a stated layer retains as its borrow
     // would (5.7 Calls, PLAN G339). A keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the
     // drop forms of ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of
-    // reads through the argument carries, so that raw layer keeps it. Another argument's storage (keeperOtherBad) and a raw result
-    // (keeperResultBad, keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
+    // reads through the argument carries, so that raw layer keeps it, and slot's own storage end conflicts too (keeperBorrowedBad's
+    // `var slot`, a true record: the layer a declaration states keeps what it admits, 5.7 Calls; D-757; keeperChainBad's the same).
+    // Another argument's storage (keeperOtherBad) and a raw result (keeperResultBad, keeperTupResultBad) keep the by-value argument's
+    // own value, the keeper's Loan with it (keeperOtherBad's `usep(other)` and `var other`: records added with the A5 landing on a
+    // program rejected anyway, DECISIONS Q13).
     [Fact]
     public void AByValueKeeperIsItsArgumentsOwnValue()
         => Assert.Equal(
             [
-                "keeperBorrowedBad: usep(slot)", "keeperChainBad: usep(slot)", "keeperOtherBad: slot = null", "keeperResultBad: usep(slot)",
-                "keeperTupResultBad: usep(slot)",
+                "keeperBorrowedBad: usep(slot)", "keeperBorrowedBad: var slot: raw/u8 = null", "keeperChainBad: usep(slot)",
+                "keeperChainBad: var slot: raw/u8 = null", "keeperOtherBad: slot = null", "keeperOtherBad: usep(other)",
+                "keeperOtherBad: var other: raw/u8 = null", "keeperResultBad: usep(slot)", "keeperTupResultBad: usep(slot)",
             ],
             Problems("""
                 func usep<T>(p: raw/T) => ()
@@ -803,10 +828,14 @@ public sealed partial class MirBorrowsTest
     // holder, so a value an untied constructor made (Plain.init's, Writer.init's or Bx.init's result) reaches it through every raw Field,
     // also after the caller rewrote one. A call that writes through such a value stores there every chain its row retains, y's Loan with
     // it: x's own (viaOk, consumeDrop2Ok, arrConsumeOk; viaRefOk through a borrow) or input 1's (via2Ok; deepQOk two Fields deep, enumBOk
-    // in an enum's payload, optOk in an Option, genPLateOk in a box's Field, arrPlainOk in an Array). Each is a correct error at `y = 5`
+    // in an enum's payload, optOk in an Option, boxPLateOk in a box's Field, arrPlainOk in an Array). genPLateOk, the box passed to
+    // `writeG<T>(x: Bx<T>, q: raw/u8)`, is a valid program, rejected again since c3-5 as on fcd6a5381 (the limit genUntiedBad's row names): `x.item` is storage of writeG's own T, Plain's raw Field lies in T's binding, which adds
+    // no reach of its own beyond the address it carries, and q is no T; slot, the holder that Field addresses, may take q (route 1, the
+    // owner's O-312 (a)) but is used only before `y = 5` (SPEC 15.6.4; the owner's O-360 (a)); its purpose is
+    // boxPLateOk's, whose callee `writeBP(x: Bx<Plain>, ..)` writes the Type. Each other is a correct error at `y = 5`
     // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
     // names keep their earlier suffix. The old analysis read no retention and accepted the program; since the MIR decides acceptance
-    // (R6-check H5, DECISIONS R5-M185) check rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
+    // (R6-check H5, DECISIONS R5-M185) check rejects it with these eleven records, each at its function's `y = 5` (H3b's 1r).
     [Fact]
     public void ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn()
     {
@@ -896,6 +925,15 @@ public sealed partial class MirBorrowsTest
                 writeG(b@move, w@raw@raw/u8)
                 usep(slot)
                 y = 5
+            func boxPLateOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var b = Bx.init(item: Plain.init(q: null))
+                b.item.p = slot@raw
+                writeBP(b@move, w@raw@raw/u8)
+                usep(slot)
+                y = 5
             func arrPlainOk()
                 var y: i32 = 1
                 var w: ref/i32 = y@ref
@@ -914,12 +952,12 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "viaOk: y = 5", "viaRefOk: y = 5", "consumeDrop2Ok: y = 5", "arrConsumeOk: y = 5", "via2Ok: y = 5", "deepQOk: y = 5", "enumBOk: y = 5",
-                "optOk: y = 5", "genPLateOk: y = 5", "arrPlainOk: y = 5",
+                "optOk: y = 5", "genPLateOk: y = 5", "boxPLateOk: y = 5", "arrPlainOk: y = 5",
             ],
             Problems(c, Analyze(c), LoanCodes));
         var analyzed = MinimalEmissionTest.Analyze(Source);
         Assert.False(analyzed.Accepts);
-        Assert.Equal(string.Join(" | ", Enumerable.Repeat("ComparisonLoanConflict_Kd y = 5", 10)), MinimalEmissionTest.Problems(analyzed));
+        Assert.Equal(string.Join(" | ", Enumerable.Repeat("ComparisonLoanConflict_Kd y = 5", 11)), MinimalEmissionTest.Problems(analyzed));
     }
 
     // SPEC 5.7 Reading a Field, 5.2.1 (G184, `during self`): a pointer read from a `during self` Field reaches its holder's own storage, so a
@@ -965,16 +1003,21 @@ public sealed partial class MirBorrowsTest
                 """));
 
     // SPEC 15.6 (condition 5, D6; DECISIONS R4-M116 S2, S3, R-B2, B-B1): a pointer the contract ties to nothing reaches storage the body
-    // does not own: in a result's raw Field (hiddenInit, hiddenHolder), written into an input's raw Field by the call (fill, which may also
-    // store what a read through h carries, v's Loan, where h's untied pointer reaches), or formed through a local that holds no Loan
-    // (punCall; punned, the residual: a Loan-free local keeps no Loan, so E does); a raw argument's pointee is read through it into the
-    // result (snap); a pointer that addresses a Loan-free local and stores a value with no Loan is valid.
+    // does not own: in a result's raw Field (hiddenInit, hiddenHolder, where make may also have put its own pointer and stored r through
+    // it, so the end of v's or t's storage destroys a Place that r's Loan covers: PLAN G841 (3), SPEC 15.6.4, 15.6.6, the owner's
+    // O-524 (a)), written into an input's raw Field by the call (fill, which may also
+    // store what a read through h carries, v's Loan, where h's untied pointer reaches); a pointer formed through a local that holds no
+    // Loan stores y's Loan in that local, and a reference read from it carries the Loan (punCall: z is used after y = 5); a raw
+    // argument's pointee is read through it into the result (snap). A pointer that addresses
+    // a Loan-free local, or carries an exclusive Loan on one, stores y's Loan in that local, an exposed holder, unused after (punBorrow,
+    // punAddress: valid, the A5 value redesign's U6; R4-M120's untracked rule sent the store to E), and one that stores a value with
+    // no Loan is valid.
     [Fact]
     public void AnUntiedPointerReachesStorageTheBodyDoesNotOwn()
         => Assert.Equal(
             [
-                "hiddenInit: y = 5", "hiddenHolder: y = 5", "filled: y = 5", "filled: var v: i32 = 2", "punCall: y = 5", "punBorrow: y = 5",
-                "punAddress: y = 5", "snap: y = 5",
+                "hiddenInit: y = 5", "hiddenInit: var v: i32 = 2", "hiddenHolder: y = 5", "hiddenHolder: var t = (5, y@ref)",
+                "filled: y = 5", "filled: var v: i32 = 2", "punCall: y = 5", "snap: y = 5",
             ],
             Problems(RawShapes + """
                 func hiddenInit()
@@ -1038,17 +1081,221 @@ public sealed partial class MirBorrowsTest
                     inspect(res)
                 """));
 
+    // SPEC 15.6.4 ("A raw layer that an argument holds by value through no shared layer, a Tuple element, an Option payload, a Field or a
+    // Type argument included, is retained as a raw pointer argument is"; D-933, F's G147 ruling 14): Raw.initialize stores a value whose
+    // raw layer addresses w (y's Loan) in storage the body does not own, where it may be used after every point, so `y@follow = 5` errs
+    // whether the layer is a Tuple element (tupleBad), a Field (fieldBad), a Case payload (payloadBad), a nested Field (nestedBad), a
+    // generic struct's own Field (genericBad) or a Field of its Type argument (argumentBad); each null twin is valid (fail-before: dev
+    // accepted fieldBad, payloadBad and nestedBad, whose raw layers were no raw source). Past an rc or arc payload, a shared layer (SPEC
+    // 15.6), a raw layer is no raw source in a Field as in a Tuple element (rc/arc Field and Tuple twins, a Type argument held past an rc:
+    // each errs through the handle's own retention, on both sides of D-933's C1). The same rule where the storage is the body's own and
+    // read after the write (the Middle's RP17 on Q-586, N1u and X4): Raw.initialize into a local cell (localCellBad) and `replace` placing
+    // the value in its target (replacedFieldBad, SPEC 15.7.3: the placed value's Loans are kept) err at `y@follow = 5`; their twins
+    // without a read after it (localCellOk, replacedFieldOk) are valid (fail-before: dev 8784c091b accepted localCellBad and
+    // replacedFieldBad). w's address enters the value by a body write, as in quietFieldOk: a constructor given it (localCellCtorBad,
+    // replacedFieldCtorBad, the filed localCellOk and replacedFieldOk) errs whether or not the storage is read, since Inq states its raw
+    // Field without an Origin, so the constructor may store w's address through its own pointer there (SPEC 5.7 Calls, 15.6.4; the
+    // owner's O-528 (a); DECISIONS R4-M241).
+    [Fact]
+    public void AFieldOrPayloadRawLayerIsARawSource()
+        => Assert.Equal(
+            [
+                "tupleBad: y@follow = 5", "fieldBad: y@follow = 5", "payloadBad: y@follow = 5", "nestedBad: y@follow = 5", "genericBad: y@follow = 5",
+                "argumentBad: y@follow = 5", "rcFieldBad: y@follow = 5", "rcTupleBad: y@follow = 5", "arcFieldBad: y@follow = 5",
+                "arcTupleBad: y@follow = 5", "argRcFieldBad: y@follow = 5", "argRcTupleBad: y@follow = 5", "localCellBad: y@follow = 5",
+                "localCellCtorBad: y@follow = 5", "replacedFieldBad: y@follow = 5", "replacedFieldCtorBad: y@follow = 5",
+            ],
+            Problems("""
+                struct Fq
+                    public var p: raw/(raw/u8)
+                    public var q: raw/u8
+                    public init(q: raw/u8)
+                        self.p = null
+                        self.q = q
+                enum Eq
+                    A(raw/u8)
+                    B
+                struct Inq
+                    public var q: raw/u8
+                    public init(q: raw/u8) => self.q = q
+                struct Nq
+                    public var inner: Inq
+                    public init(q: raw/u8) => self.inner = Inq.init(q: q)
+                struct Gq<T>
+                    public var v: T
+                    public var q: raw/u8
+                    public init(v: T, q: raw/u8)
+                        self.v = v@move
+                        self.q = q
+                struct G2q<T>
+                    public var v: T
+                    public init(v: T) => self.v = v@move
+                func tupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(raw/u8, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (w@raw@raw/u8, 1))
+                    y@follow = 5
+                func fieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Fq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Fq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                func fieldOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Fq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Fq.init(q: null))
+                    y@follow = 5
+                func payloadBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Eq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, .A(w@raw@raw/u8))
+                    y@follow = 5
+                func payloadOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Eq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, .A(null))
+                    y@follow = 5
+                func nestedBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Nq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Nq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                func nestedOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Nq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Nq.init(q: null))
+                    y@follow = 5
+                func genericBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Gq<i32> = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Gq<i32>.init(v: 1, q: w@raw@raw/u8))
+                    y@follow = 5
+                func genericOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Gq<i32> = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Gq<i32>.init(v: 1, q: null))
+                    y@follow = 5
+                func argumentBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/G2q<raw/u8> = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, G2q<raw/u8>.init(v: w@raw@raw/u8))
+                    y@follow = 5
+                struct Rq
+                    public var f: rc/Inq
+                    public init(f: rc/Inq) => self.f = f@move
+                struct Aq
+                    public var f: arc/Inq
+                    public init(f: arc/Inq) => self.f = f@move
+                struct Bx<T>
+                    public var v: T
+                    public init(v: T) => self.v = v@move
+                struct Gr<T>
+                    public var f: rc/Bx<T>
+                    public init(f: rc/Bx<T>) => self.f = f@move
+                struct Og
+                    public var g: Gr<raw/u8>
+                    public init(g: Gr<raw/u8>) => self.g = g@move
+                func rcFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Rq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Rq.init(f: Kimi.Intrinsics.makeRc(Inq.init(q: w@raw@raw/u8))))
+                    y@follow = 5
+                func rcTupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(rc/Inq, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (Kimi.Intrinsics.makeRc(Inq.init(q: w@raw@raw/u8)), 1))
+                    y@follow = 5
+                func rcFieldOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Rq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Rq.init(f: Kimi.Intrinsics.makeRc(Inq.init(q: null))))
+                    y@follow = 5
+                func arcFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Aq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Aq.init(f: Kimi.Intrinsics.makeArc(Inq.init(q: w@raw@raw/u8))))
+                    y@follow = 5
+                func arcTupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(arc/Inq, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (Kimi.Intrinsics.makeArc(Inq.init(q: w@raw@raw/u8)), 1))
+                    y@follow = 5
+                func argRcFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Og = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Og.init(g: Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: w@raw@raw/u8)))))
+                    y@follow = 5
+                func argRcTupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(Gr<raw/u8>, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: w@raw@raw/u8))), 1))
+                    y@follow = 5
+                func usep<T>(p: raw/T) => ()
+                func localCellBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    var cell = Inq.init(q: null)
+                    var v = Inq.init(q: null)
+                    v.q = w@raw@raw/u8
+                    unsafe => Raw.initialize(cell@raw, v@move)
+                    y@follow = 5
+                    inspect(cell@ref)
+                func localCellOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    var cell = Inq.init(q: null)
+                    var v = Inq.init(q: null)
+                    v.q = w@raw@raw/u8
+                    unsafe => Raw.initialize(cell@raw, v@move)
+                    y@follow = 5
+                func localCellCtorBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    var cell = Inq.init(q: null)
+                    unsafe => Raw.initialize(cell@raw, Inq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                func replacedFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    var x = Inq.init(q: null)
+                    let r = x@uniq
+                    var v = Inq.init(q: null)
+                    v.q = w@raw@raw/u8
+                    Kimi.Intrinsics.replace(r@follow@uniq, with: v@move)
+                    y@follow = 5
+                    usep(x.q)
+                func replacedFieldOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    var x = Inq.init(q: null)
+                    let r = x@uniq
+                    var v = Inq.init(q: null)
+                    v.q = w@raw@raw/u8
+                    Kimi.Intrinsics.replace(r@follow@uniq, with: v@move)
+                    usep(x.q)
+                    y@follow = 5
+                func replacedFieldCtorBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    var x = Inq.init(q: null)
+                    let r = x@uniq
+                    Kimi.Intrinsics.replace(r@follow@uniq, with: Inq.init(q: w@raw@raw/u8))
+                    usep(x.q)
+                    y@follow = 5
+                """));
+
     // SPEC 15.6 (a raw pointer that reaches no holder reaches only storage the body does not own, where what is stored may be used after
     // every point; condition 5; DECISIONS R4-M120's departure 1, B1): what that storage holds may refer to it, so a pointer read through a
     // parameter reaches it from any local holder that keeps it, and a call storing x's Loan through the holder keeps it there: a raw local,
     // a Tuple, and a Tuple beside a direct part (whose own Loan the call may store there too, SPEC 15.6.4's per-argument letter, and
     // with it the Loan on y two reads through the Tuple's borrow, `t@uniq` -> t -> w, which 15.6.4's chain clause keeps, so y's storage
-    // end conflicts too). Valid twins: the same holders with the pointer formed to a local holder that is dead after the call, and a
-    // value with no Loan of the body stored through the pointer read.
+    // end conflicts too). Valid: a value with no Loan of the body stored through the pointer read (noLoan). The twins with the pointer
+    // formed to a local holder that is dead after the call (formedLocal, formedTuple, formedMixed) are invalid too (A5 value redesign
+    // U3c): the written storage (c2, t.0) is a raw layer without an Origin, so the call may write its own pointer there and store x
+    // through it in storage the body does not own (SPEC 15.6.4's composition, example twoLayers; 5.7 Calls: also as a Tuple element),
+    // with what a chain of reads through the argument carries (the storage ends of v, w and y). Dev accepted them.
     [Fact]
     public void APointerReadFromStorageTheBodyDoesNotOwnReachesIt()
         => Assert.Equal(
-            ["viaUniqLocal: x = 5", "viaUniqTuple: x = 5", "viaUniqMixed: x = 5", "viaUniqMixed: var w: ref/i32 = y@ref", "viaUniqMixed: var y: i32 = 2"],
+            [
+                "viaUniqLocal: x = 5", "viaUniqTuple: x = 5", "viaUniqMixed: x = 5", "viaUniqMixed: var w: ref/i32 = y@ref", "viaUniqMixed: var y: i32 = 2",
+                "formedLocal: x = 5", "formedLocal: var v: i32 = 2", "formedTuple: x = 5", "formedTuple: var v: i32 = 2", "formedMixed: x = 5",
+                "formedMixed: var w: ref/i32 = y@ref", "formedMixed: var v: i32 = 3", "formedMixed: var y: i32 = 2",
+            ],
             Problems(RawShapes + """
                 func storeThrough(c: uniq/(raw/(ref/i32 during a)), x: ref/i32 during a)
                     unsafe => Raw.initialize(c@follow, x)
@@ -1108,13 +1355,58 @@ public sealed partial class MirBorrowsTest
     // or iterated raw item, an exchanged raw pointer's old contents and a user Iterator's item keep no Loan of their receiver or target,
     // while a swapped pointer keeps what a read through the other argument carries (`y`'s Loan through `w`), and an Array constructed from
     // a raw value, alone or in a Tuple, or from a pointer to a replaced one keeps that value and what a read through it carries
-    // (`repeating`, the input construction adds, SPEC 4.9.6).
+    // (`repeating`, the input construction adds, SPEC 4.9.6). Through two or more Derefs (D-935; SPEC 15.6.4's rule A, 15.6.3's parent
+    // Loans): the receiver of `rr@follow.flush()` carries r's Loan and x's, and a read through r's Loan finds x's again in r, which is
+    // only the own value given back, so Writer's raw slot keeps neither: rr2m, rr3m (three), rr2fm (a Field between), rawo (a raw pointer
+    // over the reference), rrcm (a stored Reborrow) and sw2 (`swap`'s second target) are valid, as the one-Deref x8m is, and rawi (a raw
+    // intermediate) and sh2m (a shared one, which writes nothing) stay valid. What the read at the last Deref carries stays: rr2tm keeps
+    // y's Loan read through h.1's address of w (`y@follow = 5`), adXm and adX2m keep v's Loan, which x.r holds, though h.1 holds it too
+    // (`y = 5`; adXm0 without h.1's), stXm keeps it after rr is replaced (the route is never read on the call's state) and mvXm beside
+    // the move of c's prefix rr; and rrAi passes the outer reference itself, which passes no Deref, so r's value stays (`var x` and
+    // `x@ref`). `var z` is the twins' own record on dev too; stXm's and mvXm's `var x` (a stored Reborrow used through one more Deref)
+    // is the open issue D-935 names. Their `var q` is q's storage end: RW states its raw Field without an Origin, so `RW.init(r: u)` may
+    // store u, q's shared Loan, through its own pointer there, where it may be used after every point (SPEC 5.7 Calls, 15.6.4, 15.6.6;
+    // G841c, the owner's O-524 (a)).
     [Fact]
     public void AChainRowIsAReadThroughTheArgument()
         => Assert.Equal(
-            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5", "repRawBad: y = 5", "repTupBad: y = 5", "repTupRepl: y = 5"],
+            ["swapRawBad: y = 5", "swapRawOwnBad: y = 5", "repRawBad: y = 5", "repTupBad: y = 5", "repTupRepl: y = 5",
+                "rr2tm: y@follow = 5", "rrAi: x@ref", "rrAi: var x = Writer.init(q: null)", "adXm: y = 5", "adXm: var z: i32 = 0",
+                "adXm0: y = 5", "adXm0: var z: i32 = 0", "adX2m: y = 5", "adX2m: var z: i32 = 0", "stXm: y = 5",
+                "stXm: var x = RW.init(r: v)", "stXm: var q: i32 = 3", "stXm: var z: i32 = 0", "mvXm: rr", "mvXm: y = 5",
+                "mvXm: var h = (x@uniq, v)", "mvXm: var x = RW.init(r: v)", "mvXm: var q: i32 = 3", "mvXm: var z: i32 = 0"],
             Problems("""
                 func usep<T>(p: raw/T) => ()
+                struct Writer
+                    public var p: raw/(raw/u8)
+                    public var q: raw/u8
+                    public init(q: raw/u8)
+                        self.p = null
+                        self.q = q
+                    public func flush(self: uniq/Self)
+                        unsafe => *self.p = self.q
+                    drop
+                        unsafe => *self.p = self.q
+                struct Shown
+                    public var p: raw/(raw/u8)
+                    public var q: raw/u8
+                    public init(q: raw/u8)
+                        self.p = null
+                        self.q = q
+                    public func peek(self: ref/Self)
+                        unsafe => *self.p = self.q
+                struct RW {a}
+                    public var p: raw/(ref/i32 during a)
+                    public var r: ref/i32 during a
+                    public init(r: ref/i32 during a)
+                        self.p = null
+                        self.r = r
+                    public func flush(self: uniq/Self)
+                        unsafe => *self.p = self.r
+                func flushWith<T>(a: uniq/RW, b: T)
+                    a.flush()
+                func deepFlush(a: uniq/(uniq/Writer during w))
+                    unsafe => *a@follow@follow.p = a@follow@follow.q
                 struct RawIter
                     Self is Iterator
                     associate Iterator.Item is raw/u8
@@ -1193,14 +1485,166 @@ public sealed partial class MirBorrowsTest
                     h = null
                     y = 5
                     inspect(a)
+                func x8m()
+                    var x = Writer.init(q: null)
+                    let r = x@uniq
+                    r.flush()
+                    inspect(x@ref)
+                func rr2m()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    let rr = r@uniq
+                    rr@follow.flush()
+                    inspect(x@ref)
+                func rr3m()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    var rr = r@uniq
+                    let r3 = rr@uniq
+                    r3@follow@follow.flush()
+                    inspect(x@ref)
+                func rr2fm()
+                    var x = Writer.init(q: null)
+                    var h = (x@uniq, 0)
+                    let rr = h@uniq
+                    rr@follow.0@follow.flush()
+                    inspect(x@ref)
+                func rr2tm(y: uniq/i32)
+                    let w = y@follow@ref
+                    var slot: raw/u8 = null
+                    var x = Writer.init(q: null)
+                    x.p = slot@raw
+                    var h = (x@uniq, w@raw@raw/u8)
+                    let rr = h@uniq
+                    rr@follow.0@follow.flush()
+                    y@follow = 5
+                    usep(slot)
+                    inspect(x@ref)
+                func rrAi()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    deepFlush(r@uniq)
+                    inspect(x@ref)
+                func rawo()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    let pr = r@raw
+                    unsafe => (*pr)@follow.flush()
+                    inspect(x@ref)
+                func rawi()
+                    var x = Writer.init(q: null)
+                    var p = x@raw
+                    let rr = p@uniq
+                    unsafe => (*rr@follow).flush()
+                    inspect(x@ref)
+                func sh2m()
+                    var x = Shown.init(q: null)
+                    var r = x@uniq
+                    let rr = r@ref
+                    rr@follow.peek()
+                    inspect(x@ref)
+                func sw1()
+                    var x = Writer.init(q: null)
+                    var z = Writer.init(q: null)
+                    var r = z@uniq
+                    Kimi.Intrinsics.swap(x@uniq, r@follow@uniq)
+                    inspect(z@ref)
+                    inspect(x@ref)
+                func sw2()
+                    var x = Writer.init(q: null)
+                    var z = Writer.init(q: null)
+                    var r = z@uniq
+                    let rr = r@uniq
+                    Kimi.Intrinsics.swap(x@uniq, rr@follow@follow@uniq)
+                    inspect(z@ref)
+                    inspect(x@ref)
+                func rrcm()
+                    var x = Writer.init(q: null)
+                    var r = x@uniq
+                    var rr = r@uniq
+                    let c = rr@follow@uniq
+                    c@follow.flush()
+                    inspect(x@ref)
+                func adXm()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var h = (x@uniq, v)
+                    h.0@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func adXm0()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var h = (x@uniq, 0)
+                    h.0@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func adX2m()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var h = (x@uniq, v)
+                    let rr = h@uniq
+                    rr@follow.0@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func stXm()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var q: i32 = 3
+                    let u = q@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var x2 = RW.init(r: u)
+                    var h = (x@uniq, v)
+                    var h2 = (x2@uniq, u)
+                    var rr = h@uniq
+                    let c = rr@follow.0@follow@uniq
+                    rr = h2@uniq
+                    c@follow.flush()
+                    y = 5
+                    inspect(slot@ref)
+                func mvXm()
+                    var z: i32 = 0
+                    var slot: ref/i32 = z@ref
+                    var y: i32 = 1
+                    let v = y@ref
+                    var q: i32 = 3
+                    let u = q@ref
+                    var x = RW.init(r: v)
+                    x.p = slot@raw
+                    var x2 = RW.init(r: u)
+                    var h = (x@uniq, v)
+                    var rr = h@uniq
+                    let c = rr@follow.0@follow@uniq
+                    flushWith(c, rr@move)
+                    y = 5
+                    inspect(slot@ref)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2): a Borrow of a `during self` layer's Place, or of a Tuple or fixed-array Place
-    // enclosing one inline (also inside a nested Tuple), and a Copy read of such a Place, are located Unsupported_Kd until the Loan records
-    // the layer's own-step entry; a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar beside the
-    // layer are precise.
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2), narrowed by Z5-R1 and Z5-R2: a Copy read of a Tuple or fixed-array Place
+    // enclosing a `during self` layer inline (also inside a nested Tuple) is read element by element and carries its owner's own-step
+    // entry (enclosingCopy, enclosingOnly, arrayCopy, nestedCopy); a Borrow of a layer's Place or
+    // of an enclosing one issues its Loan, and a read through it is placed by its exact lent position (layerRef, enclosingRef; arrayRef
+    // reads none), carrying its parents whole (SPEC 15.6 Holders): layerRef's read carries y's Loan, which b holds, into the generic
+    // call, so y's end conflicts as for the same read through no dereference or through the holder's borrow (the base's CLC on those
+    // twins; the Middle's ruling on Z5-R1, 11-22 13:0x); a Borrow of the holder, a read of the layer through it, a read of an element and
+    // of a scalar beside the layer are precise.
     [Fact]
-    public void ABorrowOfADuringSelfLayerIsUnsupported()
+    public void ACopyOrBorrowOfADuringSelfLayersEnclosingPlaceIsPrecise()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + """
             struct Arrs
@@ -1257,10 +1701,133 @@ public sealed partial class MirBorrowsTest
                 return s.nest.1
             """);
         Assert.Equal(
-            ["layerRef: b.data@ref Unsupported_Kd", "enclosingRef: s.pair@ref Unsupported_Kd", "enclosingCopy: s.pair Unsupported_Kd",
-                "enclosingOnly: s.pair Unsupported_Kd", "arrayCopy: a.arr Unsupported_Kd", "arrayRef: a.arr@ref Unsupported_Kd",
-                "nestedCopy: s.nest Unsupported_Kd"],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            "layerRef: var y: i32 = 1",
+            string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd])));
+    }
+
+    // Z5-R2 (SPEC 5.7 Reading and Writing a Field: an enclosing Tuple or fixed-array Place is read element by element, a Move reads the
+    // layer's element; 15.6 Holders; 5.2.1 (3)): a Copy or Move read of the Place through no dereference carries its owner's own-step
+    // entry with the holder's Loans, and the local it fills carries it whole, so the owning value's or an ancestor's Move, exclusive Borrow
+    // or replacing write while the value is used is the Warning (w1, ra5-ra8, ra14, rr5, rr6), a write under the holder's Loan conflicts
+    // (ra2f, ra3f), and a Move of the enclosing Place departs nothing (ra1, rr7); no `self` in a Type argument, no entry (rr9). A
+    // reference stored beside the owner in the same root keeps its exact lender (rr1-rr4, rv3, rv5, ex1: the own-step entry exposes its
+    // owner's storage only). Labels from SPEC (Z5-R2 design, Revision 1 R1.4).
+    [Theory]
+    [InlineData("ra1", "var b = Packet.init()|let t = b.pair|let m = b.pair@move|b.pair = (null, 2)|usep(t.0)|usep(m.0)", "")]
+    [InlineData("ra2vf", "var y: i32 = 1|let b = Hp.init(y@ref)|let t = b.pair|usep(t.0)|y = 2", "")]
+    [InlineData("ra13", "let b = Packet.init()|let n = b.pair.1|let c = b@move|usen(n)", "")]
+    [InlineData("rr5v", "let a = Arr.init()|let t = a.ta|usep(t[1].0)|let c = a@move", "")]
+    [InlineData("rr7", "var b = Packet.init()|let p = b.data|let m = b.pair@move|b.pair = (null, 2)|usep(p)|usep(m.0)", "")]
+    [InlineData("rr9", "let w = W.init((fresh, 1))|let t = w.v|let c = w@move|usep(t.0)", "")]
+    [InlineData("w1", "let b = Packet.init()|let t = b.pair|let c = b@move|usep(t.0)", "b OwnStepDeparture_Kd")]
+    [InlineData("ra5", "let b = Packet.init()|let t = b.arr|let c = b@move|usep(t[0])", "b OwnStepDeparture_Kd")]
+    [InlineData("ra6", "var b = Packet.init()|let t = b.pair|let w = b@uniq|usep(t.0)", "b@uniq OwnStepDeparture_Kd")]
+    [InlineData("ra7", "var b = Packet.init()|let t = b.pair|b = Packet.init()|usep(t.0)", "b = Packet.init() OwnStepDeparture_Kd")]
+    [InlineData("ra8", "let o = Outer.init()|let t = o.inner.pair|let c = o@move|usep(t.0)", "o OwnStepDeparture_Kd")]
+    [InlineData("ra14", "var b = Packet.init()|let m = b.nest.0@move|b.nest.0 = (null, 1)|let c = b@move|usep(m.0)", "b OwnStepDeparture_Kd")]
+    [InlineData("rr5", "let a = Arr.init()|let t = a.ta|let c = a@move|usep(t[1].0)", "a OwnStepDeparture_Kd")]
+    [InlineData("rr6", "let a = Arr.init()|let i: isize = 1|let e = a.ta[i]|let c = a@move|usep(e.0)", "a OwnStepDeparture_Kd")]
+    [InlineData("ra2f", "var y: i32 = 1|let b = Hp.init(y@ref)|let t = b.pair|y = 2|usep(t.0)", "y = 2")]
+    [InlineData("ra3f", "var y: i32 = 1|let b = Hp.init(y@ref)|let m = b.pair@move|y = 2|usep(m.0)", "y = 2")]
+    [InlineData("rr5i", "var a = Arr.init()|let r = a.ta[0]@ref|let m = a.ta@move|a.ta = [(null, 3), (null, 4)]|usen(r@follow.1)", "a.ta|a.ta = [(null, 3), (null, 4)]")]
+    [InlineData("rr7i", "var b = Packet.init()|let r = b.pair.0@ref|let m = b.pair@move|b.pair = (null, 2)|usep(r@follow)", "b.pair|b.pair = (null, 2)")]
+    [InlineData("rr1", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let n = tt.0.pair.1|let x = tt.1@follow.0|usep(x)|usen(n)", "")]
+    [InlineData("rr2", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let q = tt.0.pair@ref|let x = tt.1@follow.0|usep(x)|usen(q@follow.1)", "")]
+    [InlineData("rv3", "let d = Packet.init()|let tt = (Outer.init(), d.pair@ref)|let n = tt.0.inner.pair.1|let x = tt.1@follow.0|usep(x)|usen(n)", "")]
+    [InlineData("rr3", "let d = Packet.init()|let tt = (Packet.init(), d.pair@raw)|let n = tt.0.pair.1|unsafe|    let x = (*tt.1).0|    let c = d@move|    usep(x)|usen(n)", "d OwnStepDeparture_Kd")]
+    [InlineData("rr4", "let d = Packet.init()|let tt = (Packet.init(), d.pair@raw)|let t = tt.0.pair|unsafe|    let x = (*tt.1).0|    let c = d@move|    usep(x)|usep(t.0)", "d OwnStepDeparture_Kd")]
+    [InlineData("rv5", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let n = tt.0.pair.1|let c = d@move|usep(tt.1@follow.0)|usen(n)", "d")]
+    [InlineData("ex1", "let d = Packet.init()|let tt = (Packet.init(), d@ref)|let t = tt.0.pair|let x = tt.1@follow.pair.0|let c = d@move|usep(x)|usep(t.0)", "d|d OwnStepDeparture_Kd")]
+    public void AnEnclosingPlacesCopyOrMoveCarriesItsOwnersEntry(string id, string lines, string expected)
+        => Assert.Equal(OwnStepExpected(id, expected), OwnStepProblems(id, lines));
+
+    // Z5-R2's B1 (SPEC 5.7's Origin table: a `during self` pointer addresses storage the value holding the layer owns; 15.6 Addresses):
+    // an own-step entry exposes its owner's storage, not its whole root, so a reference stored beside the owner in the same root keeps
+    // its exact lender, whatever reads the owner's layer (an enclosing Copy, ex2; the layer's own read, q12, ex2p, q12w): q12's dependent
+    // Warning and q12w's Warning on a valid program (5.2.1 (3), Z5-F's t4c) are recovered, ex2 and ex2p leave the Unplaced limit. A plain
+    // address exposes the whole root (rv1: `tt.1@raw` may address the reference's own position), which stays at the limit.
+    [Theory]
+    [InlineData("q12", "let d = Packet.init()|let tt = (Packet.init(), d@ref)|let p = tt.0.pair.0|let x = tt.1@follow.pair.0|let m = d@move|usep(x)|usep(p)", "d|d OwnStepDeparture_Kd")]
+    [InlineData("q12w", "let d = Packet.init()|let tt = (Packet.init(), d@raw)|let p = tt.0.pair.0|unsafe|    let x = (*tt.1).pair.0|    let c = d@move|    usep(x)|usep(p)", "d OwnStepDeparture_Kd")]
+    [InlineData("ex2", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let t = tt.0.pair|let x = tt.1@follow.0|usep(x)|usep(t.0)", "")]
+    [InlineData("ex2p", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let p = tt.0.pair.0|let x = tt.1@follow.0|usep(x)|usep(p)", "")]
+    [InlineData("rv1", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let p = tt.1@raw|let x = tt.1@follow.0|usep(x)", "tt.1@follow.0 Unsupported_Kd")]
+    public void AnOwnStepEntryKeepsTheLenderOfAReferenceBesideIt(string id, string lines, string expected)
+        => Assert.Equal(OwnStepExpected(id, expected), OwnStepProblems(id, lines));
+
+    // Z5-R1 (SPEC 15.6 Holders, 15.6 Addresses, 5.7 Reading a Field through a dereference, 5.2.1 (3); PQ-10 narrowed): a read of a
+    // `during self` layer or an enclosing Place through a dereference carries its owner's own-step entry at its exact lent position
+    // (MirBorrows.Lent) with every Loan its parents carry, so the owner's Move under it conflicts (and departs the owner's own step where the
+    // position names the owner from its root); where the read's own steps name the owner past the dereference, the base's row (g1, g2, g5,
+    // ix2: the owner the lender's Place or past it). G1276 (E-a, Revision 1c): an owner step in a lender's steps applies to the Place the
+    // steps before it name from the position's root where the body has that Place's row, direct (oh1, oh2: a reference to an owning
+    // handle's payload; oh3, oha: that payload's Deref past a whole-handle lender, oha's an address, which carries no Loan), else to its
+    // Prefix row past the lender's Deref (Lent's LentPlace), so the read carries its parents whole through a raw lender (pr1, pr2, pr3:
+    // two lender segments; pre: an enclosing Tuple; prw: a write; pru: a uniq lender) and a shared one (n2, n2v leave the limit). Where
+    // no exact position exists and the own steps name no owner, in a view whose borrow the base marked, the read's located
+    // Unsupported_Kd (tw3: a reference stored twice); elsewhere silent (G1301's open classes: prs, a pointer stored twice, and prc2, a
+    // call's result whose raw layer states its Origin, `during r`, invalid or undecided by the text and accepted; bn1, bn2, valid reads
+    // through a call's result, accepted; bn3 conflicts by 15.6.4). Where that layer states no Origin, as G1276 filed prc2 and prc2v, the
+    // call may store through its own pointer there a value keeping o@ref's Loan, used after every point (15.6.4, 5.7 Calls; the owner's
+    // O-524 (a)): MirBorrowsTest.CallResult's prc2Bad and prc2vBad (G841c). The Warning of a non-direct entry is PLAN G1277's (N10; pr1:
+    // not given); a plain address is a direct entry and gives it (pra). Labels from SPEC (Z5-R1 design section 5; G1276 design section 6
+    // and Revision 1c section 3, before any run; pra's Warning corrected after it, as the design's section 7 measured it; prc2's and
+    // prc2v's stated layer: G841c's probe, labelled before it ran).
+    [Theory]
+    [InlineData("t5c", "let t = (b.pair@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
+    [InlineData("mx", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
+    [InlineData("mxi", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = d@move|usep(x)", "", "d|d OwnStepDeparture_Kd")]
+    [InlineData("h1", "let t = (b@ref, d@ref)|let x = t.1@follow.pair.0|let m = b@move|usep(x)", "", "b")]
+    [InlineData("h1v", "let t = (b@ref, d@ref)|let x = t.1@follow.pair.0|usep(x)|let m = b@move", "", "")]
+    [InlineData("n1", "let o = Outer.init()|let r = o.inner.pair@ref|let x = r@follow.0|let m = o@move|usep(x)", "", "o|o OwnStepDeparture_Kd")]
+    [InlineData("n1v", "let o = Outer.init()|let r = o.inner.pair@ref|let x = r@follow.0|usep(x)|let m = o@move", "", "")]
+    [InlineData("ix1", "var i: isize = 1|let r = b.arr@ref|let x = r@follow[i]|let m = b@move|usep(x)", "", "b|b OwnStepDeparture_Kd")]
+    [InlineData("ix1v", "var i: isize = 1|let r = b.arr@ref|let x = r@follow[i]|usep(x)|let m = b@move", "", "")]
+    [InlineData("s2c", "let r = b.pair@ref|let r2 = r|let c = r2@follow|let m = b@move|usep(c.0)", "", "b|b OwnStepDeparture_Kd")]
+    [InlineData("g1", "let o = Outer.init()|let r = o.inner@ref|let x = r@follow.data|let m = o@move|usep(x)", "", "o")]
+    [InlineData("g1v", "let o = Outer.init()|let r = o.inner@ref|let x = r@follow.data|usep(x)|let m = o@move", "", "")]
+    [InlineData("g2", "let o = Outer.init()|let r = o@ref|let x = r@follow.inner.pair.0|let m = o@move|usep(x)", "", "o")]
+    [InlineData("g5", "let u = Duo.init()|let r = u.duo@ref|let x = r@follow.0.pair.0|let m = u@move|usep(x)", "", "u")]
+    [InlineData("ix2", "var i: isize = 1|let a = Arr2.init()|let r = a.ps[i]@ref|let x = r@follow.pair.0|let m = a@move|usep(x)", "", "a")]
+    [InlineData("t9", "let o = Outer.init()|let t = (b@ref, o.inner@ref)|let x = t.1@follow.data|let m = b@move|usep(x)", "", "b")]
+    [InlineData("cg1", "let x = gt(b.pair@ref)|usep(x)", "func gt(r: ref/(raw/u8, i32)) -> raw/u8 => r@follow.0\n", "")]
+    [InlineData("cg1m", "let x = gt(b.pair@ref)|let m = b@move|usep(x)", "func gt(r: ref/(raw/u8, i32)) -> raw/u8 => r@follow.0\n", "b")]
+    [InlineData("n2", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner.pair@ref|let x = q@follow.0|let m = o@move|usep(x)", "", "o")]
+    [InlineData("n2v", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner.pair@ref|let x = q@follow.0|usep(x)|let m = o@move", "", "")]
+    [InlineData("pr1", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("pr1v", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "", "")]
+    [InlineData("pr2", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|let p2 = p|unsafe|    let x = (*p2).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("prt", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner@raw|unsafe|    let x = (*p).pair.0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("prtv", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner@raw|unsafe|    let x = (*p).pair.0|    usep(x)|    let m = o@move", "", "")]
+    [InlineData("pr3", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner@ref|let p = q@follow.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("pr3v", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner@ref|let p = q@follow.pair@raw|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "", "")]
+    [InlineData("pre", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let t = *p|    let m = o@move|    usep(t.0)", "", "o")]
+    [InlineData("prw", "var o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    o = Outer.init()|    usep(x)", "", "o = Outer.init()")]
+    [InlineData("pru", "var o = Outer.init()|let r = o@uniq|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("pra", "let o = Outer.init()|let p = o.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o OwnStepDeparture_Kd")]
+    [InlineData("oh1", "let h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|let m = h@move|usep(x)", "", "h|h OwnStepDeparture_Kd")]
+    [InlineData("oh1v", "let h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|usep(x)|let m = h@move", "", "")]
+    [InlineData("oh2", "var h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|let w = h@uniq|usep(x)", "", "h@uniq|h@uniq OwnStepDeparture_Kd")]
+    [InlineData("oh2v", "var h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|usep(x)|let w = h@uniq", "", "")]
+    [InlineData("oh3", "var h = Packet.init()@obj|let rr = h@ref|let r = rr@follow@follow@ref|let x = r@follow.pair.0|let w = h@uniq|usep(x)", "", "h@uniq|h@uniq OwnStepDeparture_Kd")]
+    [InlineData("oh3v", "var h = Packet.init()@obj|let rr = h@ref|let r = rr@follow@follow@ref|let x = r@follow.pair.0|usep(x)|let w = h@uniq", "", "")]
+    [InlineData("oha", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    let w = h@uniq|    usep(x)", "", "h@uniq OwnStepDeparture_Kd")]
+    [InlineData("ohav", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    usep(x)|    let w = h@uniq", "", "")]
+    [InlineData("prs", "let o = Outer.init()|let o2 = Outer.init()|let r = o@ref|let s = o2@ref|var p = s@follow.inner.pair@raw|p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "")]
+    [InlineData("prc2", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) during r => r@follow.inner.pair@raw\n", "")]
+    [InlineData("prc2v", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) during r => r@follow.inner.pair@raw\n", "")]
+    [InlineData("prp", "gq(fresh@raw/(raw/u8, i32))", "func gq(p: raw/(raw/u8, i32))\n    unsafe\n        let x = (*p).0\n        usep(x)\n", "")]
+    [InlineData("bn1", "var a = (1, 2)|let q = pickN(a@ref)|let t = q@follow|a = (3, 4)|usen(t.0)", "func usen(n: i32) => ()\nfunc pickN(r: ref/(i32, i32)) -> ref/(i32, i32) during r => r\n", "")]
+    [InlineData("bn2", "var a = (fresh, 1)|let q = pickR(a@ref)|let x = q@follow.0|a = (fresh, 2)|usep(x)", "func pickR(r: ref/(raw/u8, i32)) -> ref/(raw/u8, i32) during r => r\n", "")]
+    [InlineData("bn3", "var a = (1, 2)|let q = pickN(a@ref)|let t = q@follow|a = (3, 4)|usen(t.0)|usen(q@follow.0)", "func usen(n: i32) => ()\nfunc pickN(r: ref/(i32, i32)) -> ref/(i32, i32) during r => r\n", "a = (3, 4)")]
+    [InlineData("tw3", "var r = b.pair@ref|r = d.pair@ref|let x = r@follow.0|usep(x)", "", "r@follow.0 Unsupported_Kd")]
+    public void ALayerReadThroughADereferenceCarriesItsOwnersEntryAndItsParents(string id, string lines, string declarations, string expected)
+    {
+        var c = MirBuildTest.Compile(LentShapes + declarations + $"func {id}(fresh: raw/u8)\n    let b = Packet.init()\n    let d = Packet.init()\n" +
+            string.Concat(lines.Split('|').Select(static x => "    " + x + "\n")));
+        Assert.Equal(
+            expected.Length == 0 ? string.Empty : string.Join(" | ", expected.Split('|').Select(x => $"{id}: {x}").Order(StringComparer.Ordinal)),
+            string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]).Order(StringComparer.Ordinal)));
     }
 
     // V16 (SPEC 15.6 Addresses; DECISIONS R4-M116): the address pre-pass walks a view's uses only where a raw Ref was issued or a projection
@@ -1315,13 +1882,18 @@ public sealed partial class MirBorrowsTest
     // after the call: a result two raw layers below the argument (also through a reference), a raw slot written from them, the written
     // argument read through itself, a lent result three raw layers deep, a popped, exchanged or swapped pointer whose pointee is replaced
     // after the call (SPEC 15.6.4's transfer rule keeps the chain), and a chain through E, the storage the body does not own, where an
-    // earlier store left a holder's address (Φ_E read at a later step). Valid twins: each with the result's use before `y = 5`, and viaEOk
-    // without the store.
+    // earlier store left a holder's address (Φ_E read at a later step). Valid twins: the others with the result's use before `y = 5`,
+    // and viaEOk without the store. Four such twins (getRRROk, fRRROk, unlinkROk, lend3Ok) are invalid too (A5 value redesign U3c): the
+    // written storage (h2, h1, h3) is a raw layer without an Origin, so the call may write its own pointer there and store through it, in storage the body does not
+    // own, what a chain of reads through the argument carries (SPEC 15.6.4: "may retain every argument with what any chain of reads
+    // through it carries"; example twoLayers), which is used after every point, whatever the result's use; lend3's other argument
+    // (z@ref) is kept there as well, so z's storage end conflicts. Dev accepted them.
     [Fact]
     public void AChainRowCarriesWhatAnyChainOfReadsThroughItsArgumentCarries()
         => Assert.Equal(
-            ["getRRRRepl: y = 5", "getRFRRepl: y = 5", "fRRRRepl: y = 5", "unlinkRBad: y = 5", "lend3Repl: y = 5", "popLateBad: y = 5",
-                "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5", "viaEBad: y = 5"],
+            ["getRRRRepl: y = 5", "getRRROk: y = 5", "getRFRRepl: y = 5", "fRRRRepl: y = 5", "fRRROk: y = 5", "unlinkRBad: y = 5",
+                "unlinkROk: y = 5", "lend3Repl: y = 5", "lend3Repl: var z: i32 = 0", "lend3Ok: y = 5", "lend3Ok: var z: i32 = 0",
+                "popLateBad: y = 5", "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5", "viaEBad: y = 5"],
             Problems(RawShapes + ChainShapes + ChainForms));
 
     // SPEC 23.1.2: the chain's error stands beside an unrelated error.
@@ -1341,6 +1913,12 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(Problems(RawShapes + PopLateOk));
         Assert.Empty(MinimalEmissionTest.Analyze("func inspect<T>(value: ref/T) => ()\n" + PopLateOk + "public func main() => ()\n").Problems);
     }
+
+    // SPEC 5.4: a bare `@raw` "checks like an immediately ending `@ref`, reads nothing and leaves no Loan", so h's write while
+    // p lives is valid; the clause's error half, a `@raw` while an exclusive borrow of h is live, is MirBorrowsTest.Derived's z-raw-ok.
+    [Fact]
+    public void ABareRawLeavesNoLoan()
+        => Assert.Empty(Problems("func rawWrite()\n    var h = 1\n    let p = h@raw\n    h = 2\n    _ = p == null\n"));
 
     // SPEC 15.6.4, 5.7, 5.2 (PLAN G415; DECISIONS BU-91): raw storage holds what is written there, so a borrow `at` forms within the
     // storage a receiver holds through a raw layer, punned to another Type than its pointee's (`during self` or no Origin), keeps the
@@ -1615,12 +2193,21 @@ public sealed partial class MirBorrowsTest
 
     // Content rows stay one read (SPEC 15.6.4's premises; R4-M138 keys the closure on the row's kind only): an Array iterator's `next`
     // (its premise result row), a Dictionary `remove`'s key borrow and a Utf8Writer `write<T>` (a store untied only by `static`) keep what
-    // one read carries, valid where the borrowed values are not used after `y = 5`; the twins use them after it.
+    // one read carries, valid where the borrowed values are not used after `y = 5`; the twins use them after it. A Content result through
+    // two Derefs (D-935; SPEC 15.6.3's `takeFirst`, 15.6.4): Cell's `get` keeps what a read through its receiver carries (x.v's Loan on
+    // y), not the receiver's parent Loans r's read gives back, so rr2c is valid as rr1c is, and rr2ci errs at `y = 2` alone; the Loan
+    // the read at the last Deref carries stays where the intermediate holds it too (adGm, adG2m; adGm0 without h.1's) and after the
+    // route is replaced (stGm).
     [Fact]
     public void AContentRowStaysOneRead()
         => Assert.Equal(
-            ["iterLate: y = 5", "emitLate: y = 5"],
+            ["iterLate: y = 5", "emitLate: y = 5", "rr2ci: y = 2", "adGm: y = 2", "adGm0: y = 2", "adG2m: y = 2", "stGm: y = 2"],
             Problems(RawShapes + """
+                struct Cell {a}
+                    public var v: ref/i32 during a
+                    public init(v: ref/i32 during a) => self.v = v
+                    public func get(self: uniq/Self) -> ref/i32 during a
+                        return self.v
                 func iterOk()
                     var y: i32 = 1
                     var w: ref/i32 = y@ref
@@ -1658,6 +2245,70 @@ public sealed partial class MirBorrowsTest
                     _ = writer.write(w@follow)
                     y = 5
                     inspect(w)
+                func rr1c()
+                    let y: i32 = 1
+                    var x = Cell.init(v: y@ref)
+                    var r = x@uniq
+                    let g = r@follow.get()
+                    inspect(x@ref)
+                    inspect(g)
+                func rr2c()
+                    let y: i32 = 1
+                    var x = Cell.init(v: y@ref)
+                    var r = x@uniq
+                    let rr = r@uniq
+                    let g = rr@follow.get()
+                    inspect(x@ref)
+                    inspect(g)
+                func rr2ci()
+                    var y: i32 = 1
+                    var x = Cell.init(v: y@ref)
+                    var r = x@uniq
+                    let rr = r@uniq
+                    let g = rr@follow.get()
+                    inspect(x@ref)
+                    y = 2
+                    inspect(g)
+                func adGm()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var c = Cell.init(v: v)
+                    var h = (c@uniq, v)
+                    let g = h.0@follow.get()
+                    y = 2
+                    inspect(g@ref)
+                func adGm0()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var c = Cell.init(v: v)
+                    var h = (c@uniq, 0)
+                    let g = h.0@follow.get()
+                    y = 2
+                    inspect(g@ref)
+                func adG2m()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var c = Cell.init(v: v)
+                    var h = (c@uniq, v)
+                    let rr = h@uniq
+                    let g = rr@follow.0@follow.get()
+                    y = 2
+                    inspect(g@ref)
+                func stGm()
+                    var y: i32 = 1
+                    let v = y@ref
+                    var q: i32 = 3
+                    let u = q@ref
+                    var c1 = Cell.init(v: v)
+                    var c2 = Cell.init(v: u)
+                    var h = (c1@uniq, v)
+                    var h2 = (c2@uniq, u)
+                    var rr = h@uniq
+                    let c = rr@follow.0@follow@uniq
+                    rr = h2@uniq
+                    let g = c@follow.get()
+                    y = 2
+                    inspect(g@ref)
                 """));
 
     // V16 (R4-M138): a closure queues each holder once and joins what it read in one n-ary union (MirLoanSets.Union), so the Work its Chain
@@ -1682,6 +2333,45 @@ public sealed partial class MirBorrowsTest
             $"vacuous {string.Join(", ", vacuous)}; escaped {string.Join(", ", escaped)}; fan {string.Join(", ", fan)}; sparse {string.Join(", ", sparse)}");
         Assert.All(new[] { calls, depth, cycle, vacuous, escaped, fan, sparse }, static x => Assert.True(Grows(x, 2.1), string.Join(", ", x)));
     }
+
+    // G415-N3 P1 (SPEC 15.6.4 item 1 and its composition, 5.7 Calls; DECISIONS R4-M249): a store writes storage the body does not own (E)
+    // past a holder only where what it reads was reached through no shared layer (Φ_W), and the declared step keeps dev's E at a target
+    // it cannot place. A sibling part's raw layer is no storage a call through another part writes (r3SibAddrArrOk, r2SibArrOk); a call
+    // through the whole may write its own pointer there (r3SibAddrWholeBad, r2SibArrWholeBad); a stated layer's pointee is a declared-step
+    // target (r3Stated*); a raw layer at a reading key composes (p1rKeyedAddrBad, p1rOwnStepAddrBad, r2ArrRawBad), never past a shared
+    // one (r2ArrRawSharedOk, r2SibPastSharedOk). Labels from SPEC before any run (artifacts/units/g415n3/p1-labels.md, Revision 2 and the
+    // reviewers' twins; the p1rOwnStep and p1dProbe records as Revision 1 corrected them after its run); "var v" is the conflict that ends
+    // v's Loan.
+    [Theory]
+    [InlineData("r3SibAddrArrOk", P1Sibling + "|p1PutArr(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("r3SibAddrArrUseBad", P1Sibling + "|p1PutArr(t.1@uniq, z@ref)|z = 3|inspect(t@ref)", "z = 3")]
+    [InlineData("r3SibAddrWholeBad", P1Sibling + "|p1PutArrT2(t@uniq, z@ref)|z = 3", "var y: i32 = 1|var y2: i32 = 5|z = 3")]
+    // SPEC labels {var y, z = 3}; var y2 is dev's, kept: a holder's state carries no positions, so the store through t.0 reads t's state
+    // whole (R4-M249's kept clause; its removal condition, U5).
+    [InlineData("r3SibAddrDerefBad", P1Sibling + "|p1PutRR(t.0@uniq, z@ref)|z = 3", "var y: i32 = 1|var y2: i32 = 5|z = 3")]
+    [InlineData("r3StatedCellBad", P1Cell + "|var c = P1Cell<raw/(ref/i32)>.init(a@ref, h@raw)|c.put(z@ref)|z = 3", "var a: i32 = 1|var y: i32 = 1|z = 3")]
+    [InlineData("r3StatedCellOk", P1Cell + "|var c = P1Cell<ref/i32>.init(a@ref, x@raw)|c.put(z@ref)|z = 3", "")]
+    [InlineData("r3StatedSubOk", P1Sub + "|c.put(z@ref)|z = 3", "")]
+    [InlineData("r3StatedSubUseBad", P1Sub + "|c.put(z@ref)|z = 3|inspect(t@ref)", "z = 3")]
+    [InlineData("r2SibArrOk", P1SiblingRaw + "|var a: Array<ref/i32> = [y2@ref]|var t = (h, a@move)|p1PutArr(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("r2SibArrUseBad", P1SiblingRaw + "|var a: Array<ref/i32> = [y2@ref]|var t = (h, a@move)|p1PutArr(t.1@uniq, z@ref)|z = 3|inspect(t@ref)", "z = 3")]
+    [InlineData("r2SibArrWholeBad", P1SiblingRaw + "|var a: Array<ref/i32> = [y2@ref]|var t = (h, a@move)|p1PutArrT(t@uniq, z@ref)|z = 3", "var y: i32 = 1|var y2: i32 = 5|z = 3")]
+    [InlineData("r2ArrRawBad", P1Addr + "|var arr: Array<raw/(ref/i32)> = [h]|p1PutA(arr@uniq, z@ref)|z = 3", "var y: i32 = 1|z = 3")]
+    [InlineData("r2ArrRawSharedOk", P1Addr + "|var arr: Array<raw/(ref/i32)> = [h]|p1PutAr(arr@ref, z@ref)|z = 3", "")]
+    [InlineData("r2SibStatedOk", P1SiblingRaw + "|var t = (h, y2@ref)|p1PutR2(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("r2SibPastSharedOk", P1SiblingRaw + "|var t = (h@ref, y2@ref)|p1PutR2(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("p1rKeyedAddrBad", P1Addr + "|p1Put(h@uniq, z@ref)|z = 3", "var y: i32 = 1|z = 3")]
+    [InlineData("p1rOwnStepAddrBad", P1Addr + "|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = x@raw|var y: i32 = 1|z = 3")]
+    // h read from a parameter past a shared layer: its pointee keeps the parameter's Origin o, so the store of z's borrow is refuted at the
+    // read (UnsatisfiedOriginRelation_Kd), and h is still a node through the Array element's Borrow layer.
+    [InlineData("p1rOwnStepShLoanBad", "var z: i32 = 2|let r = s@ref|var h: raw/(ref/i32) = r@follow@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = r@follow@follow|r@follow@follow UnsatisfiedOriginRelation_Kd|z = 3", "s: uniq/(raw/(ref/i32 during o))")]
+    [InlineData("p1rOwnStepParamBad", "var z: i32 = 2|var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = s@follow|s@follow UnsatisfiedOriginRelation_Kd|z = 3", "s: ref/(raw/(ref/i32 during o))")]
+    // P1-d's row: a Deep holder d with Φ_W beside h. s's slot is {Φ_E} (a `ref/` parameter), so E is reached only by h's own pointer with
+    // its layer's record, and d's left-out step would write E with all it carries: p1St2(t@uniq)'s limit, a record added on a program dev
+    // rejects (dev wrote E past h through s's Φ_W).
+    [InlineData("p1dProbe", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var t = (arr@uniq, d@uniq)|p1St2(t@uniq)", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var d = (w, " + P1Nest + ") OwnershipDepthLimit_Kd|p1St2(t@uniq) OwnershipDepthLimit_Kd", "s: ref/(raw/(ref/i32 during o)), w: uniq/i32 during k")]
+    public void AStoreWritesUnownedStorageOnlyPastWhatNoSharedLayerReaches(string id, string lines, string expected, string parameters = "")
+        => Assert.Equal(OwnStepExpected(id, expected), P1Problems(id, parameters, lines));
 
     // The Work a shape's body adds beside its twin's, both over the raw and chain shapes.
     private long Added(string shape, string twin)
@@ -1966,4 +2656,60 @@ public sealed partial class MirBorrowsTest
                 $"    var t: [{n} of raw/(raw/u8)] = [null«K:, null»]\n«N:    t[{{0}}] = h[{{0}}]@raw\n»«N:    unsafe => *(t[{{0}}]) = spare\n»",
             n,
             n - 1);
+
+    // The rows' records, "id: subject" with the code where it is no Loan conflict, in order.
+    private static string OwnStepExpected(string id, string expected)
+        => expected.Length == 0 ? string.Empty : string.Join(" | ", expected.Split('|').Select(x => $"{id}: {x}").Order(StringComparer.Ordinal));
+
+    // A5's Loan conflicts, located Unsupported_Kd and own-step Warnings of a function `id` over LentShapes and EnclosingShapes, in order.
+    private static string OwnStepProblems(string id, string lines)
+    {
+        var c = MirBuildTest.Compile(LentShapes + EnclosingShapes + $"func {id}(fresh: raw/u8)\n" + string.Concat(lines.Split('|').Select(static x => "    " + x + "\n")));
+        return string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]).Order(StringComparer.Ordinal));
+    }
+
+    // A5's Loan conflicts, Origin refutations, located Unsupported_Kd and depth limits of a function `id` of `parameters` over P1Callees,
+    // in order.
+    private static string P1Problems(string id, string parameters, string lines)
+    {
+        var c = MirBuildTest.Compile(Prelude + P1Callees + $"func {id}({parameters})\n" + string.Concat(lines.Split('|').Select(static x => "    " + x + "\n")));
+        return string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]).Order(StringComparer.Ordinal));
+    }
+
+    // P1's rows' bodies (AStoreWritesUnownedStorageOnlyPastWhatNoSharedLayerReaches): y's address h (P1Addr); beside it y2 (P1SiblingRaw);
+    // h behind g in t's raw part beside y2's Loan in t's Array part (P1Sibling); a cell stating its slot, with a's Loan (P1Cell); and one
+    // whose slot addresses t.1 beside h in t.0 (P1Sub).
+    private const string P1Addr = "var z: i32 = 2|var y: i32 = 1|var x: ref/i32 = y@ref|var h: raw/(ref/i32) = x@raw";
+    private const string P1SiblingRaw = "var z: i32 = 2|var y: i32 = 1|var y2: i32 = 5|var x: ref/i32 = y@ref|var h: raw/(ref/i32) = x@raw";
+    private const string P1Sibling = P1SiblingRaw + "|var g: raw/(raw/(ref/i32)) = h@raw|var a: Array<ref/i32> = [y2@ref]|var t = (g, a@move)";
+    private const string P1Cell = "var a: i32 = 1|" + P1Addr;
+    private const string P1Sub = "var a: i32 = 1|" + P1SiblingRaw + "|var x2: ref/i32 = y2@ref|var t = (h, x2)|var c = P1Cell<ref/i32>.init(a@ref, t.1@raw)";
+
+    // p1dProbe's NEST(40), the DepthLimit rows' Nested("0", 40) and NestedType("i32", 40).
+    private const string P1Nest = "((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39)";
+    private const string P1NestType = "((((((((((((((((((((((((((((((((((((((((i32, i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32)";
+
+    // P1's callees (p1-labels.md Revision 1, Revision 2 and the reviewers' twins): stores of v through a part or the whole, a cell whose
+    // slot is a Field's raw layer stating `self` (Stated: the declared step reaches its pointee), and a store through a Deep holder's
+    // sibling (p1St2).
+    private const string P1Callees = """
+        func p1PutArr(p: uniq/(Array<ref/i32 during o>), v: ref/i32 during o) => ()
+        func p1PutArrT(p: uniq/((raw/(ref/i32 during o), Array<ref/i32 during o>)), v: ref/i32 during o) => ()
+        func p1PutArrT2(p: uniq/((raw/(raw/(ref/i32 during o)), Array<ref/i32 during o>)), v: ref/i32 during o) => ()
+        func p1PutRR(p: uniq/(raw/(raw/(ref/i32 during o))), v: ref/i32 during o) => ()
+        func p1Put(p: uniq/(raw/(ref/i32 during o)), v: ref/i32 during o) => ()
+        func p1Put7(a: uniq/(Array<uniq/(raw/(ref/i32 during o)) during q>), v: ref/i32 during o) => ()
+        func p1PutA(a: uniq/(Array<raw/(ref/i32 during o)>), v: ref/i32 during o) => ()
+        func p1PutAr(a: ref/(Array<raw/(ref/i32 during o)>), v: ref/i32 during o) => ()
+        func p1PutR2(p: uniq/(ref/i32 during o), v: ref/i32 during o) => ()
+        struct P1Cell<T> {o}
+            internal var slot: raw/T during self
+            internal let keep: Loan<ref/i32 during o>
+            public init(k: ref/i32 during o, s: raw/T)
+                self.keep = Loan.init(k)
+                unsafe => self.slot = s@(raw/T during self)
+            public func put(self: uniq/Self, v: ref/i32 during o) => ()
+
+        """ + "func p1St2(t: uniq/((uniq/(Array<uniq/(raw/(ref/i32 during o)) during q>) during b, uniq/((uniq/i32 during k, " + P1NestType +
+        ")) during c)) during e) => ()\n";
 }

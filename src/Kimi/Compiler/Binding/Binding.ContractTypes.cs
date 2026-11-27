@@ -18,6 +18,10 @@ public sealed partial class Binding
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
 
+    // The compilation's level of the hop chains through a frozen library path (Hop; PLAN G949 Stage 2 U3, Revision 3): the chains first
+    // formed after the seal, kept for the compilation's life as an interner's compilation level, so a warm pass allocates none.
+    private readonly Dictionary<(BoundConformancePath Path, BoundType Step, ResolutionHops? Inner), ResolutionHops> frozenPathHops = new();
+
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
     /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
     /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
@@ -35,22 +39,24 @@ public sealed partial class Binding
         }
 
         var query = this.contractParts.Begin(this.storageVersion);
-        return this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
+        return this.Batched ? this.BatchedContractType(type, scope, self, normalize, query) : this.ContractTypeCore(type, scope, self, normalize, query);
     }
 
     // SPEC 8.4, 8.3.2: a Contract reference written in a Contract's declaration (a clause's Contract, an ancestor) for the conforming Type
     // `self`, itself where unchanged. With a bound `reference` (the premise supply's), the Self the declaration writes is `self` first and
-    // the reference's arguments come after, so a Self they carry from the premise's context stays the context's (DECISIONS R4-M166).
+    // the reference's arguments come after, so a Self they carry from the premise's context stays the context's (DECISIONS R4-M166). The
+    // declaration's own reference (`MT<A>` written in MT: the declaration symbol) is its SelfType (ContractReferenceType), which the
+    // reference binds like any other (PLAN G837).
     private BindingSymbol InstantiatedContract(BindingSymbol contract, BindingScope scope, BoundType? self, bool normalize, BindingSymbol? reference)
     {
-        if (!IsBoundContractReference(contract))
+        if (contract.Type is null)
         {
             return contract;
         }
 
-        var type = contract.Type!;
-        var image = reference is null || self is null ? this.ContractType(type, scope, self, normalize)
-            : this.ContractType(this.SubstituteContractReference(this.WithConformingSelf(type, self), reference, out _), scope, null, normalize);
+        var type = this.ContractReferenceType(contract);
+        var image = reference is null ? this.ContractType(type, scope, self, normalize)
+            : this.ContractType(this.SubstituteContractReference(self is null ? type : this.WithConformingSelf(type, self), reference, out _), scope, null, normalize);
         return ReferenceEquals(image, type) ? contract : this.BoundContractReference(image);
     }
 
@@ -96,7 +102,7 @@ public sealed partial class Binding
             return (type, null, Completion.Complete);
         }
 
-        if (this.collectingAssociated is not null)
+        if (this.Batched)
         {
             return this.BatchedContractType(type, scope, self, normalize, query);
         }
@@ -115,6 +121,10 @@ public sealed partial class Binding
         return answer;
     }
 
+    // Whether the associated collection's batch answers: one is open, and no requirement's evidence holds obligations pending, an input
+    // its key does not carry (FormationRead; R7-C2e2 e2-3b Revision 4).
+    private bool Batched => this.collectingAssociated is not null && this.FormationRead;
+
     // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch);
     // Provisional (W4) whatever the batch stored, as the batch is open.
     private (BoundType Image, ResolutionHops? Hops, Completion Completion) BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
@@ -132,8 +142,10 @@ public sealed partial class Binding
 
     // The image and its hops: a projection resolved by a specification adds its path and itself, its components normalized, to its
     // subject's (component 0's) hops. W4: the meet of the environment's and the requirement's substitutions, the parts', the held
-    // Type's, the length's, the projection's specification (W5) and every availability the identity loop asks (W6); a Contract Self, a
-    // kind not normalized and the guard's hit (normalizingAssociated, empty when a reading's formation starts) add nothing.
+    // Type's, the length's and the projection's specification (W5); a Contract Self, a kind not normalized and the guard's hit
+    // (normalizingAssociated, empty when a reading's formation starts) add nothing. No identity step (R7-C2c2 c2-4b, design R4.12): a
+    // projection or parameter that (E) and the specification leave unresolved is returned as written, never in a class's form, since
+    // the image is stored and read in other views; a judgment that needs it identified forms it at its own intake (ClassForm's readers).
     private (BoundType Image, ResolutionHops? Hops, Completion Completion) ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         type = this.ApplyContractEnvironment(type, scope, out var completion);
@@ -183,9 +195,27 @@ public sealed partial class Binding
 
             try
             {
+                // R7-C2c2 c2-4 (design (E), S3): a projection whose subject has a constructed Member is specified on it, through the one
+                // unconditional lookup the identity table's grounds read (SPEC 8.2.3 Projections). The table's Completion is met (W4): a
+                // non-Final or re-entered table leaves the projection's form Provisional, specified or not. Hops: the binding's resolution
+                // gives none, so a use keeps the subject's (a named limit for hover and diagnostics' "identical Type it used"). The
+                // Member is formed first, as the subject was (its components' images), so the instance grows only through the binding's
+                // substitution (StoredType's, IMPL A.4's checked growth site, refused at its frame), as a specification's does.
                 if (result.Kind == BoundTypeKind.AssociatedProjection)
                 {
-                    var outcome = this.ProjectionSpecification(result, scope);
+                    var member = this.MemberOf(result.Components[0], scope, out var table);
+                    completion = Meet(completion, table);
+                    if (!ReferenceEquals(member, result.Components[0]) && this.ContractTypeAnswer(member, scope, self) is var formed &&
+                        this.UnconditionalBinding(formed.Image, result, QuerySite.Nested, out var unfinished) is { } grounded)
+                    {
+                        var instance = this.ContractTypeAnswer(grounded, scope, self);
+                        return (instance.Image, inner, Meet(Meet(completion, formed.Completion), unfinished ? Completion.Provisional : instance.Completion));
+                    }
+                }
+
+                if (result.Kind == BoundTypeKind.AssociatedProjection)
+                {
+                    var outcome = this.ProjectionSpecification(result, scope, QuerySite.Nested);
                     completion = Meet(completion, outcome.Completion);
                     if (outcome.Type is { } specified)
                     {
@@ -205,43 +235,6 @@ public sealed partial class Binding
 
                         var instance = this.ContractTypeAnswer(stored, scope, self);
                         return (instance.Image, hops, Meet(completion, instance.Completion));
-                    }
-                }
-
-                // The first available premise naming the Type completes it, the choice dev's member substitution makes (SubstituteIdentity;
-                // R7-C2c2 replaces both); a Type in a final erroneous identity class stays as written (Binding.TypeIdentity).
-                BoundType? chosen = null;
-                for (var current = scope; current is not null; current = current.Parent)
-                {
-                    if (current.Constraints is not { Invalid: false } environment)
-                    {
-                        continue;
-                    }
-
-                    foreach (var fact in environment.Facts)
-                    {
-                        if (fact.Kind != ConstraintKind.TypeIdentity || !this.FactStates(fact, result, out var required))
-                        {
-                            continue;
-                        }
-
-                        var available = this.AvailableConstraintFact(environment, fact, out var availability);
-                        completion = Meet(completion, availability);
-                        if (available && required is not null && chosen is null)
-                        {
-                            chosen = required;
-                        }
-                    }
-                }
-
-                if (chosen is not null)
-                {
-                    var failed = this.ProjectionClassFailed(result, scope, out var guard);
-                    completion = Meet(completion, guard);
-                    if (!failed)
-                    {
-                        var identity = this.ContractTypeAnswer(chosen, scope, self);
-                        return (identity.Image, null, Meet(completion, identity.Completion));
                     }
                 }
 
@@ -280,11 +273,14 @@ public sealed partial class Binding
     }
 
     // The interned chain of a hop resolving step through path before inner: one per path, step and inner chain, kept with the path it
-    // names (BoundConformancePath.HopChains), so a warm pass allocates none.
+    // names (BoundConformancePath.HopChains), so a warm pass allocates none. Over U4's two levels (PLAN G949 Stage 2 U3, Revision 3): a
+    // frozen path's chains are the library pass's, found first and never extended; a chain first formed after the seal is the
+    // compilation's (frozenPathHops), as an interner's insert after the seal goes to the compilation's level, so no compilation writes a
+    // frozen path.
     private ResolutionHops Hop(BoundConformancePath path, BoundType step, ResolutionHops? inner)
     {
-        var chains = path.HopChains ??= new();
-        for (var i = 0; i < chains.Count; i++)
+        var chains = path.HopChains;
+        for (var i = 0; chains is not null && i < chains.Count; i++)
         {
             if (ReferenceEquals(chains[i].Step, step) && ReferenceEquals(chains[i].Inner, inner))
             {
@@ -292,8 +288,18 @@ public sealed partial class Binding
             }
         }
 
+        if (path.Stamp == Frozen)
+        {
+            if (!this.frozenPathHops.TryGetValue((path, step, inner), out var own))
+            {
+                this.frozenPathHops.Add((path, step, inner), own = new(path, step, inner));
+            }
+
+            return own;
+        }
+
         var hop = new ResolutionHops(path, step, inner);
-        chains.Add(hop);
+        (path.HopChains ??= new()).Add(hop);
         return hop;
     }
 

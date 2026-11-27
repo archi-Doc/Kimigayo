@@ -2,13 +2,13 @@
 
 [Specification index](../SPEC.md)
 
-This revision defines one executable target profile, windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)). Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
+This revision defines three executable target profiles: windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)), linux-x64 ([§21.5](../impl/21-layout-runtime-and-code-generation.md#215-linux-x64-runtime)) and the freestanding profile x86_64-unknown-none ([§21.6](../impl/21-layout-runtime-and-code-generation.md#216-x86_64-unknown-none-runtime)), whose program supplies its platform ([§22.4.5](#2245-platform)); running or testing a linux-x64 program on a windows-x64 host, or an x86_64-unknown-none program on any host, is Unsupported. Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)), including the Kimi Kotonoha's ([§22.1](#221-required-kimi-declarations)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
 
 ## 22.1. Required Kimi declarations
 
 Every Compilation binds exactly one **Kimi Kotonoha** under the reserved direct reference name `Kimi` ([§18.4.1](18-modules-and-dependencies.md#1841-identities-and-reference-names)). `Kimi` is not a keyword: inner scopes may shadow it; `::Kimi` cannot be shadowed. The mandatory default alias opens `Kimi` ([§18.2.3](18-modules-and-dependencies.md#1823-default-aliases)).
 
-A Kimi declaration is recognized by its declaration identity, never by name or by a user conformance; a same-spelled user declaration or a replacement alias never gets its special behavior. A Kimi Kotonoha is compatible when it declares every row below with the stated shape; it may declare more. Whether a compiler accepts a Kimi Kotonoha other than its own is implementation-defined. Every Kimi declaration, including `Kimi.Windows` and `Kimi.Time`, exists on every target.
+A Kimi declaration is recognized by its declaration identity, never by name or by a user conformance; a same-spelled user declaration or a replacement alias never gets its special behavior. A Kimi Kotonoha is compatible when it declares every row below with the stated shape; it may declare more. Whether a compiler accepts a Kimi Kotonoha other than its own is implementation-defined. Every public Kimi declaration exists on every target, except the group `Kimi.Windows` and its members, which are declared only where the Condition `windows` holds ([§22.8.3](#2283-windows-counter-functions)).
 
 Besides the Kimi imports ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)), some Kimi declarations have no Kimigayo definition: the implementation supplies the definition of a function or constructor, or reports every use of a declaration as Unsupported ([§23.1.1](23-compiler-services.md#2311-categories)). Such a function or constructor omits its Body or writes only the Body's leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). Its contract is its declaration's, and a supplied definition meets that contract and the sections that define its behavior. The Kimi Kotonoha's own sources may carry the implementation's Attributes where [§6.7](06-declarations-and-containers.md#67-attributes) accepts them; they identify a declaration to the implementation, such as the row or operation it is, the definition the implementation supplies for it, that its calls carry their caller's location ([§22.5.1](#2251-abort-location)), or that its uses are Unsupported. An implementation Attribute adds no rule or form: it changes no declaration's Type, contract, effects, access or validity at any use. The implementation documents its Attributes ([IMPL §21.3.4](../impl/21-layout-runtime-and-code-generation.md#2134-kimi-implementation-attributes)).
 
@@ -40,13 +40,15 @@ This table is the only list of required Kimi declarations (names relative to `Ki
 | Standard iterators | `ArrayIterator<T>`, `ArrayUniqIterator<T>`, `ArrayOwningIterator<T>`, `FixedArrayOwningIterator<T, A>`, `SliceIterator<T>`, `DictionaryIterator<K, V>`, `DictionaryUniqIterator<K, V>`, `DictionaryOwningIterator<K, V>`, `RangeIterator<T>`, `ClosedRangeIterator<T>` ([§22.2.2](#2222-standard-adapters-and-iterators)) |
 | `Iteration` group | `OwningIterator<I>`, `BorrowingIterator<I>`, `owning`, `borrowing` ([§22.2.2](#2222-standard-adapters-and-iterators)) |
 | `Intrinsics` group | non-generic; `makeObj`, `makeRc`, `makeArc`, `makeRcCyclic`, `makeArcCyclic`, `clone`, `downgrade`, `upgrade` ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle), [§13.6.3](13-operators-and-assignment.md#1363-weak-references)); `replace`, `exchange`, `swap` ([§15.7](15-ownership-and-lifetime-analysis.md#157-whole-value-updates)) |
-| `Raw` group | `allocate`, `release`, `initialize`, `slice` ([§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) |
+| `Raw` group | `allocate`, `release`, `initialize`, `slice`, `readVolatile`, `writeVolatile` ([§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) |
 | `Async` group | `Cancelled`, `SendFailure`, `Raced` (arities 2–4), `Sender<T>`, `Receiver<T>`, `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe`, `offload`, `offloadEach` ([§22.3](#223-asynchronous-tasks)) |
 | `Console` group | `writeLine` ([§22.7](#227-console-output)) |
 | `Time` group | `Duration`, `Stopwatch` ([§22.8](#228-time)) |
-| `Windows` group | `queryPerformanceCounter`, `queryPerformanceFrequency` ([§22.8.3](#2283-windows-counter-functions)) |
+| `Windows` group | `queryPerformanceCounter`, `queryPerformanceFrequency`, declared only where the Condition `windows` holds ([§22.8.3](#2283-windows-counter-functions)) |
 | UTF-8 formatting | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull`, `Text` group ([§22.9](#229-utf-8-text-and-buffers)) |
 | `Test` group | `tempDirectory() -> string`, only in test-only bodies ([§17.6.1](17-failure-handling.md#1761-forms-and-placement); [§20.6.3](../impl/20-compilation-configuration.md#2063-case-execution)) |
+| `Platform` | static Contract, `Self is Copy`: `func start(boot: Boot) -> Self`, `func mapPages(self: uniq/Self, bytes: isize) -> raw/u8`, `func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64`, `func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64`, `func clock(self: uniq/Self) -> i64`, `func terminate(self: uniq/Self, status: i32) -> Never`, in that order ([§22.4.5](#2245-platform)) |
+| `Boot` | C-layout Copy struct created only by the runtime: `directMapOffset: usize`, `regions: raw/raw/Boot.Region`, `regionCount: isize`; `Boot.Region`, a C-layout Copy struct `address: u64`, `length: u64`, `kind: u64` ([§22.4.5](#2245-platform)) |
 
 The iteration and indexing Contracts are static; their associated Types are complete and may take Origin parameters ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)). `Array`, `Dictionary`, `Slice`, `UniqSlice`, `Wrapping`, `Loan`, `Weak` and `Never` have exactly the constructors their Kimi declarations declare, such as `Array<T>.init(capacity:)` (`Weak`, `Wrapping` and `Never` declare none); none is synthesized ([§6.3.6](06-declarations-and-containers.md#636-implicit-constructor)).
 
@@ -382,15 +384,42 @@ struct Cache<T>
 // Cache<ref/i32 during a> and Cache<ref/i32 during b> share one slot.
 ```
 
+### 22.4.5. Platform
+
+On a freestanding profile the program supplies its platform. A **platform** is a root-level struct of the current project that declares conformance to `Platform` ([§8.6.1](08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity)), directly or through a Contract refining it ([§8.4.3](08-generics-constraints-and-contracts.md#843-refinement)), judged on the root items after Condition selection and source generation, as the startup form is ([§22.4.1](#2241-startup-selection)). Whether the conformance holds does not decide it: a failed conformance is that conformance's own error, and the struct is still a platform. Several platforms in an Application are an error, and so is a generic platform or one with Origin parameters. A conforming struct of a Library or of a dependency is an ordinary struct. An Application for a freestanding profile without a platform is Unsupported, and so is a platform on a profile that is not freestanding.
+
+The members to which the conformance maps `Platform`'s requirements ([§8.6.1](08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity)), and every function they call, access no static storage: such a member whose effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)) lists a static Field, or has unknown environment effects, is an error at the member. For this rule, a call that takes its effects from a `confined` bound ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use), [§8.11.4](08-generics-constraints-and-contracts.md#8114-callable-effect-bounds)) counts as an access to static storage, since a `confined` implementation may read an immutable static ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). A platform keeps its state in its value.
+
+Before the startup body, the runtime calls `start` once with the `Boot` the loader described, and keeps the result in storage of its own, which is not a static slot and is never destroyed. Memory pages, console output, `Time.Stopwatch`'s clock and the end of the program call those members with `uniq` access to that value ([IMPL §21.6](../impl/21-layout-runtime-and-code-generation.md#216-x86_64-unknown-none-runtime)). After the startup body and shutdown ([§22.4.3](#2243-static-initialization-and-shutdown)) the runtime calls `terminate(0)`, and after an Abort's report `terminate(1)`: on a freestanding profile the exit status of [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup) is the status passed to `terminate`. A member that allocates, writes to `Console` or reads the clock, and an Abort raised while a member runs, end the program without a report and without an exit status.
+
+```kimi
+#if os == "none"
+    group Metrics
+        public var writes: i64 = 0
+
+    struct Board
+        Self is Copy
+        Self is Platform
+        var writes: i64 = 0             // The platform keeps its state in its value.
+
+        // The members for start, mapPages, releasePages, clock and terminate are omitted.
+
+        public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64
+            self.writes += 1            // Valid: state in self.
+            // Metrics.writes += 1      // Error: a platform member accesses static storage.
+            return 0
+// A second root struct declaring Self is Platform: several platforms, an error on every target.
+```
+
 ## 22.5. Abort locations and codes
 
-The Abort contract is [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup); the windows-x64 output format is in [§21.4.2](../impl/21-layout-runtime-and-code-generation.md#2142-process-entry-and-exit).
+The Abort contract is [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup); the output format is in [§21.4.2](../impl/21-layout-runtime-and-code-generation.md#2142-process-entry-and-exit) (windows-x64) and [§21.5.2](../impl/21-layout-runtime-and-code-generation.md#2152-process-entry-and-exit) (linux-x64).
 
 ### 22.5.1. Abort location
 
 An Abort reports one source location, the same at every optimization level and instantiation:
 
-- a failure inside a Kimi operation (a public function, accessor or member of the Kimi Kotonoha) that user code invokes by a call or by syntax (indexing, slicing, literals), including the operation's internal code, allocations, static-storage accesses and `$abort`: the start of the invoking user expression; for a call through a function value, that call, not where the value was formed; for a Dictionary literal entry's insertion, its allocation and a duplicate key included, the start of that entry's key expression, so a duplicate reports the later key expression;
+- a failure inside a Kimi operation (a public function, accessor or member of the Kimi Kotonoha, or the destruction work of one of its Types, its `drop` and releases included) that user code invokes by a call, by syntax (indexing, slicing, literals) or by a destruction it runs implicitly, including the operation's internal code, allocations, static-storage accesses and `$abort`: the start of the invoking user expression; for a call through a function value, that call, not where the value was formed; for a Dictionary literal entry's insertion, its allocation and a duplicate key included, the start of that entry's key expression, so a duplicate reports the later key expression; for such a destruction, the start of the declaration of the binding whose Scope Exit ([§16.2](16-scope-exit-and-destruction.md#162-scope-exit)) destroys the value (for an implicit binding, of the construct that places it), of the expression that made the destroyed temporary or of the assignment that replaces the value, and for a value destroyed as part of another's destruction ([§16.3.2](16-scope-exit-and-destruction.md#1632-component-destruction), [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release), [§16.4](16-scope-exit-and-destruction.md#164-closure-environments-and-objects-under-destruction)), the other's;
 - user code that a Kimi operation calls, such as `equals` or `drop`: that code's own location;
 - an implicit iteration entry or `next` call of `for`: the start of the `for` expression;
 - an arithmetic, shift or conversion check in user code: the start of the failing expression; for compound assignment and `++`/`--`, the whole update expression;
@@ -408,6 +437,17 @@ let value = Values.first
 ```kimi
 let items: Array<i32> = [1]
 let x = items[5]          // KIMI_E_INDEX_BOUNDS at the start of items[5], not inside Kimi code.
+```
+
+```kimi
+func build() -> isize
+    let buffer = Text.heap(16)
+    return buffer.capacity      // If releasing buffer's storage at this Scope Exit fails: KIMI_E_FREE, reported at `let buffer`.
+```
+
+```kimi
+let values: Array<i32> = [1, 2]
+for _ in values@move => exit    // Leaving by exit destroys the `for`'s iterator, which holds the array's storage; if releasing it fails: KIMI_E_FREE, reported at `for`.
 ```
 
 ### 22.5.2. Abort codes
@@ -432,7 +472,6 @@ Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the K
 | `KIMI_E_ALLOC_SIZE: Allocation size exceeds limit` | A requested size overflows or exceeds the maximum object size |
 | `KIMI_E_ALLOC: Failed to allocate memory` | The allocator returns no memory |
 | `KIMI_E_FREE: Failed to free memory` | A detected release failure |
-| `KIMI_E_PROCESS_HEAP: Failed to obtain process heap` | The runtime heap is unavailable |
 | `KIMI_E_STDOUT: Failed to write to stdout` | Standard output fails |
 | `KIMI_E_STRING_RELEASE: Invalid string release kind` | A detected invalid string representation during destruction (detection not guaranteed) |
 | `KIMI_E_CLOCK: Elapsed-time counter failed` | The elapsed-time counter fails, reports a nonpositive frequency or goes backward |
@@ -522,7 +561,7 @@ let seconds: f64 = watch.elapsed().seconds
 
 ### 22.8.3. Windows counter functions
 
-The group `Kimi.Windows` declares two ordinary imports ([§22.6](#226-foreign-function-imports)). They exist on every target; their imports resolve only when a program is built for windows-x64.
+The group `Kimi.Windows` is declared only where the Condition `windows` holds ([§19.2.1](19-compile-time-directives.md#1921-built-in-conditions)) and declares two ordinary imports ([§22.6](#226-foreign-function-imports)). Elsewhere `Kimi.Windows` is an unknown Name ([§9](09-names-signatures-and-access.md#9-names-signatures-and-access)) and `Windows` names no Kimi declaration; portable code measures time with `Time.Stopwatch` or selects the call with `#if windows`.
 
 ```kimi
 public group Windows
@@ -534,6 +573,12 @@ public group Windows
 ```
 
 Each returns the native flag (nonzero is success) and writes a count, or counts per second, into the borrowed `i64`. They are safe, allocate nothing and do not Abort.
+
+```kimi
+#if windows
+    var count: i64 = 0
+    let ok = Windows.queryPerformanceCounter(count@uniq)   // Without #if: an unknown Name where windows does not hold.
+```
 
 ## 22.9. UTF-8 text and buffers
 

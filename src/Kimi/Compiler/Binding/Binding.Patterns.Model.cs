@@ -8,6 +8,11 @@ namespace Kimi.Compiler;
 
 public enum BoundPatternKind : byte
 {
+    /// <summary>A leaf that tests, selects and binds nothing: its Pattern failed with its own record, a payload Pattern of its Case was not
+    /// read, or it rests on the failed Subject (<see cref="BoundPattern.MatchedType"/> null; SPEC 14.8.1, 23.1.2). Every other position
+    /// is buildable: a Case position has a child for each payload of its selected Case, whose Type was read at the position, and a Tuple
+    /// position one for each element; a position whose Subject Type is refuted (BindMatch's reading or its late recheck) keeps its kind
+    /// and its test.</summary>
     Invalid,
     Wildcard,
     Binding,
@@ -23,8 +28,6 @@ public enum PatternAcquisition : byte
     Copy,
     Borrow,
     Move,
-    CopyOrMove,
-    Deferred,
 }
 
 public enum PatternAccessMode : byte
@@ -61,8 +64,10 @@ public readonly record struct PatternLiteral(PatternLiteralKind Kind, Int128 Bit
 /// layer that lacks its structure, a Binding reached with owned access the qualifying pair layer it would otherwise take by value),
 /// <see cref="AccessMode"/> is the access its path grants to the selected value, and <see cref="OwnedPart"/> whether that value may
 /// lie in the owned Subject or iteration item: its path passed only pair layers admitting owner, whose owner case selects the
-/// Place itself (SPEC 15.1.6 "a part of an owned Subject or iteration item", 13.5.5).</summary>
-public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
+/// Place itself (SPEC 15.1.6 "a part of an owned Subject or iteration item", 13.5.5). <see cref="MatchedType"/> is the Type the
+/// position matched, null exactly at a resting leaf: the Invalid position of an arm whose Pattern rests on the failed Subject or on the
+/// Subject Type BindMatch refuted, which matched no Type (SPEC 23.1.2).</summary>
+public readonly record struct BoundPattern(Koto Source, BoundType? MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,
     PatternAccessMode AccessMode = PatternAccessMode.Owned, int ImplicitFollows = 0,
@@ -90,8 +95,10 @@ public sealed class BoundMatch
 
     internal List<byte> CaseCoverage { get; } = new();
 
-    /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure; the plan
-    /// cannot be built.</summary>
+    /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure, or its Subject
+    /// Type is refuted (recorded at that Type's formation site, PLAN G1278): the match's coverage is not computed
+    /// (<see cref="MatchCoverageState.Invalid"/>), and the plan is still built (a failed position is an Invalid leaf or keeps its
+    /// test); <see cref="Pending"/> keeps it unbuilt.</summary>
     internal bool Invalid { get; set; }
 
     internal bool Pending { get; set; }
@@ -109,11 +116,12 @@ public sealed class BoundMatch
 
     /// <summary>Gets the Pattern plan (PatternPlan, plan 5.3) the current pass made for a match or a try, or the Some/None decomposition
     /// of a for loop over a user iteration entry, whose positions bind its iteration bindings; null for another node or loop.</summary>
+    /// <param name="binding">The reader's Binding, whose pass made the plan.</param>
     /// <param name="node">The match, try or for loop.</param>
     /// <returns>The plan, or null.</returns>
-    internal static BoundMatch? Of(Koto node) => node switch
+    internal static BoundMatch? Of(Binding binding, Koto node) => node switch
     {
-        MatchKoto match => match.CodeContext.Compilation.Binding.TryGetMatch(match, out var plan) ? plan : null,
+        MatchKoto match => binding.TryGetMatch(match, out var plan) ? plan : null,
         ForKoto { Iteration.Decomposition: { IsCurrent: true } decomposition } => decomposition,
         _ => null,
     };

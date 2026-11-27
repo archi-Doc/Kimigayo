@@ -31,14 +31,14 @@ public class SharedObjectDiagnosticTest(ITestOutputHelper output)
 
     // SPEC 13.5.5, 13.6.2: a counted payload grants Read only, even from a writable handle slot at strong count one.
     [Theory]
-    [InlineData("let u = owner@follow@uniq", "owner@follow@uniq")]
+    [InlineData("let u = owner@follow@uniq", "owner@follow")]
     [InlineData("let taken = owner@follow@move", "owner@follow@move")]
     [InlineData("owner@follow = Item.init(2)", "owner@follow")]
     [InlineData("owner.value = 9", "owner.value")]
     [InlineData("owner.value += 1", "owner.value")]
     [InlineData("owner@follow.value = 9", "owner@follow.value")]
-    [InlineData("let old = Kimi.Intrinsics.replace(owner@follow@uniq, with: Item.init(2))", "owner@follow@uniq")]
-    [InlineData("var other = Item.init(2)\nlet old = Kimi.Intrinsics.exchange(owner@follow@uniq, with: other@move)", "owner@follow@uniq")]
+    [InlineData("let old = Kimi.Intrinsics.replace(owner@follow@uniq, with: Item.init(2))", "owner@follow")]
+    [InlineData("var other = Item.init(2)\nlet old = Kimi.Intrinsics.exchange(owner@follow@uniq, with: other@move)", "owner@follow")]
     public void CountedPayloadsGrantSharedAccessOnly(string operation, string target)
     {
         foreach (var factory in new[] { "makeRc", "makeArc" })

@@ -223,7 +223,8 @@ public sealed partial class MirBorrowsTest
 
     // DIAGNOSTICS (A6 facts, DECISIONS R4-M156): the delivery's record has the Field borrow as its Anchor and no witness, since the
     // delivered value's next use is the caller's; a Refuted Field borrow stored where the body does not own is the derived conflict (its
-    // Cause fact), and a store Binding rejects is an Opaque with no Return record.
+    // Cause fact), whose Store is E's store, keepCel's call (Z18b). R7-O1 H: Binding judges no body relation, so a store whose Field borrow is Refuted (Assigned) is built too: its conflict
+    // is derived from that relation, listed on the MIR side with its Cause, one published record (F-H-9's class; it was an Opaque).
     [Fact]
     public void TheDeliveryRecordCarriesItsAnchor()
     {
@@ -248,9 +249,12 @@ public sealed partial class MirBorrowsTest
                 .Select(f => $"{f.Kind} {Line(c, f.Site)}")))
             .ToArray();
         Assert.Equal(
-            ["self.u = o: Anchor self.u@follow@ref", "self.cel = Cel.init(): Anchor self.cel@ref, Store self.cel = Cel.init(), Cause self.cel@ref"],
+            [
+                "self.u = o: Anchor self.u@follow@ref",
+                "self.cel = Cel.init(): Anchor self.cel@ref, Store Del.keepCel(out, self.cel@ref), Cause self.cel@ref",
+            ],
             found);
-        Assert.Empty(RejectedProblems(RawShapes + OwnStepShapes + AnchorShapes + DeliveryShapes + """
+        var assigned = MirBuildTest.Compile(Prelude + RawShapes + OwnStepShapes + AnchorShapes + DeliveryShapes + """
             struct Assigned {a}
                 public var cel: Cel
                 public var view: ref/Cel during a
@@ -259,7 +263,15 @@ public sealed partial class MirBorrowsTest
                     self.view = r
                     self.view = self.cel@ref
 
-            """));
+            """);
+        Assert.True(assigned.Binding.Result.IsComplete);
+        var derived = Analyze(assigned);
+        Assert.Equal(
+            ["self.cel = Cel.init(): Anchor self.cel@ref, Cause self.cel@ref"],
+            derived.Problems.All.ToArray().Select((x, i) => (Problem: x, Index: i))
+                .Where(static x => x.Problem.Code == DiagnosticCode.ComparisonLoanConflict_Kd && x.Problem.Subject.Module == 0)
+                .Select(x => $"{Line(assigned, x.Problem.Subject)}: " + string.Join(", ", derived.Problems.Facts(x.Index).ToArray()
+                    .Select(f => $"{f.Kind} {Line(assigned, f.Site)}"))));
     }
 
     // SPEC 15.6.3 and 15.6's holders, the same rule at an operand Move (DECISIONS R4-M156 (2)): a value holding a child formed through its

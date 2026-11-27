@@ -30,7 +30,7 @@ public sealed partial class Binding
         // Inline element projections share the owner's lifetime. Their Loans
         // retain separate place footprints for overlap checking. A raw Place's root `p[n]` is no part of `p` (SPEC 5.3).
         source = KotoHelper.UnwrapParentheses(source);
-        while (source is MemberAccessKoto or IndexKoto && !ElementAccess.IsRawRoot(source))
+        while (source is MemberAccessKoto or IndexKoto && !IsRawRoot(source))
         {
             if (IsGetterResult(source))
             {
@@ -46,11 +46,6 @@ public sealed partial class Binding
 
         return source;
     }
-
-    internal static Koto PlaceOriginBinder(Koto source) => source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) is { } getter ? getter
-        : source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
-        ? CandidateOriginBinder(candidate)
-        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
 
     // SPEC 7.7.2, 15.8.2: an environment binding is a Place of its closure, distinct from the closure's parameters, which share
     // the closure as binder; the i-th binding's Projection slot is -2 - i.
@@ -91,6 +86,11 @@ public sealed partial class Binding
             ? SymbolOriginSlot(symbol) : 0;
     }
 
+    internal Koto PlaceOriginBinder(Koto source) => this.PropertyCall(source, PropertyAccessorKind.Get) is { } getter ? getter
+        : source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
+        ? CandidateOriginBinder(candidate)
+        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
+
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
     // (SPEC 13.5.5), as the adaptation recorded it; otherwise the source Place's.
     private BoundOrigin PreparedOrigin(Koto source)
@@ -111,10 +111,12 @@ public sealed partial class Binding
 
     // SPEC 15.6.3, 13.5.5, 3.4.3: a Borrow of the referent that `layers` safe borrow layers of `reference`, stored at `holder`, reach (a
     // follow, a Subject's Reborrow, a read in place or through several layers): those layers first (MeetLayers), then, unless one of
-    // them is shared, the layers `holder` is reached through. A Type that is no safe borrow layer keeps its own Origin.
+    // them is shared, the layers `holder` is reached through. A Type that is neither a safe borrow layer nor a pair layer (which
+    // MeetLayers meets by its cases) keeps its own Origin; null when nothing on the path is dereferenced (pair layers admitting only
+    // owner select the Place itself, SPEC 13.5.5, below a root), whose caller names the Place.
     private BoundOrigin? ReferentOrigin(Koto holder, BoundType? reference, int layers = 1)
     {
-        if (reference is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || !IsBorrow(reference.Semantics))
+        if (!TryPairLayer(reference, out _, out _) && (reference is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || !IsBorrow(reference.Semantics)))
         {
             return reference?.Origin;
         }
@@ -130,9 +132,9 @@ public sealed partial class Binding
     private BoundOrigin? ContainedOrigin(Koto place, ContainmentWalk walk)
     {
         var path = KotoHelper.UnwrapParentheses(place);
-        for (var depth = 0; depth < 64; depth++)
+        while (true)
         {
-            var step = NextPathStep(path, out var next);
+            var step = this.NextPathStep(path, out var next);
             next = KotoHelper.UnwrapParentheses(next);
             if (this.MeetStep(step, path, next, ref walk))
             {
@@ -167,7 +169,7 @@ public sealed partial class Binding
             case PathStep.PairFollow:
                 return this.MeetPair(ref walk, next.BoundType, this.PairAdmitted(path));
             case PathStep.UserIndex:
-                walk.Met = this.MeetWith(walk.Met, ElementAccess.IndexerCall(path, false)?.BoundType?.Origin);
+                walk.Met = this.MeetWith(walk.Met, this.IndexerCall(path, false)?.BoundType?.Origin);
                 return true;
             case PathStep.ArrayElement:
                 walk.Met = this.MeetWith(walk.Met, this.PlaceOrigin(next));
@@ -176,10 +178,10 @@ public sealed partial class Binding
                 walk.Met = this.MeetWith(walk.Met, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin);
                 return true;
             case PathStep.Candidate:
-                walk.Met = this.MeetWith(walk.Met, this.OriginAtom(PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
+                walk.Met = this.MeetWith(walk.Met, this.OriginAtom(this.PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
                 return true;
             case PathStep.Root when walk.Met is not null || walk.Unbounded is not null:
-                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.OriginAtom(PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
+                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.OriginAtom(this.PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
                 return true;
             case PathStep.Root or PathStep.Receiver or PathStep.RawFollow:
                 return true;
@@ -215,9 +217,11 @@ public sealed partial class Binding
         return type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef;
     }
 
-    // SPEC 13.5.5, 15.6.1: a followed pair layer met into the walk (MeetLayers' pair layers, MeetStep's pair follow); whether it is shared.
+    // SPEC 13.5.5, 15.6.1, 8.15.2: a followed pair layer met into the walk (MeetLayers' pair layers, MeetStep's pair follow) by its cases
+    // under the walk's case assignment (CaseAdmitted, PathAuthority's rule); whether it is shared.
     private bool MeetPair(ref ContainmentWalk walk, BoundType? pair, SemanticsMask admitted)
     {
+        admitted = !walk.Cases.IsEmpty && TryPairLayer(pair, out var whole, out _) ? CaseAdmitted(whole, admitted, walk.Cases) : admitted;
         var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
         walk.Dereferenced |= !inPlace;
         this.MeetOuter(ref walk, shared ? slot : null, shared ? null : slot, inPlace);
@@ -257,7 +261,7 @@ public sealed partial class Binding
         => this.HelperOrigin(source) ?? (KotoHelper.UnwrapParentheses(source) is var slot &&
             (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
             slot is InvocationKoto)
-            ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source));
+            ? this.OriginAtom(this.PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source));
 
     // SPEC 13.5.6: the Origin of a Borrow of the Place `source` designates; a caller typing the Places reached through a receiver
     // names one of them, never the receiver.
@@ -288,7 +292,7 @@ public sealed partial class Binding
             return this.ReferentOrigin(selected.Left, selected.Left.BoundType) ?? this.PlaceOrigin(selected.Left);
         }
 
-        if (ElementAccess.IndexerCall(source, false) is { BoundType.Origin: { } publishedElement })
+        if (this.IndexerCall(source, false) is { BoundType.Origin: { } publishedElement })
         {
             return publishedElement; // SPEC 4.7.1: the element Place depends on the receiver under its contract.
         }
@@ -313,9 +317,9 @@ public sealed partial class Binding
         // parts, borrowed as a fresh anchor (RawAnchor); a reference read in place is its referent, through an exclusive one also
         // contained in its root's containment (EnvironmentContainment), and a Slice handle that is itself the Place is a Place of its root.
         // A pair layer's Origin is that of the reference it may hold, so the layer itself is its own dependency.
-        var layer = ElementAccess.AccessType(source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
+        var layer = this.AccessType(source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
         return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
-            ? (ElementAccess.IsRawRoot(source) ? this.RawAnchor(place, place) : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source)))
+            ? (IsRawRoot(source) ? this.RawAnchor(place, place) : this.OriginAtom(this.PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source)))
             : reachedThrough ? layer.Origin!
             : this.MeetWith(layer.Origin!, IsExclusive(layer.Semantics) ? this.EnvironmentContainment(source.BoundSymbol) : null)!;
     }
@@ -324,13 +328,16 @@ public sealed partial class Binding
     // 15.6.1): Met, the Origins met; Unbounded, the slots of followed pair layers that do not restart the dependency, kept until a layer
     // outside them that exists in every case is met (in their borrow cases they outlive every layer outside them, a premise of those cases
     // alone, so such a layer makes them redundant: MeetOuter); Dereferenced, whether some layer met dereferences in every admitted case
-    // (an owner case selects its operand Place).
-    private struct ContainmentWalk
+    // (an owner case selects its operand Place); Cases, the case assignment the walk's pair steps read (ReachOf; empty for every case),
+    // read as data and never copied, which belongs to this walk and not to a sub-walk it starts (an element's PlaceOrigin).
+    private ref struct ContainmentWalk
     {
         internal BoundOrigin? Met { get; set; }
 
         internal BoundOrigin? Unbounded { get; set; }
 
         internal bool Dereferenced { get; set; }
+
+        internal ReadOnlySpan<PairCase> Cases { get; init; }
     }
 }

@@ -97,11 +97,13 @@ public class VirtualAssociatedHeaderTest
     {
         var source = "group Operations\n    public func check<T>()\n        T is Copy\n        return\nopen struct Base<T>\n    public virtual func read(self: objref/Self)\n        T is Copy\n        return\nstruct Derived<U> : Base<U>\n    U is not Copy\n    override func read(self: objref/Self) => " + (needsCopy ? "Operations.check<U>()" : "()") + "\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(!needsCopy, c.Binding.Result.IsComplete);
-        if (needsCopy)
-        {
-            Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.NoApplicableOverload_Kd);
-        }
+        var codes = c.Binding.Issues.Select(static x => x.Code).ToArray();
+        Assert.Contains(Kimi.DiagnosticCode.InvalidConstraint_Kd, codes); // SPEC 6.4.3 (O-370): `U is Copy` is Refuted under `U is not Copy`.
+        // R7-C3 (F's C2 ruling 313, rulings 255 and 278; DECISIONS Q13): the refuted `U is Copy` is the override's failed premise, so the
+        // body's `check<U>()`, whose proof reads it, rests on the override's record and takes no evidence from it: it stays unresolved,
+        // with no record of its own (before ruling 313, and on dev: NoApplicableOverload_Kd).
+        Assert.DoesNotContain(Kimi.DiagnosticCode.NoApplicableOverload_Kd, codes);
+        Assert.Equal(needsCopy, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Any(static x => x.StateOf() == BindingState.Unresolved));
     }
 
     [Fact]

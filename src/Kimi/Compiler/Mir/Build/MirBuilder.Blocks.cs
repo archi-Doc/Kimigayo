@@ -12,7 +12,7 @@ internal sealed partial class MirBuilder
 {
     // A block item for its effect, its temporaries ending with it (SPEC 3.6): a local's declaration (also one Binding rejected, Let), a
     // form that leaves no value, or a value into a temp; a declaration builds nothing here.
-    private void Statement(Koto item)
+    private void StatementAt(Koto item)
     {
         this.statementStart = true;
         var temporaries = this.OpenScope(block: false);
@@ -49,7 +49,7 @@ internal sealed partial class MirBuilder
     }
 
     // A statement's value, built into a temp of its own among the statement's temporaries (SPEC 3.6), complete where it is made.
-    private void Evaluated(Koto item)
+    private void EvaluatedAt(Koto item)
     {
         var value = this.Hold(Held(item), item);
         this.Into(value, item);
@@ -88,7 +88,7 @@ internal sealed partial class MirBuilder
         // such a statement if one is added (its removal condition).
         var pointer = compilation.Types.Pointer(type);
         this.Set(this.Temp(pointer, taken), this.Ref(place, pointer, input: false), taken);
-        if (MirTypes.MayNeedDrop(type, this.walked))
+        if (MirTypes.MayNeedDrop(compilation.Types, type, this.walked))
         {
             this.DropAt(place, this.Info(taken));
         }
@@ -103,7 +103,7 @@ internal sealed partial class MirBuilder
     {
         if (input)
         {
-            var value = this.Hold(this.body.TypeOf(destination)!, item);
+            var value = this.Hold(this.body.TypeOf(destination), item);
             var held = this.Result(value, item, container, input: false);
             this.Made(value);
             if (Completes(container))
@@ -142,12 +142,18 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 7.1, 14.2: the Unit a container leaves where it completes into a Unit destination; one completing into another Type falls
-    // through, which Binding or control flow rejects (FunctionFallthrough_Kd), and leaves no value.
+    // through, which Binding or control flow rejects (FunctionFallthrough_Kd) or which rests on a guessed Error: it leaves a derived
+    // Opaque value, without a record (SPEC 23.1.2), so no temp is empty where the runtime edges reach its delivery (MirInit's invariant).
     private void Leave(MirPlace destination, Koto container)
     {
         if (HirTables.CompletionOf(container) == HirCompletion.Completes && ReferenceEquals(this.body.TypeOf(destination), BoundType.Unit))
         {
             this.Unit(destination, container);
+        }
+        else if (HirTables.CompletionOf(container) == HirCompletion.Completes && !this.IsNever(destination))
+        {
+            this.SiteUses((MirPlace?)null);
+            this.Derived(container, destination, completes: true);
         }
     }
 
@@ -230,17 +236,18 @@ internal sealed partial class MirBuilder
         return valued;
     }
 
-    // SPEC 6.6: a local of its symbol's Type, visible after its declaration, initialized as its initializer's Adjust takes it. A
+    // SPEC 6.6: a local of its symbol's Type (none where Binding failed it, PLAN G1073), visible after its declaration, initialized as its
+    // initializer's Adjust takes it. A
     // declaration Binding rejected, whose symbol it typed, declares its local too, so every use of the name is that one storage (SPEC
     // 3.6), and its initializer, which the HIR replaced, gives the declaration's derived value (SPEC 23.1.2; DECISIONS R4-M125), whose
     // site names no earlier build's local of the name (a defer body is built at each exit).
-    private void Let(VariableKoto variable)
+    private void LetAt(VariableKoto variable)
     {
         var symbol = HirTables.Symbol(variable)!;
         var local = this.Live(
             this.body.AddLocal(
                 new(
-                symbol.Type ?? BoundType.Unit,
+                symbol.Type,
                 MirLocalKind.Var,
                 this.Info(variable, local: true),
                 Binding.Reassignable(symbol),
@@ -250,7 +257,7 @@ internal sealed partial class MirBuilder
         if (initializer is not null && HirTables.Op(variable) == HirOp.Error)
         {
             this.locals.Remove(symbol); // The name its site's syntax declares is bound to no earlier build's local (a defer body, at each exit).
-            this.Opaque(variable, new(local));
+            this.Opaque(variable, new MirPlace(local));
         }
         else if (initializer is not null)
         {

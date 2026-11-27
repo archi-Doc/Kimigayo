@@ -36,6 +36,22 @@ public class UseLookupTest
     private const string ProjectedP = "contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n" +
         "    associate C<i32>.Item is P\n";
 
+    private const string CaseM = "enum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\n    public func make() -> i32 => 7\n";
+
+    // A Case through a projection left, plain (rb47v) and in an `if` join (rb81v).
+    private const string CaseLeft = "contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n" +
+        "    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i32>).Item.A.f()\n";
+
+    private const string CaseLeftJoined = "contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct P\n    public init() => ()\n" +
+        "    public func make() -> i32 => 7\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nstruct R\n    Self is C<i32>\n    associate C<i32>.Item is P\n" +
+        "func g(c: bool) -> i32\n    let x = if c => S.(C<i32>).Item.A.f() else => 0\n    return x\n";
+
+    // D's own clause normalizes the nested projection `T.(C).Item.(D).X` (dq7v, dq9v): a premise `T.(C).Item is D` supplies (SPEC 8.3.2).
+    private const string NestedClause = CaseM + "contract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item is D\n";
+
+    // A third level (dq10v): `T.(C).Item.(D).X is E` comes only from D's supply for `T.(C).Item`.
+    private const string ThirdClause = CaseM + "contract E\n    associate Y\n    Self.(E).Y is M\ncontract D\n    associate X is E\ncontract C\n    associate Item is D\n";
+
     [Theory]
     // A qualifier is looked up once (SPEC 9.6): an opened group and an opened struct `X` make the receiver ambiguous, which dev's second
     // (NoContainer) lookup hid (t01); the same receiver behind one opened struct is a projection.
@@ -53,9 +69,11 @@ public class UseLookupTest
     [InlineData("alias A\ngroup A\n    public enum Pick\n        X\n        Y\nfunc f(e: Pick) -> i32\n    let n = match e\n        Pick.X => 1\n        Pick.Y => 2\n    return n", "")]
     // A Type argument is a Type position: a value named `Kimi` beside an opened struct `Kimi` asks Core, never stage 4 (v02).
     [InlineData("alias A\ngroup A\n    public struct Kimi\n        public let n: i32 = 1\nfunc take<T>() -> i32 => 0\nfunc f(Kimi: i32) -> i32\n    return take<Kimi>()", "")]
-    // A generic adaptation target takes its Type row: a Contract alone is unresolved there (w01), as a missing Contract parent is (t05).
+    // A generic adaptation target takes its Type row: a Contract alone is unresolved there (w01), as a missing Contract parent is (t05:
+    // the resolver's miss, SPEC 9.5; it was InvalidConstraint_Kd until R7-E2 E2-4b, PLAN G1207, B's ruling 7), at the generic's Name as a
+    // Type use's miss is (C-405 C1, B's ruling 9; ContractBindingTest's x2g).
     [InlineData("contract C<T>\n    func m(self: ref/Self) -> i32\nfunc f(x: i32) -> i32\n    let y = x@C<i32>\n    return 0", "UnresolvedBinding_Kd C")]
-    [InlineData("contract D: Missing<i32>\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd Missing<i32>|InvalidConstraint_Kd contract D")]
+    [InlineData("contract D: Missing<i32>\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd contract D|UnresolvedBinding_Kd Missing")]
     // An effect selector names its declaration and has the bound ancestor it designates as its Type (SPEC 8.11.1; review 3's v-e1, v-e2,
     // v-e5), below a root-name form too; one without its Type arguments names no reference (EffectBoundDeclarationTest).
     [InlineData(BoundEffect + "contract Q: P<i32>\n    effect ::P<i32>.value confined", "")]
@@ -89,9 +107,10 @@ public class UseLookupTest
     [InlineData("func g<s/T>(x: s/T) -> i32 => s.f()", "UnresolvedBinding_Kd s.f")]
     // Contract Reference (9.2): a Contract parent, a projection's Contract, a conditional conformance's Contract and a parenthesized
     // effect selector pass a nearer group, struct or Type Parameter (p19, p21, p23, n02c, a11, a12, n04) and never reach stage 4, so
-    // an opened `Kimi` is selected (n10, n11); a Core declaration alone is not one (p24, p26, n02bx).
+    // an opened `Kimi` is selected (n10, n11); a Core declaration alone is not one (p24, p26, n02bx): at a parent, the resolver's miss,
+    // as a Contract alone is in Core's row (SPEC 9.2, 9.5; it was InvalidConstraint_Kd until R7-E2 E2-4b, G1207's rule).
     [InlineData("contract P\n    func m(self: ref/Self) -> i32\ngroup G\n    group P\n        func z() -> i32 => 0\n    contract C: P\n        func k(self: ref/Self) -> i32", "")]
-    [InlineData("struct S\ncontract C: S\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd S|InvalidConstraint_Kd contract C")]
+    [InlineData("struct S\ncontract C: S\n    func k(self: ref/Self) -> i32", "InvalidConstraint_Kd contract C|UnresolvedBinding_Kd S")]
     [InlineData("contract C\n    associate Item\ngroup G\n    group C\n        func z() -> i32 => 0\n    func f<T>(x: T.(C).Item) -> i32\n        T is C\n        return 0", "")]
     [InlineData("contract C\n    associate Item\ngroup G\n    struct C\n    func f<T>(x: T.(C).Item) -> i32\n        T is ::C\n        return 0", "")]
     [InlineData("struct S\nfunc f<T>(x: T.(S).Item) -> i32 => 0", "UnresolvedBinding_Kd T.(S)")]
@@ -117,9 +136,10 @@ public class UseLookupTest
     public void ARoleFollowsItsPosition(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
     // PLAN G724 (SPEC 8.5.2, 6.3.2, 9.6): a path's projection is its walk's end, formed by BindAssociatedProjection. Construction through a
-    // projection qualifier, written or short, constructs the normal form (b1, n01); another Type-side member through it is a located
-    // Unsupported_Kd at the member (b2, a Type function; r16, Cases); a `.(C)` whose reference fails forms nothing, so its record is the
-    // reference's alone (k25); a Name after a projection that names a member Type of the normal form is a located Unsupported_Kd (x08);
+    // projection qualifier, written or short, constructs the normal form (b1, n01); another Type-side member through it is selected among
+    // its normal form's members and its Constraints' requirements (b2, a Type function; r16, Cases; R7-N1 c-b's c4); a `.(C)` whose
+    // reference fails forms nothing, so its record is the reference's alone (k25); a Name after a projection that names a member Type of
+    // the normal form is that Type, formed in the normal form (x08);
     // an unresolved walk records at its failing step (x09: the head, a middle step, a parenthesized head). `L.(C)` is a projection
     // whatever Type its left is, a built-in, an array or a tuple included (SPEC F.5), the base bound with its own records: a missing
     // Contract records at its step, a missing member at the path, a tuple without the conformance is unproven (no tuple conforms to a
@@ -133,16 +153,16 @@ public class UseLookupTest
     [InlineData("func f(x: (i32, u8).(Addable<i32>).Output) -> i32 => 0", "UnprovenConstraint_Kd (i32, u8).(Addable<i32>).Output")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.(C<i32>).Item.init()", "")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.Item.init()", "")]
-    [InlineData(ProjectedP + "func g() -> i32\n    return S.(C<i32>).Item.make()", "Unsupported_Kd S.(C<i32>).Item.make")]
+    [InlineData(ProjectedP + "func g() -> i32\n    return S.(C<i32>).Item.make()", "")]
     [InlineData(
         "contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> M\n    return S.(C<i32>).Item.B(1)\n" +
             "func h() -> M\n    return S.Item.A",
-        "Unsupported_Kd S.(C<i32>).Item.B|Unsupported_Kd S.Item.A")]
+        "")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.(C).Item.init()", "TypeMismatch_Kd C")]
     [InlineData(
         "contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\n" +
             "func g(x: S.(C<i32>).Item.Inner) -> i32 => 0",
-        "Unsupported_Kd S.(C<i32>).Item.Inner")]
+        "")]
     [InlineData(
         "struct S\n    public struct In\n        public init() => ()\nfunc f(v: Missing.X) -> i32 => 0\nfunc g(v: S.Missing.X) -> i32 => 0\nfunc h(v: (Missing).X) -> i32 => 0",
         "UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd S.Missing")]
@@ -151,7 +171,7 @@ public class UseLookupTest
     // PLAN G724, the design's construction rows (SPEC 6.3.2, 8.5.2): construction through a projection qualifier over a parameter
     // with its premise (n05), a generic head written and short (r01, r01c), `Self` (r02), `::` (r03), a nested head (r04), a nested
     // projection (r05), a parenthesized Contract (r06g, r14v) and with arguments (k24); the invalid counterparts: no conformance to
-    // the written reference (b1x; r10, a Type function, whose member is the located Unsupported_Kd), two associated Types of the short
+    // the written reference (b1x; r10, a Type function, whose missing member rests on the projection's record), two associated Types of the short
     // name (b3x). b1x and r10 also record the unsatisfied constraint at the call, which rests on the projection's own record: PLAN
     // G724's BU-61 remainder (one independent record), asserted here as it stands.
     [Theory]
@@ -213,8 +233,131 @@ public class UseLookupTest
     [InlineData(
         ProjectedP +
             "func g() -> i32\n    return S.(C<i64>).Item.make()",
-        "UnsatisfiedConstraint_Kd S.(C<i64>).Item|UnsatisfiedConstraint_Kd S.(C<i64>).Item.make()|Unsupported_Kd S.(C<i64>).Item.make")]
+        "UnsatisfiedConstraint_Kd S.(C<i64>).Item|UnsatisfiedConstraint_Kd S.(C<i64>).Item.make()")]
     public void AProjectionQualifierConstructsItsNormalForm(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
+    // SPEC 8.5.2, 9.6, 6.5.2 (R7-N1 c-b, ruling 24): a projection path in a member access's left is evaluated before the left's reading is
+    // decided (its written Contract reference formed first by its own former, every reading forming it alike) and formed after it, so
+    // a Case reached through a projection reads as a value: written and short, through a parameter's premise, in an `if` join (rb81v,
+    // whose receiver only the decided reading binds) and through a nested enum of the normal form. A written reference that names
+    // nothing is recorded once, by its former, and the access rests on it. rb83c joins a payload Case through a projection with its short form.
+    // A premise the Contract of a projection in the left supplies (SPEC 8.3.2, ruling 26) is read by the evaluation as by the former, plain and in
+    // a join (dq7v, dq9v), at a third level (dq10v) and through the short name (dq11v); without D's clause there is no Case, recorded as
+    // its sibling `S.(C<i32>).Item.Z.f` is (dq7i).
+    [Theory]
+    [InlineData(CaseLeft, "")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g<U>() -> i32\n    U is C<i32>\n    U.(C<i32>).Item is M\n    return U.(C<i32>).Item.A.f()\n", "")]
+    [InlineData(CaseLeftJoined, "")]
+    [InlineData(NestedClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", "")]
+    [InlineData(NestedClause + "func g<T>(c: bool) -> i32\n    T is C\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n", "")]
+    [InlineData(ThirdClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.(E).Y.A.f()\n", "")]
+    [InlineData(NestedClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.X.A.f()\n", "")]
+    [InlineData(CaseM + "contract D\n    associate X\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", "UnresolvedBinding_Kd T.(C).Item.(D).X.A.f")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public enum N\n        A\n        B(i32)\n        public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g() -> i32 => S.(C<i32>).Item.N.A.f()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public enum N\n        A\n        B(i32)\n        public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(c: bool) -> i32\n    let x = if c => S.(C<i32>).Item.N.A.f() else => 0\n    return x\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(Missing).Item.A.f()\n", "UnresolvedBinding_Kd S.(Missing)")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nstruct R\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(c: bool) -> M\n    let m = if c => S.(C<i32>).Item.B(1) else => S.Item.A\n    return m@move\n", "")]
+    public void AProjectionInTheLeftIsEvaluatedBeforeItsReading(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
+    // SPEC 8.2.3, 8.3.2, 9.6 (R7-N1 c-b with R7-C3 C3-1; F's N1c rulings 31-33, 41 C1): a projection in the left is identified by its
+    // class's one form (ClassForm, C3-1's judge), read at the member step twice: EvaluateProjection's normal form and QualifierSelection's
+    // receiver Type. So the Case is reached whichever premise or clause gives the identity and in either order of an identity premise
+    // and a Contract clause (K1: ti1v, ti2v, ti6v, ti7v and their joins), with both (ti3v), through a Contract's own clause (sh12v) and
+    // through a parent Contract's clause reached by its own name (o8v). The programs are valid. Fail-before: on 9370ac7e1 (C3-1's merge
+    // without the two ClassForm reads) each records UnresolvedBinding_Kd at the access.
+    [Theory]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is Self.(D).W\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item.(D).X is M\n    return T.(C).Item.(D).X.A.f()\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is Self.(D).W\ncontract C\n    associate Item is D\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item.(D).X is M\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item.(D).X is T.(C).Item.(D).W\n    return T.(C).Item.(D).X.A.f()\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item.(D).X is T.(C).Item.(D).W\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item.(D).X is M\n    return T.(C).Item.(D).X.A.f()\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is Self.(C).W\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item is M\n    return T.(C).Item.A.f()\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is Self.(C).W\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item is M\n    let x = if c => T.(C).Item.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is M\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item is T.(C).W\n    return T.(C).Item.A.f()\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is M\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item is T.(C).W\n    let x = if c => T.(C).Item.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return T.(C).Item.(D).Z.A.f()\n")]
+    [InlineData(CaseM + "contract D0\n    associate X\n    Self.(D0).X is M\ncontract D: D0\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D0).X.A.f()\n")]
+    public void AProjectionIsReadInItsClassFormAtTheMemberStep(string source) => this.AUseIsResolvedOnceInItsRow(source, string.Empty);
+
+    // SPEC 8.2.3, 8.3.2, 8.5.3 (O-441 (a)'s L1 class; F's N1c rulings 42, 43): `T.(C).Item.(D0).X` is identified only by D's clause
+    // `Self.(D0).X is M`, where C bounds Item by D and D refines D0. The programs are valid, but the use reads only D0's supply, so its
+    // member is missing over a projection still in its class form while a declared bound of the subject that strictly refines the written
+    // qualifier declares an identity for X: the located Unsupported_Kd at the access (TypePathFailure's UnreadIdentity), as dev records it
+    // for the argument forms (S5a, S5b, S5k, sh5v's D0 use), a local (S5l) and a Type function (S5c). sh11v and sh9v keep dev's
+    // UnresolvedBinding_Kd at `X.A.f`: their `X.A` is the left of `.f`, which the left's Type walk (EvaluateUse) resolves, not the member
+    // step TypePathFailure decides (an open issue: that walk's step reads no verdict of TypePathFailure). sh5v's D path, `T.(C).Item.(D).Z.A`, is accepted (a
+    // move toward SPEC; dev records Unsupported_Kd there too). Where no such bound exists the program is decidably invalid and keeps its
+    // Language record: dq12i (Item has no bound: its UnresolvedBinding_Kd beside the unproven `T.(C).Item is D`), and dq7i (D declares no
+    // identity), AProjectionInTheLeftIsEvaluatedBeforeItsReading's row. The bound's supply includes every Contract it inherits (F's N1c
+    // ruling 44's B1): the identity declared one level up (pq01v, D2: D1, D1's clause) or in the bound two levels below the qualifier
+    // (pq02v); a failed clause in that supply (pq04i: `is Missing`) gives no identity, and the use rests on it (its own records only).
+    [Theory]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return h(T.(C).Item.(D0).X.A, T.(C).Item.(D0).X.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A|Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return h(T.(C).Item.(D0).X.A, M.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return T.(C).Item.(D0).X.make()\n", "Unsupported_Kd T.(C).Item.(D0).X.make")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return k(T.(C).Item.(D0).X.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    let m = T.(C).Item.(D0).X.A\n    return m.f()\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return h(T.(C).Item.(D0).X.A, T.(C).Item.(D).Z.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return T.(C).Item.(D0).X.A.f()\n", "UnresolvedBinding_Kd T.(C).Item.(D0).X.A.f")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    var s = 0\n    while c\n        s += T.(C).Item.(D0).X.A.f()\n        s += T.(C).Item.(D).Z.A.f()\n    return s\n", "UnresolvedBinding_Kd T.(C).Item.(D0).X.A.f")]
+    [InlineData(CaseM + "contract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", "UnprovenConstraint_Kd T.(C).Item.(D).X|UnprovenConstraint_Kd T.(C).Item.(D).X.A.f()|UnresolvedBinding_Kd T.(C).Item.(D).X.A.f")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D1: D0\n    Self.(D0).X is M\ncontract D2: D1\ncontract C\n    associate Item is D2\nfunc k(p: M) -> i32 => 1\nfunc g<T>() -> i32\n    T is C\n    return k(T.(C).Item.(D0).X.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D1: D0\ncontract D2: D1\n    Self.(D0).X is M\ncontract C\n    associate Item is D2\nfunc k(p: M) -> i32 => 1\nfunc g<T>() -> i32\n    T is C\n    return k(T.(C).Item.(D0).X.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    Self.(D0).X is Missing\ncontract C\n    associate Item is D\nfunc k(p: M) -> i32 => 1\nfunc g<T>() -> i32\n    T is C\n    return k(T.(C).Item.(D0).X.A)\n", "InvalidConstraint_Kd contract D|UnresolvedBinding_Kd Missing")]
+    public void AnIdentityTheUseDoesNotReadIsUnsupported(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
+    // SPEC 9.6, 8.5.2, 14.9.2 (R7-N1 c-b, rulings 24-26): the left of a Case through a projection is bound by the decided reading alone,
+    // whatever asked first: in an `if` join, where ResultSurvey asks before the access binds, every node of the left has the lookup,
+    // selection and Type it has in the plain form (rb81v and rb47v; dq9v and dq7v; dq10v's join), the projection ends its path and the
+    // access selects the Case `A` of its class's form M, the call's receiver. The projection's published Type is as ContractType gives
+    // it (R7-C3 C3-1: no identity step in a producer; ClassForm forms it at the member step), so the row does not name it.
+    [Theory]
+    [InlineData(CaseLeft, CaseLeftJoined)]
+    [InlineData(NestedClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", NestedClause + "func g<T>(c: bool) -> i32\n    T is C\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n")]
+    [InlineData(ThirdClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.(E).Y.A.f()\n", ThirdClause + "func g<T>(c: bool) -> i32\n    T is C\n    let x = if c => T.(C).Item.(D).X.(E).Y.A.f() else => 0\n    return x\n")]
+    public void AProjectionLeftIsBoundAlikeInEitherOrder(string plain, string joined)
+    {
+        var (access, facts) = LeftFacts(plain);
+        Assert.Equal(facts, LeftFacts(joined).Facts);
+        Assert.Equal((BindingSymbolKind.EnumCase, "A"), (HirTables.Symbol(access)?.Kind, HirTables.Symbol(access)?.Name));
+        Assert.Equal(PathEnd.Projection, HirTables.LookupOf(access.Left));
+    }
+
+    // SPEC 8.5.2, 8.6.1, 9.6 (R7-N1 c-b): a projection's member is formed by its one former after the left's reading: a Type function
+    // of the normal form, short and written, through `::`, `Self`, a generic receiver and a premise (p01v-p05v, p08v, rb14v, rb39v), and
+    // a Case (p06v); a missing or inaccessible member is recorded once (p06i, c09i, rb16i, rb37i, rb63i; p07i). A nested Type of the
+    // normal form, no associated Type (x08's siblings: p09g, rb58v-rb60v; p09i missing), an inaccessible one recorded once (N2: rb61i,
+    // p09h), and an unproven conformance in the written reference (item 1: rb15i, rb38i, rb62i). A qualified Case pattern takes the same
+    // route (rb56v, rb57v).
+    [Theory]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g() -> i32\n    return S.Item.make()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct G<T>\n    Self is C<i32>\n    associate C<i32>.Item is P\n    public init() => ()\nfunc g() -> i32\n    return G<i32>.(C<i32>).Item.make()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\n    public func f() -> i32 => Self.(C<i32>).Item.make()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g() -> i32\n    return ::S.(C<i32>).Item.make()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g<U>() -> i32\n    U is C<i32>\n    U.(C<i32>).Item is P\n    return U.(C<i32>).Item.make()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> M\n    return S.(C<i32>).Item.B(1)\nfunc h() -> M\n    return S.Item.A\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> M\n    return S.(C<i32>).Item.Z\n", "UnresolvedBinding_Kd S.(C<i32>).Item.Z")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g() -> i32\n    return S.(C<i32>).Item.make()\n", "InaccessibleBinding_Kd S.(C<i32>).Item.make")]
+    [InlineData("contract K\n    func mk() -> i32\ncontract E\n    associate Item\nfunc g<U>() -> i32\n    U is E\n    U.(E).Item is K\n    return U.(E).Item.mk()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g() -> i32\n    return S.(C<i32>).Item.nope()\n", "UnresolvedBinding_Kd S.(C<i32>).Item.nope")]
+    [InlineData("contract C\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C\n    associate C.Item is P\nfunc g() -> i32 => S.(C).Item.make()\n", "")]
+    [InlineData("contract C\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C\n    associate C.Item is P\nfunc g() -> i32 => S.(C).Item.nope()\n", "UnresolvedBinding_Kd S.(C).Item.nope")]
+    [InlineData("contract K\n    func mk() -> i32\ncontract E\n    associate Item\nfunc g<U>() -> i32\n    U is E\n    U.(E).Item is K\n    return U.(E).Item.zz()\n", "UnresolvedBinding_Kd U.(E).Item.zz")]
+    [InlineData("contract K\n    func mk() -> i32\ncontract E\n    associate Item\nstruct Q<U>\n    U is E\n    U.(E).Item is K\n    public func g() -> i32 => U.(E).Item.mk()\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct G<T>\n    public struct Inner\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is G<i32>\nfunc g(x: S.(C<i32>).Item.Inner) -> i32 => 0\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: S.(C<i32>).Item.Nope) -> i32 => 0\n", "UnresolvedBinding_Kd S.(C<i32>).Item.Nope")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\n        public struct Deep\n            public init() => ()\n    struct Hidden\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g() -> i32\n    let x = S.(C<i32>).Item.Inner.init()\n    return 0\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\n        public struct Deep\n            public init() => ()\n    struct Hidden\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: S.Item.Inner) -> i32 => 0\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\n        public struct Deep\n            public init() => ()\n    struct Hidden\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: S.(C<i32>).Item.Inner.Deep) -> i32 => 0\n", "")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\n        public struct Deep\n            public init() => ()\n    struct Hidden\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(x: S.(C<i32>).Item.Hidden) -> i32 => 0\n", "InaccessibleBinding_Kd S.(C<i32>).Item.Hidden")]
+    [InlineData("contract C<T>\n    associate Item\nstruct G<T>\n    struct Inner\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is G<i32>\nfunc g(x: S.(C<i32>).Item.Inner) -> i32 => 0\n", "InaccessibleBinding_Kd S.(C<i32>).Item.Inner")]
+    [InlineData("contract C\n    associate Item\ncontract D\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C\n    associate C.Item is P\nfunc g() -> i32 => S.(D).Item.make()\n", "UnsatisfiedConstraint_Kd S.(D).Item|UnsatisfiedConstraint_Kd S.(D).Item.make()")]
+    [InlineData("contract C\n    associate Item\ncontract D\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C\n    associate C.Item is P\nfunc g() -> i32 => S.(D).Item.nope()\n", "UnsatisfiedConstraint_Kd S.(D).Item|UnsatisfiedConstraint_Kd S.(D).Item.nope()")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i64>).Item.A.f()\n", "UnsatisfiedConstraint_Kd S.(C<i64>).Item|UnsatisfiedConstraint_Kd S.(C<i64>).Item.A.f()")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i32>).Item.Z.f()\n", "UnresolvedBinding_Kd S.(C<i32>).Item.Z.f")]
+    [InlineData("enum E<T>\n    A\n    B(T)\nfunc g(e: E<i32>) -> i32 => match e\n    E<i32>.B(let n) => n\n    E.A => 0\n", "")]
+    [InlineData("group G\n    public enum M\n        A\n        B(i32)\nfunc g(m: G.M) -> i32 => match m\n    G.M.B(let n) => n\n    G.M.A => 0\n", "")]
+    public void AProjectionMemberIsFormedAfterTheLeftsReading(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
     // PLAN G728 (SPEC 9.7.3, 9.7.1 step 3, 8.8.2): a nested Type named through a Core qualifier whose applied Type also has an associated
     // Type of that name with conformance evidence resolves both ways: ambiguous where its reference is formed, in a Type position, as a
@@ -308,7 +451,7 @@ public class UseLookupTest
         "contract C\n    associate Item\nopen struct P\n    public init() => ()\nstruct S\n    Self is C\n" +
             "    associate C.Item is P\n    public open struct Item\n        public init() => ()\nstruct T : S.Item\n" +
             "    public init() => ()",
-        "AmbiguousBinding_Kd S.Item|InvalidTypeFormation_Kd S.Item|InvalidTypeFormation_Kd base|InvalidTypeFormation_Kd struct T")]
+        "AmbiguousBinding_Kd S.Item|InvalidTypeFormation_Kd S.Item|InvalidTypeFormation_Kd struct T")] // PLAN G651 a2-2b (SPEC 23.1.2, F's C8 rulings 21 and 26, DECISIONS Q13): the omitted base call has no base to select through (the clause names no Type) and rests; its `InvalidTypeFormation_Kd base` goes
     [InlineData(
         "contract C\n    associate Elem\nopen struct P\n    public init() => ()\nstruct S\n    Self is C\n" +
             "    associate C.Elem is P\n    public open struct Item\n        public init() => ()\nstruct T : S.Item\n" +
@@ -394,9 +537,10 @@ public class UseLookupTest
 
     // PLAN G701 (SPEC 6.1.5, 8.4, 9.1, 9.2, 9.7): what a written `Self` selects is decided where names resolve. A Contract's `Self` is
     // its Self Type parameter, the conforming-Type binder, so it is no Contract reference at a projection's Contract, a parent or a
-    // requirement; a struct's or enum's is the declared Type with all its bindings; and `Self` has no Type parameters, so none remains
-    // for a `Self` written with Type arguments (the declaration's own included). It is no generic parameter either: a function
-    // requirement's clauses take subjects rooted in its generic parameters (8.4.2). Each invalid row has a valid counterpart.
+    // requirement; a struct's or enum's is the declared Type with all its bindings; and `Self` has no Type parameters, so 9.7's filter
+    // leaves none for a `Self` written with Type arguments (the declaration's own included): the mismatch record of `T<i32>`,
+    // InvalidTypeFormation_Kd (R7-N1 f-2, F's ruling N1-2: BU-150's Unresolved record superseded). It is no generic parameter either: a
+    // function requirement's clauses take subjects rooted in its generic parameters (8.4.2). Each invalid row has a valid counterpart.
     [Theory]
     [InlineData("contract C\n    associate E\n    func get(self: ref/Self) -> Self.(Self).E", "UnresolvedBinding_Kd")]
     [InlineData("contract C\n    associate E\n    func get(self: ref/Self) -> Self.(C).E", "")]
@@ -406,28 +550,32 @@ public class UseLookupTest
     [InlineData("struct S\n    contract C\n        associate E\n        func get(self: ref/Self) -> Self.(C).E", "")]
     [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(Self).E is i32", "UnresolvedBinding_Kd")] // G507: the clause rests on its failed subject (SPEC 23.1.2)
     [InlineData("contract C\n    associate E\n    func get<U>(self: ref/Self, u: U)\n        U is C\n        U.(C).E is i32", "")]
-    [InlineData("contract C: Self\n    func get(self: ref/Self) -> i32", "InvalidConstraint_Kd")]
+    [InlineData("contract C: Self\n    func get(self: ref/Self) -> i32", "InvalidConstraint_Kd UnresolvedBinding_Kd")] // The parent's Contract Reference role selects no `Self` (SPEC 9.2, 9.5): the resolver's miss at `Self` (PLAN G1207), the Contract's own record at `contract`
     [InlineData("contract B\ncontract A\n    func f(self: ref/Self)\n        Self is B", "InvalidConstraint_Kd")]
     [InlineData("contract A\n    func f(self: ref/Self)\n        Self is Copy", "InvalidConstraint_Kd")]
     [InlineData("contract A\n    func f(self: ref/Self)\n        Self is Self", "InvalidConstraint_Kd")]
     [InlineData("contract A\n    associate E\n    func f<U>(self: ref/Self, u: U)\n        U is Self.E", "")]
     [InlineData("contract A\n    Self is Copy\nstruct S\n    Self is Copy\n    Self is A\n    public var n: i32 = 0", "")]
-    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<i32>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
-    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<X>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<i32>", "InvalidConstraint_Kd InvalidTypeFormation_Kd")]
+    [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self<X>", "InvalidConstraint_Kd InvalidTypeFormation_Kd")]
     [InlineData("contract Put<X>\n    func put<U>(self: uniq/Self, u: U)\n        U is Self", "")]
     [InlineData("contract K<X>\n    associate E\n    func get(self: ref/Self) -> Self.(Self<X>).E", "UnresolvedBinding_Kd")]
     [InlineData("contract K<X>\n    associate E\n    func get(self: ref/Self) -> Self.(K<X>).E", "")]
-    [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self<X>)", "UnresolvedBinding_Kd")]
+    [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self<X>)", "InvalidTypeFormation_Kd")]
     [InlineData("contract K<X>\n    func take(self: ref/Self, v: Self)", "")]
-    [InlineData("struct S\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
-    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
-    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<T>) => ()", "UnresolvedBinding_Kd")]
-    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self<i32>>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("struct S\n    public func take(self: ref/Self, v: Self<i32>) => ()", "InvalidTypeFormation_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<i32>) => ()", "InvalidTypeFormation_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Self<T>) => ()", "InvalidTypeFormation_Kd")]
+    [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self<i32>>) => ()", "InvalidTypeFormation_Kd")]
     [InlineData("struct Box<T>\n    public func take(self: ref/Self, v: Option<Self>) => ()", "")]
-    [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self<i32>\n        return", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self<i32>\n        return", "InvalidConstraint_Kd InvalidTypeFormation_Kd")]
     [InlineData("struct Box<T>\n    public func take<U>(self: ref/Self, u: U)\n        U is Self\n        return", "")]
-    [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self<i32>) => ()", "UnresolvedBinding_Kd")]
+    [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self<i32>) => ()", "InvalidTypeFormation_Kd")]
     [InlineData("enum E<T>\n    A(T)\n    B\n    public func take(self: ref/Self, v: Self) => ()", "")]
+    // R7-N1 f-2 (F's ruling N1-8): a Case reference qualified by Self names the enum's Case, as `E.A` does (SPEC 6.1.5, 6.5.2, 9.1);
+    // the Pattern form `Self.A(let n)` (F.10.3) does not parse yet (the parser's CaseReference reads a Name first: an open issue).
+    [InlineData("enum E\n    A(i32)\n    B\n    public func make() -> Self => Self.A(1)", "")]
+    [InlineData("enum E<T>\n    A(T)\n    B\n    public func make(t: T) -> Self => Self.A(t@move)", "")]
     public void SelfSelectsItsContextsType(string source, string codes)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
@@ -440,10 +588,10 @@ public class UseLookupTest
     [Fact]
     public void ADisagreeingPublicationIsABrokenContract()
     {
-        var (qualifier, published, selected) = PublishedQualifier();
-        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Static)!;
-        publish.Invoke(null, [qualifier, published, selected]);
-        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(null, [qualifier, PathEnd.Unresolved, selected]));
+        var (binding, qualifier, published, selected) = PublishedQualifier();
+        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        publish.Invoke(binding, [qualifier, published, selected, qualifier]);
+        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, PathEnd.Unresolved, selected, qualifier]));
         Assert.Contains("InternalInvariant", Assert.IsType<InvalidOperationException>(thrown.InnerException).Message);
     }
 
@@ -452,17 +600,17 @@ public class UseLookupTest
     [Fact]
     public void ASelectedUsesSymbolIsWrittenOnce()
     {
-        var (qualifier, published, selected) = PublishedQualifier();
+        var (binding, qualifier, published, selected) = PublishedQualifier();
         HirTables.WriteSymbol(qualifier, selected);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => HirTables.WriteSymbol(qualifier, null)).Message);
-        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(null, [qualifier, published, null]));
+        var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, published, null, qualifier]));
         Assert.Contains("InternalInvariant", Assert.IsType<InvalidOperationException>(thrown.InnerException).Message);
         Assert.Same(selected, HirTables.Symbol(qualifier));
     }
 
     // A bound Contract qualifier (SPEC 8.6.1, 9.7.1): at each level its Symbols entry is the name's selection, the declaration, and its
-    // Type is the bound reference its Type arguments form, which a reader takes the reference from (SpecifiesContract).
+    // Type is the bound reference its Type arguments form, which a reader takes the reference from (ContractReferenceOf).
     // PLAN G704 (SPEC 3.1.3, 22.1, 9.5, 18.2.1): `Never` is a Kimi declaration, so a Type position names it by ordinary lookup: a nearer
     // declaration shadows it (dev: the intrinsic won), `Kimi.Never` (stage 4) and `::Kimi.Never` name the declaration (dev:
     // UnresolvedBinding_Kd), `::Kimi` stays unshadowed where `Kimi` is, and an opening alias may open it. Invalid twins follow, each rejected by
@@ -504,14 +652,49 @@ public class UseLookupTest
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => HirTables.WriteSymbol(qualifier.Parent!, Assert.IsType<BindingSymbol>(bound))).Message);
     }
 
-    private static (Koto Qualifier, PathEnd Published, BindingSymbol Selected) PublishedQualifier()
+    // SPEC 9.4, 9.4.1, 23.3 (R7-E2 E2-4b): an inaccessible member at a use is located at the use and relates the declaration whose
+    // accessibility does not cover it (RecordAccess): a selected private Field (u1: one related line, as the member-access arm gave, and no
+    // fallback miss beside it, m2), a private nested Type at a Type path (u2) and as the qualifier that explains its member's miss (u6, the
+    // member resting on it), both fact-less before, and a hidden base member (u3, as before). The twins are valid.
+    [Theory]
+    [InlineData("struct S\n    var h: i32 = 0\n    public init() => ()\nfunc f(s: ref/S) -> i32 => s.h\n", "InaccessibleBinding_Kd 4:28 s.h, inaccessible declaration 'h'")] // u1, m2
+    [InlineData("struct S\n    public var h: i32 = 0\n    public init() => ()\nfunc f(s: ref/S) -> i32 => s.h\n", "")] // u1t
+    [InlineData("group G\n    struct N\nfunc f(n: ref/G.N) -> () => ()\n", "InaccessibleBinding_Kd 3:15 G.N, inaccessible declaration 'N'")] // u2
+    [InlineData("group G\n    public struct N\nfunc f(n: ref/G.N) -> () => ()\n", "")] // u2t
+    [InlineData("group G\n    struct N\n        public struct M\nfunc f(m: ref/G.N.M) -> () => ()\n", "InaccessibleBinding_Kd 4:15 G.N, inaccessible declaration 'N'")] // u6
+    [InlineData("group G\n    public struct N\n        public struct M\nfunc f(m: ref/G.N.M) -> () => ()\n", "")] // u6t
+    [InlineData("open struct B\n    private func g(self: ref/Self) -> i32 => 0\n    public init() => ()\nstruct D: B\n    public init(): base() => ()\n    func f(self: ref/Self) -> i32 => base.g()\n", "InaccessibleBinding_Kd 6:38 base.g, inaccessible declaration 'g'")] // u3
+    public void AnInaccessibleMemberAtAUseRelatesItsDeclaration(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
+
+    // An inaccessible member's record rebinds without allocating: RecordAccess's facts are a stack span (R7-E2 E2-4b).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnInaccessibleMemberRebindsWithoutAllocation()
+    {
+        var c = MinimalEmissionTest.Analyze("struct S\n    var h: i32 = 0\n    public init() => ()\nfunc f(s: ref/S) -> i32 => s.h");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    private static (Binding Binding, Koto Qualifier, PathEnd Published, BindingSymbol Selected) PublishedQualifier()
     {
         var c = CompilationTestHelper.Parse("struct N\n    public struct Inner\nfunc f(v: N.Inner) -> i32 => 0");
         Assert.True(c.Bind().IsComplete);
         var qualifier = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single().Left;
         var published = HirTables.LookupOf(qualifier);
         Assert.Equal(PathEnd.Selected, published);
-        return (qualifier, published, Assert.IsType<BindingSymbol>(HirTables.Symbol(qualifier)));
+        return (c.Binding, qualifier, published, Assert.IsType<BindingSymbol>(HirTables.Symbol(qualifier)));
+    }
+
+    // The access `….A` of a bound program and each node of it with its published lookup, selection and Type.
+    private static (MemberAccessKoto Access, List<(string Node, PathEnd Lookup, string Symbol, string? Type)> Facts) LeftFacts(string source)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.True(c.Bind().IsComplete);
+        var access = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(static x => x.Right is IdentifierNameKoto { IdentifierName: "A" });
+        return (access, [.. KotoTree.Walk(access).Select(static n => (n.ToString(), HirTables.LookupOf(n), $"{HirTables.Symbol(n)?.Kind} {HirTables.Symbol(n)?.Name}", HirTables.TypeOf(n)?.ToString()))]);
     }
 
     private static string Records(Compilation c) => string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal));

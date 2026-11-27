@@ -1,86 +1,88 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using Kimi.Checking;
 using Kimi.Command;
 
 namespace Kimi.Testing;
 
 internal sealed class TestOptions
 {
-    private readonly Dictionary<string, string> values = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> values;
+    private readonly List<string> inputs;
+    private readonly List<string> errors;
 
-    internal KimiOptions Compiler { get; } = new();
+    private TestOptions(string[] args) => this.values = KimiOptions.Read(TestCommand.Name, args, out this.inputs, out this.errors);
 
-    internal string? Input { get; private set; }
+    internal KimiOptions Compiler { get; private set; } = new();
+
+    internal string? Input => this.inputs.Count == 0 ? null : this.inputs[0];
+
+    /// <summary>Gets the full path of <c>--results-dir</c>, or <see langword="null"/> for the input's default.</summary>
+    internal string? ResultsDirectory { get; private set; }
 
     internal bool List => this.values.ContainsKey("--list");
 
-    internal bool Json => this.Get("--format") == "json";
+    internal bool Json => this.Get("--Format") == "json";
 
     internal bool AllowEmpty => this.values.ContainsKey("--allow-empty");
 
     internal int Jobs => this.values.ContainsKey("--no-parallel") ? 1 : this.Number("--jobs", Math.Max(1, Math.Min(Environment.ProcessorCount, 4)));
 
-    internal static TestOptions Parse(string[] args)
+    /// <summary>Reads test's arguments (<see cref="KimiOptions.Read"/>) before any check, so the result form reads its <c>--Format</c>
+    /// also when an option is invalid (<see cref="Validate"/>).</summary>
+    /// <param name="args">The arguments, as the parser split them.</param>
+    /// <returns>The options read.</returns>
+    internal static TestOptions Read(string[] args) => new(args);
+
+    /// <summary>Raises test's first invalid option (IMPL 20.3.2, 20.6.4: 2), a removed one named by its removal (Tatara B6b4), then the
+    /// semantic checks of IMPL 20.6.2.</summary>
+    internal void Validate()
     {
-        var result = new TestOptions();
-        for (var i = 0; i < args.Length; i++)
+        if (this.errors.Count != 0)
         {
-            var name = args[i];
-            if (!name.StartsWith('-'))
-            {
-                if (result.Input is not null)
-                {
-                    throw new InvalidDataException("Test accepts one project, source, solution or directory input.");
-                }
-
-                result.Input = name;
-                continue;
-            }
-
-            var flag = name is "--list" or "--allow-empty" or "--no-parallel" or "--locked";
-            if (!flag && name is not ("--filter" or "--case" or "--jobs" or "--timeout" or "--recovery-grace" or "--format" or "--results-dir" or
-                "--case-diagnostic-count" or "--case-diagnostic-bytes" or "--case-log-bytes" or "--run-diagnostic-count" or "--run-diagnostic-bytes" or "--run-log-bytes" or
-                "--Target" or "--Debug" or "--LlvmBin" or "--ToolchainRoot"))
-            {
-                throw new InvalidDataException("Unknown test option: " + name);
-            }
-
-            if (!result.values.TryAdd(name, flag ? "true" : ++i < args.Length ? args[i] : throw new InvalidDataException("Missing value: " + name)))
-            {
-                throw new InvalidDataException("Repeated option: " + name);
-            }
+            throw new CommandInputException(this.errors[0]);
         }
 
-        if ((result.Get("--filter") is not null && result.Get("--case") is not null) ||
-            (result.Get("--jobs") is not null && result.Get("--no-parallel") is not null) || result.Jobs == 0 || result.Get("--format") is not (null or "text" or "json"))
+        if (this.inputs.Count > 1)
         {
-            throw new InvalidDataException("Invalid or conflicting test selection, concurrency or format options.");
+            throw new CommandInputException("Test accepts one project, source, solution or directory input.");
         }
 
-        foreach (var (name, value) in result.values)
+        if ((this.Get("--filter") is not null && this.Get("--case") is not null) ||
+            (this.Get("--jobs") is not null && this.Get("--no-parallel") is not null) || this.Jobs == 0)
+        {
+            throw new CommandInputException("Invalid or conflicting test selection or concurrency options.");
+        }
+
+        foreach (var (name, value) in this.values)
         {
             if (name.EndsWith("-count", StringComparison.Ordinal) || name.EndsWith("-bytes", StringComparison.Ordinal))
             {
-                _ = result.Number(name, 0);
+                _ = this.Number(name, 0);
             }
         }
 
-        result.Compiler.Target = result.Get("--Target") ?? string.Empty;
-        result.Compiler.Debug = Boolean("--Debug");
-        result.Compiler.Locked = result.Get("--locked") is not null;
-        result.Compiler.LlvmBin = result.Get("--LlvmBin");
-        result.Compiler.ToolchainRoot = result.Get("--ToolchainRoot");
-        _ = result.Settings(new());
-        return result;
-
-        bool Boolean(string name) => result.Get(name) is not { } value ? false : bool.TryParse(value, out var parsed) ? parsed : throw new InvalidDataException("Invalid Boolean: " + name);
+        this.Compiler = KimiOptions.From(this.values);
+        _ = this.Settings(new());
+        if (this.Get("--results-dir") is { } directory)
+        {
+            // The value is named here, an invalid one an option error before any project is prepared (IMPL 20.6.2, 20.6.4: 2).
+            try
+            {
+                this.ResultsDirectory = Path.GetFullPath(directory);
+            }
+            catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+            {
+                throw new CommandInputException("Invalid path: --results-dir: " + ex.Message);
+            }
+        }
     }
 
     internal string? Get(string name) => this.values.GetValueOrDefault(name);
 
     internal int Number(string name, int fallback) => this.values.TryGetValue(name, out var text) ?
-        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : throw new InvalidDataException("Invalid nonnegative integer: " + name) : fallback;
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : throw new CommandInputException("Invalid nonnegative integer: " + name) : fallback;
 
     internal TestSettings Settings(TestSettings defaults)
     {
@@ -93,6 +95,6 @@ internal sealed class TestOptions
             LogBytes = this.Number("--case-log-bytes", defaults.LogBytes),
         };
         // A command option error, not an Input record: the command reports its first (TestCommand's error list).
-        return settings.Validate() is [var failure, ..] ? throw new InvalidDataException(failure) : settings;
+        return settings.Validate() is [var failure, ..] ? throw new CommandInputException(failure) : settings;
     }
 }

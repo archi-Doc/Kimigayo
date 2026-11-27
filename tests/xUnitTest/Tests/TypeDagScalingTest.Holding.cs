@@ -48,15 +48,16 @@ public partial class TypeDagScalingTest
         """;
 
     // R1: a raw leaf below the written region (D's `x: T` writes nothing) is read at each meeting of its keyed parent, in reach of the
-    // bound (the leaves of T_30 lie at depth 31): Origin-less and `static` leaves hold a Loan with no write fact; an Exclusive leaf, whose
-    // members are unpublished below the region, is the Limit. T_12's answers are the per-position walk's.
+    // bound (the leaves of T_30 lie at depth 31): Origin-less and `static` leaves hold a Loan with no write fact; so does an Exclusive
+    // leaf, whose members are read where its Origin is bound (`e: raw/i32 during x`, x's `uniq/i32`: an i32 admits no Loan; PLAN G148 (1),
+    // R7 plan Z6; FAIL-FIRST: the Limit). T_12's answers are the per-position walk's.
     [Theory]
     [InlineData("a", 12, "True None")]
     [InlineData("a", 30, "True None")]
     [InlineData("b", 12, "True None")]
     [InlineData("b", 30, "True None")]
-    [InlineData("e", 12, "True Limit")]
-    [InlineData("e", 30, "True Limit")]
+    [InlineData("e", 12, "True None")]
+    [InlineData("e", 30, "True None")]
     public void ARawLeafBelowTheWrittenRegionIsReadOncePerType(string leaf, int size, string answer)
     {
         var (c, p) = HoldingProbe();
@@ -80,7 +81,7 @@ public partial class TypeDagScalingTest
 
         var d = With(c, p["d"], doubled[40]);
         var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
-        _ = MirTypes.HoldsLoans(reference ? Uniq(c, d) : d, c.Types, seen, [], [], out _);
+        _ = MirTypes.HoldsLoans(reference ? Uniq(c, d) : d, c.Types, seen, [], []).Loan;
         var stored = seen.Where(static x => x.Key.Stored).ToArray();
         Assert.Equal(
             [.. Enumerable.Range(past, 41 - past).Select(k => new MirHoldingKey(doubled[k], true, null, null))],
@@ -89,15 +90,16 @@ public partial class TypeDagScalingTest
     }
 
     // R2: the Stored bit decides. `Te` outside a stored part reads its Exclusive layer as unstated (no write fact); as Wrap's part (`value:
-    // E` writes nothing) the layer steps Exclusive with unpublished members, the Limit, in either order of the two parts.
+    // E` writes nothing) the layer steps Exclusive and reads x's members where x is bound (an i32: no write fact; PLAN G148 (1), R7 plan Z6;
+    // FAIL-FIRST: the Limit), in either order of the two parts.
     [Fact]
     public void AnInlinePartOfAStoredPartIsKeyedApartFromItsType()
     {
         var (c, p) = HoldingProbe();
         var te = Tuple(c, p["e"], BoundType.I32);
         var wrapped = With(c, p["w"], te);
-        Assert.Equal("True Limit", Holding(c, Tuple(c, te, wrapped), out _));
-        Assert.Equal("True Limit", Holding(c, Tuple(c, wrapped, te), out _));
+        Assert.Equal("True None", Holding(c, Tuple(c, te, wrapped), out _));
+        Assert.Equal("True None", Holding(c, Tuple(c, wrapped, te), out _));
     }
 
     // R3: the written Type decides. Q2's part keeps one interned Tuple at [0], which the declaration writes (its layers capped Shared by
@@ -198,7 +200,8 @@ public partial class TypeDagScalingTest
 
     // R4 (BU's B1 form): a closed associated projection's resolution writes H's part as a Tuple DAG of 2^n positions from O(n) text, so
     // the written Type is shared too: each level is one key with its written Type in H, in Own mode (a uniq reference to H decides at its
-    // `loan` Field first). The raw leaves reach Binding's raw-Origin walks of that chain, linear since PLAN G309.
+    // `loan` Field first). The raw leaves reach Binding's raw-Origin walks of that chain, linear since PLAN G309, and every leaf the
+    // declaration judge's clause walk at x's root (AddTypeClauseObligations), each distinct part once per root (DECISIONS BU-19).
     [Theory]
     [InlineData("i32", 12, "True None", 12)]
     [InlineData("i32", 40, "True Deep", 33)]
@@ -218,7 +221,7 @@ public partial class TypeDagScalingTest
             $"struct H {{s}}\n    internal let loan: Loan<ref/i32 during s>\n    internal var x: {type}\nfunc probe(q: ref/i32, h: ref/H during q) => ()\n" +
             "public func main() => ()\n");
         Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
-        var h = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe").Locals[2].Type.Components[0];
+        var h = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe").Locals[2].Type!.Components[0];
         Assert.Equal(answer, Holding(c, h, out var seen));
         Assert.Equal(keys, seen.Keys.Count(static x => x.Stored && x.Written is not null));
     }
@@ -244,15 +247,16 @@ public partial class TypeDagScalingTest
             .Append("    return\npublic func main() => ()\n").ToString());
         Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
-        var p = body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type);
+        var p = body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type!);
         var (meetings, keys) = (new int[3], new int[3]);
         for (var i = 0; i < meetings.Length; i++)
         {
             var f = p[$"f{20 * (i + 1)}"];
             var counter = new Meetings();
             var seen = new Dictionary<MirHoldingKey, MirModeDepths>(counter);
-            Assert.True(MirTypes.HoldsLoans(Tuple(c, With(c, p["d"], f), Uniq(c, f)), c.Types, seen, [], [], out var writes));
-            Assert.Equal(MirWrites.Through, writes);
+            var holding = MirTypes.HoldsLoans(Tuple(c, With(c, p["d"], f), Uniq(c, f)), c.Types, seen, [], []);
+            Assert.True(holding.Loan);
+            Assert.Equal(MirWrites.Through, holding.Writes);
             (meetings[i], keys[i]) = (counter.Count, seen.Count); // 402, 1229 and 1569 over 26, 46 and 66 keys on dev 5f5a3c67a.
             var modes = seen[new(f, false, null, null)];
             Assert.True(modes[0] != 0 && modes[1] != 0 && modes[2] != 0); // F_n entered in Own, Exclusive and LoanOnly mode.
@@ -286,14 +290,14 @@ public partial class TypeDagScalingTest
         var c = MirBuildTest.Compile(text.ToString());
         Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
-        return (c, body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type));
+        return (c, body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type!));
     }
 
     // The holding walk's answer in Own mode, whether the value may hold a Loan and the guard, with its keys.
     private static string Holding(Compilation c, BoundType type, out Dictionary<MirHoldingKey, MirModeDepths> seen)
     {
         seen = new();
-        var holds = MirTypes.HoldsLoans(type, c.Types, seen, [], [], out var writes);
+        var (holds, writes, _, _) = MirTypes.HoldsLoans(type, c.Types, seen, [], []);
         return $"{holds} {writes}"; // HoldsLoans gives None where the value holds no Loan.
     }
 

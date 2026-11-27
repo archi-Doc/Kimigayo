@@ -44,19 +44,23 @@ public class DynamicArrayIndexTest
             "var values: Array<string> = [\"first\"]\nvalues@uniq.insert(^0, \"last\")\nlet last = values@uniq.remove(^1)\nConsole.writeLine(last)\nlet first = values@uniq.remove(0)\nConsole.writeLine(first)",
             "last\nfirst\n");
 
+    // SPEC 4.9.3, 22.5.1 (PLAN G71): a position that does not resolve Aborts at the start of the invoking user expression, not inside
+    // Array.kimi: insert, remove, swap and swapRemove carry `#CallerLocation`, which the primitive they call receives.
     [Theory]
-    [InlineData("RemoveEnd", "let n = values@uniq.remove(^0)", "self.removeAt(position)")]
-    [InlineData("RemoveBeforeStart", "let n = values@uniq.remove(^2)", "self.removeAt(-1)")]
-    [InlineData("InsertBeforeStart", "values@uniq.insert(^2, 7)", "self.insertAt(-1")]
-    [InlineData("InsertAfterEnd", "values@uniq.insert(2@u8, 7)", "self.insertAt(-1")]
-    [InlineData("InsertWide", "values@uniq.insert(18446744073709551615@u64, 7)", "self.insertAt(-1")]
-    public void ChecksResolvedBounds(string name, string statement, string anchor)
+    [InlineData("RemoveEnd", "let n = values@uniq.remove(^0)", 9)]
+    [InlineData("RemoveBeforeStart", "let n = values@uniq.remove(^2)", 9)]
+    [InlineData("InsertBeforeStart", "values@uniq.insert(^2, 7)", 1)]
+    [InlineData("InsertAfterEnd", "values@uniq.insert(2@u8, 7)", 1)]
+    [InlineData("InsertWide", "values@uniq.insert(18446744073709551615@u64, 7)", 1)]
+    [InlineData("SwapBeforeStart", "values@uniq.swap(^2, 0)", 1)]
+    [InlineData("SwapRemoveEnd", "let n = values@uniq.swapRemove(1)", 9)]
+    public void ChecksResolvedBounds(string name, string statement, int column)
         => ScalarEmissionTest.EmitFixture(
             "DynamicArrayIndexBounds" + name,
             "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\n" + statement + "\nConsole.writeLine(\"after\")",
             "before\n",
             1,
-            LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+            $"Hello.kimi:4:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     // SPEC 4.6.1, 4.9.3: `^x` construction checks nothing, so later arguments are evaluated before resolution fails.
     [Fact]
@@ -66,7 +70,7 @@ public class DynamicArrayIndexTest
             "func value() -> i32\n    Console.writeLine(\"value\")\n    return 1\nvar values: Array<i32> = []\nvalues@uniq.insert(^(-1), value())",
             "value\n",
             1,
-            LibrarySource.Location("Array.kimi", "self.insertAt(-1") + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+            "Hello.kimi:5:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Fact]
     public void BoundsAreCheckedAfterLaterArguments()
@@ -75,7 +79,7 @@ public class DynamicArrayIndexTest
             "func value() -> i32\n    Console.writeLine(\"value\")\n    return 1\nvar values: Array<i32> = []\nvalues@uniq.insert(^1, value())",
             "value\n",
             1,
-            LibrarySource.Location("Array.kimi", "self.insertAt(-1") + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+            "Hello.kimi:5:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Fact]
     public void ReceiverReservationAllowsTemporarySharedInspection()
@@ -85,13 +89,13 @@ public class DynamicArrayIndexTest
             string.Empty);
 
     [Theory]
-    [InlineData("values@ref.insert(^0, 1)")]
-    [InlineData("values@uniq.insert(true, 1)")]
-    [InlineData("values@uniq.remove(true)")]
-    public void RejectsWrongReceiversAndIndices(string statement)
+    [InlineData("values@ref.insert(^0, 1)", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("values@uniq.insert(true, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("values@uniq.remove(true)", DiagnosticCode.NoApplicableOverload_Kd)]
+    public void RejectsWrongReceiversAndIndices(string statement, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 }

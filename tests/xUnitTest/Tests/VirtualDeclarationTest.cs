@@ -50,7 +50,8 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         Assert.Equal(2, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Count(x => x.IsVirtual || x.IsOverride));
     }
 
-    // DECISIONS BU-111: the Reason is the closed cause; its explanation is the whole Note, never a bounded Reason value.
+    // R7-E2 (BU-111's Note superseded, ruling 7 Q6): the Reason is the closed cause and the rule it breaks, which the Label shows whole: no
+    // rule is elided (DiagnosticLimits.ValueLength); no Note.
     [Theory]
     [InlineData("virtual func read() => ()", "NotStructFunction", "direct struct")]
     [InlineData("group G\n    virtual func read() => ()", "NotStructFunction", "direct struct")]
@@ -75,14 +76,61 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         }
 
         Assert.Equal(expected, record.Span!.Value.Start);
-        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), Assert.Single(record.Reason!));
-        Assert.Null(record.Label);
-        Assert.Contains(fact, record.Note!, StringComparison.Ordinal);
-        Assert.DoesNotContain("effects", record.Note!, StringComparison.Ordinal); // An override's effect item is its own record (DECISIONS G223).
+        Assert.Equal(2, record.Reason!.Length);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), record.Reason[0]);
+        Assert.Equal(new DiagnosticValue("rule", DiagnosticValueKind.Text, record.Label!), record.Reason[1]); // Not elided.
+        Assert.Contains(fact, record.Label!, StringComparison.Ordinal);
+        Assert.Null(record.Note);
+        Assert.DoesNotContain("effects", record.Label!, StringComparison.Ordinal); // An override's effect item is its own record (DECISIONS G223).
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.False(c.Generate(TextWriter.Null));
-        output.WriteLine(record.Message + "\n" + record.Note);
+        output.WriteLine(record.Message + "\n" + record.Label);
     }
+
+    // SPEC 6.4.1: an objuniq virtual or override is valid; its Exclusive dispatch is the implementation's limit, Unsupported_Kd at the
+    // modifier (23.1.1). The limit's check reads the receiver shape and the modifier only, so it is independent of the declaration's other
+    // failures (NotOpen, Private, own Type parameters, a duplicate, no override target by name or receiver mode, 6.4.2) and is reported
+    // beside them (23.1.2). Twins: the limit's cause fixed (objref) keeps the other record alone; the other cause fixed keeps the limit.
+    // Nor does it read the declaration's own premise error (SPEC 8.2.3, at its clause: v1, its cycle v1c, two groups at two clauses v1two)
+    // or a Contract's it names (v2, at the Contract; beside an own group, v2sup): the declaration's frame is its premise error's own
+    // check, never its reader (R7-C3 C3d).
+    // A declaration that held its failure before a later frame read a failed input keeps the limit too (PLAN G1141; the consultation
+    // frame's one rule): a consulted unresolved parameter Type (tw), a rejected #LibraryImport (d4).
+    [Theory]
+    [InlineData("d1", "struct S\n    public virtual func f(self: objuniq/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) => () | Unsupported_Kd: public virtual func f(self: objuniq/Self) => ()")]
+    [InlineData("d1t", "struct S\n    public virtual func f(self: objref/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objref/Self) => ()")]
+    [InlineData("d1u", "open struct S\n    public virtual func f(self: objuniq/Self) => ()", "Unsupported_Kd: public virtual func f(self: objuniq/Self) => ()")]
+    [InlineData("d2", "open struct S\n    virtual func f(self: objuniq/Self) => ()", "InvalidVirtualDeclaration_Kd: virtual func f(self: objuniq/Self) => () | Unsupported_Kd: virtual func f(self: objuniq/Self) => ()")]
+    [InlineData("d3", "open struct S\n    public virtual func f<T>(self: objuniq/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f<T>(self: objuniq/Self) => () | Unsupported_Kd: public virtual func f<T>(self: objuniq/Self) => ()")]
+    [InlineData("d3t", "open struct S\n    public virtual func f<T>(self: objref/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f<T>(self: objref/Self) => ()")]
+    [InlineData("d6", "open struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\n    public virtual func f(self: objuniq/Self) -> i32 => 2", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 2 | DuplicateBinding_Kd: public virtual func f(self: objuniq/Self) -> i32 => 2")]
+    [InlineData("d6t", "open struct S\n    public virtual func f(self: objref/Self) -> i32 => 1\n    public virtual func f(self: objref/Self) -> i32 => 2", "DuplicateBinding_Kd: public virtual func f(self: objref/Self) -> i32 => 2")]
+    [InlineData("d7", "open struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func g(self: objuniq/Self) -> i32 => 2", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | MissingOverrideTarget_Kd: override func g(self: objuniq/Self) -> i32 => 2 | Unsupported_Kd: override func g(self: objuniq/Self) -> i32 => 2")]
+    [InlineData("d7t", "open struct S\n    public virtual func f(self: objref/Self) -> i32 => 1\nstruct D : S\n    override func g(self: objref/Self) -> i32 => 2", "MissingOverrideTarget_Kd: override func g(self: objref/Self) -> i32 => 2")]
+    [InlineData("d7u", "open struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | Unsupported_Kd: override func f(self: objuniq/Self) -> i32 => 2")]
+    [InlineData("om", "open struct S\n    public virtual func f(self: objref/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "MissingOverrideTarget_Kd: override func f(self: objuniq/Self) -> i32 => 2 | Unsupported_Kd: override func f(self: objuniq/Self) -> i32 => 2")]
+    [InlineData("omt", "open struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objref/Self) -> i32 => 2", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | MissingOverrideTarget_Kd: override func f(self: objref/Self) -> i32 => 2")]
+    [InlineData("v1", "open struct S<A, B>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is Option<B>\n        A is Array<B>\n        return 0", "InvalidConstraint_Kd: A is Array<B> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v1r", "open struct S<A, B>\n    public virtual func f(self: objref/Self) -> i32\n        A is Option<B>\n        A is Array<B>\n        return 0", "InvalidConstraint_Kd: A is Array<B>")]
+    [InlineData("v1c", "open struct S<A>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is Option<A>\n        return 0", "InvalidConstraint_Kd: A is Option<A> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v1t", "open struct S<A, B>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is Option<B>\n        return 0", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v1two", "open struct S<A, B, C, D>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is Option<B>\n        A is Array<B>\n        C is Option<D>\n        C is Array<D>\n        return 0", "InvalidConstraint_Kd: A is Array<B> | InvalidConstraint_Kd: C is Array<D> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v2", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nopen struct S<A>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is C\n        return 0", "InvalidConstraint_Kd: Self.Y is Option<Self.X> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v2sup", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nopen struct S<A, B, T>\n    public virtual func f(self: objuniq/Self) -> i32\n        T is C\n        A is Option<B>\n        A is Array<B>\n        return 0", "InvalidConstraint_Kd: A is Array<B> | InvalidConstraint_Kd: Self.Y is Option<Self.X> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v2t", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\nopen struct S<A>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is C\n        return 0", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("tw", "struct S\n    public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1 | Unsupported_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1 | UnresolvedBinding_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1")]
+    [InlineData("d4", "open struct S\n    #LibraryImport(\"codec\", \"touch\")\n    public virtual func f(self: objuniq/Self) -> i32", "InvalidLibraryImport_Kd: #LibraryImport(\"codec\", \"touch\") | InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) -> i32 | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    public void TheDispatchLimitIsItsOwnRecordBesideTheDeclarationsOtherFailures(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
+
+    // SPEC 6.4.1 and 23.1.2 keep the limit independent here too, but today it is lost: these rows pin that, never as the correct outcome,
+    // until R7-E5 judges each problem by its own inputs. An override pending on a failed original (own Type parameters, a base that is not
+    // open) holds a plain Unsupported, which the pending declarations' guard only marks Unresolved, so its limit is not recorded (pg, pn).
+    [Theory]
+    [InlineData("pg", "open struct S\n    public virtual func f<T>(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "InvalidVirtualDeclaration_Kd: public virtual func f<T>(self: objuniq/Self) -> i32 => 1 | Unsupported_Kd: public virtual func f<T>(self: objuniq/Self) -> i32 => 1")]
+    [InlineData("pn", "struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | InvalidTypeFormation_Kd: struct D : S")]
+    public void ADispatchLimitAtANodeRestingOnAnotherFailureIsLostUntilE5(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
 
     // SPEC F.6.3 and 19.4: an OverrideDeclaration takes no Access, other modifier, Type parameters, "!" boundary, parameter default or
     // parameter attribute; each is a grammar error with the same record in selected and excluded syntax, and Binding judges none again.

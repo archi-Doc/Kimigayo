@@ -2,12 +2,13 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
 
-public class PairAnnotationBindingTest
+public partial class PairAnnotationBindingTest
 {
     // Structs whose slot only a conditional pair slot uses (SPEC 15.3.5), by what the binder admits, and nested users of them.
     internal const string HolderUniq = "struct Holder<s/T> {a}\n    s is uniq\n    public let item: s/T during a\n";
@@ -146,9 +147,9 @@ public class PairAnnotationBindingTest
     [InlineData("func nest<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [[x], [y]]\n    return items.length", null)]
     public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
     {
-        var c = Parse(source);
-        c.Bind();
-        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        // R7-O1 H: the published Errors (a body relation is A5's record; Binding judges none).
+        Assert.Equal(code is null ? [] : [code], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
     // SPEC 8.1.2, 15.3.6, 10.8 (PLAN G758): an original and an annotated pair occurrence at one generic slot, or a `var` pair local's
@@ -166,6 +167,7 @@ public class PairAnnotationBindingTest
     [InlineData("func f<T>(value: uniq/T during a, other: uniq/T during o) -> ()\n    var arr: Array<uniq/T during o> = [other@move]\n    arr.append(value@move)\n    _ = arr@move\n", "1*UnprovenOriginRelation_Kd")] // c6bad-cu
     [InlineData("func f<s/T>(value: s/T during a, other: s/T during a) -> ()\n    s is ref or uniq\n    var local = value\n    local = other\n    var arr: Array<s/T during a> = []\n    arr.append(local@move)\n    _ = arr@move\n", "clean")] // c6v-PRU
     [InlineData("func both<U>(x: U, y: U) -> i32 => 0\nfunc f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is ref\n    return both(value, other)\n", "clean")] // k08-pr-generic-both
+    [InlineData("func both<U>(x: U, y: U) -> i32 => 0\nfunc f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is ref\n    return both(other, value)\n", "clean")] // k08-sw (G1128: f's `o` is a slot variable's bound like `a`)
     public void APairSlotDifferenceNeverMakesACandidateInapplicable(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
 
@@ -190,6 +192,60 @@ public class PairAnnotationBindingTest
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+    }
+
+    // SPEC 8.1.2 (R7-E4 E4c): a pair occurrence's formation cause shows the admitted cases FailTypeRole's Reason recorded, under a static
+    // outer Origin the exclusive ones and without an outer-Origin slot the borrow ones; no scope is read when it is shown.
+    [Theory]
+    [InlineData("struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during static\n", "InvalidOriginBinding_Kd", "s/T during static", "s admits uniq, which a static Origin never admits")]
+    [InlineData("struct Holder<s/T, U>\n    s is ref\n    let value: s/T\n    let other: s/U\n", "MissingOriginBinding_Kd", "s/U", "s admits ref, and a borrow needs an outer-Origin slot")]
+    public void AFormationCauseShowsTheAdmittedCasesItNames(string source, string code, string text, string label)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
+        c.Binding.ReportDiagnostics();
+        var record = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal((code, text, label), (record.Code, record.Text, record.Label));
+    }
+
+    // SPEC 8.1.2, 23.1.2 (R7-N5 B3-2, C1's F8): nested static occurrences of one Field are two formation causes, the outer and the inner
+    // one, each its own record; a read of the Field, a fit and an interpolated call, rests on the Field's formation and adds none.
+    [Fact]
+    public void NestedStaticOccurrencesAreBothTheFieldsFormationCauses()
+    {
+        var c = Parse("struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/Option<s/T during static> during static\n" +
+            "func read(h: ref/Holder<i32>) -> string => h.item\nfunc show(h: ref/Holder<i32>) => Console.writeLine(\"\\(h.item)\")\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(
+            [(DiagnosticCode.InvalidOriginBinding_Kd, "s/Option<s/T during static> during static"), (DiagnosticCode.InvalidOriginBinding_Kd, "s/T during static")],
+            c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.Collection(
+            c.Binding.DerivedIssues,
+            static x => Assert.Equal("h.item", x.Node.ToString()),
+            static x => Assert.EndsWith(", h.item)", Assert.IsAssignableFrom<InvocationKoto>(x.Node).ToString(), StringComparison.Ordinal)); // The interpolation's formatting call.
+    }
+
+    // SPEC 8.1.2, 23.1.2 (R7-N5 B3-2, B's ruling P3): a pair occurrence's formation causes are its Final check's. An edit of the semantics
+    // clause alone (`s is owner or uniq` -> `s is owner`, both occurrences kept) forms the Field, so its read keeps no earlier cause: the
+    // fit's own Type mismatch is published and no record rests on the old formation, as in a fresh compilation of the edited text.
+    [Fact]
+    public void AnEditThatFormsAFieldLeavesItsReadNoFormationCause()
+    {
+        const string Source = "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let both: (s/T during static, s/T during static)\n" +
+            "func read(h: ref/Holder<i32>) -> string => h.both\n";
+        var edited = Source.Replace("s is owner or uniq", "s is owner", StringComparison.Ordinal);
+        var c = Parse(Source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd, DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single(static x => x.ToString() == "s is owner or uniq");
+        var replacement = KotoTree.Walk(ParseTestHelper.ParseSuccess(edited).RootKoto).OfType<IsKoto>().Single(static x => x.ToString() == "s is owner");
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        ParseTestHelper.Detach(replacement, new IsKoto(ref reader, default, new CodeBlockKoto(replacement.CodeContext), new CodeBlockKoto(replacement.CodeContext)));
+        Assert.True(KotoHelper.Replace(clause.Parent!, clause, replacement));
+        Assert.False(c.Bind().IsComplete);
+        var fresh = Parse(edited);
+        Assert.False(fresh.Bind().IsComplete);
+        Assert.Equal([(DiagnosticCode.TypeMismatch_Kd, "h.both")], fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.Equal(fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())), c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
     }
 
     // SPEC 15.3.5, 15.2.3, 8.15.2 (DECISIONS BU-44): a slot only a conditional pair slot uses is `uniq` in its binder's `uniq` cases and
@@ -224,7 +280,7 @@ public class PairAnnotationBindingTest
         "InvalidOriginBinding_Kd: Holder<uniq/i32 during r> during static")]
     [InlineData(
         "struct Holder<s/T> {a}\n    s is owner or ref or uniq\n    public let item: s/T during a\nstruct Outer<U> {b}\n    public let h: Holder<U> during b\nfunc g() -> Outer<i32> during static => $abort(\"u\")",
-        "UnprovenConstraint_Kd: let h: Holder<U> during b | UnprovenConstraint_Kd: h | UnprovenConstraint_Kd: Holder<U> | UnprovenConstraint_Kd: Holder<U> during b")]
+        "UnprovenConstraint_Kd: let h: Holder<U> during b | UnprovenConstraint_Kd: Holder<U>")] // the Field name `h` carries the written Holder<U>: its restating record goes (G1278-A, Q13; F's G1278-3)
     public void AStaticSlotArgumentIsJudgedInTheInstancesCase(string declarations, string records)
         => Assert.Equal(records, string.Join(" | ", RawPointerSyntaxTest.Records(declarations)));
 
@@ -355,7 +411,11 @@ public class PairAnnotationBindingTest
 
     // SPEC 10.8, 8.1.1 (D-590 (1)): a pair target's position meets the target of the pair's binding, a Type in the caller's terms, by
     // structure and Semantics; in a recursive call or a construction of the enclosing structure its symbols are the callee's own, and
-    // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record.
+    // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record. `f(x@move,
+    // x@move)` binds `s/T` by the pair target alone, which forms no Type (PLAN G886): its verdict rests on that unformed split, so its
+    // record is the located Unsupported_Kd (DECISIONS BU-240, the owner's O-332 (a)) until the representation lands; 2f4bec489 gave the
+    // unproven `s is owner or ref` (UnprovenConstraint_Kd), which returns with it, as GenericIdentityAdaptationTest's Proof-record
+    // assertions for an associated Item without owner evidence do.
     [Theory]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, x@move)\n", "clean")]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f<s/T>(m@move, x@move)\n", "clean")]
@@ -363,11 +423,30 @@ public class PairAnnotationBindingTest
     [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: ref/V, y: ref/T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, y, x)\n", "clean")]
     [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S.init(m@move, x@move)\n        return 0\n", "clean")]
     [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S<s/T>.init(m@move, x@move)\n        return 0\n", "clean")]
-    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, m@move)\n", "1*NoApplicableOverload_Kd")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, m@move)\n", "1*MovedPlace_Kd 1*NoApplicableOverload_Kd")]
     [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: V, y: T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, x@move, y@move)\n", "1*NoApplicableOverload_Kd")]
-    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*UnprovenConstraint_Kd")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*MovedPlace_Kd 1*Unsupported_Kd")]
     public void ARecursivePairTargetMeetsItsBindingAsACallerType(string program, string profile)
         => Assert.Equal(profile, DiagnosticCorpus.RecordProfile(program));
+
+    // G812 ruling 156 (BoundTypeKind.Open's contract): no node publishes a Type holding a split's mark. A waiting call whose inference
+    // slot takes the mark (qP7d, valid: `mk2(.None) -> (T, T)` at `(s0/Box during a, s0/Box during a)`) and its `.None` publish the
+    // canonical case's Types (the split call's completion unmarks them, CompleteOnSplit; G812 ruling 158), and the HIR publisher lists a
+    // node holding one as Broken (InternalInvariant_Kd at MIR build). e446d93a5 published `(Open, Open)` and `Option<Open>` on them.
+    [Fact]
+    public void NoNodePublishesASplitsMark()
+    {
+        var c = Parse("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct Tag\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc mk2<T>(x: Option<T>) -> (T, T)\n    return stop()\nfunc putP<s0/W0>(m0: s0/W0, n: (s0/Box during a, s0/Box during a), k: s0/Box during c) -> i32\n    return 0\nfunc call<t0/U0>(k0: t0/U0, u0: U0) -> i32\n    t0 is owner or ref\n    U0 is Owned\n    let b0 = Box.init(1)\n    let b1 = Box.init(2)\n    let g = Tag.init(2)\n    return putP<U0>(u0@move, mk2(.None), stop())\n");
+        Assert.False(c.Bind().IsComplete);
+        HirTables.Publish(c);
+        var nodes = HirColumnsTest.Reachable(c.Kotonoha);
+        Assert.DoesNotContain(nodes, static x => HirTables.TypeOf(x) is { ContainsOpen: true });
+        Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+        var literal = nodes.OfType<NumberLiteralKoto>().First(static x => HirTables.TypeOf(x) is not null);
+        HirTables.Of(literal).Meanings[literal.SyntaxId] = c.Types.Open(HirTables.TypeOf(literal)!);
+        typeof(Binding).GetMethod("PublishPass", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(c.Binding, null);
+        Assert.Contains(literal, c.Kotonoha.Syntax.Hir.Broken!);
+    }
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.ParseSuccess(source, "annotation.kimi");

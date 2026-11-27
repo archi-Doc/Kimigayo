@@ -7,10 +7,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, BaseCallCause>? baseCallFailures;
-
-    // SPEC 6.4.4's use rules, in check order; the adapter explains each (DECISIONS BU-111).
-    private enum BaseCallCause : byte
+    // SPEC 6.4.4's use rules, in check order: the rule each cause breaks, its record's Reason (R7-E3 E3c-2); the adapter explains each
+    // (DECISIONS BU-111).
+    internal enum BaseCallCause : byte
     {
         NotCall,
         NoReceiver,
@@ -25,7 +24,7 @@ public sealed partial class Binding
         reference.BasePath = null;
         if (reference.Parent is not MemberAccessKoto { Right: IdentifierNameKoto } member || !ReferenceEquals(member.Left, reference) || !IsCallee(member))
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NotCall);
+            return this.FailBaseCall(reference, BaseCallCause.NotCall);
         }
 
         // SPEC 6.4.4: lexical self is the receiver of the function whose body holds the reference, an instance accessor's included (DECISIONS
@@ -33,31 +32,32 @@ public sealed partial class Binding
         if (this.types.EnclosingDeclaration(scope) is not
             { ReceiverIndex: >= 0, Declaration: FunctionKoto lexical, Scope.Owner: StructKoto { BoundSymbol: { } type } structure })
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoReceiver);
+            return this.FailBaseCall(reference, BaseCallCause.NoReceiver);
         }
 
         if (structure.BaseClause is not { } clause)
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoBase);
+            return this.FailBaseCall(reference, BaseCallCause.NoBase);
         }
 
         if (!(lexical.Body is { } body && IsWithin(reference, body)) && !(lexical.ExpressionBody is { } expression && IsWithin(reference, expression)))
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.OutsideBody);
+            return this.FailBaseCall(reference, BaseCallCause.OutsideBody);
         }
 
         var receiver = this.BaseReceiver(scope.Function, lexical);
         if (receiver is null)
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoSelfCapture);
+            return this.FailBaseCall(reference, BaseCallCause.NoSelfCapture);
         }
 
-        if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.SelfType(type)) is not { } baseType)
+        var self = this.SelfType(type);
+        if (structure.BindingState == BindingState.Invalid || AdtDef.BaseNotStored(this.types, self))
         {
             return this.CompleteDependent(reference, structure);
         }
 
-        reference.BasePath = this.MemberPath(null, clause, baseType);
+        reference.BasePath = this.MemberPath(null, clause, AdtDef.Base(this.types, self)!);
         return this.BindReference(reference, receiver, scope);
     }
 
@@ -90,13 +90,13 @@ public sealed partial class Binding
 
     private BindingSymbol? BaseMember(MemberAccessKoto member, BaseReferenceKoto reference, BindingScope scope)
     {
-        if (this.BindNode(reference, scope) is not { } actual || !reference.HasCurrentBinding || reference.BasePath is not { } path ||
+        if (this.BindNode(reference, scope) is not { } actual || !this.IsCurrent(reference) || reference.BasePath is not { } path ||
             member.Right is not IdentifierNameKoto name)
         {
             return null;
         }
 
-        var selection = this.LookupTypeMember(path.Type, name.IdentifierName, scope, actual, path);
+        var selection = this.LookupMember(path.Type, name.IdentifierName, scope, LookupRole.Value, actual, path);
         var selected = selection.Member;
         if (selection.Pending)
         {
@@ -106,14 +106,13 @@ public sealed partial class Binding
 
         if (selection.Ambiguous)
         {
-            this.Fail(member, BindingFailure.Ambiguous, true);
+            this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // MemberSelection keeps a flag, not the candidates.
             return null;
         }
 
         if (selected is null && selection.Hidden is { } hidden)
         {
-            member.BoundSymbol = hidden;
-            this.Fail(member, BindingFailure.Access);
+            this.PublishHiddenMember(member, hidden);
             return null;
         }
 
@@ -121,17 +120,18 @@ public sealed partial class Binding
         {
             if (selected.Kind != BindingSymbolKind.Function || selected.ReceiverIndex < 0)
             {
-                this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NotInstanceFunction);
+                this.FailBaseCall(reference, BaseCallCause.NotInstanceFunction);
                 return null;
             }
 
-            this.memberSelections[member] = selection;
-            this.memberSides[member] = MemberSide.Value;
-            member.BoundSymbol = selected;
-            name.BoundSymbol = selected;
-            name.BindingState = BindingState.Resolved;
+            return this.PublishMemberAccess(member, selected, null, LookupRole.Value, selection);
         }
 
         return selected;
     }
+
+    // SPEC 6.4.4: the family's one record, its cause a Reason (R7-E3 E3c-2). B1 none at each site: each returns at once, no earlier
+    // statement fails `reference`, and BaseMember's runs after BindNode(reference) returned a Type with the reference current.
+    private BoundType? FailBaseCall(BaseReferenceKoto reference, BaseCallCause cause)
+        => this.Record(reference, BindingFailure.BaseCall, [new(ProblemFactKind.Reason, SourceRef.Of(reference), (long)cause)]);
 }

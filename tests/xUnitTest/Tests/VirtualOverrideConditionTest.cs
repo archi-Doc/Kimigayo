@@ -13,6 +13,7 @@ namespace XunitTest;
 public class VirtualOverrideConditionTest(ITestOutputHelper output)
 {
     private const string Helper = "group Operations\n    public func duplicate<V>(value: ref/V) -> V\n        V is Copy\n        return value@follow\n";
+    private const string First = "contract First\n    associate Element\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> T.(First).Element\n        T is First\n        $abort(\"unused\")\n";
 
     [Theory]
     [InlineData(false)]
@@ -66,14 +67,32 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOverrideCondition_Kd);
     }
 
-    [Fact]
-    public void ClosedInapplicabilityIsNotAContradictoryDefinitionPremise()
+    // SPEC 6.4.3 (the owner's O-370): an override of a slot whose substituted condition is Refuted (`string is Copy`) is one declaration
+    // error at the override, not a contradictory premise of its body. R7-E2 E2-5a (the Front's B2, B's ruling (b); probe s4, labelled
+    // from SPEC first): a result the slot forms through that refuted premise (`Plain.(First).Element` under `Plain is First`) rests on it,
+    // so the result check adds no record beside it (the slot's first failure until R7-E5, D-924); s4t, where Plain conforms, is valid.
+    [Theory]
+    [InlineData("o370", "open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2", "InvalidConstraint_Kd")]
+    [InlineData("s4", First + "struct Plain\nstruct Derived : Base<Plain>\n    override func read(self: objref/Self, value: i32) -> i32 => 1", "InvalidConstraint_Kd")]
+    [InlineData("s4t", First + "struct Plain\n    Self is First\n    associate First.Element is i32\nstruct Derived : Base<Plain>\n    override func read(self: objref/Self, value: i32) -> i32 => 1", "")]
+    public void AClosedInapplicableSlotsOverrideIsOneDeclarationError(string form, string program, string codes)
     {
-        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Empty(c.Binding.Issues);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        var c = MinimalEmissionTest.Analyze(program + "\n()");
+        Assert.True(codes == string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Order(StringComparer.Ordinal)), $"{form}: {MinimalEmissionTest.Describe(c)}");
     }
+
+    // R7-E2 E2-5a (B's O8 and C3, M1; labelled from SPEC first): an override of a slot whose substituted condition is Refuted (x1) or
+    // Error (s5n: `contract Bad: Missing`) also breaking the slot's external names (6.4.2's third step) fails two independent requirements:
+    // the names are the two declarations' own, so each is its own record at the override (SPEC 6.4.3, 23.1.2; dev kept the first only).
+    // A result mismatch beside such a premise keeps dev's one record (B2: the slot's result is formed through the premises). Twins: the
+    // same contract break where the condition holds (`i32 is Copy`) gives its one record; the condition alone is the row above.
+    [Theory]
+    [InlineData("x1", "", "Copy", "string", "renamed: i32) -> i32 => renamed", "InvalidConstraint_Kd: * | OverrideContractMismatch_Kd: *")]
+    [InlineData("x1t", "", "Copy", "i32", "renamed: i32) -> i32 => renamed", "OverrideContractMismatch_Kd: *")]
+    [InlineData("x2t", "", "Copy", "i32", "value: i32) -> i64 => 2", "OverrideContractMismatch_Kd: *")]
+    [InlineData("s5n", "contract Bad: Missing\nstruct Plain\n", "Bad", "Plain", "renamed: i32) -> i32 => renamed", "InvalidConstraint_Kd: contract Bad: Missing | UnresolvedBinding_Kd: contract Bad: Missing | InvalidConstraint_Kd: public virtual func read(self: objref/Self, value: i32) -> i32 | InvalidConstraint_Kd: override func read(self: objref/Self, renamed: i32) -> i32 => renamed | OverrideContractMismatch_Kd: override func read(self: objref/Self, renamed: i32) -> i32 => renamed")]
+    public void AnInapplicableSlotsOverrideThatBreaksItsContractKeepsBothRecords(string form, string prelude, string premise, string argument, string tail, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, $"{prelude}open struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> i32\n        T is {premise}\n        return value\nstruct Derived : Base<{argument}>\n    override func read(self: objref/Self, {tail}\npublic func main() => ()", records);
 
     [Fact]
     public void EditingAnOriginalPremiseRevokesTheInheritedProof()
@@ -113,6 +132,17 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var path = Path.GetFullPath("virtual-override-condition.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         c.Binding.ReportDiagnostics();
+        if (refuted)
+        {
+            // R7-C3 C3-1b (F's C2 ruling 297 (b), DECISIONS Q13): Derived's `U is not Copy` against the block's condition `U is Copy` is the
+            // block's own premise error (SPEC 8.2.3, 8.8.1; as O-296 (a)'s l2): InvalidConstraint_Kd at the conditional, and dev's
+            // UnprovenOverrideCondition_Kd at `U is Copy` rests on it.
+            Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "UnprovenOverrideCondition_Kd");
+            Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "InvalidConstraint_Kd" && x.Text is { } text && text.StartsWith("Self is Marker when U is Copy", StringComparison.Ordinal));
+            Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnresolvedBinding_Kd" && x.Text == "missing");
+            return;
+        }
+
         var shown = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenOverrideCondition_Kd");
         Assert.Equal("U is Copy", shown.Text);
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnresolvedBinding_Kd" && x.Text == "missing");
@@ -121,19 +151,23 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var record = Assert.Single(result.Diagnostics, x => x.Code == shown.Code);
         Assert.Equal(DiagnosticCategory.Proof, record.Category);
         Assert.Equal(
-            [new("condition", DiagnosticValueKind.Text, "U is Copy"), new("cause", DiagnosticValueKind.Enumeration, "Condition"), new("proof", DiagnosticValueKind.Enumeration, refuted ? "Refuted" : "Unknown")],
+            [new("condition", DiagnosticValueKind.Text, "U is Copy"), new("cause", DiagnosticValueKind.Enumeration, "Condition"), new("proof", DiagnosticValueKind.Enumeration, "Unknown")],
             record.Reason!);
         Assert.Contains(record.Related!, x => x.Role == "declaration" && x.Label == "original virtual slot");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         Assert.Contains("original virtual slot", console.Text, StringComparison.Ordinal);
-        Assert.Contains(refuted ? "U is Copy is refuted" : "U is Copy is not implied", console.Text, StringComparison.Ordinal);
+        // D3, Q13 M3: the removed Note restated the clause and its Unknown proof (the record's reason above); the CLI shows the clause as the
+        // label. A Refuted override condition now meets the block's premise error first (ruling 297 (b)); no row pins its Refuted CLI/LSP record.
+        Assert.Contains("^^^^^^^^^ U is Copy", console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("is not implied", console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity], x => x.Code == record.Code);
             Assert.Equal(record.Display!.Range, sent.Range);
+            Assert.Contains(record.Label!, sent.Message, StringComparison.Ordinal); // The clause, in the LSP message too.
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }

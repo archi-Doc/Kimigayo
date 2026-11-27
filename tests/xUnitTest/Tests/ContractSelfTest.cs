@@ -61,12 +61,12 @@ public class ContractSelfTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var indexable = c.Binding.Library.Indexable!;
         var index = ((ContractKoto)indexable.Declaration).Members.OfType<FunctionKoto>().Single();
-        var element = index.ReturnType!.TypeOf()!.Components[0];
+        var element = index.ReturnType!.TypeOf(c)!.Components[0];
 
         // `Element` of the requirement is Self's Element declared by Indexable<Key>, the Contract applied to its own Key.
         Assert.True(Binding.IsContractSelf(element.Components[0]));
         Assert.Equal(BoundTypeKind.Constructed, element.Components[1].Kind);
-        Assert.Same(((ContractKoto)indexable.Declaration).GenericParameterNodes[0].TypeOf(), element.Components[1].Components[0]);
+        Assert.Same(((ContractKoto)indexable.Declaration).GenericParameterNodes[0].TypeOf(c), element.Components[1].Components[0]);
 
         var first = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
         var projection = first.ReturnType!.TypeOf()!;
@@ -148,9 +148,10 @@ public class ContractSelfTest
     [InlineData("guard", "stale3", "contract K\n    func k(self: ref/Self) -> i32\ncontract D<U>\n    U is K\ncontract C: K\n    associate X is D<Self>\nfunc probe<T>(value: ref/T.(C).X) -> i32\n    T is C\n    return value.k()\n", "*: return value.k()")]
 
     // SPEC 8.3.3 Expanding recursion: D<U>'s reference to D passes U inside a projection's Contract argument, an expanding pass on a one-Contract
-    // cycle, so D is a Language error whatever the limits; records of the uses resting on it stay open. The same argument passed to a Contract
-    // that refers to none has no cycle (h6f), and a flat pass is a valid recursive Contract (h6u).
-    [InlineData("C2", "h6", "contract E\ncontract D<U>\n    U is E\n    associate N is D<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "InvalidConstraint_Kd: associate N is D<Self.(D<U>).M> | ...", Explicit = true)]
+    // cycle, so D is a Language error whatever the limits, recorded at the Contract ("at each Contract on it"; F's G563C-6 C7); records of the
+    // uses resting on it stay open. The same argument passed to a Contract that refers to none has no cycle (h6f), and a flat pass is a valid
+    // recursive Contract (h6u).
+    [InlineData("guard", "h6", "contract E\ncontract D<U>\n    U is E\n    associate N is D<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "InvalidConstraint_Kd: contract D<U> | ...")]
     [InlineData("guard", "h6f", "contract E\ncontract F<W>\ncontract D<U>\n    U is E\n    associate N is F<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
     [InlineData("guard", "h6u", "contract E\ncontract D<U>\n    U is E\n    associate N is D<U>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
 
@@ -162,7 +163,10 @@ public class ContractSelfTest
     // it is Unknown at the `associate`; the records resting on it stay open.
     [InlineData("guard", "exp1", "contract E\n    func e(self: ref/Self) -> i32\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate X is D<Self.Y>\nfunc probe<T>(value: ref/T.(C).Y) -> i32\n    T is C\n    return value.e()\n", "UnprovenConstraint_Kd: associate X is D<Self.Y> | ...")]
     [InlineData("guard", "exp2", "contract E\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate X is D<Self.Y>\nfunc needs<V>(v: ref/V)\n    V is E\n    ()\nfunc probe<T>(value: ref/T.(C).Y)\n    T is C\n    needs<T.(C).Y>(value)\n", "UnprovenConstraint_Kd: associate X is D<Self.Y> | ...")]
-    [InlineData("guard", "exp2bad", "contract E\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate Z\n    associate X is D<Self.Y>\nfunc needs<V>(v: ref/V)\n    V is E\n    ()\nfunc probe<T>(value: ref/T.(C).Z)\n    T is C\n    needs<T.(C).Z>(value)\n", "InvalidConstraint_Kd: contract C | UnprovenConstraint_Kd: associate X is D<Self.Y> | InvalidConstraint_Kd: func probe<T>(value: ref/T.(C).Z) | InvalidConstraint_Kd: needs<T.(C).Z>(value)")] // DECISIONS: G572 U2a (Q13): the call rests at Final; the two dependent records are N3's
+    [InlineData("guard", "exp2bad", "contract E\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate Z\n    associate X is D<Self.Y>\nfunc needs<V>(v: ref/V)\n    V is E\n    ()\nfunc probe<T>(value: ref/T.(C).Z)\n    T is C\n    needs<T.(C).Z>(value)\n", "UnprovenConstraint_Kd: associate X is D<Self.Y> | UnprovenConstraint_Kd: needs<T.(C).Z>(value)")] // DECISIONS: G572 U2a (Q13): the call rests at Final; the two dependent records are N3's. R7-C3 (F's C2 ruling 283 (a), Q13): `contract C`'s InvalidConstraint_Kd was a second record of the failure at `associate X is D<Self.Y>` (its unproven input, SPEC 8.2.3 "once"); `probe`'s goes ("never again at uses"); the call's `T.(C).Z is E` is open on valid facts, its UnprovenConstraint_Kd
+    // exp2bad's root-name twin (SPEC 9.6 `::`, 8.6.3; PLAN G1278, G1278-A): the reference written as `::D<Self.Y>` forms its Type where it
+    // is written, as the bare one does, so the specification keeps its record.
+    [InlineData("guard", "exp2root", "contract E\ncontract D<U>\n    U is E\ncontract C\n    associate Y\n    associate Z\n    associate X is ::D<Self.Y>\nfunc needs<V>(v: ref/V)\n    V is E\n    ()\nfunc probe<T>(value: ref/T.(C).Z)\n    T is C\n    needs<T.(C).Z>(value)\n", "UnprovenConstraint_Kd: associate X is ::D<Self.Y> | UnprovenConstraint_Kd: needs<T.(C).Z>(value)")]
 
     // SPEC 8.4, 8.6.1: a concrete Type's ancestor reference names that Type and `D<i32>` is none of its paths (SPEC 8.3.2 Closed world). v2 replaces the
     // NoApplicableOverload_Kd pin of the theory above when its unit lands.

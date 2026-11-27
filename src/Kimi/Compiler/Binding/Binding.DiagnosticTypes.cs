@@ -16,10 +16,7 @@ public sealed partial class Binding
     // SPEC 23.1: `shown`, when given, is the one Origin the display writes, at the first borrow layer that has it, as `during
     // shownText`; a layer below another borrow layer is parenthesized, as in `uniq/(ref/i32 during static)`.
     internal static string DiagnosticTypeName(object value, BoundOrigin? shown, string? shownText)
-        => DisplayTypeName(value, shown, shownText, complete: false);
-
-    // Hover identifies the complete contextual Type, including every Origin; ordinary diagnostic spelling is unchanged.
-    internal static string HoverTypeName(BoundType type) => DisplayTypeName(type, null, null, complete: true);
+        => DisplayTypeName(value, shown, shownText, null);
 
     internal static string DiagnosticLengthName(BoundLength length, HoverBudget? budget = null)
     {
@@ -27,6 +24,11 @@ public sealed partial class Binding
         AppendDiagnosticLength(text, length, budget);
         return text.ToString();
     }
+
+    // Hover identifies the complete contextual Type, including every Origin, each as this Binding completes it (CompletedOrigin: a
+    // deferred result slot's atom Final proved prints as its completion, also inside a Closure's signature; R7-O2 O2-F); ordinary
+    // diagnostic spelling is unchanged.
+    internal string HoverTypeName(BoundType type) => DisplayTypeName(type, null, null, this);
 
     // The adapter's text of a mismatch side's form (SPEC 23.3).
     private static string FormText(MismatchForm form, int count) => (form, count) switch
@@ -37,6 +39,7 @@ public sealed partial class Binding
         (MismatchForm.IntegerLiteral, _) => "integer literal",
         (MismatchForm.FloatingPointLiteral, _) => "floating-point literal",
         (MismatchForm.PositionType, _) => "a Type proven Position or PositionRange",
+        (MismatchForm.FixedArray, _) => "a fixed array",
         _ => throw new ArgumentOutOfRangeException(nameof(form)),
     };
 
@@ -44,8 +47,9 @@ public sealed partial class Binding
     // the loop shows them from one list used as a stack, so neither a Type's height nor a chain of closure signatures, which the
     // height does not count (BU-71), reaches the host stack. A Primitive or Parameter returns before the list exists: a Bind, and a
     // check without Hover whose records name no structural Type, allocate nothing more; each structural Type displayed adds one list.
-    private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, bool complete)
+    private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, Binding? hover)
     {
+        var complete = hover is not null;
         if (value is not BoundType type)
         {
             return (string)value;
@@ -80,7 +84,7 @@ public sealed partial class Binding
                     text.Append(piece);
                     break;
                 case BoundOrigin origin:
-                    text.Append(HoverOriginName(origin, budget!));
+                    text.Append(HoverOriginName(hover!.CompletedOrigin(origin), budget!));
                     break;
                 case BoundLength length:
                     AppendDiagnosticLength(text, length, budget);
@@ -116,6 +120,12 @@ public sealed partial class Binding
 
         void Show(BoundType current, bool underBorrow)
         {
+            if (current is { Kind: BoundTypeKind.Open, Components: [var formed] })
+            {
+                Show(formed, underBorrow); // DECISIONS BU-240: a position a split binding decides shows the canonical case's Type.
+                return;
+            }
+
             using var guard = budget?.Enter();
             budget?.Charge(current.Name.Length);
             if (current is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } semantics } })
@@ -375,9 +385,9 @@ public sealed partial class Binding
     private static void AppendDiagnosticLength(StringBuilder text, BoundLength length, HoverBudget? budget = null)
     {
         using var guard = budget?.Enter();
-        if (length.Parameter is { } parameter)
+        if ((length.Parameter ?? length.OpenSlot) is { } parameter)
         {
-            text.Append(parameter.Name);
+            text.Append(parameter.Name); // A length atom shows its slot's name (Binding.OpenSlots), as a Type atom does.
         }
         else if (length.IsConstant)
         {

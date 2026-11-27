@@ -18,19 +18,22 @@ namespace Kimi.Compiler;
 /// the facts it guarantees (<see cref="Binding.HasFacts"/>), which the builder trusts. The operations (<see cref="Binding.Operation"/>:
 /// <see cref="Literal"/>, <see cref="Field"/>, <see cref="Deref"/>, <see cref="Index"/>, <see cref="PrimitiveOp"/>, <see cref="Logical"/>,
 /// <see cref="Borrow"/>, <see cref="Convert"/> and <see cref="RuntimeTypeTest"/>) form their value or Place from Binding's selection for
-/// the node, so their Type is one of their facts; a new member states there whether it is one, and whether it is a construct whose
-/// parts deliver its value (<see cref="Binding.Construct"/>: <see cref="Block"/>, <see cref="Unsafe"/>, <see cref="Do"/>,
-/// <see cref="If"/>, <see cref="Match"/>, <see cref="Try"/> and <see cref="Loop"/>).</summary>
+/// the node, so their Type is one of their facts; a new member states there whether it is one.</summary>
 /// <remarks><see cref="Syntax"/>: not evaluated (a declaration without a buildable body, a Type, a qualifier, the callee of a selected
 /// call or construction, a member name, a binder, a Pattern, which its match plan describes, the text a <c>$tryWrite</c> writes, an
 /// attribute, or the inside of an Error).
-/// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: Binding rejected
-/// the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type; a form no member describes that
-/// Binding left unresolved has none), which for a node Binding resolved is a broken contract the publisher lists
-/// (<see cref="HirTables.Broken"/>); its value is derived, after the operands the HIR keeps (DECISIONS R5-M63, R4-M88). A construct, a
-/// statement, a call or a name Binding left unresolved keeps its Op where it has its facts, and so does a plain write Binding rejected
-/// for its value's fit after admitting its destination (<c>Binding.AdmittedMisfit</c>): its <see cref="Assign"/> places its value, which is
-/// the Error, a value Binding resolved included (DECISIONS R5-M195). <see cref="Name"/>: its Res says what it reads.
+/// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: the
+/// lexer, the parser or Binding rejected the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type,
+/// a name of a binding its Type, a match or a try its settled plan; a form no member describes that Binding left unresolved has none); its value is
+/// derived, after the parts the HIR keeps, those its form evaluates on every path through it (Binding's Keeps; DECISIONS Z16, which
+/// R4-M88 and R5-M63 are cases of). The contract of derived values (DECISIONS Z16): an Error, a failed acquisition
+/// (<see cref="HirAcquire.Failed"/>, at the acquired node) and the declaration of a stored Property whose value the builder reads, not
+/// published <see cref="Body"/>, are the failure facts the builder derives from (<see cref="Binding.FailureFact"/>); each has its causes
+/// (<see cref="Binding.RestingCauses"/>), and one without, such as an Error Binding resolved without rejecting it, is a broken contract
+/// the publisher lists (<see cref="HirTables.Broken"/>). A construct, a statement, a call or a name Binding left unresolved keeps its Op
+/// where it has its facts, and so does a plain write Binding rejected for its value's fit after admitting its destination
+/// (<c>Binding.AdmittedMisfit</c>): its <see cref="Assign"/> places its value, which is the Error, a value Binding resolved included
+/// (DECISIONS R5-M195). <see cref="Name"/>: its Res says what it reads.
 /// <see cref="Group"/>: evaluates its one operand (parentheses, a label, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
 /// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,
@@ -120,15 +123,25 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     /// <summary>Gets a value indicating whether this take is exclusive by its operation's target or by an exclusive borrow.</summary>
     internal bool Exclusive => this.ExclusiveMode || this.Adaptation == HirAdaptation.ExclusiveBorrow;
 
-    // A Pattern binding (SPEC 15.1.6): Copied, or borrowed in the mode its path grants; an owned part whose Copy is not proven is
-    // transferred, which an instance whose Type is Copy performs as a Copy. One whose Pattern Type check failed (None) or whose Copy proof
-    // is Error (Deferred) failed (SPEC 23.1.2; DECISIONS BU-103).
+    /// <summary>Gets a value indicating whether this take reads its node's whole Place (SPEC 15.1.5: an acquisition and a shared borrow
+    /// need Read; 13.4: an operand inspected through a shared Loan; 15.1.6: a Place Subject borrowed shared): an acquisition (Copy, Move,
+    /// Reborrow, ByCase or Temporary, any adaptation) or a shared borrow <c>(None, SharedBorrow)</c>. Not an exclusive borrow, a reference
+    /// read, a projection, a group's pass-through, a failed acquisition or no take. The pair also comes from a use in place, a
+    /// selection's receiver carrying Binding's synthesized shared read (SPEC 3.4.3), and a value used in place is a Temporary, neither a
+    /// whole-Place read: a reader that knows the use filters it by kind, as the kept record does (Binding.FormReads), and a reader of the
+    /// Adjust column, which cannot, relies on its sources being taken not in place. The one predicate of a read take, for a kept operand's
+    /// form use (DECISIONS D-986) and for the MIR builder's Opaque uses at a located part's column (R7 plan Z17).</summary>
+    internal bool Reads => this.Acquire is HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase or HirAcquire.Temporary ||
+        (this.Acquire == HirAcquire.None && this.Adaptation == HirAdaptation.SharedBorrow);
+
+    // A Pattern binding (SPEC 15.1.6): Copied, transferred, or borrowed in the mode its path grants (Binding.AcquireBinding). One whose
+    // Pattern Type check failed (None) failed (SPEC 23.1.2; DECISIONS BU-103).
     internal static HirAdjust Of(PatternAcquisition acquisition, PatternAccessMode access) => acquisition switch
     {
         PatternAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
-        PatternAcquisition.Move or PatternAcquisition.CopyOrMove => new(HirAcquire.Move, HirAdaptation.None),
+        PatternAcquisition.Move => new(HirAcquire.Move, HirAdaptation.None),
         PatternAcquisition.Borrow => new(HirAcquire.None, access == PatternAccessMode.Exclusive ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow),
-        PatternAcquisition.None or PatternAcquisition.Deferred => new(HirAcquire.Failed, HirAdaptation.None),
+        PatternAcquisition.None => new(HirAcquire.Failed, HirAdaptation.None),
         _ => throw new UnreachableException(),
     };
 

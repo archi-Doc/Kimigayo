@@ -5,11 +5,14 @@
 // Responsibility: the parameter order [environment] [ret] a0..an [context] [location, location_length]; under the internal convention
 // each parameter's kind (a string reference SharedReference, a slot Type OwnedSlot, else Value), the omission of zero-sized parameters,
 // the result slot (a slot Type of nonzero size, or a constructor's or destructor's) and the result Type (void for a slot Type, Unit or
-// Never); the definition's out-of-line attribute (Flags.OutOfLine, `noinline`, which no call reads); under #LibraryImport's C convention
-// (SPEC 22.6) each parameter is a Value of its argument Type, nothing is omitted and the result is never a slot.
+// Never); the definition's out-of-line attribute (Flags.OutOfLine, `noinline`, which no call reads); under a C convention of
+// #LibraryImport (SPEC 22.6, IMPL 21.2; IsC: Windows x64's C, System V x86-64's SystemV) each parameter is a Value of its argument Type,
+// nothing is omitted and the result is never a slot, and under SystemV an 8- or 16-bit integer parameter or result carries its
+// extension by the Type's signedness (`signext`, `zeroext`; AbiParameter.Extension, FunctionAbi.ResultExtension).
 // Inputs: the compilation's Layout; the convention and flags; the closed result Type and the closed parameter Types in slot order, each
-// laid out by Layout (Ok); a C signature is one Binding validated (SPEC 22.6's table), whose every parameter has an argument
-// representation, and takes no flags. The kinds read the root Type predicates SlotTypes and ReferenceTypes.
+// laid out by Layout (Ok), with their signedness and width (BoundType.IsSigned, Width); a C signature is one Binding validated (SPEC
+// 22.6's table), whose every parameter has an argument representation, and takes no flags. A slot Type (IsSlotType) and the shared
+// string reference (IsSharedString) are this component's own Type rules, read by no other phase (R7-T2).
 // Outputs: Of, a FunctionAbi without a name (empty), which its definition names (FunctionAbi.Named: ModuleCodegen its items, an
 // import its external symbol); Matches, whether an existing FunctionAbi is that signature, so a caller reuses it without allocating;
 // HasResultSlot and ResultType, the internal convention's result rules over a record; Recorded, the flags a FunctionAbi keeps as given
@@ -19,6 +22,7 @@
 // contracts, which throw), read syntax, Origins, HIR or MIR, name a function, keep state or use LINQ.
 
 using System.Globalization;
+using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
@@ -37,6 +41,10 @@ internal static class Abi
 
         /// <summary>The Windows x64 C convention of a <c>#LibraryImport</c> declaration (SPEC 22.6).</summary>
         C,
+
+        /// <summary>The System V x86-64 C convention of a <c>#LibraryImport</c> declaration (IMPL 21.2): C's rules, with 8- and 16-bit
+        /// integer parameters and results extended by signedness.</summary>
+        SystemV,
     }
 
     /// <summary>The facts of a signature, and of its definition, that its Types do not give.</summary>
@@ -101,7 +109,7 @@ internal static class Abi
         {
             if (ArgumentType(layout, convention, parameters[i]) is { } type)
             {
-                physical[n++] = new(type, "a" + i.ToString(CultureInfo.InvariantCulture), Kind(convention, parameters[i]), i);
+                physical[n++] = new(type, "a" + i.ToString(CultureInfo.InvariantCulture), Kind(convention, parameters[i]), i, Extension(convention, parameters[i]));
             }
         }
 
@@ -118,7 +126,7 @@ internal static class Abi
 
         return new(string.Empty, Result(convention, result, value), physical)
         {
-            NoReturn = ReferenceEquals(result, BoundType.Never), ResultSlot = slot, Flags = flags & Recorded,
+            NoReturn = ReferenceEquals(result, BoundType.Never), ResultSlot = slot, Flags = flags & Recorded, ResultExtension = Extension(convention, result),
         };
     }
 
@@ -137,7 +145,7 @@ internal static class Abi
         var closure = (flags & (Flags.ErasedClosure | Flags.ConcreteClosure)) != 0;
         var location = (flags & Flags.CallerLocation) != 0;
         if (abi.ResultSlot != slot || abi.Flags != (flags & Recorded) || abi.NoReturn != ReferenceEquals(result, BoundType.Never) ||
-            abi.Result != Result(convention, result, value))
+            abi.Result != Result(convention, result, value) || abi.ResultExtension != Extension(convention, result))
         {
             return false;
         }
@@ -152,7 +160,8 @@ internal static class Abi
 
         for (var i = 0; i < parameters.Length; i++)
         {
-            if (ArgumentType(layout, convention, parameters[i]) is { } type && !Logical(physical, ref n, type, Kind(convention, parameters[i]), i))
+            if (ArgumentType(layout, convention, parameters[i]) is { } type &&
+                !Logical(physical, ref n, type, Kind(convention, parameters[i]), i, Extension(convention, parameters[i])))
             {
                 return false;
             }
@@ -166,42 +175,53 @@ internal static class Abi
     /// <param name="type">The closed result Type.</param>
     /// <param name="value">Its record.</param>
     /// <returns>Whether the result has a slot.</returns>
-    internal static bool HasResultSlot(BoundType type, ValueLowering value) => SlotTypes.IsResult(type) && value.Layout.Size > 0;
+    internal static bool HasResultSlot(BoundType type, ValueLowering value) => IsSlotType(type) && value.Layout.Size > 0;
 
     /// <summary>Gets the internal convention's result Type: void for a slot Type, else the computation Type (void for Unit and Never).</summary>
     /// <param name="type">The closed result Type.</param>
     /// <param name="value">Its record.</param>
     /// <returns>The LLVM result Type.</returns>
-    internal static string ResultType(BoundType type, ValueLowering value) => SlotTypes.IsResult(type) ? "void" : value.ComputationType;
+    internal static string ResultType(BoundType type, ValueLowering value) => IsSlotType(type) ? "void" : value.ComputationType;
 
     /// <summary>Gets how a parameter of a Type passes: a string by a shared reference, a slot Type (an owned result) by pointer to the
-    /// caller's storage, any other Type by value; every Type by value under the C convention.</summary>
+    /// caller's storage, any other Type by value; every Type by value under a C convention.</summary>
     /// <param name="convention">The convention.</param>
     /// <param name="type">The closed parameter Type.</param>
     /// <returns>The kind.</returns>
     internal static AbiParameterKind Kind(Convention convention, BoundType type)
     {
-        if (convention == Convention.C)
+        if (IsC(convention))
         {
             return AbiParameterKind.Value;
         }
 
-        if (ReferenceTypes.IsString(type))
+        if (IsSharedString(type))
         {
             return AbiParameterKind.SharedReference;
         }
 
-        return SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
+        return IsSlotType(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
     }
+
+    // A slot Type: a value of it uses explicit storage rather than a scalar phi, so the internal convention passes it by pointer to the
+    // caller's storage and returns it through the result slot; its concrete layout is Layout's.
+    private static bool IsSlotType(BoundType type)
+        => ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Function or
+            BoundTypeKind.FunctionItem or BoundTypeKind.Closure or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
+            AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.HandleMode is not null;
+
+    // A shared reference to a string, `ref/string`, which the internal convention passes as a SharedReference.
+    private static bool IsSharedString(BoundType type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } && ReferenceEquals(referent, BoundType.String);
 
     private static AbiParameter Environment(Flags flags)
         => new((flags & Flags.ConcreteClosure) != 0 ? "ptr" : "i64", "environment", AbiParameterKind.Environment);
 
-    // Under the internal convention a constructor's or destructor's result slot, or a slot Type's of nonzero size; never under C, which
-    // takes no flags.
+    // Under the internal convention a constructor's or destructor's result slot, or a slot Type's of nonzero size; never under a C
+    // convention, which takes no flags.
     private static bool HasSlot(Convention convention, Flags flags, BoundType result, ValueLowering value)
     {
-        if (convention == Convention.C)
+        if (IsC(convention))
         {
             return flags == Flags.None ? false : throw new InvalidOperationException("A C signature (SPEC 22.6) takes no flags.");
         }
@@ -210,7 +230,15 @@ internal static class Abi
     }
 
     private static string Result(Convention convention, BoundType result, ValueLowering value)
-        => convention == Convention.C ? value.ComputationType : ResultType(result, value);
+        => IsC(convention) ? value.ComputationType : ResultType(result, value);
+
+    // A C convention of #LibraryImport (SPEC 22.6, IMPL 21.2): Windows x64's or System V x86-64's, whose rules are one but the extension.
+    private static bool IsC(Convention convention) => convention is Convention.C or Convention.SystemV;
+
+    // A parameter's or result's extension attribute (IMPL 21.2): under SystemV an 8- or 16-bit integer's by its signedness, as C
+    // compilers for that ABI expect; none for every other Type and convention.
+    private static string Extension(Convention convention, BoundType type)
+        => convention == Convention.SystemV && type.Width is 8 or 16 ? (type.IsSigned ? " signext" : " zeroext") : string.Empty;
 
     // A parameter's argument Type; under the internal convention a zero-sized parameter has none (no physical slot), while under C nothing
     // is omitted (SPEC 22.6's table admits no parameter without one).
@@ -228,8 +256,8 @@ internal static class Abi
 
     private static bool Next(AbiParameter[] physical, ref int n, AbiParameter expected) => n < physical.Length && physical[n++] == expected;
 
-    private static bool Logical(AbiParameter[] physical, ref int n, string type, AbiParameterKind kind, int index)
-        => n < physical.Length && Next(physical, ref n, new(type, physical[n].Name, kind, index));
+    private static bool Logical(AbiParameter[] physical, ref int n, string type, AbiParameterKind kind, int index, string extension)
+        => n < physical.Length && Next(physical, ref n, new(type, physical[n].Name, kind, index, extension));
 
     private static ValueLowering Value(Layout layout, BoundType type)
         => layout.Of(type).Value ?? throw new InvalidOperationException("Abi reached the Type " + type.Name + ", which Layout does not lay out.");

@@ -29,7 +29,7 @@ public sealed partial class Binding
         call.BoundSymbol = null;
         call.CallStorage = callee.RequirementStorage;
         this.BindSynthesizedCall(root, call, scope);
-        if (call.BoundCall is not { } selected)
+        if (this.CallOf(call) is not { } selected)
         {
             return call;
         }
@@ -39,7 +39,7 @@ public sealed partial class Binding
         // Fixed source Origins affect fitting and Loans, but do not require a generic Type instance.
         if (!this.DependentType(self, includeOrigins: false))
         {
-            var resolved = this.InstantiateRequirementCall(selected, selected, callee.ImplementationStorage);
+            var resolved = this.InstantiateRequirementCall(selected, selected, root, callee.ImplementationStorage);
             if (resolved is null)
             {
                 this.Fail(call, BindingFailure.Unsupported, true);

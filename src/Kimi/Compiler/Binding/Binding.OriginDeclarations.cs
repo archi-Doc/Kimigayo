@@ -41,19 +41,26 @@ public sealed partial class Binding
         _ => node.Akind is KotoKind.EnumCase or KotoKind.AssociatedType,
     };
 
+    // SPEC 15.3.4, 8.10 (PLAN G972, the owner's O-403 (b)): where a written Origin may name a nested signature's per-call Origin, a
+    // Function Type's or an anonymous function's (the omitted Origin of a direct borrowed input): inside its binder only (inner per-call
+    // Origins cannot escape their binder), and there not in its inputs, whose every slot and borrow layer is fixed by a complete Type or
+    // an outer Origin expression (nested Origins stay fixed), so in its result and body.
     private static bool OriginVisible(BoundOrigin origin, Koto use)
     {
-        if (origin.Binder is FunctionTypeKoto binder)
+        if (origin.Binder is FunctionTypeKoto || origin is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } })
         {
-            var inside = false;
-            for (var node = use; node is not null; node = node.Parent)
-            {
-                inside |= ReferenceEquals(node, binder);
-            }
-
-            if (!inside)
+            var binder = origin.Binder;
+            if (!IsWithin(use, binder))
             {
                 return false;
+            }
+
+            for (var i = 0; i < InputCount(binder); i++)
+            {
+                if (InputType(binder, i) is { } input && IsWithin(use, input))
+                {
+                    return false;
+                }
             }
         }
 
@@ -78,6 +85,24 @@ public sealed partial class Binding
     // SPEC 15.3.1, 23.1.2: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
     private static bool RepeatedSet(TypeSemanticsKoto set) => set.BindingFailure == BindingFailure.Duplicate;
 
+    // The regions a local's equalities fixed at its completion (SubstituteOriginEqualities, FixedRegion), numbered first: BindVariableCore
+    // numbers the local's other regions after them.
+    private static int FixedRegions(OriginDeclaration? local)
+    {
+        var count = 0;
+        if (local is null)
+        {
+            return count;
+        }
+
+        foreach (var value in local.Forming.Replacements.Values)
+        {
+            count += IsLocalRegion(value) && ReferenceEquals(value.Binder, local.Owner) ? 1 : 0;
+        }
+
+        return count;
+    }
+
     // SPEC 15.3.5: the variance of a Type's component within it, which ComposeVariance composes: a layer's target invariant where the
     // layer is (IsInvariantLayer), else covariant; a Function Type's inputs contravariant and its result covariant; a declared Type
     // argument by its slot's inferred variance; any other component covariant. A comparison without a Binding sees only the concrete
@@ -93,9 +118,66 @@ public sealed partial class Binding
     // SPEC 15.3.5: the variance of a Type's Origin argument `index`, the one reading every relation, fit and walk takes: a Closure Type's
     // by its occurrences in its definition's signature (ClosureArgumentVariance, DECISIONS R4-M159); a declared Type's by its schema's
     // inferred variance; an argument without one is invariant.
-    private static OriginVariance OriginArgumentVariance(BoundType type, int index, Binding? binding)
-        => type.Kind == BoundTypeKind.Closure ? ClosureArgumentVariance(type, index, binding)
+    private OriginVariance OriginArgumentVariance(BoundType type, int index, Binding? binding)
+        => type.Kind == BoundTypeKind.Closure ? this.ClosureArgumentVariance(type, index, binding)
             : type.Symbol?.Schema?.Origins[index].Variance ?? OriginVariance.Invariant;
+
+    // SPEC 15.3.5: the variance of `atom`'s occurrences in `type` (a meet operand included), each position's variance composed from the
+    // Type's own as RelationWalk composes it (ComponentVariance, OriginArgumentVariance); equal occurrences keep their variance, different
+    // ones are invariant, and none is Unused. One query of `visitedParts` meets each distinct part once per polarity (a state bit per
+    // polarity): Join is idempotent, so a part met again at a polarity adds nothing (DECISIONS BU-63). The table is this Binding's, whether
+    // or not the caller reads premises (`binding`). Read by a Closure Type's argument variance and a local region's row (LocalRegionSlot).
+    private OriginVariance OccurrenceVariance(BoundType type, BoundOrigin atom, Binding? binding)
+    {
+        return Occurrences(type, atom, OriginVariance.Covariant, binding, OriginVariance.Unused, this, this.visitedParts.Begin(this.storageVersion));
+
+        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen, Binding owner, uint query)
+        {
+            if (!type.CarriesAnyOrigin)
+            {
+                return seen;
+            }
+
+            seen = Names(OwnedOrigin(type), atom) ? Join(seen, polarity) : seen;
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                seen = Names(type.OriginArguments[i], atom) ? Join(seen, ComposeVariance(polarity, owner.OriginArgumentVariance(type, i, binding))) : seen;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                var part = type.Components[i];
+                var position = ComposeVariance(polarity, ComponentVariance(type, i, binding));
+                if (part.CarriesAnyOrigin && owner.FirstVisit(part, query, (byte)(1 << (int)position)))
+                {
+                    seen = Occurrences(part, atom, position, binding, seen, owner, query);
+                }
+            }
+
+            return seen;
+        }
+
+        static bool Names(BoundOrigin? origin, BoundOrigin atom)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Names(origin.Operands[i], atom))
+                {
+                    return true;
+                }
+            }
+
+            return ReferenceEquals(origin, atom);
+        }
+
+        static OriginVariance Join(OriginVariance seen, OriginVariance variance)
+            => seen == OriginVariance.Unused || seen == variance ? variance : OriginVariance.Invariant;
+    }
 
     // SPEC 15.3.4: whether a use is a binding set named in a Constraint (not an associated specification) that its declaration holds.
     private bool ConstraintSet(Koto use)
@@ -180,8 +262,6 @@ public sealed partial class Binding
             names!.Clear();
             ((OriginNameList)names).Spans.Clear();
         }
-
-        this.absentSlotProjections?.Clear();
 
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -295,7 +375,11 @@ public sealed partial class Binding
             return written;
         }
 
-        // A name already visible names that Origin; only the remaining names are introduced by the signature (SPEC 15.3.4).
+        // SPEC 15.3.4: a name already bound in an enclosing scope (an Origin or a set of that scope's declaration, a parameter, a capture,
+        // or a local declared before the owner) introduces no Origin; only the remaining names are introduced by the signature. Bound is
+        // not visible: a later parameter of a function whose default holds the owner is bound here though no lookup may select it (SPEC
+        // 7.2.3, ParameterVisible), the reading the owner's D-1236 (A) requires: its name introduces nothing and selects nothing, so it
+        // fails where it is written.
         for (var i = names.Count - 1; i >= 0; i--)
         {
             var name = names[i];
@@ -363,8 +447,7 @@ public sealed partial class Binding
     {
         if (use.BindingFailure == BindingFailure.None)
         {
-            this.prerequisites[use] = (this.prerequisiteStore.Count, 1);
-            this.prerequisiteStore.Add(set);
+            this.RecordRead(use, set);
             this.Fail(use, BindingFailure.MissingName, true);
         }
     }
@@ -487,14 +570,21 @@ public sealed partial class Binding
         this.originStateVersion++;
     }
 
-    // Equalities are substitutions before result defaulting. Revisit equations after
-    // each substitution so chains are independent of clause order.
+    // Equalities are substitutions before result defaulting. Revisit equations after each substitution so chains are independent of
+    // clause order. A local's slots are its regions (DECISIONS R8-M56) and its clause a check that assumes nothing (SPEC 15.3.3): an
+    // equality of an unfixed slot (for a local, an Unbound Origin: Flexibility above 0) with an Origin that is no unfixed slot
+    // substitutes the slot's region, numbered first (FixedRegions), whose value is that Origin as the body reads it (FixedRegion; SPEC
+    // 15.3.6 "Unless fixed by equality", 15.4.4), so its own body reads the value and a nested signature or body the region, fixed there
+    // with no premise (SPEC 15.3.4, 15.6.1, 15.6.5); an equality of two unfixed slots substitutes nothing in a round, and once a later
+    // round has fixed one of them, it fixes the other to that one's region; a slot no equality fixes completes as its own region. The
+    // clause is judged against the initializer (ValidateOriginRelations).
     private void SubstituteOriginEqualities(OriginDeclaration declaration)
     {
-        for (var pass = 0; pass <= declaration.Forming.Relations.Count; pass++)
+        var regions = 0;
+        for (var pass = 0; pass <= declaration.Relations.Length; pass++)
         {
             var changed = false;
-            foreach (var relation in declaration.Forming.Relations)
+            foreach (var relation in declaration.Relations)
             {
                 if (!relation.Equality)
                 {
@@ -515,9 +605,9 @@ public sealed partial class Binding
                     (a, b) = (b, a);
                 }
 
-                if (Flexibility(a) != 0 && !ContainsOrigin(b, a))
+                if (Flexibility(a) != 0 && !ContainsOrigin(b, a) && !(declaration.IsLocal && Flexibility(b) != 0))
                 {
-                    declaration.Forming.Replacements[a] = b;
+                    declaration.Forming.Replacements[a] = declaration.IsLocal ? this.FixedRegion(declaration.Owner, a, b, -1 - regions++) : b;
                     this.originStateVersion++;
                     changed = true;
                 }
@@ -550,6 +640,22 @@ public sealed partial class Binding
             return ReferenceEquals(origin.Binder, declaration.Owner) && declaration.Owner is FunctionKoto or PropertyAccessorKoto &&
                 origin.Kind is OriginKind.Parameter or OriginKind.Input ? 1 : 0;
         }
+    }
+
+    // A local's slot `pending` an equality fixes to `value` (SubstituteOriginEqualities): its region at `slot`, its row the slot's variance
+    // in the local's written Type, where a slot no position of that Type names (no written Type, or a slot of the initializer's written
+    // Type) is invariant, as SPEC 15.3.5 compares an unused position (ComposeVariance, ClosureArgumentVariance); publishing `value` as the
+    // region's value (DECISIONS R8-M56 as amended, C-548, C-554). The region is `value`, so the published value, `value` as the body reads
+    // it, is an equality, unless `value` holds a region of the body published as an inclusion (ReadsLetValue), which the region then is:
+    // an inclusion (`origin k.at == r` with `let r = p` publishes p as an inclusion, as r's region does; with a region published as an
+    // equality the equality composes).
+    private BoundOrigin FixedRegion(Koto local, BoundOrigin pending, BoundOrigin value, int slot)
+    {
+        var row = (local as VariableKoto)?.TypeKoto?.BoundType is { } type ? this.OccurrenceVariance(type, pending, this) : OriginVariance.Unused;
+        var region = this.LocalRegionSlot(local, slot, row == OriginVariance.Unused ? OriginVariance.Invariant : row);
+        var published = this.PublishRegionValue(region, value, local);
+        published.Equality = !this.ReadsLetValue(value, local);
+        return region;
     }
 
     // The pending slots no equality substituted and no failed clause rests (RestsOnFailedClause) complete: a result slot a nontrivial
@@ -649,7 +755,7 @@ public sealed partial class Binding
                 origin = this.ResolveOrigin(raw, declaration);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.Binder);
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.InstanceContext, type.LengthArguments, type.Binder);
         }
         finally
         {
@@ -680,7 +786,7 @@ public sealed partial class Binding
                 node.BoundOrigin = binding.ResolveOrigin(origin, declaration);
                 if (!OriginVisible(node.BoundOrigin, node))
                 {
-                    binding.Fail(node, BindingFailure.InvalidOrigin);
+                    binding.Record(node, BindingFailure.InvalidOrigin, []);
                 }
             }
 

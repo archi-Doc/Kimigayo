@@ -18,7 +18,7 @@ public sealed partial class Binding
     // the receiver the selection evaluated (an EvaluatedKoto), so any receiver is evaluated once. A failed resolution
     // yields a value that the selection's own bounds check rejects. A ResolvedRange key is applied as written and rechecked.
     private readonly ResolvedKeyRows resolvedKeys;
-    private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
+    private readonly ResolvedSliceRows resolvedSlices;
 
     private BoundType ResolvedRangeType => this.types.Intern(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
 
@@ -44,8 +44,12 @@ public sealed partial class Binding
 
     /// <summary>Gets a value indicating whether the selection applies one ResolvedRange value, written or resolved from a range key.</summary>
     /// <param name="node">The selection expression.</param>
-    /// <returns>Whether the selection is a resolved range selection.</returns>
-    internal bool IsResolvedSlice(Koto node) => node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
+    /// <returns>Whether the selection is a resolved range selection; a node of the frozen library is refused (EnsurePassNode).</returns>
+    internal bool IsResolvedSlice(Koto node)
+    {
+        EnsurePassNode(node, nameof(this.IsResolvedSlice));
+        return node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
+    }
 
     // SPEC 4.6.1: `^a` whose operand is literal-only (SPEC 12.3).
     private static bool IsLiteralOnlyFromEnd(Koto node) => node is FromEndIndexKoto fromEnd && IsIntegerLiteralOnly(fromEnd.Operand);
@@ -103,10 +107,10 @@ public sealed partial class Binding
 
     // Synthesized calls and Places are reused across passes, each reset in place by its module's pass (In). Each pass rebinds the
     // ones its syntax still needs, so one left by an earlier pass, such as after an edit changed its node's role, is never Resolved
-    // for a lookup.
+    // for a lookup. Each pass records its own synthesized calls (BindSynthesizedCall), a pass family the pass counter empties.
     private void ResetSyntheticCalls()
     {
-        this.synthesizedCalls?.Clear(); // Each pass records its own (BindSynthesizedCall).
+        this.synthesizedOrder.Clear(); // Each pass lists its own (AddSynthesizedCall), its capacity kept.
         foreach (var calls in this.propertyCalls.Values.In(this.pass))
         {
             foreach (var call in calls!)
@@ -159,8 +163,6 @@ public sealed partial class Binding
             this.ResetSynthetic(input!);
         }
 
-        this.resolvedSlices.Clear();
-        this.uniqIndexing.Clear();
         this.positionWarnings.Clear();
     }
 
@@ -172,12 +174,12 @@ public sealed partial class Binding
     {
         result = null;
         this.resolvedSlices.Remove(source);
-        var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
-        if (core.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
+        if (!IsSequence(receiver))
         {
             return false;
         }
 
+        var core = receiver.SafeReferent ?? receiver;
         var element = core.Components[0];
         BoundType? key;
         if (source.Right is RangeKoto range)
@@ -217,7 +219,7 @@ public sealed partial class Binding
         else
         {
             key = this.BindPositionKey(source.Right, scope);
-            if (key is not null && (ReferenceEquals(key, BoundType.Never) || this.IsIntegerOperand(key, scope)))
+            if (key is not null && (ReferenceEquals(key, BoundType.Never) || this.IsIntegerOperand(key, scope, source)))
             {
                 this.CheckLiteralKey(source, core);
                 return false; // SPEC 4.7.1: an integer key is converted to an isize position by the element access.
@@ -235,9 +237,9 @@ public sealed partial class Binding
             this.CheckLiteralKey(source, core); // A parenthesized `^a` resolves through a call.
         }
 
-        var resolved = ReferenceTypes.IsResolvedRange(key);
-        var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
-        if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
+        var resolved = key is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
+        var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope, source);
+        if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope, source))
         {
             this.RecordMismatch(source.Right, source.Right, key, new(null, MismatchForm.PositionType), ComparisonFailure.Shape);
             result = Complete(source, null);
@@ -254,7 +256,7 @@ public sealed partial class Binding
         {
             if (receiver is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner })
             {
-                this.ReceiverElement(source.Left, receiver);
+                this.ReceiverElement(source.Left, receiver, null);
             }
 
             result = Complete(source, element);
@@ -319,8 +321,8 @@ public sealed partial class Binding
             return false;
         }
 
-        var start = this.DirectBoundary(range.Start, scope, out var startDirect, out var startFailed);
-        var end = this.DirectBoundary(range.End, scope, out var endDirect, out var endFailed);
+        var start = this.DirectBoundary(range.Start, scope, range, out var startDirect, out var startFailed);
+        var end = this.DirectBoundary(range.End, scope, range, out var endDirect, out var endFailed);
         if (startFailed || endFailed || (startDirect && endDirect && (!this.FitDirectBoundary(range.Start, scope, end) || !this.FitDirectBoundary(range.End, scope, start))))
         {
             Complete(range, null);
@@ -340,7 +342,7 @@ public sealed partial class Binding
     // A written boundary of a directly applied range: the established integer Type of the boundary or of its `^` operand, or
     // null when it is omitted or literal-only. `direct` is false for a boundary of another Position Type. A `^x` node is
     // completed only once the range is known to be direct, since a constructed range constructs it through a call.
-    private BoundType? DirectBoundary(Koto? boundary, BindingScope scope, out bool direct, out bool failed)
+    private BoundType? DirectBoundary(Koto? boundary, BindingScope scope, QuerySite site, out bool direct, out bool failed)
     {
         direct = true;
         failed = false;
@@ -374,7 +376,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (this.IsIntegerOperand(type, scope))
+        if (this.IsIntegerOperand(type, scope, site))
         {
             return type;
         }
@@ -406,9 +408,9 @@ public sealed partial class Binding
         return !IsUnfittedLiteral(boundary) || this.RequireType(boundary, scope, other ?? BoundType.I32) is not null;
     }
 
-    // SPEC 4.6.2: a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type satisfying
-    // Position, known independently of the context, and a literal-only boundary takes the S or E of an expected range of
-    // the same shape, else the integer Type of the other boundary, else i32 (SPEC 4.6.2). Construction checks nothing.
+    // SPEC 4.6.2, 12.3.1 (PLAN G924 rule A): a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type
+    // satisfying Position, checked against the S or E of an expected range of the same shape, and without one known on its own; a
+    // literal-only boundary takes that S or E, else the integer Type of the other boundary, else i32. Construction checks nothing.
     private BoundType? BindRangeValue(RangeKoto range, BindingScope scope, BoundType? expected)
     {
         if (range.IsInclusive && range.End is null)
@@ -418,16 +420,23 @@ public sealed partial class Binding
 
         var shape = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
         var fitted = expected is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } && ReferenceEquals(expected.Symbol, shape) ? expected : null;
-        var start = this.IndependentBoundary(range.Start, scope, out var startInteger, out var startFailed);
-        var end = this.IndependentBoundary(range.End, scope, out var endInteger, out var endFailed);
-        if (startFailed || endFailed)
+        var start = this.IndependentBoundary(range.Start, scope, range, ExpectedChild(range, 0, fitted), out var startInteger, out var startFailed);
+        var end = this.IndependentBoundary(range.End, scope, range, ExpectedChild(range, 1, fitted), out var endInteger, out var endFailed);
+        // SPEC 4.6.2, 23.1.2: beside a boundary whose own check failed the range rests on it. A literal-only boundary is still fitted
+        // where the range's expected Type gives its S or E: that fit reads nothing of the failed boundary, so its record is
+        // independent. Where its Type would come from the other boundary's integer Type it rests with the range.
+        var rests = startFailed || endFailed;
+        if (!startFailed && (!rests || fitted is not null))
         {
-            return Complete(range, null);
+            start = range.Start is null ? this.StartType : start ?? this.FitRangeBoundary(range.Start, scope, fitted?.Components[0], endInteger);
         }
 
-        start = range.Start is null ? this.StartType : start ?? this.FitRangeBoundary(range.Start, scope, fitted?.Components[0], endInteger);
-        end = range.End is null ? this.EndType : end ?? this.FitRangeBoundary(range.End, scope, fitted?.Components[1], startInteger);
-        if (start is null || end is null)
+        if (!endFailed && (!rests || fitted is not null))
+        {
+            end = range.End is null ? this.EndType : end ?? this.FitRangeBoundary(range.End, scope, fitted?.Components[1], startInteger);
+        }
+
+        if (rests || start is null || end is null)
         {
             return Complete(range, null);
         }
@@ -447,9 +456,10 @@ public sealed partial class Binding
         return this.BindSynthesizedCall(range, call, scope) is null ? Complete(range, null) : Complete(range, type);
     }
 
-    // The Type of a written range boundary known independently of the context, read through references; null for an
-    // omitted or literal-only boundary. `integer` is the integer Type a literal-only other boundary takes from it.
-    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, out BoundType? integer, out bool failed)
+    // The Type of a written range boundary, checked against its expected S or E or known on its own, read through references; null
+    // for an omitted or literal-only boundary, and for one whose own check failed (`failed`: RequireType gives no Type, and the range
+    // rests on it). `integer` is the integer Type a literal-only other boundary takes from it.
+    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, QuerySite site, BoundType? expected, out BoundType? integer, out bool failed)
     {
         integer = null;
         failed = false;
@@ -458,14 +468,14 @@ public sealed partial class Binding
             return null;
         }
 
-        var type = this.BindPositionKey(boundary, scope);
+        var type = expected is null ? this.BindPositionKey(boundary, scope) : this.RequireType(boundary, scope, expected);
         if (type is null || ReferenceEquals(type, BoundType.Never))
         {
             failed = type is null;
             return type;
         }
 
-        if (this.IsIntegerOperand(type, scope))
+        if (this.IsIntegerOperand(type, scope, site))
         {
             integer = type;
         }
@@ -473,7 +483,7 @@ public sealed partial class Binding
         {
             integer = offset;
         }
-        else if (!this.ProvesClosedContract(type, this.Library.Position, scope))
+        else if (!this.ProvesClosedContract(type, this.Library.Position, scope, site))
         {
             this.Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.2: each boundary satisfies Position.
             failed = true;
@@ -513,7 +523,7 @@ public sealed partial class Binding
         }
 
         var offset = this.BindPositionKey(node.Operand, scope);
-        return offset is null || ReferenceEquals(offset, BoundType.Never) || this.IsIntegerOperand(offset, scope) ? offset : this.Fail(node, BindingFailure.TypeMismatch);
+        return offset is null || ReferenceEquals(offset, BoundType.Never) || this.IsIntegerOperand(offset, scope, node) ? offset : this.Fail(node, BindingFailure.TypeMismatch);
     }
 
     // A synthesized call of the PositionSyntax function `name`, cached per source node, with the Type arguments `firstType`
@@ -582,5 +592,25 @@ public sealed partial class Binding
 
         internal bool TryGetValue(IndexKoto node, [NotNullWhen(true)] out InvocationKoto? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.ResolvedKeys.Get(node.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The `resolvedSlices` family's one accessor (DECISIONS BU-220): a pass family, the selections that apply one ResolvedRange
+    /// value, written or resolved from a range key (SPEC 4.7, 4.8.2), a set kept in the selection's module's NodeColumns at its SyntaxId as
+    /// a `bool` row. Its rows are the running pass's working state: IsResolvedSlice refuses a library node, so the freeze releases them
+    /// (NodeColumns.Freeze). Its members keep the names its readers use.</summary>
+    private readonly struct ResolvedSliceRows(Binding binding)
+    {
+        internal void Add(IndexKoto index) => HirTables.Of(index).Families.ResolvedSlices.Ref(index.SyntaxId, binding) = true;
+
+        // Writes only over a present row, so a selection that is no slice numbers no node and carves no page.
+        internal void Remove(IndexKoto index)
+        {
+            if (this.Contains(index))
+            {
+                HirTables.Of(index).Families.ResolvedSlices.Ref(index.SyntaxId, binding) = false;
+            }
+        }
+
+        internal bool Contains(IndexKoto index) => index.SyntaxOwner is { } table && table.Hir.Families.ResolvedSlices.Get(index.SyntaxId, binding);
     }
 }

@@ -152,7 +152,7 @@ public class DictionaryLibraryTest
     {
         const string Source = "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c)));
         var definitions = FunctionCodegenTest.GeneratedDefinitions(Source).Definitions;
         Assert.Contains(definitions, static x => x is FunctionKoto { Name: "grow" } && IsStorage(x));
         Assert.Contains(definitions, static x => x is FunctionKoto { Name: "reserve" } && IsStorage(x));
@@ -194,8 +194,8 @@ public class DictionaryLibraryTest
     [InlineData("Generic", "func put<K, V>(target: uniq/Dictionary<K, V>, key: K, value: V)\n    K is Equatable\n    _ = target.tryInsert(key@move, value@move)\nvar entries: Dictionary<i32, i32> = [:]\nput(entries@uniq, 1, 2)", "Hello.kimi:3:9")]
     public void CapacityAllocationFailuresReportTheCallerLocation(string name, string source, string location)
     {
-        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)).Replace("call ptr @HeapAlloc(", "call ptr @fail_dictionary_alloc(", StringComparison.Ordinal) +
-            "\ndefine internal ptr @fail_dictionary_alloc(ptr %heap, i32 %flags, i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)).Replace("call ptr @__kimi_heap_allocate(", "call ptr @fail_dictionary_alloc(", StringComparison.Ordinal) +
+            "\ndefine internal ptr @fail_dictionary_alloc(i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
         ScalarEmissionTest.WriteFixture("DictionaryLibraryAllocation" + name, ir, string.Empty, 1, location + ": abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 
@@ -204,10 +204,8 @@ public class DictionaryLibraryTest
     public void ShrinkReleaseFailureReportsTheCallerLocation()
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)\nentries.shrinkToFit()"))
-            .Replace("call i32 @HeapFree(", "call i32 @fail_dictionary_free(", StringComparison.Ordinal)
-            .Replace("call i32 @GetLastError()", "call i32 @fail_dictionary_error()", StringComparison.Ordinal) +
-            "\ndefine internal i32 @fail_dictionary_free(ptr %heap, i32 %flags, ptr %memory) {\nentry:\n  ret i32 0\n}\n" +
-            "define internal i32 @fail_dictionary_error() {\nentry:\n  ret i32 5\n}\n";
+            .Replace("call i64 @__kimi_heap_release(", "call i64 @fail_dictionary_free(", StringComparison.Ordinal) +
+            "\ndefine internal i64 @fail_dictionary_free(ptr %block) {\nentry:\n  ret i64 5\n}\n";
         ScalarEmissionTest.WriteFixture("DictionaryLibraryReleaseFailure", ir, string.Empty, 1, "Hello.kimi:4:1: abort KIMI_E_FREE: Failed to free memory (win32=5)\n");
     }
 
@@ -247,7 +245,7 @@ public class DictionaryLibraryTest
     public void PrivateHandleUsesTheExpectedPlatformLayout()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
-        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!;
+        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf(c)!;
         var handle = pointer.Components[0];
         Assert.True(handle.Symbol!.Adt!.IsCLayout);
         var layout = c.Layout.Of(handle).Value!.Layout;
@@ -304,12 +302,15 @@ public class DictionaryLibraryTest
         Assert.DoesNotContain(LibrarySource.Declaration(texts.Library, "DictionaryStorage.clearEntries"), dropped);
         Assert.DoesNotContain(sel.Library.DictionaryCompact, generated);
         Assert.DoesNotContain(LibrarySource.Declaration(sel.Library, "DictionaryStorage.shrinkToFit"), generated);
-        Assert.Equal(DispositionKind.Body, c.Library.DictionaryUnlink.SymbolOf()!.Definition.Kind);
+        Assert.Equal(DispositionKind.Body, c.Library.DictionaryUnlink.SymbolOf(c)!.Definition.Kind);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
     }
 
+    // SPEC 9.4.1: an internal library declaration is accessible in Kotonoha(Kimi) only, so a program naming one is inaccessible: the
+    // storage functions, and a `#Lang` group named as a Type (PLAN G147 D-940: its symbol is a Container, 9.2).
     [Theory]
+    [InlineData("let o: Option<Kimi.BoolFormat> = .None")]
     [InlineData("unsafe => Kimi.DictionaryStorage.unlink(null, 24, 1)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
@@ -322,7 +323,8 @@ public class DictionaryLibraryTest
     [InlineData("let memory = Kimi.Storage.tryAllocateBytes(8)")]
     [InlineData("Kimi.Storage.countOverflow()")]
     [InlineData("Kimi.Storage.allocationSizeExceeded()")]
-    public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
+    [InlineData("Kimi.Storage.clockFailure()")]
+    public void InternalLibraryDeclarationsAreInaccessible(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);

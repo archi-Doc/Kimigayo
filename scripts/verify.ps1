@@ -25,7 +25,8 @@
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
 # parallelization on test collections. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
-# Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
+# Native fixtures build in up to -NativeParallel kimi tatara sessions of the configuration's compiler and run up to -NativeParallel
+# at a time (default up to 4), with individual logs.
 # -NativeReuse <base>/native-results.json reuses that base's passed fixtures whose inputs did not change (verified within 24 h).
 # Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work
 # directory and log; the steps are still recorded in the requested order.
@@ -247,8 +248,13 @@ if (-not $failed -and $VerifyToolchain) {
     $log = Join-Path $evidence 'toolchain.log'
     & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
     $ok = $LASTEXITCODE -eq 0
-    $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
     Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
+    # The compiler's self-check above; the development toolchain's tools and files (Tatara B6b3).
+    $timer = Start-Step 'development toolchain check'
+    $log = Join-Path $evidence 'check-toolchain.log'
+    $checked = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/check-toolchain.ps1') } $log
+    Add-Step 'development toolchain check' $checked $log $timer.Elapsed.TotalSeconds
+    $toolchainVerification = if ($ok -and $checked) { 'passed' } else { 'failed' }
 }
 $runsTests = $Mode -eq 'Session' -or $hasTestSelection -or $TestPurpose -ne 'All'
 if (-not $failed -and $runsTests -and $Mode -eq 'Unit') { Test-Selection $Configuration $filters }
@@ -284,7 +290,7 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $timer = Start-Step "native $pattern"
         $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
         $log = Join-Path $evidence "native$suffix.log"
-        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") -LogDirectory (Join-Path $evidence "native$suffix-fixtures") -Parallel $NativeParallel @reuse } $log
+        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -Configuration $native -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") -LogDirectory (Join-Path $evidence "native$suffix-fixtures") -Parallel $NativeParallel @reuse } $log
         $result = Get-KimiNativeLogResult $log
         $ok = $ok -and $result.hasSuccessLine
         $detail = $result.detail

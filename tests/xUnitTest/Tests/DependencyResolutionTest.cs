@@ -192,7 +192,7 @@ public sealed class DependencyResolutionTest : IDisposable
         var root = this.Write("Root", "root", settings: "TestDependencies={Tests={PackageId=\"tests\" PackageVersion=\"1\" Project=\"../Tests/Tests.kimiproj\"}}");
         var tests = this.Write("Tests", "tests");
         using var exclusive = new FileStream(tests, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        var result = DependencyResolver.Resolve(root, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken, includeTests: false);
+        var result = DependencyResolver.Resolve(root, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken, includeTests: false);
         Assert.True(result.Product.IsResolved);
         Assert.Equal("NotRequested", Failure(result.Test).Code);
     }
@@ -223,6 +223,35 @@ public sealed class DependencyResolutionTest : IDisposable
         Assert.Equal("InvalidConfiguration", Failure(Resolve(root).Product).Code);
     }
 
+    // A dependency's configuration failure fails its load, each note at its file (SPEC 23.1.2): a removed setting (Tatara B6b5) and a key
+    // that is not a name (IMPL 20.1; PLAN G1010), never a reader exception.
+    [Theory]
+    [InlineData("LlvmBin=\"C:/llvm/bin\"", "LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting.")]
+    [InlineData("2=\"a\"", "A setting name in the project file must be a name.", "Failed to deserialize Kimi.ProjectFile value.")]
+    public void ADependencysConfigurationFailureFailsItsLoad(string settings, params string[] notes)
+    {
+        var leaf = this.Write("Leaf", "leaf", settings: settings);
+        var partition = Resolve(this.Write("Root", "root", Edge("Leaf", "Leaf", "leaf"))).Product;
+        Assert.Equal(
+            notes.Select(x => ("InvalidConfiguration", $"Invalid project configuration '{leaf}': {x}")),
+            (partition.Failures ?? []).Select(static x => (x.Code, x.Message)));
+    }
+
+    // SPEC 23.1.2 (PLAN G1010): each read of a dependency, its project file's and its source's, is that input's failure; a read that
+    // fails is never the compiler's fault.
+    [Theory]
+    [InlineData("Leaf.kimiproj")]
+    [InlineData("main.kimi")]
+    public void EachReadOfADependencyIsItsInputFailure(string held)
+    {
+        this.Write("Leaf", "leaf", source: "func one() -> i32 => 1\n");
+        var root = this.Write("Root", "root", Edge("Leaf", "Leaf", "leaf"));
+        using (new FileStream(Path.Combine(this.directory, "Leaf", held), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Equal("InvalidProjectInput", Failure(Resolve(root).Product).Code);
+        }
+    }
+
     private static ResolutionFailure Failure(DependencyPartition partition)
         => Assert.Single(partition.Failures ?? []);
 
@@ -230,7 +259,7 @@ public sealed class DependencyResolutionTest : IDisposable
         => string.Join("; ", (partition.Failures ?? []).Select(static x => x.Message));
 
     private static DependencyResolution Resolve(string path)
-        => DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        => DependencyResolver.Resolve(path, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
 
     private static string Edge(string name, string folder, string id, string version = "1")
         => $"{name}={{PackageId=\"{id}\" PackageVersion=\"{version}\" Project=\"../{folder}/{folder}.kimiproj\"}} ";
@@ -240,7 +269,7 @@ public sealed class DependencyResolutionTest : IDisposable
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"{version}\" Targets={{\"{WindowsProfile.Target}\"}} Dependencies={{{dependencies}}} {settings}");
+        File.WriteAllText(path, $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"{version}\" Targets={{\"{TargetProfile.Windows.Target}\"}} Dependencies={{{dependencies}}} {settings}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), source);
         return path;
     }

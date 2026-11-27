@@ -120,8 +120,20 @@ public class EnumBindingTest
     [InlineData("enum E<T>\n    A(T)\n    public func f() => ()\nE.f()")]
     public void RejectsInvalidDeclarationsAndOriginContracts(string source)
     {
-        var c = CompilationTestHelper.ParseSuccess(source);
-        Assert.False(c.Bind().IsComplete);
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
+    }
+
+    // SPEC 15.3.6, 15.2.3 (R7-E4 E4c, the solved construction's unsolved payload Origin): a group's static Property is no executable
+    // body, so `E.B`'s slot `a` has no local region, and static storage could not hold one: one MissingOriginBinding_Kd at the
+    // construction, a fact-less record.
+    [Fact]
+    public void AConstructionInAStaticPropertyLeavesItsPayloadOriginUnsolved()
+    {
+        const string Source = "enum E {a}\n    A(ref/i32 during a)\n    B\ngroup G\n    public let g = E.B\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.MissingOriginBinding_Kd), error.Code);
+        Assert.Equal(new SourceSpan(Source.IndexOf("E.B", StringComparison.Ordinal), 3), error.Span);
     }
 
     // SPEC 6.5.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload.
@@ -205,16 +217,27 @@ public class EnumBindingTest
         }
     }
 
-    // SPEC 10.5.1, 10.1 (owner decision (1)): a contextual Case is never probed per candidate, so candidates that differ only in its payload
-    // Type are ambiguous even where only one payload Type would fit.
+    // SPEC 10.5.1, 6.5.2, 10.1 (K's G924 text; the owner's O-333 R3 (a), superseding BU-2's owner decision (1), "never probed per
+    // candidate"; PLAN G924 AF-3b, ArgFlow ruling 121): a contextual Case is checked against the expected Type under each remaining
+    // candidate, so a candidate whose payload Type takes no payload is inapplicable: `128` is no `i8` (12.3), so the `i32` candidate is
+    // selected (its result `i32` is the one `s` takes), in either declaration order and inside a Tuple payload; where both
+    // payload Types take it, step 2 of 10.4 finds no candidate best (the invalid twin).
     [Theory]
-    [InlineData("func f(x: Option<i8>) => ()\nfunc f(x: Option<i32>) => ()\nf(.Some(128))", "f(.Some(128))")]
-    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.Some(128))", "f(.Some(128))")]
-    [InlineData("func f(x: Option<(i8, i8)>) => ()\nfunc f(x: Option<(i32, i32)>) => ()\nf(.Some((128, 1)))", "f(.Some((128, 1)))")]
-    public void AContextualCaseIsNotProbedPerCandidate(string source, string at)
+    [InlineData("func f(x: Option<i8>) -> bool => true\nfunc f(x: Option<i32>) -> i32 => 1\nlet r = f(.Some(128))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<i32>) -> i32 => 1\nfunc f(x: Option<i8>) -> bool => true\nlet r = f(.Some(128))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<(i8, i8)>) -> bool => true\nfunc f(x: Option<(i32, i32)>) -> i32 => 1\nlet r = f(.Some((128, 1)))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i64>) => ()\nf(.Some(1))", "f(.Some(1))")]
+    public void AContextualCaseIsCheckedPerCandidate(string source, string? ambiguous)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+        var check = DiagnosticCorpus.Check(source);
+        if (ambiguous is null)
+        {
+            Assert.True(check.Accepted, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
+            return;
+        }
+
+        var error = Assert.Single(check.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), ambiguous), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction takes the expected Type's slots first, then its payloads' evidence by kind,
@@ -280,14 +303,12 @@ public class EnumBindingTest
     [InlineData("func f()\n    let x: Option<i64> = Option.Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option.Some(true)")]
     [InlineData("func f() -> Option<i64> => .Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() -> Two<i64> => Two.Both(\"a\", \"b\")\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(\"a\", \"b\")")]
-    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(.Some(true))\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
+    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(.Some(true))\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeOpt(.Some(true))")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f(b: bool)\n    let x: Two<i64> = Two.Both(b, 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(b, 1)")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() => Two.Both(1, 2.0)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(1, 2.0)")]
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: bool) -> i64 => 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(a, func (v: bool) -> i64 => 1)")]
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let x = Option.Some(identity)\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity")]
     [InlineData("func f()\n    let x = Option.Some(func (v) => v)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
-    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.Some(identity(1))")]
-    [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "takeGeneric(Option.Some(1))")]
     [InlineData("func f()\n    let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    return Option<ref/i32 during a>.None\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.None")]
@@ -306,22 +327,32 @@ public class EnumBindingTest
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
+    // SPEC 10.5.1, 6.5.2 (PLAN G924, the owner's O-341 (a)): after selection a part that no expected Type reaches takes its own Type: a
+    // nested call or construction is resolved with no expected result, its literals defaulting, and that Type binds the slot. Both
+    // were ACaseConstructionReportsItsOwnFailure's rows before G924 (UnresolvedBinding_Kd, UnboundTypeArgument_Kd).
+    [Theory]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n")]
+    [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n")]
+    public void ANestedPartAtAnUnboundSlotTakesItsOwnType(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
+
     // SPEC 15.6.1, 10.2 row 2 (PLAN G585, G430; DECISIONS Q13, R4-M108, R4-M111): a payload borrowed from a body Place, a literal's
     // temporary or a local, that does not outlive the Case's Origin is UnsatisfiedOriginRelation_Kd at the payload, twice: Binding's
     // record and A5's row of the same body chain, the twin pair of PLAN G430. R7's twin removal makes each row one record.
     [Theory]
-    [InlineData("    return Option<ref/i32 during a>.Some(1)\n", "1")]
-    [InlineData("    let n = 1\n    return Option<ref/i32 during a>.Some(n)\n", "n")]
-    public void ABorrowedPayloadThatDoesNotOutliveItsCaseIsTheTwinPair(string body, string at)
+    // R7-O1 H: one record (the twin went) and the Loan conflict at the borrowed Place's end that its node hid (counted, Q13).
+    [InlineData("    return Option<ref/i32 during a>.Some(1)\n", "1", "1")]
+    [InlineData("    let n = 1\n    return Option<ref/i32 during a>.Some(n)\n", "n", "let n = 1")]
+    public void ABorrowedPayloadThatDoesNotOutliveItsCaseIsTheTwinPair(string body, string at, string conflict)
     {
         var source = "func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n" + body + "public func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at)];
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), conflict), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at)];
         Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch, and only it: the Field
-    // has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
+    // has no stored Type, which its constructor does not require (SPEC 23.1.2; DECISIONS Q13).
     [Fact]
     public void ACaseConstructionInAFieldInitializerReportsItsOwnFailure()
     {
@@ -333,7 +364,7 @@ public class EnumBindingTest
 
     // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381, G826): a payload erased in a Field initializer, bound with the Field's header before
     // the capability engine judges, is one located Unsupported_Kd at a converted Function Item with bound Type arguments, the only
-    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13). It was
+    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; DECISIONS Q13). It was
     // the construction's TypeMismatch_Kd; typed and local twins are valid. A Closure there captures nothing (SPEC 7.7.2, 6.1.3), so its
     // environment is empty and decided (it was the located limit before G826). In a group the Field is static storage: its Closure
     // storage limit sits at the `let`, with the located limit at a use, as its annotated twin has them (v45; it was one located limit at
@@ -358,7 +389,7 @@ public class EnumBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64) -> i32\n    " + statement + "\n    return 0\n");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var construction = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => BoundEnumConstruction.Of(x)).Single(x => x is not null)!;
+        var construction = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => BoundEnumConstruction.Of(c.Binding, x)).Single(x => x is not null)!;
         Assert.Equal("i64", construction.Type.Components[0].Name);
     }
 

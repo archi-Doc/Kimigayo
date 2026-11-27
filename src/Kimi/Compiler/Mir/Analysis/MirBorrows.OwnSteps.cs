@@ -167,8 +167,10 @@ internal sealed partial class MirBorrows
             for (var i = 0; i <= this.body.Blocks[block].Count; i++)
             {
                 this.Work++;
+                var site = this.OpenAt(this.Location(block, i));
                 visitor.At(new(block, i));
                 MirUses.ForEach(cases, new(block, i), ref visitor);
+                types.CloseSite(site);
                 if (visitor.Found)
                 {
                     return true;
@@ -218,12 +220,9 @@ internal sealed partial class MirBorrows
             return false;
         }
 
-        for (var i = 0; i < steps.Length; i++)
+        if (!Meets(steps, this.loanSteps.AsSpan(owner.Start, owner.Count)))
         {
-            if (!Meets(steps[i], this.loanSteps[owner.Start + i]))
-            {
-                return false;
-            }
+            return false;
         }
 
         if (kind is AccessKind.UniqueBorrow or AccessKind.Activate or AccessKind.ActivateInPlace)
@@ -242,7 +241,8 @@ internal sealed partial class MirBorrows
         return true;
     }
 
-    // The departure test's uses of one location (MayDepart): each Place a use reports, until one may depart.
+    // The departure test's uses of one location (MayDepart): each Place a use reports, an Opaque site's undecided use at its root
+    // (MirDescriptors.Judged, DECISIONS Z17), until one may depart.
     private struct Departing(MirBorrows owner) : IMirUses
     {
         private MirLocation at;
@@ -257,7 +257,8 @@ internal sealed partial class MirBorrows
         {
         }
 
-        public void Place(MirPlace place, MirAccess access, MirRefKind kind) => this.Found = this.Found || owner.MayDepart(this.at, place, access, kind);
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+            => this.Found = this.Found || owner.MayDepart(this.at, MirDescriptors.Judged(place, access), access, kind);
 
         internal void At(MirLocation at) => this.at = at;
     }

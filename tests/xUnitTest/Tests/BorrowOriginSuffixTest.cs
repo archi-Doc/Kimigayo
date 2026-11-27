@@ -72,6 +72,7 @@ public class BorrowOriginSuffixTest
     [InlineData("ref/T during f(1)")]
     [InlineData("ref/T during a and b")]
     [InlineData("ref/T during a.b.c")]
+    [InlineData("ref/T during t.0")]
     [InlineData("owner/ref/T during a")]
     [InlineData("obj/T during a")]
     [InlineData("ref/T from a")]
@@ -147,15 +148,14 @@ public class BorrowOriginSuffixTest
     [InlineData("func f(x: i32) => x@ref{a}/i32", null)]
     [InlineData("func f<T>(x: ref/i32 during a, y: ref/i32 during b)\n    T is ref/i32 during a and b\n    ()", null)]
     [InlineData("struct View {source}\n    let item: ref/i32 during source\nfunc f<T>(x: ref/i32 during a, view: View{v})\n    T is ref/i32 during a and v.source\n    ()", null)]
-    [InlineData("func f(x: ref/i32? during a) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
-    [InlineData("struct V {source}\n    let value: ref/i32 during source\nfunc f(view: V, x: ref/i32? during view.source) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
+    [InlineData("func f(x: ref/i32? during a) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", null)] // R7-O1 H: A5's record has no OmittedResultNote (Binding's, a named text move).
+    [InlineData("struct V {source}\n    let value: ref/i32 during source\nfunc f(view: V, x: ref/i32? during view.source) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", null)]
     public void InvalidUsesKeepTheirFailure(string source, string? note)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         var failures = c.Binding.Issues.ToArray();
-        c.Binding.ReportDiagnostics();
-        var messages = TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Explanation).ToArray();
+        var messages = CompilationTestHelper.PublishedErrors(c).Select(x => x.Explanation).ToArray();
         Assert.True(note is null || messages.Any(x => x.Contains(note, StringComparison.Ordinal)), string.Join("\n", messages));
         Assert.Equal(failures, c.Binding.Issues);
     }

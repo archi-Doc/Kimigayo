@@ -16,7 +16,7 @@ namespace Kimi.Compiler.Backend;
 //   each but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
 //   layer's referent; a Builtin leaf through the operator table's column of its Type under the item's mode (Leaf); any other part its
 //   target's run (Witness: a comparison item, a Mapping item or a witness body, its virtual slot included) on the two part addresses.
-// - an arithmetic Contract (ArithmeticContracts.IsArithmetic): its MIR operator (MirTypes.ArithmeticOperation, SPEC 13.3.3) through the operator table's row, as a
+// - an arithmetic Contract (KimiLibraryCatalog.IsArithmeticContract): its MIR operator (MirTypes.ArithmeticOperation, SPEC 13.3.3) through the operator table's row, as a
 //   statement's, on the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
 // A node the collector refuses (a None leaf, no node) is its record at the item's admission, which stops generation; an arithmetic
 // operation the capability table refuses is the collector's record at each requesting site, whose edge admits no item.
@@ -52,7 +52,7 @@ internal sealed partial class FunctionCodegen
         }
 
         var contract = TyCtxt.ShimContract(key.Symbol!);
-        this.Returned(ArithmeticContracts.IsArithmetic(contract) ? this.Arithmetic(contract, self) : this.Compare(contract, (ComparisonMode)key.Variant, self));
+        this.Returned(KimiLibraryCatalog.IsArithmeticContract(contract) ? this.Arithmetic(contract, self) : this.Compare(contract, (ComparisonMode)key.Variant, self));
     }
 
     // A comparison's or an arithmetic operation's value returned (ReturnValue) and the function ended; nothing after a record (no value).
@@ -73,9 +73,9 @@ internal sealed partial class FunctionCodegen
         Value left = new('p', 0);
         Value right = new('p', 1);
         var node = this.collector.Comparison(this.item);
-        if (node?.Kind != ComparisonKind.Composite)
+        if (node.Kind != ComparisonKind.Composite)
         {
-            if (node?.Kind == ComparisonKind.Builtin)
+            if (node.Kind == ComparisonKind.Builtin)
             {
                 return this.Leaf(self, contract, mode, left, right);
             }
@@ -225,7 +225,7 @@ internal sealed partial class FunctionCodegen
     // (Borrow) or none (Set), returned by the signature. A Field the representative Self does not store is a broken contract.
     private void Storage(BindingSymbol? field, PropertyWitnessKind access, BoundType self)
     {
-        if (AdtDef.FieldOwner(self, field) is not { } owner || AdtDef.FieldType(owner.Layer, owner.Index) is not { } stored)
+        if (AdtDef.FieldOwner(this.typeContext, self, field) is not { Index: { } index } owner || AdtDef.FieldType(this.typeContext, owner.Layer, index) is not { } stored)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector admitted the item on the Field (Agrees).
             return;
@@ -237,7 +237,7 @@ internal sealed partial class FunctionCodegen
             return; // Recorded: the collector laid out the representative Self (DECISIONS R5-M44).
         }
 
-        var address = this.Offset(new('p', this.Input(0)), record.Layout.FieldOffsets.Span[owner.Index]);
+        var address = this.Offset(new('p', this.Input(0)), record.Layout.FieldOffsets.Span[index]);
         if (access == PropertyWitnessKind.StorageSet && !this.Replace(type!, lowering, address))
         {
             return; // Recorded.
@@ -263,7 +263,7 @@ internal sealed partial class FunctionCodegen
     // one from its address; a zero-sized input has no parameter. False after a record.
     private bool Replace(BoundType type, ValueLowering lowering, Value address)
     {
-        if (MirTypes.MayNeedDrop(type, this.seen))
+        if (MirTypes.MayNeedDrop(this.typeContext, type, this.seen))
         {
             var targets = this.collector.Set.Targets(this.item);
             if (targets.Length == 0)

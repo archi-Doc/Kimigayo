@@ -14,8 +14,6 @@ public sealed partial class Binding
 
     // SPEC 8.13.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly SpecializationListRows specializationsByOriginal;
-    // Retained across binds: a warm rebind reuses each specialization's slot arrays and the sibling lists.
-    private readonly Dictionary<FunctionKoto, Specialization> specializationStorage = new(ReferenceEqualityComparer.Instance);
 
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
@@ -227,11 +225,13 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!this.specializationStorage.TryGetValue(function, out var entry) || entry.Arguments.Length != function.GenericArguments.Count)
+            ref var kept = ref SpecializationStorageRows.Slot(function);
+            if (kept is null || kept.Arguments.Length != function.GenericArguments.Count)
             {
-                this.specializationStorage[function] = entry = new(new BoundType?[function.GenericArguments.Count], new BoundLength?[function.GenericArguments.Count]);
+                kept = new(new BoundType?[function.GenericArguments.Count], new BoundLength?[function.GenericArguments.Count]);
             }
 
+            var entry = kept;
             var arguments = entry.Arguments;
             var lengths = entry.Lengths;
             Array.Clear(arguments);
@@ -269,26 +269,38 @@ public sealed partial class Binding
             BindingSymbol? original = null;
             var matches = 0;
             var candidates = 0; // SPEC 8.13.1: same Name, kind and generic slots; input structure is matched below.
+            var restated = new FnSig(function);
+            // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the candidates' inputs form at the arguments in a site frame at the specialization
+            // where none is open, so a Type past the limit formed there is refused at it (the Origin completion's frame is its own).
+            var site = this.OpenQuerySite(function);
             for (var candidate = symbol.Scope.Values.GetValueOrDefault(function.Name); candidate is not null; candidate = candidate.Next)
             {
-                if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary ||
-                    ordinary.GenericArguments.Count != arguments.Length || !SameSlotKinds(ordinary, lengths) || candidate.ReceiverIndex != symbol.ReceiverIndex)
+                if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary)
+                {
+                    continue;
+                }
+
+                var target = new FnSig(ordinary);
+                if (target.GenericCount != arguments.Length || !SameSlotKinds(ordinary, lengths) || target.ReceiverIndex != restated.ReceiverIndex)
                 {
                     continue;
                 }
 
                 candidates++;
-                if (ordinary.Parameters.Count != function.Parameters.Count)
+                if (target.InputCount != restated.InputCount)
                 {
                     continue; // An input-structure mismatch, not a missing target.
                 }
 
+                // A restated input that failed to bind is read first, so the match forms nothing over it and rests below (SPEC
+                // 23.1.2; PrepareVirtualOverrides' order): a Type the restated input's walk refused is never formed again from the
+                // original's input.
                 var equal = true;
-                for (var p = 0; p < function.Parameters.Count; p++)
+                for (var p = 0; p < restated.InputCount; p++)
                 {
-                    equal &= ordinary.Parameters[p].Type.BoundType is { } input &&
-                        this.SubstituteType(input, ordinary, arguments, lengths) is { } substituted && function.Parameters[p].Type.BoundType is { } actual &&
-                        SignatureEquals(substituted, actual, ordinary, function);
+                    equal &= restated.Input(p) is { } actual && target.Input(p) is { } input &&
+                        this.SubstituteType(input, ordinary, arguments, lengths) is { } substituted &&
+                        SignatureEquals(substituted, actual, target.Binder, restated.Binder);
                 }
 
                 if (equal)
@@ -298,6 +310,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.CloseQuerySite(site);
             if (matches != 1)
             {
                 // SPEC 23.1.2: an input-structure mismatch over a restated input that failed to bind rests on the input's record.
@@ -309,7 +322,7 @@ public sealed partial class Binding
                 // SPEC 8.13.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
                 if (!RestsOn(function, failed))
                 {
-                    this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                    this.Record(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch, []);
                 }
 
                 continue;
@@ -326,7 +339,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.13.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
-            var constraints = this.CheckConstraints(definition.TypeConstraints, new CallSubstitution(definition, arguments, lengths), scope);
+            var constraints = this.CheckConstraints(definition.TypeConstraints, new CallSubstitution(definition, arguments, lengths), scope, function);
             if (constraints == ConstraintProof.Unknown && NamesHeaderOrigin(arguments, function))
             {
                 // SPEC 8.13.2 (PLAN G863): the original admits only the bindings its Constraints allow, so an undecided Constraint over
@@ -341,8 +354,7 @@ public sealed partial class Binding
 
             if (constraints != ConstraintProof.Proven)
             {
-                _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true)
-                    : this.Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
+                _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true) : this.RecordConstraint(function, constraints, []);
                 continue;
             }
 
@@ -370,7 +382,7 @@ public sealed partial class Binding
             {
                 if (originMismatch is { } contract)
                 {
-                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                    this.RecordOrigin(function, new(null, contract));
                 }
                 else
                 {
@@ -530,7 +542,7 @@ public sealed partial class Binding
     }
 
     /// <summary>The `specializations` family's one accessor (DECISIONS BU-220): a pass family, a verified explicit specialization's entry
-    /// (the kept object specializationStorage holds), in the specialization's module's NodeColumns at its SyntaxId; absent after a pass until
+    /// (the kept object SpecializationStorageRows holds), in the specialization's module's NodeColumns at its SyntaxId; absent after a pass until
     /// the column's first write. Its members keep the names its readers use.</summary>
     private readonly struct SpecializationRows(Binding binding)
     {
@@ -562,5 +574,14 @@ public sealed partial class Binding
             => original.Declaration.SyntaxOwner is { } table ? table.Hir.Families.SpecializationsByOriginal.Get(original.Declaration.SyntaxId) : null;
 
         internal static bool TryGetValue(BindingSymbol original, [NotNullWhen(true)] out List<FunctionKoto>? siblings) => (siblings = GetValueOrDefault(original)) is not null;
+    }
+
+    /// <summary>The `specializationStorage` family's one accessor (DECISIONS BU-220): a kept family, a specialization's entry, made at its
+    /// first verification and kept in its declaration's module's NodeColumns at its SyntaxId, so a warm rebind reuses its slot arrays;
+    /// PrepareSpecializations reads and writes it for the running pass's specializations only.</summary>
+    private readonly struct SpecializationStorageRows
+    {
+        // The kept slot, read and written before the column's next Ref (DeclareKept's form).
+        internal static ref Specialization? Slot(FunctionKoto function) => ref HirTables.Of(function).Families.SpecializationStorage.Ref(function.SyntaxId);
     }
 }

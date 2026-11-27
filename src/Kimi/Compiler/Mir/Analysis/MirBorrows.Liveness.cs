@@ -34,10 +34,11 @@ internal sealed partial class MirBorrows
             ref readonly var data = ref this.body.Blocks[block];
             for (var i = 0; i <= data.Count; i++)
             {
-                var start = this.touchCount;
+                var (start, site) = (this.touchCount, this.OpenAt(this.Location(block, i)));
                 visitor.At(block, i < data.Count ? statements[data.Start + i].Kind : MirStatementKind.Assign);
                 MirUses.ForEach(cases, new(block, i), ref visitor);
                 this.touched[this.Location(block, i)] = (start, this.touchCount - start);
+                types.CloseSite(site);
             }
         }
 
@@ -165,7 +166,7 @@ internal sealed partial class MirBorrows
         {
         }
 
-        // An Opaque site's roots, read, written and borrowed, are used.
+        // An Opaque site's uses, each undecided (read, written and borrowed), are used at their roots.
         public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var whole = place.Projection == 0;

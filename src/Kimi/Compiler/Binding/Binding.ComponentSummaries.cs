@@ -21,7 +21,10 @@ namespace Kimi.Compiler;
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
 // pair target of its declaration; a summary belongs to one capability epoch (ClearCapabilityResults ends it); the declarations one solve
 // reaches are iterated together from no exclusion to their least fixed point, which a family cut keeps finite; a warm rebind allocates
-// nothing.
+// nothing; a nested definition's inherited arguments are parts (InheritedArguments), except for a definition the declaration D's own
+// instance holds, read in D's formals: it inherits only D's slots and static (SPEC 6.3.3), which the instance's own arguments already
+// are, so storage adds nothing for them (InheritedArguments' withheld answer is for a Type read outside its frame, which a summary's walk
+// in D's formals never is).
 // Must not instantiate storage, decide Copy, re-derive a leaf rule, record a Language error or cap a result silently.
 public sealed partial class Binding
 {
@@ -49,7 +52,8 @@ public sealed partial class Binding
     private static BoundType? StoredTypeOf(Koto stored) => stored.BoundType ?? (stored as PropertyKoto)?.BoundSymbol?.Type;
 
     // Owned of D<A, o> (SPEC 15.2.3): Error absorbs, then Refuted, then a site (L), then Unknown. An Error rests on the stored Type that
-    // decided it, a site's Unknown on the site (ReadVerdict).
+    // decided it, a site's Unknown on the site (ReadVerdict). Each Type argument (member i), Origin argument and projection, in that
+    // numbering, is a part (CapabilityWork.Part); what the summary decides in D's formals is no part of an instance.
     private ConstraintProof SummaryCapability(CapabilityWork work, DeclarationContainerKoto container)
     {
         if (container.BoundSymbol is not { Adt: not null } symbol)
@@ -64,30 +68,43 @@ public sealed partial class Binding
         }
 
         var result = summary.ExcludesOwned ? ConstraintProof.Refuted : summary.Unresolved ? ConstraintProof.Unknown : ConstraintProof.Proven;
-        for (var i = 0; i < work.Type.Components.Count; i++)
+        var types = work.Type.Components;
+        var origins = work.Type.OriginArguments;
+        for (var i = 0; i < types.Count; i++)
         {
             // Every complete Type argument is retained, including unused and inherited slots.
-            result = CombineProof(result, this.RequestCapability(work.Type.Components[i], work.Intrinsic, work.Scope), true);
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.RequestCapability(types[i], work.Intrinsic, work.Scope, QuerySite.Nested);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(i, proof, this.ScopeReads.Origin, saved, types[i]);
         }
 
-        for (var i = 0; i < work.Type.OriginArguments.Count; i++)
+        for (var i = 0; i < origins.Count; i++)
         {
-            result = CombineProof(result, this.StaticOrigin(work.Type.OriginArguments[i], work.Scope), true);
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.StaticOrigin(origins[i], work.Scope);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(types.Count + i, proof, this.ScopeReads.Origin, saved, null);
         }
 
         for (var i = 0; i < summary.Projections.Count; i++)
         {
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
             var projection = this.StoredType(summary.Projections[i], work.Type);
             var proof = projection is null ? ConstraintProof.Unknown
-                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, projection, contract: work.Intrinsic)), work.Scope);
+                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, projection, contract: work.Intrinsic)), work.Scope, QuerySite.Nested);
             result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(types.Count + origins.Count + i, proof, this.ScopeReads.Origin, saved, projection);
         }
 
         if (result == ConstraintProof.Proven)
         {
             // The declaration's stored instances are formed once, in its formals (StorageFormation). The instance judged adds only its own
             // formation (InstanceCapability), which proves the declaration's Constraints at its arguments (SPEC 8.6.1, 8.3.3 Finality).
-            result = this.RequestCapability(this.SelfType(symbol), work.Intrinsic, this.ConstraintScope(container), derivation: true);
+            result = this.RequestCapability(this.SelfType(symbol), work.Intrinsic, this.ConstraintScope(container), QuerySite.Nested, derivation: true);
         }
 
         return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
@@ -105,13 +122,13 @@ public sealed partial class Binding
         var result = ConstraintProof.Proven;
         for (var i = 0; i < summary.Instances.Count; i++)
         {
-            result = CombineProof(result, this.InstanceFormation(summary.Instances[i], work.Scope), true);
+            result = CombineProof(result, this.InstanceFormation(summary.Instances[i], work.Scope, QuerySite.Nested), true);
         }
 
         for (var i = 0; i < summary.Components.Count; i++)
         {
             var component = summary.Components[i].Declaration;
-            result = CombineProof(result, this.RequestCapability(this.SelfType(component), work.Intrinsic, this.ConstraintScope(component.Declaration), derivation: true), true);
+            result = CombineProof(result, this.RequestCapability(this.SelfType(component), work.Intrinsic, this.ConstraintScope(component.Declaration), QuerySite.Nested, derivation: true), true);
         }
 
         return result;
@@ -351,7 +368,7 @@ public sealed partial class Binding
         }
 
         this.summaryParts.Set(type, query, true);
-        if (TryLeafCapability(type, IntrinsicKind.Owned, out var leaf))
+        if (this.TryLeafCapability(type, IntrinsicKind.Owned, out var leaf))
         {
             summary.ExcludesOwned |= leaf == ConstraintProof.Refuted; // An Owned leaf is never Error.
             return;
@@ -385,7 +402,17 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (part, _, _) in new CapabilityParts(type))
+        // A nested definition's inherited arguments are parts (InheritedArguments); a withheld instance is the located limit at the
+        // stored Type. A definition this declaration's own instance holds, in its identity, adds nothing (the contract's invariant).
+        var own = type is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem, InstanceContext: null, Symbol: { } nested } &&
+            ReferenceEquals(this.types.EnclosingDeclaration(nested), summary.Declaration);
+        if ((own ? BoundType.Unit : this.InheritedArguments(type)) is not { } inherited)
+        {
+            this.AddSite(summary, stored);
+            return;
+        }
+
+        foreach (var (part, _, _) in new CapabilityParts(type, inherited))
         {
             if (part is not null)
             {

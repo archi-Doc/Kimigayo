@@ -20,13 +20,10 @@ public enum AcquisitionMode : byte
 
 public sealed partial class Binding
 {
-    private const string ParameterShapeNote = "The overlap comes from a generic slot or a non-constant length: the check unifies the Types without Constraints, enclosing Type arguments or length values";
-
-    // SPEC 7.4: the conflicting parameters of a later declaration, or of a group gathered at a use, recorded only when the check
-    // fails. The stores are reused across passes, so a warm rebind of the failure allocates nothing.
-    private readonly Dictionary<Koto, (int Start, int Count)> parameterShapeConflicts = new(ReferenceEqualityComparer.Instance);
-    private readonly List<ParameterShapeConflict> parameterShapeStore = [];
-    private readonly List<ParameterShapeParty> parameterShapePartyStore = [];
+    // SPEC 7.4: the check's scratch, one conflicting parameter's parties while they are gathered and its facts while they are recorded
+    // (RecordParameterShapes empties both): reused across passes, so a warm rebind of the failure allocates nothing.
+    private readonly List<(FunctionKoto Function, int Index, int Role)> parameterShapeParties = [];
+    private readonly List<ProblemFact> parameterShapeFacts = [];
     private readonly List<BindingSymbol> parameterShapeScratch = [];
 
     [Flags]
@@ -121,12 +118,13 @@ public sealed partial class Binding
     // length and the same kinds position by position; a length slot takes no explicit Type argument.
     private static bool SameExplicitArgumentShape(FunctionKoto a, FunctionKoto b)
     {
-        if (a.GenericArguments.Count != b.GenericArguments.Count)
+        var count = new FnSig(a).GenericCount;
+        if (count != new FnSig(b).GenericCount)
         {
             return false;
         }
 
-        for (var i = 0; i < a.GenericArguments.Count; i++)
+        for (var i = 0; i < count; i++)
         {
             if (a.GenericArguments[i] is LengthParameterKoto != b.GenericArguments[i] is LengthParameterKoto)
             {
@@ -137,8 +135,48 @@ public sealed partial class Binding
         return true;
     }
 
-    private static string Ground(in ParameterShapeParty party)
-        => party.Name is { } name ? $"the external name {name}" : $"position {party.Position} of {(party.BoundCall ? "a bound" : "an unbound")} call";
+    // SPEC 7.4: a party's ground of correspondence, its Related role (RecordParameterShapes), read from its parameter's syntax.
+    private static string Ground(FunctionKoto function, int index, long role)
+        => role == 1 ? $"the external name {function.Parameters[index].ExternalName}"
+            : $"position {PositionOf(function, index, role == 2 ? new FnSig(function).ReceiverIndex : -1)} of {(role == 2 ? "a bound" : "an unbound")} call";
+
+    // A parameter's position among the positional parameters of its function, the receiver excepted when it is given.
+    private static int PositionOf(FunctionKoto function, int index, int receiver)
+    {
+        var position = 0;
+        for (var i = 0; i < index; i++)
+        {
+            if (i != receiver && AllowsPositionalArgument(function, i))
+            {
+                position++;
+            }
+        }
+
+        return position;
+    }
+
+    // The function and index of a parameter whose Type syntax a party's fact names.
+    private static (FunctionKoto Function, int Index) PartyParameter(Koto type)
+    {
+        var node = type.Parent;
+        while (node is not (null or FunctionKoto))
+        {
+            node = node.Parent;
+        }
+
+        if (node is FunctionKoto function)
+        {
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (ReferenceEquals(function.Parameters[i].Type, type))
+                {
+                    return (function, i);
+                }
+            }
+        }
+
+        throw new InvalidOperationException("A parameter shape party names no parameter Type (InternalInvariant).");
+    }
 
     // Source order, with the declarations of the owning Contract after those it inherits. The lists are tiny, and an insertion
     // sort needs no comparer delegate, so a warm bind allocates nothing.
@@ -222,7 +260,7 @@ public sealed partial class Binding
         mode = other = default;
         shape = default;
         conservative = false;
-        if (earlier.Parameters[i].Type.BoundType is not { } ta || later.Parameters[j].Type.BoundType is not { } tb)
+        if (new FnSig(earlier).Input(i) is not { } ta || new FnSig(later).Input(j) is not { } tb)
         {
             return false;
         }
@@ -258,10 +296,10 @@ public sealed partial class Binding
 
     // SPEC 7.4: appends to the party store every parameter of `earlier` that corresponds to parameter j of `later` and conflicts
     // with it, in the unbound sequence, the bound sequence and by external name. The first conflict supplies the record's facts.
-    private void CollectParameterShapeParties(FunctionKoto earlier, BindingSymbol earlierSymbol, FunctionKoto later, BindingSymbol laterSymbol, int j, ref ParameterShapeConflict facts, ref bool found)
+    private void CollectParameterShapeParties(FunctionKoto earlier, FunctionKoto later, int j, ref ParameterShapeConflict facts, ref bool found)
     {
-        var earlierReceiver = earlierSymbol.ReceiverIndex;
-        var laterReceiver = laterSymbol.ReceiverIndex;
+        var earlierReceiver = new FnSig(earlier).ReceiverIndex;
+        var laterReceiver = new FnSig(later).ReceiverIndex;
         var receivers = earlierReceiver >= 0 && laterReceiver >= 0;
         if (AllowsPositionalArgument(later, j))
         {
@@ -272,7 +310,7 @@ public sealed partial class Binding
                 var at = ParameterAt(earlier, bound, earlierReceiver);
                 if (at >= 0)
                 {
-                    this.AddParameterShapeParty(earlier, at, later, j, true, bound, null, ref facts, ref found);
+                    this.AddParameterShapeParty(earlier, at, later, j, 2, ref facts, ref found);
                 }
             }
 
@@ -281,7 +319,7 @@ public sealed partial class Binding
             var i = ParameterAt(earlier, position, -1);
             if (i >= 0 && (i != earlierReceiver || j != laterReceiver))
             {
-                this.AddParameterShapeParty(earlier, i, later, j, false, position, null, ref facts, ref found);
+                this.AddParameterShapeParty(earlier, i, later, j, 3, ref facts, ref found);
             }
         }
 
@@ -291,24 +329,10 @@ public sealed partial class Binding
             {
                 if (i != earlierReceiver && earlier.Parameters[i].ExternalName == name)
                 {
-                    this.AddParameterShapeParty(earlier, i, later, j, false, -1, name, ref facts, ref found);
+                    this.AddParameterShapeParty(earlier, i, later, j, 1, ref facts, ref found);
                     break;
                 }
             }
-        }
-
-        static int PositionOf(FunctionKoto function, int index, int receiver)
-        {
-            var position = 0;
-            for (var i = 0; i < index; i++)
-            {
-                if (i != receiver && AllowsPositionalArgument(function, i))
-                {
-                    position++;
-                }
-            }
-
-            return position;
         }
 
         static int ParameterAt(FunctionKoto function, int position, int receiver)
@@ -325,33 +349,57 @@ public sealed partial class Binding
         }
     }
 
-    private void AddParameterShapeParty(FunctionKoto earlier, int i, FunctionKoto later, int j, bool boundCall, int position, string? name, ref ParameterShapeConflict facts, ref bool found)
+    // A party: the earlier parameter's Type syntax as a Related fact whose role is its ground (1 by external name, 2 by position in a bound
+    // call, 3 in an unbound call), once per earlier parameter; the first conflict supplies the problem's other facts.
+    private void AddParameterShapeParty(FunctionKoto earlier, int i, FunctionKoto later, int j, int role, ref ParameterShapeConflict facts, ref bool found)
     {
-        // One party per earlier parameter: a pair that corresponds both by position and by name is recorded once.
-        for (var p = this.parameterShapePartyStore.Count - 1; p >= facts.PartyStart; p--)
+        foreach (var party in this.parameterShapeParties)
         {
-            var party = this.parameterShapePartyStore[p];
             if (ReferenceEquals(party.Function, earlier) && party.Index == i)
             {
-                return;
+                return; // A pair that corresponds both by position and by name is recorded once.
             }
         }
 
-        if (!this.ParameterShapesConflict(earlier, i, later, j, out var mode, out var other, out var shape, out var conservative))
+        if (!this.ParameterShapesConflict(earlier, i, later, j, out var mode, out var other, out var shape, out _))
         {
             return;
         }
 
-        this.parameterShapePartyStore.Add(new(earlier, i, boundCall, position, name));
+        this.parameterShapeParties.Add((earlier, i, role));
         if (!found)
         {
             found = true;
-            facts = facts with { Mode = mode, Other = other, Key = shape.Key, Target = shape.Target, Conservative = conservative };
+            facts = new(mode, other, shape.Key, shape.Target);
         }
     }
 
-    // SPEC 7.4: the declarations of one group in source order; one record per corresponding parameter of each later declaration,
-    // with the overlapping earlier parameters as its parties. `subject` chooses the failed node for a declaration outside `owner`.
+    // SPEC 7.4: one conflicting parameter's problem (or a gathered use's): a Reason fact packing its two modes and its matching key, the
+    // conflicting parameter or use (Related, role 0), its parties (AddParameterShapeParty) and the Type the keys overlap at (Key) when the
+    // key has one. Its condition is the report's (a further problem at the subject, such as a refining Contract's next inherited conflict).
+    private void RecordParameterShapes(Koto subject, Koto at, in ParameterShapeConflict conflict, bool unresolved)
+    {
+        var facts = this.parameterShapeFacts;
+        facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(subject), (long)conflict.Mode | ((long)conflict.Other << 8) | ((long)conflict.Key << 16)));
+        facts.Add(new(ProblemFactKind.Related, this.FactSite(at), 0));
+        foreach (var (function, index, role) in this.parameterShapeParties)
+        {
+            facts.Add(new(ProblemFactKind.Related, this.FactSite(function.Parameters[index].Type), role));
+        }
+
+        if (conflict.Target is { } target)
+        {
+            facts.Add(new(ProblemFactKind.Key, facts[1].Site, this.report.Keep(target)));
+        }
+
+        this.RecordNumbered(subject, BindingFailure.ParameterShapeMismatch, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(facts), unresolved);
+        facts.Clear();
+        this.parameterShapeParties.Clear();
+    }
+
+    // SPEC 7.4: the declarations of one group in source order; one problem per corresponding parameter of each later declaration, with
+    // the overlapping earlier parameters as its parties. `subject` chooses the failed node for a declaration outside `owner`: a
+    // requirement inherited by refinement is reported at the refining Contract, one problem per conflicting inherited requirement.
     private void ValidateParameterShapes(IReadOnlyList<BindingSymbol> members, Koto? owner)
     {
         for (var b = 0; b < members.Count; b++)
@@ -361,39 +409,28 @@ public sealed partial class Binding
                 continue;
             }
 
-            var start = this.parameterShapeStore.Count;
+            var subject = owner is not null && !ReferenceEquals(later.Parent, owner) ? owner : later;
             for (var j = 0; j < later.Parameters.Count; j++)
             {
-                var facts = new ParameterShapeConflict(later.Parameters[j].Type, default, default, default, null, false, false, false, this.parameterShapePartyStore.Count, 0);
+                this.parameterShapeParties.Clear();
+                var facts = default(ParameterShapeConflict);
                 var found = false;
                 for (var a = 0; a < b; a++)
                 {
                     if (members[a].Declaration is FunctionKoto earlier && !earlier.IsSpecialization)
                     {
-                        this.CollectParameterShapeParties(earlier, members[a], later, members[b], j, ref facts, ref found);
+                        this.CollectParameterShapeParties(earlier, later, j, ref facts, ref found);
                     }
                 }
 
                 if (found)
                 {
-                    this.parameterShapeStore.Add(facts with { PartyCount = this.parameterShapePartyStore.Count - facts.PartyStart });
+                    this.RecordParameterShapes(subject, later.Parameters[j].Type, facts, false);
                 }
             }
-
-            if (this.parameterShapeStore.Count == start)
-            {
-                continue;
-            }
-
-            // A requirement inherited by refinement is reported at the refining Contract, which keeps the first explanation.
-            var subject = owner is not null && !ReferenceEquals(later.Parent, owner) ? owner : later;
-            if (ReferenceEquals(subject, later) || !this.parameterShapeConflicts.ContainsKey(subject))
-            {
-                this.parameterShapeConflicts[subject] = (start, this.parameterShapeStore.Count - start);
-            }
-
-            this.Fail(subject, BindingFailure.ParameterShapeMismatch);
         }
+
+        this.parameterShapeParties.Clear();
     }
 
     // The declarations of one scope's Name chain, in source order; a Contract's requirements are checked with their inherited ones.
@@ -443,9 +480,10 @@ public sealed partial class Binding
 
     // SPEC 7.4, 9.5.1, 9.6: a group gathered at a use from several declaration sources is checked there, with the use as the
     // subject and one record relating every overlapping declaration; its arguments play no part.
-    private bool CheckGatheredParameterShapes(Koto use, in FunctionGroup members, bool aliasStage)
+    private bool CheckGatheredParameterShapes(Koto use, in FunctionGroup members)
     {
-        var facts = new ParameterShapeConflict(use is MemberAccessKoto access ? access.Right : use, default, default, default, null, false, true, aliasStage, this.parameterShapePartyStore.Count, 0);
+        this.parameterShapeParties.Clear();
+        var facts = default(ParameterShapeConflict);
         var found = false;
         var b = -1;
         foreach (var laterMember in members)
@@ -467,7 +505,7 @@ public sealed partial class Binding
 
                     if (earlierMember.Declaration is FunctionKoto earlier)
                     {
-                        this.CollectParameterShapeParties(earlier, earlierMember, later, laterMember, j, ref facts, ref found);
+                        this.CollectParameterShapeParties(earlier, later, j, ref facts, ref found);
                     }
                 }
             }
@@ -475,70 +513,67 @@ public sealed partial class Binding
 
         if (!found)
         {
+            this.parameterShapeParties.Clear();
             return false;
         }
 
-        this.parameterShapeConflicts[use] = (this.parameterShapeStore.Count, 1);
-        this.parameterShapeStore.Add(facts with { PartyCount = this.parameterShapePartyStore.Count - facts.PartyStart });
-        this.Fail(use, BindingFailure.ParameterShapeMismatch, true);
+        this.RecordParameterShapes(use, use is MemberAccessKoto access ? access.Right : use, facts, true);
         return true;
     }
 
-    // SPEC 7.4: one record per conflicting parameter, located at its Type (or at the use), with both modes, the ground of
-    // correspondence and the unified key as facts and the overlapping earlier parameters as related locations.
-    private void ReportParameterShapes(Koto node, DiagnosticRequirement requirement, (int Start, int Count) range)
+    // SPEC 7.4: a conflicting parameter's record, located at it, with both modes, the ground of correspondence and the matching key as
+    // facts and the overlapping earlier parameters as related locations (RecordParameterShapes' facts).
+    private void ReportParameterShapes(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        for (var k = 0; k < range.Count; k++)
+        var facts = this.report.Facts(index);
+        var reason = facts[0].Value;
+        var keyed = facts[^1].Kind == ProblemFactKind.Key;
+        var parties = facts[2..(keyed ? facts.Length - 1 : facts.Length)];
+        var related = new (string Role, Koto At, string? Label)[parties.Length];
+        string? ground = null;
+        for (var p = 0; p < related.Length; p++)
         {
-            var conflict = this.parameterShapeStore[range.Start + k];
-            var related = new (string Role, Koto At, string? Label)[conflict.PartyCount];
-            for (var p = 0; p < related.Length; p++)
-            {
-                var party = this.parameterShapePartyStore[conflict.PartyStart + p];
-                var parameter = party.Function.Parameters[party.Index];
-                related[p] = ("declaration", parameter.Type, $"{party.Function.Name} takes {Ground(party)} as {DiagnosticTypeName(parameter.Type.BoundType!)}");
-            }
-
-            var target = conflict.Target is { } shown ? DiagnosticTypeName(shown) : null;
-            var key = conflict.Key switch
-            {
-                ParameterKey.Any => "any Type",
-                ParameterKey.Either => $"Value or Object({target})",
-                ParameterKey.Object => $"Object({target})",
-                _ => $"Value({target})",
-            };
-            var first = this.parameterShapePartyStore[conflict.PartyStart];
-            node.Report(
-                requirement,
-                DiagnosticCode.ParameterShapeMismatch_Kd,
-                conflict.Mode,
-                conflict.Other,
-                note: conflict.Conservative ? ParameterShapeNote : null,
-                at: conflict.At,
-                evidence: [Ground(first), key],
-                related: related,
-                condition: (ushort)k);
+            var type = this.compilation.SyntaxOf(parties[p].Site);
+            var (function, i) = PartyParameter(type);
+            var shown = Ground(function, i, parties[p].Value);
+            ground ??= shown;
+            related[p] = ("declaration", type, $"{function.Name} takes {shown} as {DiagnosticTypeName(type.BoundType!)}");
         }
+
+        var target = keyed ? DiagnosticTypeName(this.report.Value(facts[^1])) : null;
+        var key = ((ParameterKey)(byte)(reason >> 16)) switch
+        {
+            ParameterKey.Any => "any Type",
+            ParameterKey.Either => $"Value or Object({target})",
+            ParameterKey.Object => $"Object({target})",
+            _ => $"Value({target})",
+        };
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            (AcquisitionMode)(byte)reason,
+            (AcquisitionMode)(byte)(reason >> 8),
+            at: this.compilation.SyntaxOf(facts[1].Site),
+            evidence: [ground, key],
+            related: related,
+            condition: problem.Condition);
     }
 
     private void ResetParameterShapes()
     {
-        this.shapeCallCandidates.Clear();
         this.shapeJudgments.Clear();
         this.shapeContracts.Clear();
         this.shapeDependencies.Clear();
         this.shapeSharedSlots.Clear();
+        this.collisionSubstitutions.Clear(); // The last unification's terms (ContractOverlapScope reads them at once): none outlives its pass.
         this.collisionLeft = this.collisionRight = null;
-        this.parameterShapeConflicts.Clear();
-        this.parameterShapeStore.Clear();
-        this.parameterShapePartyStore.Clear();
+        this.parameterShapeParties.Clear();
+        this.parameterShapeFacts.Clear();
     }
 
     private readonly record struct ParameterShape(AcquisitionModes Modes, ParameterKey Key, BoundType Target);
 
-    // A conflicting parameter (or use) with its colliding modes, its matching key and the range of its parties.
-    private readonly record struct ParameterShapeConflict(Koto At, AcquisitionMode Mode, AcquisitionMode Other, ParameterKey Key, BoundType? Target, bool Conservative, bool AtUse, bool AliasStage, int PartyStart, int PartyCount);
-
-    // An earlier parameter that corresponds to the conflicting one, by position in a bound or unbound call or by external name.
-    private readonly record struct ParameterShapeParty(FunctionKoto Function, int Index, bool BoundCall, int Position, string? Name);
+    // A conflicting parameter's (or use's) first conflict: its colliding modes and its matching key.
+    private readonly record struct ParameterShapeConflict(AcquisitionMode Mode, AcquisitionMode Other, ParameterKey Key, BoundType? Target);
 }

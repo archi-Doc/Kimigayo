@@ -15,20 +15,14 @@ internal sealed partial class MirBuilder
     // SPEC 14.8, 17.3: a match, or a try with its synthesized arms, a target for a yield. The Subject and the tests' temporaries end
     // when the match does, after the selected arm's scope (SPEC 15.1.6); a link whose Pattern tests nothing and has no guard still branches,
     // on a constant, to the next one, so that even a catch-all can fail for the analyses; as a call's input, each arm's value as Result
-    // places it (input).
+    // places it (input). Its plan is current and settled (HasFacts' Match/Try row): an Invalid position is a leaf, an untested link, and
+    // every other position is buildable.
     private void Match(MirPlace destination, MatchKoto match, bool input)
     {
-        var plan = BoundMatch.Of(match)!;
-        if (plan.Invalid || plan.Pending)
-        {
-            this.Opaque(match, destination); // A Pattern or guard of it failed.
-            return;
-        }
+        var plan = BoundMatch.Of(compilation.Binding, match)!;
 
         var scope = this.OpenScope(block: false);
-        var subject = this.Hold(plan.SubjectBorrow ?? TypeOf(match.Expression), match.Expression, MirLocalRole.Subject);
-        this.Assign(subject, match.Expression);
-        this.Made(subject);
+        var subject = this.HoldSubject(plan, match.Expression);
         var after = this.Open(match, destination);
         var start = this.selected.Count;
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
@@ -70,9 +64,21 @@ internal sealed partial class MirBuilder
         this.CloseScope(scope);
     }
 
+    // SPEC 15.1.6: the Subject acquired once into its Subject Place, at its plan's borrow (a bare Place borrowed in place), else at its
+    // own Type, none for a Subject of no Type (KnownType, PLAN G1073): a failed Subject, whose Patterns are resting leaves with no access
+    // and whose guards read nothing of it (Guard), or a use of a failed getter Binding kept as the Subject (G492-a (iii) and D-823), whose
+    // patterns' accesses are the validator's findings (PLAN G1076's open issue), never a fault.
+    private MirPlace HoldSubject(BoundMatch plan, Koto expression)
+    {
+        var subject = this.Hold(plan.SubjectBorrow ?? KnownType(expression), expression, MirLocalRole.Subject);
+        this.Assign(subject, expression);
+        return this.Made(subject);
+    }
+
     // SPEC 14.8.3: guard candidates borrow the selected Places among the condition's temporaries, and the guard-local Origin of each ends
-    // at their cleanup on every path (an EndBorrow before its StorageDead). Keep the Subject protected until then, then read it and branch
-    // while the bool's storage remains live for Enter in each successor.
+    // at their cleanup on every path (an EndBorrow before its StorageDead). Keep the Subject protected until then, then read the arm's
+    // Place where it has a Type (Typed: a failed Subject's has none, and its resting Pattern reads nothing) and branch while the bool's
+    // storage remains live for Enter in each successor.
     private MirPlace Guard(Koto condition, int whenFalse, int whenTrue, BoundMatch plan, int pattern, int start)
     {
         var tested = this.OpenScope(block: false);
@@ -92,7 +98,11 @@ internal sealed partial class MirBuilder
         this.Assign(test, condition);
         this.CloseScope(temporaries);
         this.Made(test);
-        this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
+        if (this.Typed(this.selected[start + pattern]))
+        {
+            this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
+        }
+
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
         return test;
@@ -115,12 +125,12 @@ internal sealed partial class MirBuilder
         else if (position is { Kind: BoundPatternKind.Case, Case.Ordinal: var ordinal })
         {
             this.CaseTest(place, ordinal, next, position.Source);
-            (place, tested) = (this.body.Project(place, MirProjectionKind.Downcast, ordinal), true);
+            (place, tested) = (this.body.Project(compilation.Types, place, MirProjectionKind.Downcast, ordinal), true);
         }
 
         for (var child = index + 1; child < position.End; child = plan.Positions[child].End)
         {
-            tested |= this.Pattern(plan, child, this.body.Project(place, MirProjectionKind.Field, plan.Positions[child].Element), start, next);
+            tested |= this.Pattern(plan, child, this.body.Project(compilation.Types, place, MirProjectionKind.Field, plan.Positions[child].Element), start, next);
         }
 
         return tested;
@@ -185,20 +195,20 @@ internal sealed partial class MirBuilder
 
     // SPEC 15.1.6: the selected arm's body locals, left to right, from the Places its binding positions selected, each as its Adjust
     // acquires it: Copied, moved, by case, or borrowed in the mode its path grants; a for loop's are its iteration bindings (SPEC 14.6.1).
-    // A failed one (Failed: a match or for binding whose Copy proof is Error) takes a value derived from that failure, as Operand gives
-    // (BU-103, BU-110, R4-M179).
+    // A failed one (Failed: a binding a failed late recheck left unacquired; BU-251's Invalid leaf aside) takes a value derived from that
+    // failure, as Operand gives (BU-103, BU-110, R4-M179): no acquisition is lowered, and the match rests on that record.
     private void Bind(BoundMatch plan, int pattern, int start)
     {
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
         {
             if (plan.Positions[i] is { BodySymbol: { } symbol, Source: var binding })
             {
-                var type = symbol.Type ?? BoundType.Unit;
+                var type = symbol.Type; // None where Binding failed it (PLAN G1073).
                 var adjust = HirTables.AdjustOf(binding);
                 var place = this.selected[start + i];
                 var mutable = Binding.Reassignable(symbol);
                 var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, local: true), mutable, symbol.Name)), this.lexical);
-                var value = adjust.Acquire == HirAcquire.Failed ? MirOperand.Move(this.Unsupported(binding, derived: true, type))
+                var value = adjust.Acquire == HirAcquire.Failed ? MirOperand.Move(this.Opaque(binding, type))
                     : this.Acquire(adjust, place, type, input: false, binding, new(local));
                 this.Use(new(local), value, binding);
                 this.locals[symbol] = local;

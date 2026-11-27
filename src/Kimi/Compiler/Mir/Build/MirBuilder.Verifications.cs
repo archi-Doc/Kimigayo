@@ -10,9 +10,11 @@ internal sealed partial class MirBuilder
 {
     // SPEC 17.6: a verification's condition secured as a bool and observed at its site (testObserve of the bool and the site's location,
     // which TestCatalog numbers, giving the failure's issue) before its temporaries are cleaned up; on false its message, evaluated and
-    // recorded for the issue (testMessage of a shared view; the Never value has nothing to view) with its own temporaries cleaned up, then
-    // for $require the case's Abort (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases
-    // are the backend's (plan 5.6.7).
+    // recorded for the issue (testMessage of a shared view; the Never value has nothing to view, nor has a message of no Type, an Error or
+    // a failed slot's derived value, which is evaluated into a temp of no Type and not viewed: no access MirValidator's Bounded admits
+    // borrows a slot of no Type (Typed), and its body, which Binding rejected, is checked, never run; SPEC 23.1.2, PLAN G1073) with its own
+    // temporaries cleaned up, then for $require the case's Abort (testRequireAbort), which has no successor; $expect continues with Unit
+    // either way. Its test phases are the backend's (plan 5.6.7).
     private void Verification(MirPlace destination, TestVerificationKoto verification)
     {
         var failed = this.body.AddBlock();
@@ -26,10 +28,10 @@ internal sealed partial class MirBuilder
         if (verification.Message is { } message)
         {
             var temporaries = this.OpenScope(block: false);
-            var text = this.Hold(TypeOf(message), message);
+            var text = this.Hold(KnownType(message), message);
             var start = this.arguments.Count;
             this.Assign(text, message);
-            if (!this.IsNever(this.Made(text)))
+            if (!this.IsNever(this.Made(text)) && this.Typed(text))
             {
                 this.arguments.Add(MirOperand.Copy(issue));
                 this.arguments.Add(this.Borrow(SemanticsKind.Ref, text, message));
@@ -97,7 +99,7 @@ internal sealed partial class MirBuilder
         var start = this.Operands(binary);
         for (var side = 0; side < 2; side++)
         {
-            if (ScalarTypes.Supports(this.TypeOf(this.arguments[start + side])))
+            if (this.TypeOf(this.arguments[start + side]) is { IsScalar: true })
             {
                 this.arguments[start + side] = this.Secure(this.arguments[start + side], side == 0 ? binary.Left : binary.Right);
             }
@@ -106,7 +108,7 @@ internal sealed partial class MirBuilder
         for (var side = 0; side < 2; side++)
         {
             var value = this.arguments[start + side];
-            if (ScalarTypes.Supports(this.TypeOf(value)))
+            if (this.TypeOf(value) is { IsScalar: true })
             {
                 var record = this.arguments.Count;
                 this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.I32, side))));

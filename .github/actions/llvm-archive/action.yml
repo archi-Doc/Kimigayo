@@ -1,0 +1,23 @@
+name: Pinned LLVM archive
+description: Downloads the LLVM release archive the Windows profile adopts, checks its SHA-256 and extracts it under $RUNNER_TEMP.
+outputs:
+  root:
+    description: The extracted archive's root, the -LlvmRoot of setup.ps1 and build-kimi.ps1.
+    value: ${{ steps.archive.outputs.root }}
+runs:
+  using: composite
+  steps:
+  - id: archive
+    shell: pwsh
+    run: |
+      $ErrorActionPreference = 'Stop'
+      $profile = Get-Content src/backend/windows-x64/profile.json -Raw | ConvertFrom-Json
+      if ($profile.llvmVersion -ne '22.1.8') { throw 'Update the CI archive digest with the adopted LLVM profile.' }
+      $archive = Join-Path $env:RUNNER_TEMP 'llvm.tar.xz'
+      $expanded = Join-Path $env:RUNNER_TEMP 'kimi-llvm'
+      Invoke-WebRequest 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/clang%2Bllvm-22.1.8-x86_64-pc-windows-msvc.tar.xz' -OutFile $archive
+      if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne 'd96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234') { throw 'LLVM archive checksum mismatch.' }
+      New-Item -ItemType Directory -Path $expanded | Out-Null
+      tar -xf $archive -C $expanded --strip-components=1
+      if ($LASTEXITCODE -ne 0) { throw 'LLVM extraction failed.' }
+      "root=$expanded" >> $env:GITHUB_OUTPUT

@@ -13,7 +13,14 @@ namespace XunitTest;
 // adapter reads. MinimalEmissionTest.Analyze asserts that no fact site of an analyzed program was id-less.
 public sealed class BindingReportTest
 {
-    private const string Import = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(a: bool) -> i32\n";
+    private const string Import = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualProtect\")\n    public unsafe func imported(a: bool) -> i32\n";
+
+    // review-r2's `wrapped` shape (Finding 3): need's T is Copy for Wrap<S<C>> rests on C is Callable<() -> ref/i32>, whose closure
+    // result borrows its hidden environment receiver. Invalid: SPEC 8.10 and 15.6.1 make that Origin part Unknown, never Refuted, and
+    // SPEC 8.3.3 rejects an Unknown at Final, so the record is UnprovenConstraint_Kd at need's argument, the value whose Type binds T.
+    private const string Wrapped = "struct S<C>\n    public init() => ()\n    Self is Copy when C is Callable<() -> ref/i32>\n" +
+        "struct Wrap<T>\n    public init() => ()\n    Self is Copy when T is Copy\nfunc need<T>(value: T) -> ()\n    T is Copy\n    return\n" +
+        "func wrap<F>(f: ref/F) -> Wrap<S<F>> => Wrap<S<F>>.init()\npublic func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    need(wrap(f@ref))\n";
 
     private static readonly SourceRef Subject = new(0, 5);
     private static readonly SourceRef Other = new(0, 6);
@@ -44,11 +51,12 @@ public sealed class BindingReportTest
     [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 1, 1)]
     [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 0, 0)]
     [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 0, 2)]
-    public void ADifferingReportOfAKeyIsABrokenContract(DiagnosticCode code, byte kind, int type, int count)
+    [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Instance, 1, 1, (byte)ProblemFactKind.Instance)] // R7-E2 E2-5b: an Instance fact, by its Type.
+    public void ADifferingReportOfAKeyIsABrokenContract(DiagnosticCode code, byte kind, int type, int count, byte kept = (byte)ProblemFactKind.Actual)
     {
         var report = new BindingReport();
         BoundType[] types = [BoundType.Boolean, BoundType.Unit];
-        var fact = new ProblemFact(ProblemFactKind.Actual, Other, report.Keep(types[0]));
+        var fact = new ProblemFact((ProblemFactKind)kept, Other, report.Keep(types[0]));
         var first = report.Add(Problem(Subject, Mismatch), [fact]);
         Assert.Equal(first, report.Add(Problem(Subject, Mismatch), [fact with { Value = report.Keep(types[0]) }]));
         Assert.Equal(1, report.Count);
@@ -60,20 +68,44 @@ public sealed class BindingReportTest
         Assert.Same(types[0], report.Value(Assert.Single(report.Facts(first).ToArray())));
     }
 
-    // An Origin record beyond the first takes the condition after its subject's, and a subject has a record once; a retried attempt starts over.
+    // DIAGNOSTICS 4.3 (AF-3b's Checked fact, ProblemFact.cs): a Checked fact is equal by its expected Type and its part's outcome, not by its
+    // packed kept index; another Type or outcome is a broken contract.
+    [Theory]
+    [InlineData(0, false, true)]
+    [InlineData(1, false, false)]
+    [InlineData(0, true, false)]
+    public void ACheckedFactIsEqualByItsTypeAndOutcome(int type, bool ambiguous, bool equal)
+    {
+        var report = new BindingReport();
+        BoundType[] types = [BoundType.Boolean, BoundType.Unit];
+        var first = report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Checked, Other, report.KeepChecked(types[0], false))]);
+        var again = report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Checked, Other, report.KeepChecked(types[type], ambiguous))]);
+        Assert.Equal(equal ? first : -1, again);
+        Assert.Equal((types[0], false), report.Checked(Assert.Single(report.Facts(first).ToArray())));
+    }
+
+    // A further problem at a subject (one rule, Condition; R7-E2 E2-3b): an equal problem keeps its condition and adds nothing; new facts take
+    // their check's condition, or the one after the subject's last when that is taken (an Origin record and a refining Contract's inherited
+    // conflicts from 0); a retried attempt starts over.
     [Fact]
-    public void AnOriginRecordIsNumberedOncePerSubject()
+    public void AFurtherProblemIsNumberedAfterItsSubjectsLast()
     {
         var report = new BindingReport();
         OriginRecord first = new(null, new(null!, "first", null!, null!, false));
         OriginRecord second = new(null, new(null!, "second", null!, null!, false));
-        Assert.Equal(1, report.OriginCondition(Subject, first));
-        report.Add(Problem(Subject, Mismatch, 1), [new(ProblemFactKind.OriginRecord, Subject, report.Keep(first))]);
-        Assert.Equal(0, report.OriginCondition(Subject, first));
-        Assert.Equal(2, report.OriginCondition(Subject, second));
-        Assert.Equal(1, report.OriginCondition(Other, first));
+        ProblemFact[] recorded = [new(ProblemFactKind.OriginRecord, Subject, report.Keep(first))];
+        ProblemFact[] again = [new(ProblemFactKind.OriginRecord, Subject, report.Keep(first))];
+        ProblemFact[] further = [new(ProblemFactKind.OriginRecord, Subject, report.Keep(second))];
+        Assert.Equal(1, report.Condition(Problem(Subject, Mismatch, 1), recorded));
+        var kept = report.Add(Problem(Subject, Mismatch, 1), recorded);
+        Assert.Equal(1, report.Condition(Problem(Subject, Mismatch, 1), again));
+        Assert.Equal(kept, report.Add(Problem(Subject, Mismatch, 1), again)); // The same record kept again is equal, not a defect.
+        Assert.Equal(2, report.Condition(Problem(Subject, Mismatch, 1), further));
+        Assert.Equal(2, report.Condition(Problem(Subject, Mismatch), further));
+        Assert.Equal(1, report.Condition(Problem(Other, Mismatch, 1), recorded));
+        Assert.Equal(0, report.Condition(Problem(Other, Mismatch), recorded));
         report.Unlink(Subject);
-        Assert.Equal(1, report.OriginCondition(Subject, first));
+        Assert.Equal(1, report.Condition(Problem(Subject, Mismatch, 1), recorded));
     }
 
     [Fact]
@@ -193,18 +225,22 @@ public sealed class BindingReportTest
     }
 
     // CheckBound runs the pass's checks again without its reset, so the records keep the facts the pass recorded: the syntax a mismatch
-    // shows and the part a located record names, with their text.
+    // shows and the part a located record names, with their text. A pair occurrence's formation cause (R7-E4 E4c, F14: FailTypeRole judged
+    // again at each check) keeps its one record and Reason through two rechecks, with no InternalInvariant_Kd.
     [Theory]
     [InlineData("func f() -> i32\n    let x: i32 = true\n    return x\n", "TypeMismatch_Kd")]
     [InlineData(Import, "Unsupported_Kd")]
+    [InlineData("struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during static\n", "InvalidOriginBinding_Kd")]
     public void CheckBoundKeepsAProblemsFacts(string source, string code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
         var first = Assert.Single(TestDiagnostics.Of(c), x => x.Code == code);
         Assert.False(c.Binding.CheckBound().IsComplete);
+        Assert.False(c.Binding.CheckBound().IsComplete);
         c.Binding.ReportDiagnostics();
         var second = Assert.Single(TestDiagnostics.Of(c), x => x.Code == code);
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.InternalInvariant_Kd));
         Assert.Equal((first.Span, first.Message, first.Text, first.Note), (second.Span, second.Message, second.Text, second.Note));
         Assert.True(Assert.Single(c.Binding.Issues, x => x.Code.ToString() == code).Problem >= 0);
     }
@@ -252,8 +288,13 @@ public sealed class BindingReportTest
         var c = MinimalEmissionTest.Analyze("func f(b: bool) -> ()\n    b++\npublic func main() => ()");
         var issues = c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").ToArray();
         Assert.Equal([DiagnosticCode.InvalidAssignment_Kd, DiagnosticCode.NonNumericOperand_Kd], issues.Select(static x => x.Code));
-        Assert.Equal(-1, issues[0].Problem);
-        Assert.True(issues[1].Problem >= 0);
+        // R7-E4 E4a-1 (rulings 2, 3): the denied write records its problem (RecordWrite), the slot's: InvalidAssignment_Kd with the
+        // target `b` as its related location (role 0); the operand's NonNumericOperand_Kd is a problem of its own.
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding)!;
+        Assert.Equal(DiagnosticCode.InvalidAssignment_Kd, report.Problem(issues[0].Problem).Code);
+        var target = Assert.Single(report.Facts(issues[0].Problem).ToArray());
+        Assert.Equal((ProblemFactKind.Related, 0L, "b"), (target.Kind, target.Value, c.SyntaxOf(target.Site).ToString()));
+        Assert.Equal(DiagnosticCode.NonNumericOperand_Kd, report.Problem(issues[1].Problem).Code);
         Assert.False(c.Binding.CheckBound().IsComplete);
         Assert.Equal(issues.Select(static x => x.Code), c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").Select(static x => x.Code));
     }
@@ -277,12 +318,69 @@ public sealed class BindingReportTest
         Assert.InRange(time.ElapsedMilliseconds, 0, 30_000);
     }
 
+    // PLAN G949 S1-r1b (v12; s1r1-design 8.7, F's ruling 58): a Bind's records are the same cold (a new compilation), after a second
+    // Bind and after a Provisional Bind followed by a Final one, so no record depends on the Binds before it (M5: each pass's first
+    // capability epoch follows the epoch before it, from the split the library pass's). A guard: no reachable program differed even
+    // before S1-e's CapabilityWork.Reset emptied a work's Fact (review-r2 Finding 3). The programs: the program-independence row's ten
+    // (valid) and review-r2's `wrapped` shape, which reaches that hand-out (invalid, Wrapped's label).
+    [Theory]
+    [InlineData("")]
+    [InlineData("docs/examples/Hello/Hello.kimi")]
+    [InlineData("tests/milestones/Milestone26.kimi")]
+    [InlineData("tests/milestones/Milestone27.kimi")]
+    [InlineData("tests/milestones/Milestone30.kimi")]
+    [InlineData("tests/milestones/Milestone31.kimi")]
+    [InlineData("tests/milestones/Milestone32.kimi")]
+    [InlineData("tests/milestones/Milestone35.kimi")]
+    [InlineData("docs/examples/Ranges/Ranges.kimi")]
+    [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
+    [InlineData(Wrapped)]
+    public void ABindsRecordsAreTheSameColdWarmAndAfterAProvisionalBind(string program)
+    {
+        var source = program.EndsWith(".kimi", StringComparison.Ordinal) ? Repository.ReadText(program.Split('/')) : program;
+        var c = Prepared(source);
+        c.Binding.Bind(BindingMode.Final);
+        var cold = Records(c);
+        c.Binding.Bind(BindingMode.Final);
+        Assert.Equal(cold, Records(c));
+        var provisional = Prepared(source);
+        provisional.Binding.Bind(BindingMode.Provisional);
+        provisional.Binding.Bind(BindingMode.Final);
+        Assert.Equal(cold, Records(provisional));
+        if (program == Wrapped)
+        {
+            var record = Assert.Single(TestDiagnostics.Of(c));
+            Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "wrap(f@ref)"), (record.Code, record.Text));
+            Assert.Contains("hidden environment receiver (SPEC 8.10)", record.Note, StringComparison.Ordinal);
+        }
+    }
+
     private static string ManyParts(int count)
-        => "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(" +
+        => "group Native\n    #LibraryImport(\"kernel32\", \"VirtualProtect\")\n    public unsafe func imported(" +
             string.Join(", ", Enumerable.Range(0, count).Select(static i => $"p{i}: string")) + ") -> i32\n";
 
     private static BindingProblem Problem(SourceRef subject, DiagnosticRequirement requirement, ushort condition = 0)
         => new(DiagnosticCode.TypeMismatch_Kd, requirement, subject, condition);
+
+    // A new compilation of one source (none for the empty program), not yet bound.
+    private static Compilation Prepared(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        if (source.Length != 0)
+        {
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        }
+
+        return c;
+    }
+
+    // The latest Bind's records, each with its reason, related locations, Note and repairs, as the check's JSON writes them.
+    private static string Records(Compilation c)
+    {
+        c.Binding.ReportDiagnostics();
+        return System.Text.Json.JsonSerializer.Serialize(c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission), DiagnosticJsonContext.Default.DiagnosticResult);
+    }
 
     private static int[] Chain(BindingReport report, SourceRef subject)
     {

@@ -36,6 +36,25 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Holder2 = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
 
+    // PLAN G1379's signatures: distinct inner Origins under one outer (S_pq), equal inner ones (S_pp), both distinct (S_ps); a Type
+    // argument at a Function input only, so contravariant (SPEC 15.3.5).
+    private const string G1379Pq = "func f(a: uniq/(ref/i32 during p) during r, b: uniq/(ref/i32 during q) during r) -> i32\n";
+
+    private const string G1379Pp = "func f(a: uniq/(ref/i32 during p) during r, b: uniq/(ref/i32 during p) during s) -> i32\n";
+
+    private const string G1379Ps = "func f(a: uniq/(ref/i32 during p) during r, b: uniq/(ref/i32 during q) during s) -> i32\n";
+
+    private const string G1379Sink = "struct Sink<T>\n    let f: (T) -> i32\n\n";
+
+    // An element `v` that fits `ref/i32 during r` only if q outlives r, which nothing proves; and an argument position of an array literal
+    // nested in an array literal.
+    private const string G1379Weak = "func k(q: ref/i32, r: ref/i32, v: ref/i32 during q)";
+
+    // An invariant element position at a call's parameter (the enclosing function's Origin p), and a nested literal at a call's parameter.
+    private const string G1379InvInner = "    func inner(x: Array<uniq/(ref/i32 during p) during p>) -> i32 => 0\n";
+
+    private const string G1379NestedInner = "    func inner(p: Array<Array<Option<ref/(ref/i32 during q) during r>>>, x: ref/i32 during q) -> ref/i32 during r => x\n";
+
     private const string Discarding = Holder2 + "func f(h: uniq/(Holder2 during a) during s, c: bool) -> ()\n";
 
     private const string Box = "struct Box<T>\n    public var item: T\n";
@@ -67,11 +86,13 @@ public partial class OriginRelationDiagnosticTest
 
     [Theory]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
-    [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    return if c => x else => y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => x else => y", "requires y outlives x, which is not proven", null)]
+    // A join's fit is recorded at the source that supplies its longer end (R7-O1 H, D5's Site for a join).
+    [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    return if c => x else => y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "y", "requires y outlives x, which is not proven", null)]
     [InlineData(Holder + "func pick(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p\n    return p.item@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p.item@ref", "requires p.a outlives q, which is not proven", null)]
     [InlineData("func toStatic(x: ref/i32) -> ref/i32 during static\n    return x\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "x", "requires x outlives static, which is not proven", null)]
     // A local annotation's fit is A5's record at its declaration (R6-check H5, DECISIONS R5-M185; H3b T45: formerly at `b`).
-    [InlineData("func f(a: ref/i32, b: ref/i32) -> i32\n    let r: ref/i32 during a = b\n    return r@follow\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let r: ref/i32 during a = b", "requires b outlives a, which is not proven", null)]
+    // A local annotation's fit at its initializer (H11b D5, R7-O1 H).
+    [InlineData("func f(a: ref/i32, b: ref/i32) -> i32\n    let r: ref/i32 during a = b\n    return r@follow\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
     [InlineData("func pick<length N, T>(values: ref/[N of T] during source) -> ref/T during sorce\n    return values[0]@ref/T\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "values[0]@ref/T", "requires source outlives sorce, which is not proven", null)]
     // SPEC 15.6.3, 22.2.3: an Iterator's item Reborrowed through `self` from an exclusive Field is contained in the receiver's Origin;
     // no effect bound exempts it (the adopted proposal Abstract Calls Reach by Paths removed `preserves results`' exemption, PLAN G193).
@@ -103,24 +124,24 @@ public partial class OriginRelationDiagnosticTest
         }
     }
 
-    // The failures above that A5 judges (R6-check H5: the MIR decides, DECISIONS R5-M185): A5's record is at the statement, initializer
-    // or Borrow where it judges the relation (H3b T45), with the same Reason, relates the borrow that created the Loan with the role
-    // `borrow` where it finds one and names a borrow reached through a local by its Loan's place (`local`; T49, as A5 publishes them until
-    // A6). A relation Binding also records at the value stays Binding's record there, and A5's precedes it as its twin until R7 (H0b §5.4,
-    // DECISIONS R4-M108; T50). Each record: its primary, label, longer end and related roles.
+    // The failures above, which A5 judges (R6-check H5: the MIR decides, DECISIONS R5-M185): A5's one record is at the value its row is
+    // formed at (R7-O1 H; a local annotation's fit at its initializer, H11b D5), with the same Reason, relates the borrow that created the
+    // Loan with the role `borrow` where it finds one and names the borrow that supplied its end (R4-M133, F-H1-3); A5's twin at the
+    // statement went with Binding's record at the value (H0b §5.4, R4-M108, T50). Each record: its primary, label, longer end and related
+    // roles.
     [Theory]
-    [InlineData(Bad, "return r: requires the borrow local outlives x, which is false; borrow local; borrow local@ref, origin return r | r: requires the borrow local@ref outlives x, which is false; borrow local@ref; origin local@ref")]
-    [InlineData("func store(anchor: ref/i32, target: uniq/(ref/i32 during anchor))\n    let local: i32 = 5\n    target@follow = local@ref\n", "target@follow = local@ref: requires the borrow local@ref outlives anchor, which is false; borrow local@ref; origin local@ref | local@ref: requires the borrow local@ref outlives anchor, which is false; borrow local@ref; origin local@ref")]
-    [InlineData("func g(a: ref/i32) -> i32\n    let local = 4\n    let r: ref/i32 during a = local@ref\n    return r@follow\n", "let r: ref/i32 during a = local@ref: requires the borrow local@ref outlives a, which is false; borrow local@ref; borrow local@ref, origin local@ref")]
-    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    let c = b\n    return c@ref\n", "return c@ref: requires the borrow c@ref outlives b, which is false; borrow c@ref; origin c@ref | c@ref: requires the borrow c@ref outlives b, which is false; borrow c@ref; origin c@ref")]
-    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    return b@ref\n", "return b@ref: requires the borrow b@ref outlives b, which is false; borrow b@ref; origin b@ref | b@ref: requires the borrow b@ref outlives b, which is false; borrow b@ref; origin b@ref")]
+    [InlineData(Bad, "r: requires the borrow local@ref outlives x, which is false; borrow local@ref; borrow local@ref, origin local@ref")]
+    [InlineData("func store(anchor: ref/i32, target: uniq/(ref/i32 during anchor))\n    let local: i32 = 5\n    target@follow = local@ref\n", "local@ref: requires the borrow local@ref outlives anchor, which is false; borrow local@ref; borrow local@ref, origin local@ref")]
+    [InlineData("func g(a: ref/i32) -> i32\n    let local = 4\n    let r: ref/i32 during a = local@ref\n    return r@follow\n", "local@ref: requires the borrow local@ref outlives a, which is false; borrow local@ref; borrow local@ref, origin local@ref")]
+    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    let c = b\n    return c@ref\n", "c@ref: requires the borrow c@ref outlives b, which is false; borrow c@ref; borrow c@ref, origin c@ref")]
+    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    return b@ref\n", "b@ref: requires the borrow b@ref outlives b, which is false; borrow b@ref; borrow b@ref, origin b@ref")]
     // SPEC 13.5.6, 4.8.1: a Borrow of a Slice handle borrows the handle's own storage, never the elements' source.
-    [InlineData("func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return values@ref\n", "return values@ref: requires the borrow values@ref outlives s, which is false; borrow values@ref; origin values@ref | values@ref: requires the borrow values@ref outlives s, which is false; borrow values@ref; origin values@ref")]
-    [InlineData("func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    let local = values\n    return local@ref\n", "return local@ref: requires the borrow local@ref outlives s, which is false; borrow local@ref; origin local@ref | local@ref: requires the borrow local@ref outlives s, which is false; borrow local@ref; origin local@ref")]
+    [InlineData("func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return values@ref\n", "values@ref: requires the borrow values@ref outlives s, which is false; borrow values@ref; borrow values@ref, origin values@ref")]
+    [InlineData("func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    let local = values\n    return local@ref\n", "local@ref: requires the borrow local@ref outlives s, which is false; borrow local@ref; borrow local@ref, origin local@ref")]
     [InlineData("func leak(values: Slice<i32> during s) -> uniq/(Slice<i32> during s) during s\n    var local = values\n    return local@uniq\n", "local@uniq: requires the borrow local@uniq outlives s, which is false; borrow local@uniq; borrow local@uniq, origin local@uniq")]
-    [InlineData(Keep + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return keep(values)\n", "return keep(values): requires the borrow values outlives s, which is false; borrow values; origin values | keep(values): requires the borrow values outlives s, which is false; borrow values; origin values")]
-    [InlineData(Make + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return make(values)@ref\n", "return make(values)@ref: requires the borrow make(values)@ref outlives s, which is false; borrow make(values)@ref; origin make(values)@ref | make(values)@ref: requires the borrow make(values)@ref outlives s, which is false; borrow make(values)@ref; origin make(values)@ref")]
-    public void AnOriginOnlyFailureIsA5sRecordBesideAnyBindingTwin(string body, string records)
+    [InlineData(Keep + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return keep(values)\n", "keep(values): requires the borrow values outlives s, which is false; borrow values; borrow values, origin values")]
+    [InlineData(Make + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return make(values)@ref\n", "make(values)@ref: requires the borrow make(values)@ref outlives s, which is false; borrow make(values)@ref; borrow make(values)@ref, origin make(values)@ref")]
+    public void AnOriginOnlyFailureIsOneA5RecordAtTheValue(string body, string records)
     {
         var source = body + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
@@ -168,7 +189,11 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(WrittenParameter + "    origin q outlives r\n    return f(t)\n", "")]
     [InlineData(WrittenParameter + "    return f(t)\n", "UnprovenOriginRelation_Kd t")]
     [InlineData(WrittenParameter + "    return f(t)\nfunc m() -> i32\n    let b: bool = 3\n    return 0\n", "UnprovenOriginRelation_Kd t; TypeMismatch_Kd 3")]
-    [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t; ComparisonLoanConflict_Kd let short = 2")]
+    // WrittenParameterCalled (SPEC 15.6.1, 23.1.2; PLAN G492-a (ii) with G379's Closure half, design-ii.md §13.18.8 item 4): `f`, a
+    // Closure whose signature names the `let` regions of sq and lr, is compared with k's parameter at the argument, where a failed
+    // condition has sq's region, a `let` region of the use's body, at its shorter end: the located limit at `f` (the owner's O-400 (b)),
+    // beside k's own record. The Loan conflict needs the region reading at the uses of a compared Type (O-400 (b)'s (a)/(a'), open).
+    [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t; Unsupported_Kd f")]
     public void ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall(string body, string records)
     {
         var source = body + Main;
@@ -204,25 +229,87 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal((code, text, label), (error.Code, Text(source, error.Span), error.Label));
     }
 
-    // The rows of ABorrowThroughLayersIsContainedInEach that Binding records at the returned value X: A5's record at `return X` precedes
-    // Binding's as its twin until R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50), and names a meet reached through a
-    // local by its Loan's place (`entries`). Each record: its primary and label.
+    // The rows of ABorrowThroughLayersIsContainedInEach whose fit is Refuted at the returned value X: A5's one record at X names the
+    // borrow that supplied its end (R7-O1 H; its twin at `return X`, R6-check H5, R4-M108, H3b T50, went with Binding's record there).
+    // Each record: its primary and label (another code: the code). With D-920 an Array element's Loan is met at the whole Array, so the
+    // returned `entries[0]@follow@ref`, which H builds (no failed return), also conflicts at `entries`' storage end, a record rule W does
+    // not derive there: added on a rejected program (DECISIONS Q13, counted: ComparisonLoanConflict_Kd 1).
     [Theory]
-    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    let found = entries[1]@follow@ref\n    return found\n", "return found: requires the borrow entries outlives a, which is false | found: requires the borrow entries[1]@follow@ref outlives a, which is false")]
-    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    return entries.index(1)@follow@follow@ref\n", "return entries.index(1)@follow@follow@ref: requires the borrow entries.index(1)@follow@follow@ref outlives a, which is false | entries.index(1)@follow@follow@ref: requires the borrow entries.index(1)@follow@follow@ref outlives a, which is false")]
-    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries.indexUniq(1)@follow@follow@uniq\n", "return entries.indexUniq(1)@follow@follow@uniq: requires the borrow entries.indexUniq(1)@follow@follow@uniq outlives a, which is false | entries.indexUniq(1)@follow@follow@uniq: requires the borrow entries.indexUniq(1)@follow@follow@uniq outlives a, which is false")]
-    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    var entries: Array<uniq/i32 during a> = [value@move]\n    return entries[0]@follow@ref\n", "return entries[0]@follow@ref: requires the borrow entries[0]@follow@ref outlives a, which is false | entries[0]@follow@ref: requires the borrow entries[0]@follow@ref outlives a, which is false")]
-    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries[1]\n", "return entries[1]: requires the borrow entries outlives a, which is false | entries[1]: requires the borrow entries outlives a, which is false")]
-    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    let c = entries[1]\n    return c\n", "return c: requires the borrow entries outlives a, which is false | c: requires the borrow entries outlives a, which is false")]
-    [InlineData("func keep(value: uniq/i32 during a) -> uniq/i32 during a => value\nfunc leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return keep(entries[1])\n", "return keep(entries[1]): requires the borrow entries outlives a, which is false | keep(entries[1]): requires the borrow entries outlives a, which is false")]
-    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    let slot = value@move\n    let r = slot@ref\n    return r@follow@follow@ref\n", "return r@follow@follow@ref: requires the borrow r@follow@follow@ref outlives a, which is false | r@follow@follow@ref: requires the borrow r@follow@follow@ref outlives a, which is false")]
-    public void ABorrowThroughLayersIsA5sRecordBesideBindingsTwin(string body, string records)
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    let found = entries[1]@follow@ref\n    return found\n", "found: requires the borrow entries[1]@follow@ref outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    return entries.index(1)@follow@follow@ref\n", "entries.index(1)@follow@follow@ref: requires the borrow entries.index(1)@follow@follow@ref outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries.indexUniq(1)@follow@follow@uniq\n", "entries.indexUniq(1)@follow@follow@uniq: requires the borrow entries.indexUniq(1)@follow@follow@uniq outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    var entries: Array<uniq/i32 during a> = [value@move]\n    return entries[0]@follow@ref\n", "var entries: Array<uniq/i32 during a> = [value@move]: ComparisonLoanConflict_Kd | entries[0]@follow@ref: requires the borrow entries[0]@follow@ref outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries[1]\n", "entries[1]: requires the borrow entries outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    let c = entries[1]\n    return c\n", "c: requires the borrow entries outlives a, which is false")]
+    [InlineData("func keep(value: uniq/i32 during a) -> uniq/i32 during a => value\nfunc leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return keep(entries[1])\n", "keep(entries[1]): requires the borrow entries outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    let slot = value@move\n    let r = slot@ref\n    return r@follow@follow@ref\n", "r@follow@follow@ref: requires the borrow r@follow@follow@ref outlives a, which is false")]
+    public void ABorrowThroughLayersIsOneRecordAtTheValue(string body, string records)
     {
         var source = body + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), x.Code));
-        Assert.Equal(records, string.Join(" | ", errors.Select(x => $"{Text(source, x.Span)}: {x.Label}")));
+        Assert.Equal(records, string.Join(" | ", errors.Select(x => $"{Text(source, x.Span)}: {(x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? x.Label : x.Code)}")));
     }
+
+    // SPEC 4.3.1 Places, 14.9.2 step 2, 10.8, 15.3.6 (PLAN G1379): a place's common Type meets its parts' Origins at a covariant and at an
+    // invariant position, and each part's fit to it forms its rows: a bound a part's fit gives is no proven equality, so an invariant
+    // variable takes the meet and each part's bound fails on its own, one record per part (g1, g2, g10-g13u; dev: InternalInvariant_Kd,
+    // g11 a dependent PrerequisiteUnavailable_Kd beside its two). A stated Origin of the expected element Type stays fixed (B's ruling 1):
+    // g5's one record is b's, as its assignment twin g5t's, and a stated Dictionary value Type's alike (l_dict_stated: b's one record, the
+    // literal's dependent one gone; B's ruling 10). Valid twins: equal inner Origins (g3, g3u), a covariant inner `ref` (g4), a
+    // premise (g7) or a cycle (k1, k1u; dev: InternalInvariant_Kd) proving `p == q`, and equal Types (c1s, p1s); the cycle at a join is
+    // PLAN G394's (its root IsSubtype reads no premise). A contravariant position whose Origins differ (c1, c1c, and c1v) is the located
+    // Unsupported_Kd, its candidate (a lower bound proven to outlive the others) not formed: the interim on valid programs (SPEC 15.3.6: with
+    // no candidate the variable is a local region; 15.6.5: its chains are not Refuted).
+    // An unformed pair layer (p1) is its formation record alone, as the fit's FitOuterOrigins decides (dev: InternalInvariant_Kd beside).
+    // Each element's adapted Type (a value read, an erasure, a completed Case) fits the place once, after the whole meet, at every site,
+    // its record at the element: at a return (a2r) and an assignment (a2a) as at a declaration, in either source order (g1r, g13r), with
+    // function items and closures fitting `(i64) -> i64` (g050d, valid, g050's declaration twin). At a call's argument (SPEC 10.5.1) the
+    // call judges the instantiated parameter's well-formedness at the argument (R4-M164 U2 S1 as amended by PLAN G1379): an element
+    // Origin nothing proves is the element's record (a2k; invariant: a2u, its join form a2uj; a2u_ok valid), and a nested literal (a2n)
+    // gets both independent records (23.1.2). cv3_d's two are the annotation's well-formedness (15.6.1) and the Case argument's payload
+    // fit (10.2), none at the element. A literal argument of a construction (a2c), a Case (a2e) and a method call (a2m) nested in an
+    // argument is recorded at the outer argument, as their nested-call rows are.
+    [Theory]
+    [InlineData("g1", G1379Pq + "    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("g2", G1379Pq + "    let arr = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:16 UnprovenOriginRelation@2:24")]
+    [InlineData("g3", G1379Pp + "    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g3u", G1379Pp + "    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g4", "func f(a: ref/(ref/i32 during p) during r, b: ref/(ref/i32 during q) during r) -> i32\n    let arr: Array<ref/ref/i32> = [a, b]\n    return 0\n", "")]
+    [InlineData("g5", G1379Pq + "    let arr: Array<uniq/(ref/i32 during p) during r> = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:65")]
+    [InlineData("g5t", G1379Pq + "    var w: uniq/(ref/i32 during p) during r = a@move\n    w = b@move\n    return 0\n", "UnprovenOriginRelation@3:9")]
+    [InlineData("g7", G1379Pq + "    origin p == q\n    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g10", G1379Pq + "    let arr: [_ of _] = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:26 UnprovenOriginRelation@2:34")]
+    [InlineData("g11", G1379Pq + "    let d: Dictionary<i32, uniq/ref/i32> = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:48 UnprovenOriginRelation@2:59")]
+    [InlineData("l_dict_stated", G1379Pq + "    let d: Dictionary<i32, uniq/(ref/i32 during p) during r> = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:79")]
+    [InlineData("g12", G1379Pq + "    let d = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:17 UnprovenOriginRelation@2:28")]
+    [InlineData("g13", G1379Ps + "    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("g13u", G1379Ps + "    let arr = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:16 UnprovenOriginRelation@2:24")]
+    [InlineData("k1", G1379Pq + "    origin p outlives q\n    origin q outlives p\n    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("k1u", G1379Pq + "    origin p outlives q\n    origin q outlives p\n    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("c1", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during q>) -> i32\n    let arr = [a@move, b@move]\n    return 0\n", "Unsupported@5:24")]
+    [InlineData("c1c", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during q>) -> i32\n    let arr: Array<Sink<ref/i32>> = [a@move, b@move]\n    return 0\n", "Unsupported@5:46")]
+    [InlineData("c1v", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during q>) -> i32\n    origin q outlives p\n    let arr = [a@move, b@move]\n    return 0\n", "Unsupported@6:24")]
+    [InlineData("c1s", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during p>) -> i32\n    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("p1", "func g<s/T>(w: s/T, a: Option<s/i32>, b: Option<s/i32 during r>) -> i32\n    s is ref or uniq\n    let arr = [a@move, b@move]\n    return 0\n", "MissingOriginBinding@1:31")]
+    [InlineData("p1s", "func g<s/T>(w: s/T, a: Option<s/i32 during r>, b: Option<s/i32 during r>) -> i32\n    s is ref or uniq\n    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g050d", Twice + Idg + "func k(gv1: (i64) -> i64) -> i32\n    let fs: Array<(i64) -> i64> = [idg, func [] (v) => v, gv1@move, twice]\n    return 0\n", "")]
+    [InlineData("cv3_d", WeakPayloadHead + "    let a: Array<Option<ref/(ref/i32 during q) during r>> = [Option.Some(v), Option.None]\n    return r\n", "UnprovenOriginRelation@2:25 UnprovenOriginRelation@2:74")]
+    [InlineData("a2r", G1379Weak + " -> Array<ref/i32 during r>\n    return [r, v]\n", "UnprovenOriginRelation@2:16")]
+    [InlineData("a2r_ok", G1379Weak + " -> Array<ref/i32 during r>\n" + WithPremise + "    return [r, v]\n", "")]
+    [InlineData("a2a", G1379Weak + " -> i32\n    var a: Array<ref/i32 during r> = [r]\n    a = [r, v]\n    return 0\n", "UnprovenOriginRelation@3:13")]
+    [InlineData("a2n", WeakPayloadHead + G1379NestedInner + "    return inner([[Option.Some(v)], [Option.None]], q)\n", "UnprovenOriginRelation@3:18 UnprovenOriginRelation@3:20")]
+    [InlineData("a2n_ok", WeakPayloadHead + WithPremise + G1379NestedInner + "    return inner([[Option.Some(v)], [Option.None]], q)\n", "")]
+    [InlineData("a2c", LayerBox + WeakPayloadHead + "    func inner(p: Box<Array<Option<ref/(ref/i32 during q) during r>>>, x: ref/i32 during q) -> ref/i32 during r => x\n    return inner(Box.init(item: [Option.Some(v), Option.None]), q)\n", "UnprovenOriginRelation@6:18")]
+    [InlineData("a2e", WeakPayloadHead + "    func inner(p: Option<Array<Option<ref/(ref/i32 during q) during r>>>, x: ref/i32 during q) -> ref/i32 during r => x\n    return inner(Option.Some([Option.Some(v), Option.None]), q)\n", "UnprovenOriginRelation@3:18")]
+    [InlineData("a2m", PassStruct + WeakPayloadHead + InnerArray + "    let s = S.init()\n    return inner(s.pass([Option.Some(v), Option.None]), q)\n", "UnprovenOriginRelation@7:18")]
+    [InlineData("g1r", G1379Pq + "    let arr: Array<uniq/ref/i32> = [b@move, a@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("g13r", G1379Ps + "    let arr: Array<uniq/ref/i32> = [b@move, a@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("a2u", "func k(p: ref/i32, q: ref/i32, a: uniq/(ref/i32 during p) during p, b: uniq/(ref/i32 during q) during p) -> i32\n" + G1379InvInner + "    return inner([a@move, b@move])\n", "UnprovenOriginRelation@3:27")]
+    [InlineData("a2u_ok", "func k(p: ref/i32, q: ref/i32, a: uniq/(ref/i32 during p) during p, b: uniq/(ref/i32 during p) during p) -> i32\n" + G1379InvInner + "    return inner([a@move, b@move])\n", "")]
+    [InlineData("a2uj", "func k(c: bool, p: ref/i32, q: ref/i32, a: uniq/(ref/i32 during p) during p, b: uniq/(ref/i32 during q) during p) -> i32\n" + G1379InvInner + "    return inner(if c => [a@move, b@move] else => [a@move])\n", "UnprovenOriginRelation@3:35")]
+    [InlineData("a2k", G1379Weak + " -> i32\n    func inner(p: Array<ref/i32 during r>) -> i32 => 0\n    return inner([r, v])\n", "UnprovenOriginRelation@3:22")]
+    public void APlacesCommonTypeMeetsItsPartsOrigins(string form, string body, string records)
+        => AssertPositions(form, body, records);
 
     // SPEC 15.6.1: a relation that a premise proves is no failure.
     [Theory]
@@ -337,12 +424,18 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(Discarding + "    let r = h.link\n    h.link\n    r@follow = 1\n", "ComparisonLoanConflict_Kd")]
     [InlineData(Discarding + "    let r = h\n    _ = h.link\n    h.link\n    r.link@follow = 1\n", "ComparisonLoanConflict_Kd ComparisonLoanConflict_Kd")]
     [InlineData(Discarding + "    let g = h@move\n    _ = h.link\n    h.link\n", "MovedPlace_Kd MovedPlace_Kd")]
-    [InlineData(Discarding + "    let x: uniq/i32 during a = h.link\n    _ = x\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
+    // One fit, `s outlives a`: A5's one record at the initializer (R7-O1 H: the twin went; D5, the fit at its initializer).
+    [InlineData(Discarding + "    let x: uniq/i32 during a = h.link\n    _ = x\n", "UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a => h.link\n", "UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s, g: uniq/(Holder2 during a) during t) -> ()\n    g.link = h.link\n", "UnprovenOriginRelation_Kd")]
-    [InlineData("struct Holder5 {a}\n    public var link: uniq/i32 during a\n    public func store(self: uniq/Self during b, x: uniq/i32 during a) -> () => self.link = x\nfunc f(h: uniq/(Holder5 during a) during s, g: uniq/(Holder5 during a) during t) -> ()\n    g.store(h.link)\n    _ = g.store(h.link)\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
+    // R7-O1 b1 (SPEC 15.6.2, 15.6.4, 23.1.2; the Middle's ruling of 2026-11-19): the second `g.store(h.link)` reborrows `h.link` while `g`
+    // keeps the first call's exclusive Loan through `self.link = x`, an independent conflict, which the first argument's opaque node hid
+    // before (Q13 rule 3: an independent record added to a rejected program).
+    [InlineData("struct Holder5 {a}\n    public var link: uniq/i32 during a\n    public func store(self: uniq/Self during b, x: uniq/i32 during a) -> () => self.link = x\nfunc f(h: uniq/(Holder5 during a) during s, g: uniq/(Holder5 during a) during t) -> ()\n    g.store(h.link)\n    _ = g.store(h.link)\n", "ComparisonLoanConflict_Kd UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
     [InlineData("func f(p: uniq/(uniq/i32 during a, i32) during s) -> uniq/i32 during a => p.0\n", "UnprovenOriginRelation_Kd")]
-    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a\n    return label w: do => h.link\n", "UnprovenOriginRelation_Kd")]
+    // The do's fit at its source `h.link` (D5's Site for a join; b1's record); the containment edge of the Reborrow into the do's result
+    // adds a record of the same relation there (a dependent record on a rejected program, counted: DECISIONS Q13).
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a\n    return label w: do => h.link\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: ref/(Holder2 during a) during s) -> ()\n    _ = h.link\n    h.link\n", "TransferRequired_Kd TransferRequired_Kd")]
     public void ADiscardedReborrowNeedsNoRelation(string body, string codes)
     {
@@ -351,8 +444,8 @@ public partial class OriginRelationDiagnosticTest
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence whose nested Origin is not proven to outlive the outer one is a wellFormed record at
-    // that occurrence (U-W, DECISIONS BU's entry), independent of the fit of the initializer, which is its own record: since the MIR
-    // decides acceptance (H5, DECISIONS R5-M185) the fit is at the declaration (H3b T45: at `slot` before), so it is published first.
+    // that occurrence (U-W, DECISIONS BU's entry), independent of the fit of the initializer, which is its own record at the initializer
+    // (H11b D5, R7-O1 H; R6-check H5 had it at the declaration), so it is published after the occurrence's.
     [Fact]
     public void AWellFormednessRelationIsRecordedAtItsTypeOccurrence()
     {
@@ -364,7 +457,7 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal((occurrence, "relation=outlives longer=b shorter=a source=wellFormed"), (Text(source, wellFormed.Span), Reason(wellFormed)));
         // SPEC 23.1: only the fit names its destination Type.
         Assert.Equal(
-            [("let r: " + occurrence + " = slot", "relation=outlives longer=b shorter=a source=fit destination=ref/ref/i32 during a"), (occurrence, Reason(wellFormed))],
+            [(occurrence, Reason(wellFormed)), ("slot", "relation=outlives longer=b shorter=a source=fit destination=ref/ref/i32 during a")],
             errors.Select(x => (Text(source, x.Span), Reason(x))));
 
         static string Reason(CheckDiagnostic error) => string.Join(' ', error.Reason!.Select(static x => $"{x.Name}={x.Value}"));
@@ -377,6 +470,8 @@ public partial class OriginRelationDiagnosticTest
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    public let", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("struct Pair {a, b, c}\n    public let x: ref/(ref/i32 during (b and c)) during a\n    public init(x: ref/(ref/i32 during (b and c)) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    origin c outlives a\n    public let", "ref/(ref/i32 during (b and c)) during a", "self.b outlives self.a", "self.c outlives self.a")]
+    // Two layers that form one equal relation at the occurrence are one record (R7-M95 E4d, ruling 45's T2: BindingReport.Condition).
+    [InlineData("struct Host {a, b}\n    public let item: ref/(ref/(ref/i32 during a) during a) during b\n    public init(item: ref/(ref/(ref/i32 during a) during a) during b) => self.item = item\n", "    public let", "    origin a outlives b\n    public let", "ref/(ref/(ref/i32 during a) during a) during b", "self.a outlives self.b")]
     [InlineData("enum E {a, b}\n    One(ref/(ref/i32 during b) during a)\n    Two\n", "    One", "    origin b outlives a\n    One", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("open struct B<T>\n    public init() => ()\nstruct D {a, b} : B<ref/(ref/i32 during b) during a>\n    public init() : base() => ()\n", "    public init() :", "    origin b outlives a\n    public init() :", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("open struct Base<T>\n    public init() => ()\nstruct Holder {a, b}\n    public let item: objref/Base<ref/i32 during a> during b\n", "    public let", "    origin a outlives b\n    public let", "objref/Base<ref/i32 during a> during b", "self.a outlives self.b")]
@@ -396,20 +491,134 @@ public partial class OriginRelationDiagnosticTest
         Assert.True(DiagnosticCorpus.Check(twin).Accepted, twin);
     }
 
+    // SPEC 15.3.4, 15.6.1, 23.1 (DECISIONS R4-M162): a nested signature's result in a declaration, a Field's Function Type's and the init
+    // input's (hold-b's twin H19), is judged where it occurs, so Hold's own clause substituted there is a declared relation: each record
+    // is at its result with the source `declared` and the clause related, and names no destination. The Field's names Host's slot as
+    // written there (TypeLevelClause), the init input's as its body does.
+    [Fact]
+    public void ADeclarationsNestedResultRecordsItsTypesClause()
+    {
+        var source = "struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
+            "struct Host {a}\n    public let make: () -> Hold during a\n    public init(make: () -> Hold during a) => self.make = make@move\n" + Main;
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.All(errors, static x => Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), DiagnosticCategory.Proof), (x.Code, x.Category)));
+        Assert.Equal(
+            [
+                "Hold during a: requires a outlives static, which is not proven; outlives a static declared; relation origin s outlives static",
+                "Hold during a: requires self.a outlives static, which is not proven; outlives self.a static declared; relation origin s outlives static",
+            ],
+            errors.Select(x => $"{Text(source, x.Span)}: {x.Label}; {string.Join(' ', x.Reason!.Select(static y => y.Value))}; " +
+                (x.Related is null ? "none" : string.Join(", ", x.Related.Select(y => $"{y.Role} {Text(source, y.Span)}")))));
+        Assert.Equal([source.IndexOf("() -> Hold", StringComparison.Ordinal) + 6, source.LastIndexOf("() -> Hold", StringComparison.Ordinal) + 6], errors.Select(static x => x.Span!.Value.Start));
+    }
+
+    // SPEC 15.3.3, 15.3.4, 15.6.1, 23.1.2 (DECISIONS R4-M162, BU-26; hold-b's twins): a written Type formed in a declaration frame (a
+    // Field's, a payload's, a base's, a conformance argument's, an associated specification's, a nested result's) is the declaration
+    // judge's after Completion (its FormedTypes row's frame), so a Type's own clause the declaration's premises do not entail is one
+    // record at the root occurrence with the clause related; a local's Type, a Closure's nested result and a body use stay their
+    // bodies' (the local's entry, A5, G491 D1).
+    [Theory]
+    // H01: a Field.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    public var item: Hold during a\n        get\n        set\n    public init(item: Hold during a) => self.item = item@move\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // H08: a payload.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nenum Carry {a}\n    One(Hold during a)\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // X2: a second payload.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nenum Carry {a}\n    One(Hold during static, Hold during a)\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // H12: a base: the formation step's later record at the node is dropped, struct's stays (R3.6).
+    [InlineData("open struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a} : Hold during a\n    public init(r: ref/i32 during a) : base(r) => ()\n", "InvalidTypeFormation_Kd struct | UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static | UnprovenConstraint_Kd base(r)")]
+    // H13: a conformance argument, at its root.
+    [InlineData("contract Keep<T>\n    func size(self: ref/Self) -> i32\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    Self is Keep<Hold during a>\n    public init() => ()\n    public func size(self: ref/Self) -> i32 => 0\n", "UnprovenOriginRelation_Kd Keep<Hold during a> / relation origin s outlives static")]
+    // H10: an associated specification.
+    [InlineData("contract Source\n    associate Item\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    Self is Source\n    associate Item is Hold during a\n    public init() => ()\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // H06: a generic argument, at its root.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    public var item: Option<Hold during a>\n        get\n        set\n    public init(item: Option<Hold during a>) => self.item = item@move\n", "UnprovenOriginRelation_Kd Option<Hold during a> / relation origin s outlives static")]
+    // H07: a layer and the clause at one node.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    public var item: ref/(Hold during a) during a\n        get\n        set\n    public init(item: ref/(Hold during a) during a) => self.item = item\n", "UnprovenOriginRelation_Kd ref/(Hold during a) during a / relation origin s outlives static")]
+    // X1: a nested result in a conformance argument.
+    [InlineData("contract Keep<T>\n    func size(self: ref/Self) -> i32\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    Self is Keep<() -> Hold during a>\n    public init() => ()\n    public func size(self: ref/Self) -> i32 => 0\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // X3: an inherited slot.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    public init() => ()\n    struct Inner\n        public var item: Hold during a\n            get\n            set\n        public init(item: Hold during a) => self.item = item@move\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // X4: a premise of another slot.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a, b}\n    origin b outlives static\n    public var item: Hold during a\n        get\n        set\n    public init(item: Hold during a) => self.item = item@move\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // H20: Hold declared after Host.
+    [InlineData("struct Host {a}\n    public var item: Hold during a\n        get\n        set\n    public init(item: Hold during a) => self.item = item@move\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // X5b: a signature's nested result.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nfunc take(r: ref/i32 during a, make: () -> Hold during a) -> () => ()\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static")]
+    // H22: one Type formed as a Field and as a local.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    public var item: Hold during a\n        get\n        set\n    public init(item: Hold during a) => self.item = item@move\nfunc f(r: ref/i32 during a) -> ()\n    let h: Hold during a = Hold.init(r)\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static | UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static | UnprovenConstraint_Kd Hold.init(r)")]
+    // H23: a Closure's nested result, its body's (A5).
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc k(q: ref/i32) -> i32\n    let c = func [] (g: () -> T during q) -> i32 => 0\n    return 0\n", "UnprovenOriginRelation_Kd T during q / relation origin a outlives static")]
+    // H24: a body use; the row pins G491 D1's code (UnprovenConstraint_Kd), not SPEC 15.6.1's.
+    [InlineData("enum E {a}\n    origin a outlives static\n    One(ref/i32 during a)\nfunc take(e: E during b) -> () => ()\nfunc bad(r: ref/i32) -> () => take(E.One(r))\n", "UnprovenConstraint_Kd E.One(r)")]
+    // H24b: a body use in a local's initializer; the row pins G491 D1's code, not SPEC 15.6.1's.
+    [InlineData("enum E {a}\n    origin a outlives static\n    One(ref/i32 during a)\nfunc take(e: E during b) -> () => ()\nfunc bad(r: ref/i32) -> ()\n    let e = E.One(r)\n", "UnprovenConstraint_Kd E.One(r)")]
+    // A1: an enum Case's projection: the root's record beside the formation step's at the Case and at `enum` (Access.cs:471-472; a Q13 code-counted move).
+    [InlineData("contract Source\n    associate Item\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    origin a outlives static\n    Self is Source\n    associate Item is Hold during a\n    public init() => ()\nenum E {b}\n    One((Host during b).Item)\n", "UnprovenConstraint_Kd enum | UnprovenConstraint_Kd One((Host during b).Item) | UnprovenOriginRelation_Kd (Host during b).Item / relation origin s outlives static")]
+    // A1b: the same Case with no premise: accepted on dev.
+    [InlineData("contract Source\n    associate Item\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    Self is Source\n    associate Item is Hold during a\n    public init() => ()\nenum E {b}\n    One((Host during b).Item)\n", "UnprovenOriginRelation_Kd Hold during a / relation origin s outlives static | UnprovenOriginRelation_Kd (Host during b).Item / relation origin s outlives static")]
+    // A4: a Property Type's projection: the root's record beside the formation step's at the Property (Properties.cs:310).
+    [InlineData("contract Source\n    associate Item\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    origin a outlives static\n    Self is Source\n    associate Item is Hold during a\n    public init() => ()\nstruct Other {b}\n    public let x: (Host during b).Item\n    public init(x: (Host during b).Item) => self.x = x@move\n", "UnprovenConstraint_Kd let x: (Host during b).Item | UnprovenOriginRelation_Kd (Host during b).Item / relation origin s outlives static")]
+    // A2e: a Property initializer outside a Closure: its Body rows are the initializer's, one record per occurrence.
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nfunc count<T>(o: Option<T>) -> i32 => 0\nstruct Host {a}\n    public let n: Option<Hold during a> = Option<Hold during a>.None\n    public init() => ()\n", "UnprovenConstraint_Kd let n: Option<Hold during a> = Option<Hold during a>.None | UnprovenOriginRelation_Kd Option<Hold during a> / relation origin s outlives static")]
+    // A3: a Closure's nested result one level deeper, its body's (A5).
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc k(q: ref/i32) -> i32\n    let c = func [] (g: (() -> T during q) -> ()) -> i32 => 0\n    return 0\n", "UnprovenOriginRelation_Kd T during q / relation origin a outlives static")]
+    // A3b: a named nested function's header: Declaration rows, a root of the second kind.
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc k(q: ref/i32) -> i32\n    func inner(g: () -> T during q) -> i32 => 0\n    return 0\n", "UnprovenOriginRelation_Kd T during q / relation origin a outlives static")]
+    public void ADeclarationsWrittenTypeRecordsItsTypesClauseAtItsRoot(string body, string records)
+    {
+        var source = body + Main;
+        Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}" +
+            (x.Related is null ? string.Empty : " / " + string.Join(", ", x.Related.Select(y => $"{y.Role} {Text(source, y.Span)}"))))));
+    }
+
+    // SPEC 15.3.3, 15.2.2, 15.3.4, 15.6.1 (hold-b's valid counterparts): a written Type whose clause the enclosing declaration's premises
+    // entail, through a chain included, forms no row; a Function Type's input is its callee's premise, and a computed header its
+    // getter's result.
+    [Theory]
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    origin a outlives static\n    public var item: Hold during a\n        get\n        set\n    public init(item: Hold during a) => self.item = item@move\n")] // H02
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a, b}\n    origin a outlives b\n    origin b outlives static\n    public var item: Hold during a\n        get\n        set\n    public init(item: Hold during a) => self.item = item@move\n")] // V2
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nenum Carry {a}\n    origin a outlives static\n    One(Hold during a)\n")] // H09
+    [InlineData("open struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a} : Hold during a\n    origin a outlives static\n    public init(r: ref/i32 during a) : base(r) => ()\n")] // H12v
+    [InlineData("contract Keep<T>\n    func size(self: ref/Self) -> i32\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    origin a outlives static\n    Self is Keep<Hold during a>\n    public init() => ()\n    public func size(self: ref/Self) -> i32 => 0\n")] // H13v
+    [InlineData("contract Source\n    associate Item\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    origin a outlives static\n    Self is Source\n    associate Item is Hold during a\n    public init() => ()\n")] // H10v
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    public let take: (Hold during a) -> ()\n    public init(take: (Hold during a) -> ()) => self.take = take@move\n")] // V1
+    [InlineData("struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    public let r: ref/i32 during a\n    public computed item: Hold during a\n        get() -> Hold during a => Hold.init(self.r)\n    public init(r: ref/i32 during a) => self.r = r\n")] // V3
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc k(q: ref/i32) -> i32\n    origin q outlives static\n    let c = func [] (g: () -> T during q) -> i32 => 0\n    return 0\n")] // V4
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc k(q: ref/i32) -> i32\n    origin q outlives static\n    func inner(g: () -> T during q) -> i32 => 0\n    return 0\n")] // V5
+    [InlineData("enum E {a}\n    origin a outlives static\n    One(ref/i32 during a)\nfunc take(e: E during b) -> () => ()\nfunc bad(r: ref/i32) -> ()\n    origin r outlives static\n    take(E.One(r))\n")] // H24p
+    public void ADeclarationsWrittenTypeItsPremisesEntailIsValid(string body) => Assert.Empty(DiagnosticCorpus.Check(body + Main).Diagnostics);
+
     // SPEC 23.1.2 (DECISIONS BU-26): a declaration's failed relation is an independent record beside a body's failed fit, and a declared
-    // relation whose end its declaration left unbound rests on that end's MissingOriginBinding_Kd alone. The body's fit is Binding's record
-    // at `r` and A5's twin at `return r` until R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50).
+    // relation whose end its declaration left unbound rests on that end's MissingOriginBinding_Kd alone. The body's fit is A5's one record
+    // at `r` (R7-O1 H; its twin at `return r`, R6-check H5, R4-M108, H3b T50, went with Binding's record there).
     [Fact]
     public void ADeclarationsRelationStaysIndependentOfOtherRecords()
     {
         var source = "struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n" + Bad + Main;
         Assert.Equal(
-            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32 during b) during a"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "return r"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r")],
+            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32 during b) during a"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r")],
             DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))));
 
         var unbound = "struct V<T> {source}\n    public let item: ref/T during source\nstruct S {a}\n    public let item: V<i32>{v}\n        origin v.source outlives a\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(unbound).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.MissingOriginBinding_Kd), "V<i32>{v}"), (error.Code, Text(unbound, error.Span)));
+    }
+
+    // SPEC 15.6.1, 23.1.2 (R7-M95 E4d, ruling 45's C1 and P7): a failure copied onto another node is that node's own, never the Origin
+    // relation's, which stays one record at its occurrence: a signature-less setter's input (Binding.Properties) and an invalid
+    // conformance's Type (Binding.ConstraintValidation). A base's clause is judged once, at the clause, for every derived Type (SPEC 15.3.3).
+    [Theory]
+    [InlineData("struct Host {a, b}\n    public var item: (Missing, ref/(ref/i32 during a) during b)\n        get\n        set => storage = value\n    public init() => ()\n", "MissingSyntax_Kd UninitializedPlace_Kd UnprovenOriginRelation_Kd UnresolvedBinding_Kd UnresolvedBinding_Kd", "ref/(ref/i32 during a) during b")]
+    [InlineData("contract Keep : Missing\n    func size(self: ref/Self) -> i32\nstruct Host {a, b}\n    Self is Keep\n    public let item: ref/(ref/i32 during a) during b\n    public init(item: ref/(ref/i32 during a) during b) => self.item = item\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd UnprovenOriginRelation_Kd UnresolvedBinding_Kd", "ref/(ref/i32 during a) during b")]
+    [InlineData("open struct B {a, b}\n    public let x: ref/i32 during a\n        origin a outlives b\n    public init(x: ref/i32 during a) => self.x = x\nstruct D {c, d} : B{v}\n    origin v.a == c\n    origin v.b == d\n    public init(x: ref/i32 during c) : base(x) => ()\n", "UnprovenOriginRelation_Kd", "origin a outlives b")]
+    [InlineData("contract Keep<T>\n    func get(self: ref/Self) -> Missing\nstruct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nstruct Host {a}\n    Self is Keep<Hold during a>\n    public init() => ()\n", "MissingContractImplementation_Kd UnprovenOriginRelation_Kd UnresolvedBinding_Kd", "Keep<Hold during a>")]
+    public void ADeclarationsRelationIsOneRecordBesideACopiedFailure(string body, string codes, string occurrence)
+    {
+        var source = body + Main;
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(codes, string.Join(" ", errors.Select(static x => x.Code).Order(StringComparer.Ordinal)));
+        var relation = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.UnprovenOriginRelation_Kd));
+        Assert.Equal(occurrence, Text(source, relation.Span));
     }
 
     // Finite region bounds keep the actual Loan through annotations, scope exits and shared views of exclusive inputs.
@@ -451,11 +660,13 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
-    // SPEC 7.7.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input.
+    // SPEC 7.7.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input. The
+    // capture's slot is written `during x` (PLAN G492-a (ii)): unwritten it is the `let` local's own region and `start = n` is Unknown
+    // beside this record (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's SwapOmitted rows).
     [Fact]
     public void AnAnonymousInputIsBoundByItsWrittenOrigin()
     {
-        var source = "func use(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var inner = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
+        var source = "func use(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 during x = x\n    var inner = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
             "        let old = start\n        start = n\n        return old\n    var outer = func [var inner] (a: ref/i32) -> i32\n        let got = inner(a)\n" +
             "        return got@follow\n    return inner(x)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -463,15 +674,15 @@ public partial class OriginRelationDiagnosticTest
     }
 
     // DIAGNOSTICS.md rule 1: a failed relation leaves the Loan checks of the same body to proceed without it, so an independent Loan
-    // conflict stays visible beside it. A5 records the local annotation's fit at its declaration (R6-check H5, DECISIONS R5-M185; H3b
-    // T45: formerly at `y`).
+    // conflict stays visible beside it. A5 records the local annotation's fit at its initializer (H11b D5, R7-O1 H; R6-check H5 had it
+    // at the declaration).
     [Fact]
     public void AnIndependentLoanConflictStaysVisible()
     {
         var source = "func bad(x: ref/i32, y: ref/i32) -> i32\n    var n: i32 = 1\n    let s = n@ref\n    n = 2\n    Console.writeLine(\"\\(s@follow)\")\n    let r: ref/i32 during x = y\n    return r@follow\n" + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], errors.Select(static x => x.Code));
-        Assert.Equal(("n = 2", "let r: ref/i32 during x = y"), (Text(source, errors[0].Span), Text(source, errors[1].Span)));
+        Assert.Equal(("n = 2", "y"), (Text(source, errors[0].Span), Text(source, errors[1].Span)));
     }
 
     // SPEC 13.5.6, 3.6: a Borrow of a Slice handle Loans the handle's storage: a `var` handle reassigned, or a call's temporary
@@ -488,20 +699,19 @@ public partial class OriginRelationDiagnosticTest
     }
 
     // SPEC 23.3: the console names the borrow and relates it, the language server sends the record with its related location,
-    // and the JSON form carries the display kind beside each Origin value. Binding's record at `r` has A5's twin at `return r`, published
-    // before it, until R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50).
+    // and the JSON form carries the display kind beside each Origin value. A5's record at `r` is the one (R7-O1 H; its twin at `return r`,
+    // R6-check H5, R4-M108, H3b T50, went with Binding's record there).
     [Fact]
     public void EveryOutputCarriesTheOriginDisplay()
     {
         var output = DiagnosticCorpus.Check(Bad + Main);
-        Assert.Equal(["return r", "r"], output.Diagnostics.Select(static x => Text(Bad + Main, x.Span)));
-        var record = output.Diagnostics[1];
+        Assert.Equal(["r"], output.Diagnostics.Select(static x => Text(Bad + Main, x.Span)));
+        var record = output.Diagnostics[0];
         var result = new DiagnosticResult(output.Diagnostics, output.Sources);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("UnsatisfiedOriginRelation_Kd", console.Text, StringComparison.Ordinal);
         Assert.Contains("requires the borrow local@ref outlives x, which is false", console.Text, StringComparison.Ordinal);
-        Assert.Contains("requires the borrow local outlives x, which is false", console.Text, StringComparison.Ordinal);
         Assert.Contains(" = origin: ", console.Text, StringComparison.Ordinal);
 
         var identity = SourceIdentity.FromPath(output.Sources[record.Source].Path);

@@ -2,13 +2,13 @@
 
 namespace Kimi.Compiler;
 
-// The computation behind TyCtxt.RecursiveBase, under its contract (TyCtxt.RecursiveContracts.cs): the pass's recursive Contract
+// The computation behind TyCtxt.RecursiveBase, under its contract (TyCtxt.RecursiveContracts.cs): every pass's recursive Contract
 // declarations, each found by expanding the premise supply of `T is C` in a pooled scope, and the proof of a projection's bases against
 // them under a definition's effect premises. IsRecursive also serves the inline-layout summaries inside Bind (RecursiveInStorage, BU-65).
 public sealed partial class Binding
 {
-    // The pass's recursive Contract declarations, valid while recursiveVersion is the pass's version; the search's scope and the
-    // declarations it expanded, at T or at a projection of T, reused.
+    // The recursive Contract declarations of every pass's shapes, valid while recursiveVersion is the run's counter; the search's scope
+    // and the declarations it expanded, at T or at a projection of T, reused.
     private readonly List<BindingSymbol> recursiveContracts = [];
     private readonly HashSet<(BindingSymbol Declaration, bool AtSelf)> suppliedExpansions = [];
     private BindingScope? supplyScope;
@@ -27,7 +27,7 @@ public sealed partial class Binding
         {
             foreach (var contract in this.recursiveContracts)
             {
-                if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, b, contract: contract)), scope) == ConstraintProof.Proven)
+                if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, b, contract: contract)), scope, QuerySite.AfterPass) == ConstraintProof.Proven)
                 {
                     return true;
                 }
@@ -51,13 +51,13 @@ public sealed partial class Binding
         return ReferenceEquals(type, self);
     }
 
-    // The pass's recursive Contract declarations, found on its first query (stamped with the pass's version, as its other memos are).
+    // The recursive Contract declarations of every pass's shapes (the composed view), found on its first query (stamped with the pass's version, as its other memos are).
     private List<BindingSymbol> RecursiveContracts()
     {
         if (this.recursiveVersion != this.storageVersion)
         {
             this.recursiveContracts.Clear();
-            foreach (var shape in this.contractShapes)
+            foreach (var shape in this.contractShapesView)
             {
                 if (this.IsRecursive(shape))
                 {

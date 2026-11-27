@@ -1,15 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, ResultContext> resultContexts = new(ReferenceEqualityComparer.Instance);
+    private readonly ResultContextRows resultContexts;
 
     private readonly List<ResultContext> resultPool = new();
     private readonly List<BoundType> resultTypes = new();
+    private readonly List<Koto?> resultValues = new(); // The source node of each of resultTypes (ResultCandidates), null for a formed Type.
     private StructuralCompletion? resultStructure;
     private int resultCursor;
 
@@ -18,13 +20,13 @@ public sealed partial class Binding
     /// <returns>The terminal Scalar Type, or null when the chain does not end in a Scalar.</returns>
     internal static BoundType? ScalarReferent(BoundType? type)
     {
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        if (type?.SafeReferent is null)
         {
             return null;
         }
 
         var terminal = ComparisonReferent(type);
-        return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
+        return terminal.IsScalar ? terminal : null;
     }
 
     /// <summary>Gets the result a function's or accessor's Block body must deliver: the written result, else the bound contract; Unit
@@ -45,9 +47,10 @@ public sealed partial class Binding
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.2).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="scope">The scope supplying read-Type Constraints.</param>
+    /// <param name="site">The site of the judgment that needs the answer (QuerySite).</param>
     /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
     /// <returns>The common Type, or null when none is supplied or the sources conflict.</returns>
-    internal BoundType? SelectCommonType(List<BoundType> types, BindingScope scope, out bool conflict)
+    internal BoundType? SelectCommonType(List<BoundType> types, BindingScope scope, QuerySite site, out bool conflict)
     {
         conflict = false;
         for (var i = 0; i < types.Count; i++)
@@ -56,7 +59,7 @@ public sealed partial class Binding
             var fitsAll = true;
             for (var j = 0; j < types.Count && fitsAll; j++)
             {
-                fitsAll = IsSubtype(types[j], candidate);
+                fitsAll = this.IsSubtype(types[j], candidate);
             }
 
             if (fitsAll)
@@ -67,7 +70,7 @@ public sealed partial class Binding
 
         // SPEC 3.5.3, 14.9.2: sources that differ only in safe reference layers over one read Type unify to that Type,
         // and each reference source is value-read. Sources with the same layers keep the borrow rule below.
-        if (this.ReadTypeUnification(types, scope) is { } scalar)
+        if (this.ReadTypeUnification(types, scope, site) is { } scalar)
         {
             return scalar;
         }
@@ -78,7 +81,7 @@ public sealed partial class Binding
         var common = types.Count > 0 ? types[0] : null;
         for (var i = 1; i < types.Count && common is not null; i++)
         {
-            common = ReferenceEquals(common, BoundType.Never) ? types[i] : ReferenceEquals(types[i], BoundType.Never) ? common : this.CommonOriginType(common, types[i], out _);
+            common = ReferenceEquals(common, BoundType.Never) ? types[i] : ReferenceEquals(types[i], BoundType.Never) ? common : this.CommonOriginType(common, types[i], site, out _);
         }
 
         if (common is not null)
@@ -120,9 +123,44 @@ public sealed partial class Binding
         return expected;
     }
 
+    // The first array literal source of a join, through the forms that deliver it (DeliveredOperand), that is still unbound: it awaits
+    // its position; null when there is none.
+    // Temporary path (F's ruling 48): a Tuple literal source keeps step 3 at its typed sources' Type, since classifying it by the call
+    // makes an Origins-only difference an inapplicable candidate (g586h3 would give NoApplicableOverload_Kd on a valid program instead of
+    // G443's located Unsupported_Kd). Removal condition: PLAN G443's landing (R7-I2 d), which then classifies Tuple sources here too.
+    private static Koto? AwaitingAggregateSource(ResultContext context)
+    {
+        foreach (var source in context.SourceNodes)
+        {
+            var core = source;
+            while (core is not null && DeliveredOperand(core) is { } operand)
+            {
+                core = operand;
+            }
+
+            if (core is ArrayLiteralKoto { BoundType: null })
+            {
+                return core;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 10.5.1 (DECISIONS BU-43, BU-78; PLAN G924 B2, F's ruling 46): whether a join that is no conflict is its call's argument probe
+    // control flow, which its call classifies (ClassifiedByCall): a typed one holding a failed source, one with an array literal source
+    // that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet), or one holding a
+    // nested call, construction or Case that awaits its call (SPEC 14.9.2 step 1, ArgFlow ruling 63: that source is checked and
+    // completed at the parameter Type under each candidate, never at the typed sources' step-2 Type; an anonymous function's or
+    // reference's join keeps U1.6g3b's step-2 Type, D-735's open issue).
+    private bool WaitsForItsCall(Koto node, ResultContext context, bool awaiting)
+        => context.HasTyped && context.Cause is not null ? this.ClassifiedByCall(node, null)
+            : awaiting && (AwaitingAggregateSource(context) is { } shape ? this.ClassifiedByCall(node, shape)
+                : this.HoldsCheckedPart(node) && this.ClassifiedByCall(node, null));
+
     // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
-    private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
+    private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope, QuerySite site)
     {
         BoundType? scalar = null;
         var differ = false;
@@ -130,16 +168,16 @@ public sealed partial class Binding
         {
             var terminal = types[i];
             var first = types[0];
-            while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            while (terminal.SafeReferent is { } referent)
             {
                 differ |= first is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || first.Semantics != terminal.Semantics;
-                terminal = terminal.Components[0];
+                terminal = referent;
                 first = first is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? first.Components[0] : first;
             }
 
-            differ |= first is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+            differ |= first.SafeReferent is not null;
             if ((scalar is not null && !ReferenceEquals(scalar, terminal)) ||
-                (!(terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal)) && !this.IsReadType(terminal, scope)))
+                (!terminal.IsScalar && !this.IsReadType(terminal, scope, site)))
             {
                 return null;
             }
@@ -153,8 +191,8 @@ public sealed partial class Binding
     // SPEC 3.5.3, 14.9.2 step 2: beside literal sources, the typed sources' common Type `common` ending in a read Type through safe
     // reference layers gives that read Type: the literals are literals of it and the reference sources supply it by a value read. Every
     // formation with literal sources reads it: a join's own sources (InferResultExpected) and a position's parts (PositionType).
-    private BoundType? BesideLiterals(BoundType? common, BindingScope scope)
-        => common is not null && this.ReadTypeReferent(common, scope) is { } terminal ? terminal : common;
+    private BoundType? BesideLiterals(BoundType? common, BindingScope scope, QuerySite site)
+        => common is not null && this.ReadTypeReferent(common, scope, site) is { } terminal ? terminal : common;
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
@@ -214,7 +252,7 @@ public sealed partial class Binding
     // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
     private StructuralCompletion ResultStructure()
     {
-        var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
+        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.ResultCompletions);
         structural.Clear();
         return structural;
     }
@@ -271,9 +309,10 @@ public sealed partial class Binding
     // SPEC 14.9.2: the Target Result Type of the collected sources, each source checked against it, and the Expression Type.
     private BoundType? DecideResult(Koto node, ResultContext context)
     {
-        var types = this.resultTypes;
+        var (types, values) = (this.resultTypes, this.resultValues);
         types.Clear();
-        var awaiting = this.ResultCandidates(context, types);
+        values.Clear();
+        var awaiting = this.ResultCandidates(context, types, values);
         if (context.Expected is null && types.Count == 0 && awaiting && this.AwaitsWithoutCandidate(node, context, types))
         {
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
@@ -291,18 +330,19 @@ public sealed partial class Binding
         var conflict = false;
         if (common is null)
         {
-            common = this.SelectCommonType(types, this.ConstraintScope(node), out conflict);
+            common = this.SelectCommonType(types, this.ConstraintScope(node), node, out conflict);
         }
         else
         {
-            // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one. A region on either side leaves rows, a regional target its source edges too; fixed and omitted targets keep
-            // their immediate/collecting fit.
+            // SPEC 15.6.1, 14.9: each result source fits the expected Type, its Origin positions rows of the body that A5 judges at the
+            // source's value, the value that supplies the fit's longer end (the use-site fit; R7-O1; H11b D5), a structural Unit at the
+            // join; the first that does not fit otherwise is the explained one. A region on either side leaves rows, a regional target its
+            // source edges too.
             for (var i = 0; i < types.Count; i++)
             {
                 ComparisonFailure fit;
-                var regional = this.HasLocalRegion(common) || this.HasLocalRegion(types[i]);
-                if (!(regional ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
+                var value = values[i] ?? node;
+                if (!(this.RegionalAt(types[i], common, value) ? this.CheckTypeUse(types[i], common, value, out fit) : this.FitsValueAt(types[i], common, node, value, out fit)))
                 {
                     context.Conflict();
                     if (failed is null)
@@ -314,9 +354,10 @@ public sealed partial class Binding
         }
 
         // SPEC 10.5.1, 23.1.2: a typed join fixes no complete Type without its call when its typed parts have no common Type (U1.6g
-        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended); under its
-        // call's argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
-        if (conflict ? this.ConflictWaits(node) : context.HasTyped && context.Cause is not null && this.ClassifiedByCall(node, null))
+        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended), or an aggregate
+        // source awaits its position (PLAN G924 B2: its sources meet at the parameter's places, 10.5.1 ¶1, 4.3.1); under its call's
+        // argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
+        if (conflict ? this.ConflictWaits(node) : this.WaitsForItsCall(node, context, awaiting))
         {
             context.Wait(this.SourcesAwait(context));
             return Complete(node, null);
@@ -335,6 +376,7 @@ public sealed partial class Binding
         }
 
         types.Clear();
+        values.Clear();
         if (context.Outcome == JoinOutcome.Conflict)
         {
             return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure)
@@ -344,7 +386,12 @@ public sealed partial class Binding
         context.DecideRest();
         if (context.Outcome == JoinOutcome.Dependent)
         {
-            return this.CompleteDependent(node, context.Cause!); // SPEC 23.1.2: it rests on its failed source.
+            // SPEC 14.9.2, 23.1.2 (DECISIONS BU-79): a Dependent join keeps its Outcome and has no record; where a source supplied a
+            // candidate and none pends, it completes with its formed Type, which its consumers check, unless that Type holds an open mark
+            // (BU-240) or would make it a Never value (IsNeverValue: the Expression Type is Never only when every source is, which its
+            // failed part is not known to be); otherwise it rests on its cause.
+            return suppliedValue && common is { ContainsOpen: false } && !this.IsNeverValue(node, common) && !context.Pending ? Complete(node, common)
+                : this.CompleteDependent(node, context.Cause!);
         }
 
         if (context.Pending)
@@ -360,8 +407,9 @@ public sealed partial class Binding
 
     // A join's outcome (SPEC 14.9.2, 23.1.2; DECISIONS BU-43): undecided while it collects its sources and forms its Type; waiting for
     // its position's Type (an outer join's, its call's); failed by a conflict it found (Conflict, its own record) or resting on a failed
-    // part or on the join it waited for (Dependent, no record); or decided (bound, or pending on a source that waits for its call).
-    private enum JoinOutcome : byte
+    // part or on the join it waited for (Dependent, no record, typed where a source supplied a candidate: DecideResult); or
+    // decided (bound, or pending on a source that waits for its call).
+    internal enum JoinOutcome : byte
     {
         Undecided,
         Waiting,
@@ -370,7 +418,25 @@ public sealed partial class Binding
         Decided,
     }
 
-    private sealed class ResultContext
+    /// <summary>The `resultContexts` family's one accessor (DECISIONS BU-220): a working-state family, the context a result target's
+    /// binding rents for it (BeginResult) and every reader takes inside the same pass, kept in the target's module's NodeColumns at its
+    /// SyntaxId (null for none); the library's rows are released at its freeze (NodeColumns.Freeze), so a library node reads none after
+    /// the library pass, as each later pass's reset left it. Its members keep the names its readers use.</summary>
+    private readonly struct ResultContextRows(Binding binding)
+    {
+        internal ResultContext this[Koto target]
+        {
+            get => this.TryGetValue(target, out var context) ? context : throw new KeyNotFoundException($"`{target}` has no result context in this pass.");
+            set => HirTables.Of(target).Families.ResultContexts.Ref(target.SyntaxId, binding) = value;
+        }
+
+        internal bool ContainsKey(Koto target) => this.TryGetValue(target, out _);
+
+        internal bool TryGetValue(Koto target, [NotNullWhen(true)] out ResultContext? context)
+            => (context = target.SyntaxOwner is { } table ? table.Hir.Families.ResultContexts.Get(target.SyntaxId, binding) : null) is not null;
+    }
+
+    internal sealed class ResultContext
     {
         internal Koto? ArrayShape { get; set; }
 
@@ -410,6 +476,10 @@ public sealed partial class Binding
 
         internal bool HasLiteral { get; set; }
 
+        // Whether a source is an owner value of a literal form (SPEC 3.6, 14.9.2; PLAN G924 rule B): a Tuple, array, fill, mixed range or
+        // Dictionary literal, at any depth of nested control flow; an untyped literal is HasLiteral's.
+        internal bool HasValue { get; set; }
+
         // Whether the join holds a typed part (G368 (1)): its survey found one at any depth (its evidence, ResultSurvey.Typed), kept
         // after the survey drops its evidence and whatever Expected it chose, or a collected source is one (ResultCandidates).
         internal bool HasTyped { get; set; }
@@ -427,7 +497,7 @@ public sealed partial class Binding
 
         internal void Clear(BoundType? expected)
         {
-            this.HasLiteral = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.HasLiteral = this.HasValue = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;

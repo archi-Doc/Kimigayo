@@ -14,9 +14,11 @@ public sealed partial class Binding
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
 
     // The facts: the operand and its judged Type, and the proposition of a proof that is Unknown or Refuted. An Unknown proof is the
-    // UnprovenConstraint failure, so the code tells the two.
+    // UnprovenConstraint failure, so the code tells the two. An Error proof's record rests on the cause its decision took (Cause,
+    // RestOnCause; SPEC 23.1.2 rule W, PLAN G1356 ruling 7), so it is derived.
     private BoundType? FailOperator(Koto node, Koto at, OperatorApplicability decision)
     {
+        this.RestOnCause(node, decision.Cause);
         var site = this.FactSite(at);
         var judged = decision.Proof is ConstraintProof.Unknown or ConstraintProof.Refuted ? decision.Requirement : null;
         ReadOnlySpan<ProblemFact> facts =
@@ -28,7 +30,7 @@ public sealed partial class Binding
         return this.Record(node, decision.Failure, judged is null ? facts[..2] : facts, unresolved: decision.Proof == ConstraintProof.Unknown);
     }
 
-    private void ReportOperatorOperand(Koto operation, int problem, in BindingProblem record)
+    private void ReportOperatorOperand(Koto operation, DiagnosticCollection? store, int problem, in BindingProblem record)
     {
         var (requirement, code) = (record.Requirement, record.Code);
         var shown = this.FactOf(problem, ProblemFactKind.Operand)!.Value;
@@ -51,17 +53,17 @@ public sealed partial class Binding
 
         if (code is DiagnosticCode.UnprovenConstraint_Kd or DiagnosticCode.UnsatisfiedConstraint_Kd)
         {
-            operation.Report(requirement, code, note: requirementNote, evidence: evidence, at: at);
+            operation.ReportIn(store, requirement, code, note: requirementNote, evidence: evidence, at: at);
         }
         else if (code == DiagnosticCode.InvalidConstraint_Kd)
         {
-            operation.Report(requirement, code, at: at);
+            operation.ReportIn(store, requirement, code, at: at);
         }
         else
         {
             var note = requirementNote;
             var terminal = this.FactOf(problem, ProblemFactKind.Terminal)!.Value;
-            if (code == DiagnosticCode.NonNumericOperand_Kd && ReferenceTypes.EndsInString(this.report.Value(terminal)))
+            if (code == DiagnosticCode.NonNumericOperand_Kd && ReferenceEquals(ComparisonReferent(this.report.Value(terminal)), BoundType.String))
             {
                 note = StringOperatorNote;
             }
@@ -70,7 +72,8 @@ public sealed partial class Binding
                 note = "A wrapping integer Type is never a shift count (SPEC 13.3.1)";
             }
 
-            operation.Report(
+            operation.ReportIn(
+                store,
                 requirement,
                 code,
                 DiagnosticTypeName(operand),

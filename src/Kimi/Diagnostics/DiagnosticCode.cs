@@ -124,6 +124,8 @@ public enum DiagnosticCode
     MultipleStartupSources_Kd,
     MultipleStartupMains_Kd,
     InvalidStartupMain_Kd,
+    MultiplePlatforms_Kd,
+    InvalidPlatform_Kd,
     LibraryRuntimeBody_Kd,
 
     UninitializedPlace_Kd,
@@ -241,6 +243,8 @@ public enum DiagnosticCode
     OwnershipDepthLimit_Kd,
     NestingLimit_Kd,
     TypeHeightLimit_Kd,
+    AnalysisLimit_Kd,
+    ResolutionWorkLimit_Kd,
 
     Count, // Last sentinel
 }

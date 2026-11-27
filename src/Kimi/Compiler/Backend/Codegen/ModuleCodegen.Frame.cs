@@ -27,7 +27,8 @@ internal sealed partial class ModuleCodegen
     private const string ZeroSizedDefinition = "@" + ZeroSized + " = private unnamed_addr constant [1 x i8] zeroinitializer, align 16\n";
 
     private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
-    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
+    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer (in the
+    // entry, whose signature, void () without parameters, is RuntimeAbi.Start's).
     private readonly StringWriter helperText = new(System.Globalization.CultureInfo.InvariantCulture); // The helpers of the latest Write.
     private Needs needs; // The module parts the definitions of the latest Write requested.
 
@@ -68,17 +69,23 @@ internal sealed partial class ModuleCodegen
         FormatInteger128 = 256,
     }
 
+    /// <summary>Gets the symbol the latest written module's start defines, its entry (IMPL 21.4.2, 21.5.2; the generation result's
+    /// Entry, the Tatara plan's B7b7): main on the C path, else the row's entry symbol, a test build's included; null for a Library.
+    /// Decided once, by the start the frame writes; no reader re-derives it from the libraries.</summary>
+    internal string? Entry { get; private set; }
+
     /// <summary>Requests a module part for the module being written.</summary>
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
-    // The complete module around the buffered definitions, an Application's entry calling its startup root.
+    // The complete module around the buffered definitions, in the row's frame, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
+        var frame = LlvmModuleText.Frame(this.row);
         var testRuntime = this.IsTestBuild ? Testing.TestRuntime.Text : null; // A test build's routines.
-        LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, testRuntime);
-        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime);
+        LlvmModuleText.WriteHeader(output, frame, this.constants);
+        LlvmModuleText.WriteRuntime(output, frame, testRuntime);
+        LlvmModuleText.WriteExternals(output, frame, CollectionsMarshal.AsSpan(this.externals), testRuntime);
         if ((this.needs & Needs.ZeroSized) != 0)
         {
             output.Write(ZeroSizedDefinition);
@@ -119,13 +126,16 @@ internal sealed partial class ModuleCodegen
         }
 
         output.Write(this.functions.GetStringBuilder());
+        output.Write(this.platformText.GetStringBuilder()); // The platform part (ModuleCodegen.Platform), empty on a hosted row.
+        this.Entry = null;
         if (start is not null)
         {
-            this.WriteStart(output, start);
+            this.Entry = this.WriteStart(output, frame.Layer, start);
         }
         else if (this.IsTestBuild)
         {
-            Testing.TestRuntime.WriteEntry(output, this.Tests, this.caseCall);
+            Testing.TestRuntime.WriteEntry(output, this.Tests, this.row.EntrySymbol, this.caseCall);
+            this.Entry = this.row.EntrySymbol;
         }
 
         if ((this.needs & Needs.Objects) != 0)
@@ -133,27 +143,60 @@ internal sealed partial class ModuleCodegen
             ObjectRuntime.WriteRuntime(output);
         }
 
-        output.Write(LlvmModuleText.Footer);
+        output.Write(frame.Footer);
     }
 
-    // __kimi_start (IMPL 21.4.2): the startup body, which takes no parameter (Binding's startup check), then a normal exit with 0.
-    private void WriteStart(TextWriter output, FunctionAbi startup)
+    // The start (IMPL 21.4.2, 21.5.2): on the C path, a module whose Libraries hold its row's C runtime (Require), main, which the C
+    // runtime's startup calls after initializing the C library and whose 0 its exit returns, running the C library's exit handlers;
+    // otherwise the row's layer's start form, its module asm defining the entry, if any, then its start routine (the entry itself,
+    // exported, or the body the asm calls, internal), which exits with 0. Either calls the layer's routines before the startup body, then
+    // the startup body, which takes no parameter (Binding's startup check). Returns the entry the start defines (Entry).
+    private string WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
     {
-        output.Write(RuntimeAbi.Start.GetDefinition(exported: true));
+        var main = this.row.CRuntime is { } runtime && this.Requires(runtime);
+        var routine = main ? RuntimeAbi.Main : layer.Start;
+        if (!main)
+        {
+            output.Write(layer.StartAssembly);
+        }
+
+        output.Write(routine.GetDefinition(exported: main || layer.Start.Name == this.row.EntrySymbol));
+
         output.Write("entry:\n");
-        this.bodies.WriteEntryCall(output, startup);
+        foreach (var call in layer.StartCalls)
+        {
+            output.Write("  call ");
+            output.Write(call.Result);
+            output.Write(" @");
+            output.Write(call.Name);
+            output.Write("()\n");
+        }
+
+        this.bodies.BeginFrameFunction(output, routine);
+        _ = this.bodies.WriteEntryCall(startup, default);
+        if (main)
+        {
+            output.Write("  ret i32 0\n}\n");
+            return RuntimeAbi.Main.Name;
+        }
+
         output.Write("  call void @");
         output.Write(RuntimeAbi.Exit.Name);
         output.Write("(i32 0)\n  unreachable\n}\n");
+        return this.row.EntrySymbol;
     }
 
     // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test
     // build's is the test runtime's entry, which calls each test root, in the catalog's case order as the generation entry gives the roots,
     // under its signature: a Test body takes no parameter and returns Unit, so another signature is a broken contract at the root's subject.
-    // False for an Application whose startup root has no signature while nothing explains it: a broken contract without a subject.
+    // On a row whose program supplies its platform, the platform part (ModuleCodegen.Platform): an Application's roots are its startup
+    // body, then its witnesses' in PlatformRows' order (positional, as OutputRoots gives them), over which it defines the adapters
+    // (PlatformAdapters); a Library has none and declares them (PlatformDeclarations). False for an Application whose startup root has no
+    // signature while nothing explains it: a broken contract without a subject.
     private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
     {
         entry = null;
+        this.platformText.GetStringBuilder().Clear();
         if (this.IsTestBuild)
         {
             this.cases.Clear();
@@ -176,10 +219,20 @@ internal sealed partial class ModuleCodegen
 
         if (startup.OutputKind == OutputKind.Library)
         {
+            this.PlatformDeclarations();
             return true;
         }
 
+        // On a row whose program supplies its platform, roots 1 to 6 are the witnesses' items in PlatformRows' order (OutputRoots, whose
+        // PlatformRoots checks their count); an Application there without a platform (Binding's startup check refuses it) is a broken
+        // contract without a subject.
+        if (this.row.ProgramPlatform && startup.Platform is null)
+        {
+            return false;
+        }
+
         entry = roots[0] < this.signatures.Length ? this.signatures[roots[0]] : null;
+        this.PlatformAdapters(roots[1..]);
         return entry is not null || this.Records.Count != 0;
     }
 }

@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -11,9 +11,7 @@ public sealed partial class Binding
     private readonly List<OriginRequirementWork> activeOriginRequirements = new();
     private readonly Queue<OriginRequirementWork> originRequirementQueue = new();
 
-    // The rows of every failed slot's FailingCase range, cleared by ResetPrerequisites with their capacity kept, so a warm rebind
-    // allocates none. A range is contiguous: FailingCase appends, and removes, only its own rows, with no other append between.
-    private readonly List<PairCase> pairCaseRows = [];
+    private readonly List<ProblemFact> slotCaseFacts = []; // RecordFailingCase's facts, a kept scratch, so a warm rebind allocates none.
     private uint originRequirementPass;
     private uint originRequirementConsumer;
 
@@ -118,7 +116,12 @@ public sealed partial class Binding
         this.originRequirementQueue.Clear();
         // Retained work survives between passes so summaries and lists are reused. A pass
         // stamp keeps declarations that dropped out from accumulating dependents forever.
-        this.originRequirementPass++;
+        if (++this.originRequirementPass == Frozen32)
+        {
+            this.originRequirementPass++; // A part's RequirementCall and its keeper lists copy it: never Frozen32 (Current).
+        }
+
+        this.pass.Part.RequirementCall = this.originRequirementPass; // The running part's keepers are current by this call (Keepers).
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
@@ -168,7 +171,8 @@ public sealed partial class Binding
 
         // First discover structural variance. Then close unproven phantom positions as
         // invariant and propagate that fact through all consumers using the same queue:
-        // a Type's slot Phantom in every admitted case too (SPEC 15.3.5; DECISIONS BU-44).
+        // a Type's slot Phantom in every admitted case too (SPEC 15.3.5; DECISIONS BU-44),
+        // unless a stored Function Type's signature reaches it (InStoredSignature).
         for (var phase = 0; phase < 2; phase++)
         {
             if (phase == 1)
@@ -178,7 +182,7 @@ public sealed partial class Binding
                     for (var i = 0; i < item.Schema.Origins.Count; i++)
                     {
                         var origin = item.Schema.Origins[i];
-                        if (origin.Variance == OriginVariance.Unused || (item.Owner is DeclarationContainerKoto && origin.Requirement == default))
+                        if (origin.Variance == OriginVariance.Unused || (item.Owner is DeclarationContainerKoto && origin.Requirement == default && !origin.InStoredSignature))
                         {
                             origin.Variance = OriginVariance.Invariant;
                         }
@@ -401,37 +405,57 @@ public sealed partial class Binding
         return (weakest, strongest);
     }
 
-    // SPEC 23.1.2, 15.3.5 (DECISIONS BU-44): the Semantics cases a slot's requirement is `failing` in at an instance, its failure's typed
-    // fact: per binder of it that the instance leaves open (SelectedCases: a pair layer's or a family's, or the declaring binder with no
-    // instance), its cases of that class where they are some but not all of its cases; none when every case fails, as the concrete twin's
-    // record names none. Formed only on failure, as a range of pairCaseRows.
-    private (int Start, int Count) FailingCase(OriginParameter slot, BoundType? instance, LoanRequirement failing)
+    // SPEC 23.1.2, 15.3.5 (DECISIONS BU-44; R7-E4 E4c): a slot case's record at `node`, a slot whose requirement is `failing` in some
+    // case of `instance` (a `during static` uniq slot, a Phantom raw slot), by position (ReportOriginSlotCase): the declaration of the
+    // schema listing the slot (ListingSchema; Related, role 0) with the instance (Instance) when there is one; Reason 1 the failing row,
+    // the slot's index in that schema above bit 8; then one Reason per binder of the slot's requirement, in its order, always present:
+    // that binder's cases of the failing class where the instance leaves them open (SelectedCases: a pair layer's or a family's, or the
+    // declaring binder with no instance) and they are some but not all of its cases, else 0, as the concrete twin's record names none.
+    private void RecordFailingCase(Koto node, OriginParameter slot, BoundType? instance, LoanRequirement failing)
     {
-        var (weakest, strongest) = this.RequirementAt(slot, instance);
         var schema = ListingSchema(slot, instance);
-        var cases = this.pairCaseRows;
-        var first = cases.Count;
-        var binders = weakest == strongest ? default : slot.Requirement.Binders;
+        var index = schema.Origins.Count - 1;
+        while (index >= 0 && !ReferenceEquals(schema.Origins[index], slot))
+        {
+            index--;
+        }
+
+        if (index < 0)
+        {
+            this.Fail(node, BindingFailure.Internal); // Every caller reads the slot from the schema listing it.
+            return;
+        }
+
+        var declaration = ReferenceEquals(schema, slot.Origin.Binder!.BoundSymbol!.Schema) ? slot.Origin.Binder! : instance!.Symbol!.Declaration!;
+        var (related, subject) = (this.FactSite(declaration), SourceRef.Of(node));
+        var facts = this.slotCaseFacts;
+        facts.Clear();
+        facts.Add(new(ProblemFactKind.Related, related, 0));
+        if (instance is not null)
+        {
+            facts.Add(new(ProblemFactKind.Instance, related, this.report.Keep(instance)));
+        }
+
+        facts.Add(new(ProblemFactKind.Reason, subject, (long)failing | ((long)index << 8)));
+        var (weakest, strongest) = this.RequirementAt(slot, instance);
+        var binders = slot.Requirement.Binders;
         for (var ordinal = binders.Next(0); ordinal >= 0; ordinal = binders.Next(ordinal + 1))
         {
             var argument = Selecting(schema, ordinal, instance);
             var modes = this.SelectedCases(argument, out var binder);
-            var start = cases.Count;
+            var named = SemanticsMask.None;
             foreach (var mode in SemanticsOrder)
             {
-                if (binder is not null && (modes & mode.ToMask()) != 0 && ClassOf(Taken(argument, mode)) == failing)
+                if (weakest != strongest && binder is not null && (modes & mode.ToMask()) != 0 && ClassOf(Taken(argument, mode)) == failing)
                 {
-                    cases.Add(new(binder, mode));
+                    named |= mode.ToMask();
                 }
             }
 
-            if (cases.Count - start == BitOperations.PopCount((uint)modes))
-            {
-                cases.RemoveRange(start, cases.Count - start); // Each case of this binder fails: the record names none of it.
-            }
+            facts.Add(new(ProblemFactKind.Reason, subject, (long)(named == modes ? SemanticsMask.None : named))); // Every case fails: none named.
         }
 
-        return (first, cases.Count - first);
+        this.Record(node, BindingFailure.InvalidOrigin, CollectionsMarshal.AsSpan(facts));
     }
 
     internal sealed class OriginRequirementWork(Koto owner, DeclarationSchema schema)
@@ -449,6 +473,19 @@ public sealed partial class Binding
         internal bool Queued { get; set; }
     }
 
+    // PLAN G949 S1-1's freeze of the library's works (FreezeLibrary): a frozen work is never active, since no call counter takes Frozen32,
+    // so a program pass's call adds no edge to it and writes neither its Consumer nor its Dependents.
+    private void FreezeRequirementWorks()
+    {
+        foreach (var work in OriginRequirementRows.Rows(this.Library.Kotonoha.Syntax))
+        {
+            if (work is not null)
+            {
+                work.Pass = Frozen32;
+            }
+        }
+    }
+
     /// <summary>The `originRequirementNodes` family's one accessor (DECISIONS BU-220): a kept family, a declaration's Origin requirement
     /// work, made once and reused by each pass (ComputeOriginRequirements), kept in its key node's module's NodeColumns at its SyntaxId.
     /// Its members keep the names its readers use.</summary>
@@ -459,6 +496,8 @@ public sealed partial class Binding
             ref var row = ref HirTables.Of(node).Families.OriginRequirementNodes.Ref(node.SyntaxId);
             row = row is null ? value : throw new ArgumentException($"`originRequirementNodes` already holds a row at `{node}`.", nameof(node));
         }
+
+        internal static PagedColumn<OriginRequirementWork?>.Enumerator Rows(SyntaxTable table) => table.Hir.Families.OriginRequirementNodes.Enumerate();
 
         internal static bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginRequirementWork? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.OriginRequirementNodes.Get(node.SyntaxId) : null) is not null;

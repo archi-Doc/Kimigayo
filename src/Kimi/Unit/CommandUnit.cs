@@ -29,13 +29,14 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 // Command
                 context.AddCommand<DefaultCommand>();
                 context.AddCommand<LspCommand, LspCommand.Options>();
-                context.AddCommand<BuildCommand, BuildCommand.Options>();
-                context.AddCommand<CheckCommand, KimiOptions>();
-                context.AddCommand<RestoreCommand, KimiOptions>();
-                context.AddCommand<EmitCommand, KimiOptions>();
-                context.AddCommand<RunCommand, RunCommand.Options>();
+                context.AddCommand<BuildCommand>();
+                context.AddCommand<CheckCommand>();
+                context.AddCommand<RestoreCommand>();
+                context.AddCommand<EmitCommand>();
+                context.AddCommand<RunCommand>();
                 context.AddCommand<TestCommand>();
-                context.AddCommand<ToolchainCommand, ToolchainCommand.Options>();
+                context.AddCommand<ToolchainCommand>();
+                context.AddCommand<TataraCommand>();
 
                 // Logger
                 context.ClearLogOutputResolvers();
@@ -92,33 +93,35 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             await this.Context.SendPrepareAsync();
             await this.Context.SendStartAsync();
 
+            await this.Execute(param.Args, this.Context.ServiceProvider, this.Context.ExecutionRoot.CancellationToken);
+
+            await this.Context.SendStopAsync();
+            await this.Context.SendTerminateAsync();
+        }
+
+        /// <summary>Parses a command line (the text after <c>kimi </c>) and executes its command.</summary>
+        /// <param name="commandLine">The command line.</param>
+        /// <param name="serviceProvider">The provider the command is resolved from.</param>
+        /// <param name="cancellationToken">The command's cancellation.</param>
+        /// <returns>A task that completes when the command has run.</returns>
+        internal async Task Execute(string commandLine, IServiceProvider serviceProvider, CancellationToken cancellationToken)
+        {
             var parserOptions = SimpleParserOptions.Standard with
             {
-                ServiceProvider = this.Context.ServiceProvider,
+                ServiceProvider = serviceProvider,
                 RequireCommandName = false,
                 RejectUnknownOptionNames = false,
                 SuppressConsoleOutput = Program.SuppressConsoleOutput,
             };
 
-            // Main
-            var arguments = SimpleParserHelper.SplitArguments(param.Args, default);
-            if (arguments.Length != 0 && arguments[0] == "test")
+            // Every command, test included, receives its arguments from this parser: split, and a quoted one unwrapped (PLAN G1214).
+            var parser = this.Context.CreateSimpleParser(parserOptions);
+            if (!parser.Parse(commandLine))
             {
-                await this.Context.ServiceProvider.GetRequiredService<TestCommand>().Execute(arguments[1..], this.Context.ExecutionRoot.CancellationToken);
-            }
-            else
-            {
-                var parser = this.Context.CreateSimpleParser(parserOptions);
-                if (!parser.Parse(KimiOptions.ExpandFlags(param.Args)))
-                {
-                    Environment.ExitCode = 1;
-                }
-
-                await parser.Execute(this.Context.ExecutionRoot.CancellationToken);
+                Environment.ExitCode = 1;
             }
 
-            await this.Context.SendStopAsync();
-            await this.Context.SendTerminateAsync();
+            await parser.Execute(cancellationToken);
         }
     }
 

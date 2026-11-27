@@ -131,6 +131,20 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Single(notes, static x => x.Contains("'B.kimi', 'b.kimi'", StringComparison.Ordinal));
     }
 
+    // SPEC 23.1.2, 11.6 (DECISIONS G52-1; G812 ruling 174): a Property whose header query failed (its cycle) still binds its accessor
+    // bodies outside its frame, so a getter's own record is reported beside the cycle's and no later phase meets an unbound body.
+    [Theory]
+    [InlineData("group G\n    let a = b\n        get() -> i32\n            return storage\n    let b = a\n", false)]
+    [InlineData("group G\n    let a = b\n        get() -> i32\n            return nosuch\n    let b = a\n", true)]
+    [InlineData("group T\n    public let b: i32 = 1\ngroup G\n    let T = T.b\n        get() -> i32\n            return nosuch\n", true)]
+    public void APropertyInACycleKeepsItsAccessorBodiesBound(string source, bool getterRecord)
+    {
+        var output = this.Run(this.WriteProject("Cycle", ("main.kimi", source)));
+        Assert.Contains(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.CyclicBinding_Kd));
+        Assert.DoesNotContain(output.Diagnostics, static x => x.Category == DiagnosticCategory.Internal);
+        Assert.Equal(getterRecord, output.Diagnostics.Any(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd)));
+    }
+
     // SPEC 23.1.2, IMPL 20.1: TestSources entries are compared as resolved paths, and each duplicate is its own record, in a product and
     // a test check alike.
     [Theory]
@@ -203,7 +217,8 @@ public sealed partial class CheckServiceTest : IDisposable
     }
 
     // SPEC 23.1.2: artifact production's target restriction reads the configured targets, the graph's resolution and the root's target
-    // read their own inputs, so a build reports all three (row P2 of a build); no phase runs (SPEC 23.2.2).
+    // read their own inputs, so a build reports all three (row P2 of a build; the restriction a target without a row, the location-only
+    // Unsupported_Kd, the Tatara plan's B7b8); no phase runs (SPEC 23.2.2).
     [Fact]
     public async Task ArtifactProductionReportsTheTargetsOwnRecords()
     {
@@ -211,10 +226,56 @@ public sealed partial class CheckServiceTest : IDisposable
         var console = new CapturingConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, path, out var project));
         Assert.False(await project.Generate(TestContext.Current.CancellationToken));
-        Assert.Contains("Artifact production currently requires", console.Output, StringComparison.Ordinal);
+        Assert.Contains(nameof(DiagnosticCode.Unsupported_Kd), console.Output, StringComparison.Ordinal);
         Assert.Contains(nameof(DiagnosticCode.UnsupportedTarget_Kd), console.Output, StringComparison.Ordinal);
         Assert.Contains("Leaf.kimiproj", console.Output, StringComparison.Ordinal);
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
+    }
+
+    // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1; design rows 1 and 3): artifact production takes the one selected target with a row.
+    // linux-x64's pair is published under bin\x86_64-unknown-linux-musl\ (row 1's emit half); a target without a row is the location-only
+    // Unsupported_Kd at the project (row 3, D-1167 N6), and so is a staged row (none-x64, outside TargetProfile.Rows); several selected
+    // targets are their selection record; the check accepts each target but the freestanding one, where the Application without a
+    // platform is the located Unsupported_Kd at its startup form (SPEC 22.4.5). Fail-before: each is the gate's "Artifact production
+    // currently requires exactly one configured Windows x64 target.".
+    [Theory]
+    [InlineData("\"x86_64-unknown-linux-musl\"", "", "", null)]
+    [InlineData("\"x86_64-unknown-linux-gnu\"", "", nameof(DiagnosticCode.Unsupported_Kd), null)]
+    [InlineData("\"x86_64-unknown-none\"", "Unsupported_Kd Hello.kimi 0", nameof(DiagnosticCode.Unsupported_Kd), null)]
+    [InlineData("\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-musl\"", "", nameof(DiagnosticCode.ProjectPreparationFailed_Kd), "Artifact production requires one selected target; select one with --Target.")]
+    public async Task ArtifactProductionTakesOneSelectedTargetWithARow(string targets, string check, string code, string? note)
+    {
+        var folder = this.PathOf("Hello");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "Hello.kimiproj");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{{targets}}}");
+        File.WriteAllText(Path.Combine(folder, "Hello.kimi"), LinuxPair.Program("Hello", "Hello.kimi"));
+        foreach (var target in targets.Split(", ").Select(static x => x.Trim('"')))
+        {
+            // The check's errors as their code, source and span start.
+            var output = this.Run(path, CheckMode.Product, target);
+            var errors = output.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error);
+            Assert.Equal(check, string.Join(" | ", errors.Select(x => $"{x.Code} {Path.GetFileName(output.Sources[x.Source].Path)} {x.Span?.Start}")));
+            Assert.Equal(check.Length == 0, output.Accepted);
+        }
+
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, path, out var project));
+        Assert.Equal(code.Length == 0, await project.Generate(TestContext.Current.CancellationToken));
+        var bin = Path.Combine(folder, "bin");
+        if (code.Length == 0)
+        {
+            Assert.Equal("x86_64-unknown-linux-musl", Path.GetFileName(Assert.Single(Directory.GetDirectories(bin))));
+            Assert.True(File.Exists(Path.Combine(bin, "x86_64-unknown-linux-musl", "Hello.ll")));
+            Assert.True(File.Exists(Path.Combine(bin, "x86_64-unknown-linux-musl", "Hello.link.json")));
+            return;
+        }
+
+        // The record at the project file, with its note or with none (the location-only form; C-575 N6).
+        Assert.Contains($" : {code}\n --> Hello.kimiproj\n\n" + (note is null ? string.Empty : $"Note: {note}\n\n"), console.Output, StringComparison.Ordinal);
+        Assert.Equal(note is not null, console.Output.Contains("Note: ", StringComparison.Ordinal));
+        Assert.DoesNotContain("Artifact production currently requires", console.Output, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(bin));
     }
 
     // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
@@ -230,7 +291,7 @@ public sealed partial class CheckServiceTest : IDisposable
             string.Join(", ", failures));
         loaded.ProjectFile.Alias = [" "];
         loaded.ProjectFile.TestSources = ["*.kimi", "*.kimi"];
-        var output = CheckService.Run(loaded, WindowsProfile.Target, mode, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        var output = CheckService.Run(loaded, TargetProfile.Windows.Target, mode, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Equal(
             ["Alias requires nonempty Container paths.", "TestSources requires explicit project-relative paths without globs."],
@@ -253,7 +314,7 @@ public sealed partial class CheckServiceTest : IDisposable
             File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "func lib() -> i32 => 4\n");
         }
 
-        var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        var resolution = DependencyResolver.Resolve(project, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         DependencyLock.Update(DependencyLock.PathForProject(project), resolution, TestContext.Current.CancellationToken);
         var output = this.Run(project);
         if (!invalid)
@@ -323,7 +384,7 @@ public sealed partial class CheckServiceTest : IDisposable
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
         loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "func twin() -> i32 => 2\n");
-        var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        var output = CheckService.Run(loaded, TargetProfile.Windows.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), Assert.Single(output.Diagnostics).Code);
     }
@@ -475,7 +536,7 @@ public sealed partial class CheckServiceTest : IDisposable
             "App",
             ("main.kimi", Valid),
             dependencies: "A={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../LeafA/LeafA.kimiproj\"} B={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../LeafB/LeafB.kimiproj\"}");
-        DependencyLock.Update(DependencyLock.PathForProject(project), DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken), TestContext.Current.CancellationToken);
+        DependencyLock.Update(DependencyLock.PathForProject(project), DependencyResolver.Resolve(project, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken), TestContext.Current.CancellationToken);
         var console = new CapturingConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var loaded));
         Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
@@ -537,14 +598,47 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.True(output.Accepted, string.Join("; ", output.Diagnostics.Select(x => $"{x.Source}{x.Span}: {x.Message}")));
     }
 
-    [Fact]
-    public void TestModeRejectsAnUntestableTarget()
+    // IMPL 20.6.1, SPEC 22 ¶1 (the Tatara plan's B7b8): the test target is one with a row in the target table; one without is the
+    // location-only Unsupported_Kd at the project (no note), as is a staged row's (none-x64, not an artifact target), and a linux-x64
+    // test unit is checked (front end only; whether this host runs it is the runner's rule). Fail-before: each is "Testing requires a
+    // configured Windows x64 target.".
+    [Theory]
+    [InlineData("x86_64-unknown-linux-gnu", false)]
+    [InlineData("x86_64-unknown-none", false)]
+    [InlineData("x86_64-unknown-linux-musl", true)]
+    public void TestModeRejectsAnUntestableTarget(string target, bool checkedUnit)
     {
-        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "Targets={\"x86_64-unknown-linux-gnu\"}");
-        var output = this.Run(project, CheckMode.Test, "x86_64-unknown-linux-gnu");
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: $"Targets={{\"{target}\"}}");
+        var output = this.Run(project, CheckMode.Test, target);
 
+        (string Code, string? Note)[] records = checkedUnit ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), null)];
+        Assert.Equal(checkedUnit ? CheckOutcome.Completed : CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(records, output.Diagnostics.Select(static x => (x.Code, x.Note)));
+    }
+
+    // IMPL 20.2, 20.3 and 20.6.1, DIAGNOSTICS §6 (PLAN G1011): the test target is the project's own selection (no target, a --Target the
+    // project does not configure) and then one target; each failure is one ProjectPreparationFailed_Kd record through the preparation's
+    // owner and leaves no target to prepare: Blocked in the check entry, and rendered by a command, whose preparation fails without an
+    // exception.
+    [Theory]
+    [InlineData("Targets={}", "", "At least one compilation target must be configured.")]
+    [InlineData("Targets={\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-gnu\"}", "", "Select --Target when a test project has more than one configured target.")]
+    [InlineData("", "x86_64-unknown-linux-gnu", "The selected target is not configured in this project.")]
+    public void EachTestTargetFailureIsAPreparationRecord(string settings, string target, string note)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: settings);
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out _));
+        var output = CheckService.Run(loaded, target, CheckMode.Test, false, CheckInputSource.Disk, ct);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
-        Assert.Contains(output.Diagnostics, static x => x.Note?.Contains("Windows x64", StringComparison.Ordinal) == true);
+        Assert.Equal((nameof(DiagnosticCode.ProjectPreparationFailed_Kd), note), output.Diagnostics.Select(static x => (x.Code, x.Note)).Single());
+
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var command));
+        command.KimiOptions = new Kimi.Command.KimiOptions { Target = target };
+        Assert.Null(command.PrepareTests(ct));
+        Assert.Contains(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), console.Output, StringComparison.Ordinal);
+        Assert.Contains(note, console.Output, StringComparison.Ordinal);
     }
 
     // SPEC 23.4: a pending input is the state owner's decision; loading a project never turns it into a load failure.
@@ -566,6 +660,52 @@ public sealed partial class CheckServiceTest : IDisposable
         var exception = new PendingInputException(path);
         var thrown = Record.Exception(() => this.Run(project, inputs: new FailingInputSource(path, exception)));
         Assert.Same(exception, thrown);
+    }
+
+    // SPEC 23.2.2, DIAGNOSTICS rule 9 and §6 (PLAN G1014, G1011): an exception before the front end that no read classifies (the lock's
+    // read classifies only its own failures) is the check's fault at the project file, its Note the exception's chain, whatever its type:
+    // an InvalidDataException is no longer a Blocked preparation record, in either mode.
+    [Theory]
+    [InlineData(CheckMode.Product, false)]
+    [InlineData(CheckMode.Product, true)]
+    [InlineData(CheckMode.Test, true)]
+    public void AnExceptionBeforeTheFrontEndIsTheChecksFault(CheckMode mode, bool invalidData)
+    {
+        var project = this.WriteProject("Lock", ("main.kimi", Valid));
+        var inner = new FormatException("inner");
+        Exception exception = invalidData ? new InvalidDataException("outer", inner) : new InvalidOperationException("outer", inner);
+        var output = this.Run(project, mode, inputs: new FailingInputSource(DependencyLock.PathForProject(project), exception));
+
+        Assert.Equal(CheckOutcome.Faulted, output.Outcome);
+        var fault = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.CheckFaulted_Kd), fault.Code);
+        Assert.Equal($"{exception.GetType().FullName}: outer ---> System.FormatException: inner", fault.Note);
+        Assert.Equal(SourceIdentity.FromPath(project), Location(output, fault));
+    }
+
+    // SPEC 23.2.3, DIAGNOSTICS rule 9 (PLAN G1010): the load classifies only its own reads, the project file's and its source listing's,
+    // so a read failure is the unit's Blocked load with its reason, and any other exception there is the unit's fault at the project file.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void ALoadIsBlockedByItsReadsAndFaultedByAnyOtherException(bool listing, bool internalFailure)
+    {
+        var project = SourceIdentity.FromPath(this.WriteProject("Load", ("main.kimi", Valid)));
+        Exception exception = internalFailure ? new InvalidOperationException("outer", new FormatException("inner")) :
+            listing ? new UnauthorizedAccessException("denied") : new IOException("held");
+        var inputs = new FailingInputSource(listing ? Path.GetDirectoryName(project.Value)! : project.Value, exception);
+        var output = CheckService.Load(Kimigayo.CreateSilent(), project, inputs, out var loaded);
+
+        Assert.Null(loaded);
+        Assert.Equal(internalFailure ? CheckOutcome.Faulted : CheckOutcome.Blocked, output?.Outcome);
+        var record = Assert.Single(output!.Diagnostics);
+        Assert.Equal(internalFailure ? nameof(DiagnosticCode.CheckFaulted_Kd) : nameof(DiagnosticCode.ProjectLoadFailed_Kd), record.Code);
+        Assert.Equal(
+            internalFailure ? "System.InvalidOperationException: outer ---> System.FormatException: inner" : $"The project '{project.Value}' could not be loaded: {exception.Message}",
+            record.Note);
+        Assert.Equal(project, Location(output, record));
     }
 
     // SPEC 23.2.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
@@ -600,7 +740,7 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failures),
             string.Join(", ", failures));
-        return CheckService.Run(project, target.Length == 0 ? WindowsProfile.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
+        return CheckService.Run(project, target.Length == 0 ? TargetProfile.Windows.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
     }
 
     private string PathOf(params string[] parts)
@@ -611,7 +751,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        var targets = settings.Contains("Targets=", StringComparison.Ordinal) ? string.Empty : $"Targets={{\"{WindowsProfile.Target}\"}} ";
+        var targets = settings.Contains("Targets=", StringComparison.Ordinal) ? string.Empty : $"Targets={{\"{TargetProfile.Windows.Target}\"}} ";
         File.WriteAllText(path, $"OutputKind=\"Library\" {targets}Dependencies={{{dependencies}}} {settings}");
         if (source is var (file, text))
         {
@@ -625,7 +765,7 @@ public sealed partial class CheckServiceTest : IDisposable
     {
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"1\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), source);
     }
 
@@ -636,7 +776,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var folder = this.PathOf("Leaf");
         Directory.CreateDirectory(folder);
         var tests = leafFails ? " TestSources={\"*.kimi\"}" : string.Empty;
-        File.WriteAllText(Path.Combine(folder, "Leaf.kimiproj"), $"OutputKind=\"Library\" PackageId=\"leaf\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}{tests}");
+        File.WriteAllText(Path.Combine(folder, "Leaf.kimiproj"), $"OutputKind=\"Library\" PackageId=\"leaf\" PackageVersion=\"1\" Targets={{\"{TargetProfile.Windows.Target}\"}}{tests}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), Valid);
         return this.WriteProject("App", ("main.kimi", Valid), settings, "Use={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../Leaf/Leaf.kimiproj\"}");
     }
@@ -665,15 +805,6 @@ public sealed partial class CheckServiceTest : IDisposable
             this.Listed.AddRange(files);
             return files.ToArray();
         }
-    }
-
-    private sealed class FailingInputSource(string failing, Exception failure) : CheckInputSource
-    {
-        public override byte[] ReadAllBytes(string path) => SourceIdentity.PathComparer.Equals(path, failing) ? throw failure : Disk.ReadAllBytes(path);
-
-        public override SourceContent ReadSource(string path) => SourceIdentity.PathComparer.Equals(path, failing) ? throw failure : Disk.ReadSource(path);
-
-        public override string[] GetFiles(string directory, string pattern) => Disk.GetFiles(directory, pattern);
     }
 
     private sealed class CapturingConsole : IConsoleService

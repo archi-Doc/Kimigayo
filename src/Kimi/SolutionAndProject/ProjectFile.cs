@@ -14,6 +14,14 @@ public partial record class ProjectFile
     private const int RequirementsMap = 4;
     private const int SuppliesMap = 5;
 
+    // The removed settings, each with the note its load fails with, whatever its value (IMPL 20.2): ValidateMapNames reads it for every
+    // name it does not inspect, and the file is then discarded. A later removal adds a row.
+    private static readonly (string Name, string Note)[] Removed =
+    [
+        ("NativeBindings", NativeConfiguration.SupersededBindings),
+        ("LlvmBin", "LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting."),
+    ];
+
     /// <summary>Gets or sets whether startup is selected for an Application or excluded for a Library.</summary>
     [IgnoreMember]
     public OutputKind OutputKind { get; set; }
@@ -60,13 +68,10 @@ public partial record class ProjectFile
     /// <summary>Gets or sets O0 or O2 for native code generation.</summary>
     public string Optimization { get; set; } = "O2";
 
-    /// <summary>Gets or sets a legacy project-relative LLVM tool override; null uses the compiler toolchain.</summary>
-    public string? LlvmBin { get; set; }
-
     /// <summary>Gets or sets per-target definition-side native requirements keyed by this module's logical name.</summary>
     public Dictionary<string, Dictionary<string, NativeRequirement>> NativeRequirements { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>Gets or sets per-target native supplies. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
+    /// <summary>Gets or sets per-target native supplies. kernel32 and kimi_backend are the compiler's supplies and take no entry.</summary>
     public NativeLibraryMap NativeLibraries { get; set; } = new();
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
@@ -82,7 +87,7 @@ public partial record class ProjectFile
         var writer = TinyhandWriter.CreateFromThreadStaticBuffer();
         try
         {
-            TinyhandTreeConverter.FromUtf8ToBinary(utf8, ref writer, true);
+            ConfigurationText.ToBinary(utf8, ref writer);
             var reader = new TinyhandReader(writer);
             List<string>? failures = null;
             var ambiguous = ValidateMapNames(reader, ref failures);
@@ -139,8 +144,13 @@ public partial record class ProjectFile
         var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
         {
-            var key = reader.ReadStringSpan();
-            if (key.SequenceEqual("Test"u8))
+            var key = ReadSettingName(ref reader, "the project file", ref failures);
+            if (key is null)
+            {
+                continue;
+            }
+
+            if (key == "Test")
             {
                 if (testSettingsSeen)
                 {
@@ -154,17 +164,10 @@ public partial record class ProjectFile
                 continue;
             }
 
-            if (key.SequenceEqual("NativeBindings"u8))
-            {
-                (failures ??= []).Add(NativeConfiguration.SupersededBindings);
-                reader.Skip();
-                continue;
-            }
-
-            if (key.SequenceEqual("NativeRequirements"u8) || key.SequenceEqual("NativeLibraries"u8))
+            if (key is "NativeRequirements" or "NativeLibraries")
             {
                 // A repeated key would replace the whole earlier map, even when its targets differ.
-                var isRequirements = key.SequenceEqual("NativeRequirements"u8);
+                var isRequirements = key == "NativeRequirements";
                 ref var keySeen = ref isRequirements ? ref requirementsSeen : ref suppliesSeen;
                 var before = failures?.Count ?? 0;
                 if (keySeen)
@@ -182,9 +185,17 @@ public partial record class ProjectFile
                 continue;
             }
 
-            var map = key.SequenceEqual("CompileTimeSettings"u8) ? 1 : key.SequenceEqual("Dependencies"u8) ? 2 : key.SequenceEqual("TestDependencies"u8) ? 3 : 0;
+            var map = key == "CompileTimeSettings" ? 1 : key == "Dependencies" ? 2 : key == "TestDependencies" ? 3 : 0;
             if (map == 0)
             {
+                foreach (var (name, note) in Removed)
+                {
+                    if (key == name)
+                    {
+                        (failures ??= []).Add(note);
+                    }
+                }
+
                 reader.Skip();
                 continue;
             }
@@ -209,11 +220,17 @@ public partial record class ProjectFile
             ref var seen = ref (map == 1 ? ref names : ref (map == 2 ? ref dependencies : ref tests));
             for (var j = 0; j < settingCount; j++)
             {
-                var name = reader.ReadString();
-                seen ??= new(StringComparer.Ordinal);
-                if (name is null || !seen.Add(name))
+                var name = ReadSettingName(ref reader, map == 1 ? "CompileTimeSettings" : map == 2 ? "Dependencies" : "TestDependencies", ref failures);
+                if (name is null)
                 {
-                    (failures ??= []).Add($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
+                    ambiguous |= 1 << map;
+                    continue;
+                }
+
+                seen ??= new(StringComparer.Ordinal);
+                if (!seen.Add(name))
+                {
+                    (failures ??= []).Add($"Duplicate {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
                     ambiguous |= 1 << map;
                 }
 
@@ -233,14 +250,20 @@ public partial record class ProjectFile
             return;
         }
 
+        var map = records ? "NativeLibraries" : "NativeRequirements";
         var targets = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < targets; i++)
         {
-            var target = reader.ReadString();
-            seen ??= new();
-            if (target is null || !seen.Add((target, "\0")))
+            var target = ReadSettingName(ref reader, map, ref failures);
+            if (target is null)
             {
-                (failures ??= []).Add($"Duplicate or null native target: {target}");
+                continue;
+            }
+
+            seen ??= new();
+            if (!seen.Add((target, "\0")))
+            {
+                (failures ??= []).Add($"Duplicate native target: {target}");
                 reader.Skip();
                 continue;
             }
@@ -271,11 +294,15 @@ public partial record class ProjectFile
             var entries = reader.ReadMapHeaderOrEmptyArray();
             for (var j = 0; j < entries; j++)
             {
-                var name = reader.ReadString();
-                seen ??= new();
-                if (name is null || !seen.Add((target, name)))
+                var name = ReadSettingName(ref reader, map, ref failures);
+                if (name is null)
                 {
-                    (failures ??= []).Add($"Duplicate or null native entry: {target}/{name}");
+                    continue;
+                }
+
+                if (!seen.Add((target, name)))
+                {
+                    (failures ??= []).Add($"Duplicate native entry: {target}/{name}");
                 }
 
                 reader.Skip();
@@ -295,8 +322,13 @@ public partial record class ProjectFile
         var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
         {
-            var name = reader.ReadString();
-            if (name is null || !names.Add(name) || name is not ("Timeout" or "RecoveryGrace" or "DiagnosticCount" or "DiagnosticBytes" or "LogBytes" or "Environment"))
+            var name = ReadSettingName(ref reader, "Test", ref failures);
+            if (name is null)
+            {
+                continue;
+            }
+
+            if (!names.Add(name) || name is not ("Timeout" or "RecoveryGrace" or "DiagnosticCount" or "DiagnosticBytes" or "LogBytes" or "Environment"))
             {
                 (failures ??= []).Add("Unknown or duplicate Test setting: " + name);
                 reader.Skip();
@@ -319,8 +351,13 @@ public partial record class ProjectFile
             var entries = reader.ReadMapHeaderOrEmptyArray();
             for (var j = 0; j < entries; j++)
             {
-                var variable = reader.ReadString();
-                if (variable is null || !environment.Add(variable))
+                var variable = ReadSettingName(ref reader, "Test.Environment", ref failures);
+                if (variable is null)
+                {
+                    continue;
+                }
+
+                if (!environment.Add(variable))
                 {
                     (failures ??= []).Add("Duplicate test environment name: " + variable);
                 }
@@ -328,6 +365,22 @@ public partial record class ProjectFile
                 reader.Skip();
             }
         }
+    }
+
+    // The one reader of a setting name, every key the map checks read (IMPL 20.1: a settings map's keys are names). Tinyhand's text
+    // accepts a key that is not a name (`2="a"`), and its string reads cannot read one, so such a key is the configuration's failure:
+    // its own note (SPEC 23.1.2), the key and its value skipped, null returned; the caller treats its map as a repeated setting's.
+    private static string? ReadSettingName(ref TinyhandReader reader, string map, ref List<string>? failures)
+    {
+        var name = reader.ReadStringIfPresent();
+        if (name is null)
+        {
+            (failures ??= []).Add($"A setting name in {map} must be a name.");
+            reader.Skip();
+            reader.Skip();
+        }
+
+        return name;
     }
 
     // Preserve the specified text format and reject unknown names instead of enum defaulting.

@@ -106,9 +106,10 @@ public sealed partial class Binding
     }
 
     // S3 (SPEC 7.7.2): an omitted capture list captures each binding only by Copy; it never infers a Move, a borrow or a Reborrow. At
-    // the end of the Closure's binding, a capture that does not Copy in every admitted case (CopiesInEveryCase, SPEC 8.14, 8.15.2, 8.3.4:
-    // the admitted set is declared evidence) fails the Closure's creation, once, at its first such capture in occurrence order
-    // (ReportCaptureEntry's omitted-list form); each proven one is a Copy, set explicitly.
+    // the end of the Closure's binding, each capture whose Copy is not proven in every admitted case (the engine's per-case Copy, SPEC
+    // 8.14, 8.15.2, 8.3.4: the admitted set is declared evidence) fails the Closure's creation with its own record (RecordCapture's
+    // Omitted kind, numbered by its storage row), whatever the Closure's slot already holds (SPEC 7.7.2 "each must be Copy", 23.1.2);
+    // each proven one is a Copy, set explicitly.
     private void JudgeOmittedCaptures(FunctionKoto function, BoundClosure plan)
     {
         if (function.Captures is not null)
@@ -124,20 +125,15 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.CopiesInEveryCase(type, this.ConstraintScope(function)))
+            if (this.ProveCopy(type, this.ConstraintScope(function), function) == ConstraintProof.Proven)
             {
                 environment.CaptureAcquisition = CaptureAcquisition.Copy;
             }
-            else if (function.BindingFailure == BindingFailure.None)
+            else
             {
-                var capture = new CaptureFailure(default, source.Name, type, source, null, null, null);
-                this.FailExplained(ref this.captureFailures, function, BindingFailure.TransferRequired, capture);
+                this.CaptureFacts(function, CaptureProblem.Omitted, function.Span, i, source);
+                this.RecordCapture(function, BindingFailure.TransferRequired);
             }
         }
     }
-
-    // SPEC 7.2.3 (Q8-4, Q8-8): whether a failed bare move is of the node's own Place (FailAcquisition at the Place itself) rooted in a
-    // prepared parameter, which records DefaultArgumentMove_Kd: a default never moves a preceding argument.
-    private bool PreparedMove(Koto node)
-        => this.acquisitionPlaces?.TryGetValue(node, out var acquisition) == true && ReferenceEquals(acquisition.Place, node) && PreparedRoot(node);
 }

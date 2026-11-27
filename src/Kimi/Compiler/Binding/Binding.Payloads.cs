@@ -14,13 +14,13 @@ public sealed partial class Binding
         result = actual;
         var objects = this.ObjectCases(actual, scope, out var view); // Every case an object form of `view` (a pair layer's included).
         if (objects == SemanticsMask.None ||
-            pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-            !ReferenceEquals(view, pattern.Components[0]))
+            pattern.SafeReferent is not { } referent ||
+            !ReferenceEquals(view, referent))
         {
             return false;
         }
 
-        if (this.ProveSealed(view, scope) != ConstraintProof.Proven)
+        if (this.ProveSealed(view, scope, source) != ConstraintProof.Proven)
         {
             return false;
         }
@@ -28,13 +28,13 @@ public sealed partial class Binding
         // SPEC 13.5.5: exclusive payload access needs exclusive authority along the whole path and through the receiver's own layer, a
         // pair layer's weakest case included: the authority a member write through it reads (PlaceAuthority, ExclusivelyAcquirable).
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
-        if (exclusive && !ExclusivelyAcquirable(source))
+        if (exclusive && !this.ExclusivelyAcquirable(source))
         {
             return false;
         }
 
         // A receiver's implicit Borrow is lent as SPEC lends it (BorrowablePlace).
-        if ((objects & SemanticsMask.Object) != 0 && !this.LendsHandle(source, scope, exclusive, out _))
+        if ((objects & SemanticsMask.Object) != 0 && !this.LendsHandle(source, this.LendFold(source, scope, exclusive), out _))
         {
             return false;
         }

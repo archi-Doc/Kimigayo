@@ -452,6 +452,17 @@ public abstract partial class Koto
         builder.Append("Koto");
     }
 
+    /// <summary>Fills every field of this node that a reader fills on its first read (PLAN G1072; DECISIONS R8-M55: after the seal no
+    /// compilation writes a frozen library object). The library pass's end calls it on every library node
+    /// (<see cref="SyntaxTable.CompleteLazyFields"/>), so a frozen node holds no lazily filled field; a node type with such a field
+    /// overrides it, and a new one joins it there. A field only a method fills is completed by the same override (FunctionKoto's
+    /// parameter index, which FindParameter forms for a signature of more than its scanned parameters); the census row
+    /// (KimiLibraryShapeTest.AReaderAfterTheFreezeFillsNoLazyField) reads properties only, so it calls no such method, which no library
+    /// signature reaches today (none has more than 8 parameters).</summary>
+    internal virtual void CompleteLazyFields()
+    {
+    }
+
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
     [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public BindingState BindingState
@@ -483,9 +494,6 @@ public abstract partial class Koto
         get => HirTables.Symbol(this);
         internal set => HirTables.WriteSymbol(this, value);
     }
-
-    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
-    internal bool HasCurrentBinding => HirTables.HasCurrentBinding(this);
 
     [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundType? ErasedFunctionType
@@ -547,7 +555,16 @@ public abstract partial class Koto
     /// <param name="condition">The condition within the requirement.</param>
     /// <returns>The key, or the unresolved mark when the node records nowhere.</returns>
     internal DiagnosticKey KeyOf(DiagnosticRequirement requirement, ushort condition = 0)
-        => this.DiagnosticCollection is { } diagnostics ? diagnostics.KeyOf(this, this.Span, this.CodeContext.SourceDocument, requirement, condition) : DiagnosticKey.Unresolved;
+        => this.KeyIn(this.DiagnosticCollection, requirement, condition);
+
+    /// <summary>Gets the key of a check of this node as a given store records it (PLAN G949 Stage 2 U3-3): <see cref="KeyOf"/>'s key in the
+    /// store a compilation decides for the node (a library node's record is the reading compilation's, Compilation.StoreOf).</summary>
+    /// <param name="store">The collection the node's records go to, or <see langword="null"/> when they go nowhere.</param>
+    /// <param name="requirement">The requirement.</param>
+    /// <param name="condition">The condition within the requirement.</param>
+    /// <returns>The key, or the unresolved mark when the node records nowhere.</returns>
+    internal DiagnosticKey KeyIn(DiagnosticCollection? store, DiagnosticRequirement requirement, ushort condition = 0)
+        => store is { } diagnostics ? diagnostics.KeyOf(this, this.Span, this.CodeContext.SourceDocument, requirement, condition) : DiagnosticKey.Unresolved;
 
     /// <summary>Reports a directly established problem of this node.</summary>
     /// <param name="requirement">The requirement that failed.</param>
@@ -563,8 +580,29 @@ public abstract partial class Koto
     /// <param name="relatedSpans">Related syntax without a node of its own, such as an Origin header, in the document of the given node.</param>
     /// <param name="repairs">The repair candidates the report offers (SPEC 23.1.3), with edits located by <see cref="Edit"/>.</param>
     internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
+        => this.ReportIn(this.DiagnosticCollection, requirement, code, first, second, note, at, evidence, related, condition, span, relatedSpans, repairs);
+
+    /// <summary>Reports a directly established problem of this node into a given store (PLAN G949 Stage 2 U3-3; the owner's O-425 (a), the
+    /// parameter exception of COMPILER_ARCHITECTURE: <see cref="Report"/>'s twelve parameters and the store): the store a compilation
+    /// decides for the node (Compilation.StoreOf: a library node's record is the reading compilation's, never the shared library's), so a
+    /// library subject's record keeps every fact a program subject's has. <see cref="Report"/> is this call with the node's own
+    /// collection.</summary>
+    /// <param name="store">The collection the record goes to, or <see langword="null"/> when the node records nowhere.</param>
+    /// <param name="requirement">The requirement that failed.</param>
+    /// <param name="code">The code.</param>
+    /// <param name="first">The first message argument.</param>
+    /// <param name="second">The second message argument.</param>
+    /// <param name="note">A Note formed from the facts.</param>
+    /// <param name="at">The smallest syntax that shows the failed condition, when it is not this node; this node stays the subject.</param>
+    /// <param name="evidence">The code's evidence facts, all of them or none.</param>
+    /// <param name="related">Syntax related to the problem, with its role and label.</param>
+    /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node.</param>
+    /// <param name="span">The part of the located syntax that has no node of its own; the location's document is kept.</param>
+    /// <param name="relatedSpans">Related syntax without a node of its own, in the document of the given node.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.1.3).</param>
+    internal void ReportIn(DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
     {
-        if (this.DiagnosticCollection is not { } collection)
+        if (store is not { } collection)
         {
             return;
         }
@@ -587,7 +625,7 @@ public abstract partial class Koto
         }
 
         // A span narrows the location within the located node's document, such as one capture entry of a closure.
-        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
+        collection.Report(requirement.Partition, this.KeyIn(collection, requirement, condition), span ?? (at ?? this).Span, code, first, second, note, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
     }
 
     /// <summary>Locates one edit of a repair candidate in this node's document (SPEC 23.1.3).</summary>
@@ -602,9 +640,18 @@ public abstract partial class Koto
     /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
     /// <param name="condition">The condition within the requirement, as <see cref="Report"/> takes it.</param>
     internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites, ushort condition = 0)
-        => this.DiagnosticCollection?.Report(
+        => this.ReportDerivedIn(this.DiagnosticCollection, requirement, prerequisites, condition);
+
+    /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed, into a given store (PLAN G949
+    /// Stage 2 U3-3; <see cref="ReportIn"/>'s store): <see cref="ReportDerived"/> is this call with the node's own collection.</summary>
+    /// <param name="store">The collection the record goes to, or <see langword="null"/> when the node records nowhere.</param>
+    /// <param name="requirement">The requirement left undecided.</param>
+    /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
+    /// <param name="condition">The condition within the requirement, as <see cref="Report"/> takes it.</param>
+    internal void ReportDerivedIn(DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticKey[] prerequisites, ushort condition = 0)
+        => store?.Report(
             requirement.Partition,
-            this.KeyOf(requirement, condition),
+            this.KeyIn(store, requirement, condition),
             this.Span,
             DiagnosticCode.PrerequisiteUnavailable_Kd,
             null,

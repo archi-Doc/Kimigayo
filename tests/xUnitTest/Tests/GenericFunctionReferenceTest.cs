@@ -39,6 +39,13 @@ public class GenericFunctionReferenceTest
     private const string Unbound = "func unbound<T>(y: ref/i32 during k, z: ref/i32 during j) -> ref/i32 during k => y\n";
     private const string Caller = "func g(a: ref/i32 during p, b: ref/i32 during q) -> i32\n    let e: ";
 
+    // PLAN G464 (SPEC 15.6.1, 15.3.4): a written Type argument at a reference holding a Function Type is formed without the nested
+    // signature, whose input is its premise and whose result was judged where written (dev: UnprovenConstraint_Kd at the reference).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc ku<U>(q: ref/i32, f: U) -> i32\n    return 0\nfunc host(s: ref/i32, h: (Option<T during s>) -> i32) -> i32\n    let g = ku<(Option<T during s>) -> i32>\n    return g(s, h@move)\n", "clean")] // c1r
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc ku<U>(q: ref/i32, f: U) -> i32\n    return 0\nfunc host(s: ref/i32, h: (Option<T during s>) -> Option<T during s>) -> i32\n    let g = ku<(Option<T during s>) -> Option<T during s>>\n    return g(s, h@move)\n", "clean")] // c1rr
+    public void ANestedSignatureInAReferencesTypeArgumentIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("Erased", Identity + "let b: (i32) -> i32 = identity\nrequire b(2) == 2 else => $abort(\"erased\")", "")]
     [InlineData("Returned", Identity + "func make() -> (i32) -> i32 => identity\nlet f = make()\nrequire f(3) == 3 else => $abort(\"returned\")", "")]
@@ -88,18 +95,16 @@ public class GenericFunctionReferenceTest
     }
 
     [Theory]
-    [InlineData(Identity + "let g: (ref/i32) -> ref/i64 = identity")] // The structure fails before any Origin is judged.
-    [InlineData(Identity + "let f: (i32, i32) -> i32 = identity")] // Arity differs.
-    public void InapplicableGenericReferencesAreTypeMismatches(string source)
+    [InlineData(Identity + "let g: (ref/i32) -> ref/i64 = identity", "expected (ref/i32) -> ref/i64, found (T) -> T")] // The structure fails before any Origin is judged.
+    [InlineData(Identity + "let f: (i32, i32) -> i32 = identity", "expected (i32, i32) -> i32, found (T) -> T")] // Arity differs.
+    public void InapplicableGenericReferencesAreTypeMismatches(string source, string label)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
-        Assert.True(error.Text is "identity" or "pair" or "keep", error.ToString() + " " + error.Text); // Located at the reference.
-        Assert.DoesNotContain("per-call", error.Note, StringComparison.Ordinal);
-        Assert.Contains("Type parameters are bound from the expected signature", error.Note, StringComparison.Ordinal); // Owned failures: ErasureOwnedDiagnosticTest.
+        Assert.Equal(("identity", label, (string?)null), (error.Text, error.Label, error.Note)); // At the reference; Owned failures: ErasureOwnedDiagnosticTest.
     }
 
     // SPEC 3.8, 7.7.4, 10.8 (PLAN G511): an explicit Type argument is kept, so one that differs from the binding S gives, in a primitive
@@ -125,6 +130,29 @@ public class GenericFunctionReferenceTest
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), reference), (error.Code, error.Text));
+    }
+
+    // SPEC 10.5.3, 15.4.4 (DECISIONS BU-175, R7-C8 U-D3r): a reference binds its slot to a Type of any height: OmittedWrittenOrigin
+    // and the `ref/i64` row above nested in Tuples (no generic instance a level). Two walks had counts on `2f7d4a10d^`, and each count
+    // put back alone fails these valid rows with its TypeMismatch_Kd: InputOrigins took a part past 64 levels for a per-call Origin,
+    // and SameExceptOmittedOrigins took a written argument past 32 levels, whose omitted Origins S fills, for another Type
+    // (SolveOmittedOrigins' count of 32 changes no row: reading only). The invalid twins guard SameExceptOmittedOrigins' other
+    // direction. InputOrigins has none: its cut only refused, and a refused slot's per-call Origin is a direct input's own, at the
+    // slot's top (APerCallOriginLeavesTheReferenceSlotUnsolved). Binding's records: past height 64 the instance collector's own
+    // GenerationResourceLimit_Kd records these programs.
+    [Theory]
+    [InlineData(65, "i32", null, true)]
+    [InlineData(130, "i32", null, true)]
+    [InlineData(33, "ref/i32 during static", "ref/i32", true)]
+    [InlineData(66, "ref/i32 during static", "ref/i32", true)]
+    [InlineData(33, "ref/i32 during static", "ref/i64", false)]
+    [InlineData(66, "ref/i32 during static", "ref/i64", false)]
+    public void AReferenceBindsASlotOfAnyHeight(int depth, string terminal, string? written, bool valid)
+    {
+        string Nest(string inner) => new string('(', depth) + inner + string.Concat(Enumerable.Repeat(", i32)", depth));
+        var reference = $"let f: ({Nest(terminal)}) -> {Nest(terminal)} = identity" + (written is null ? string.Empty : $"<{Nest(written)}>");
+        var records = valid ? string.Empty : $"{nameof(DiagnosticCode.TypeMismatch_Kd)}: {reference}";
+        CompilationTestHelper.AssertBindingRecordsAtLines($"reference-{depth}-{written}", Identity + reference + "\n", records);
     }
 
     // SPEC 10.6, 15.3.6: a slot that only a per-call Origin of the fixed expected call signature would satisfy is one
@@ -212,27 +240,64 @@ public class GenericFunctionReferenceTest
         Assert.True(spans[0].Start < spans[1].Start, name);
     }
 
-    // SPEC 10.5: failed slot binding keeps TypeMismatch_Kd and names the structural or Origin conflict.
+    // SPEC 10.5: failed slot binding keeps TypeMismatch_Kd at the reference, the declaration's own signature against S.
     // A reached constraint failure is tested separately with its actual obligation.
     [Theory]
-    [InlineData(Identity + "let h: (ref/i32) -> ref/i32 during static = identity", "identity", "its parameters and result bind Type parameter 'T' to Types that differ only in their Origins")]
-    [InlineData(Identity + "func outer(x: ref/i32) -> i32\n    let h: (ref/i32) -> ref/i32 during x = identity\n    return 0", "identity", "its parameters and result bind Type parameter 'T' to Types that differ only in their Origins")]
-    [InlineData(Identity + "let f: (ref/i32) -> ref/i32 = identity<ref/i32 during static>", "identity<ref/i32 during static>", "the written Type arguments and the signature give Type parameter 'T' Types that differ only in their Origins")]
-    [InlineData(FirstOf + "let f: (ref/i32, ref/i64) -> ref/i32 = firstOf", "firstOf", "no binding of them fits its structure")]
+    [InlineData(Identity + "let h: (ref/i32) -> ref/i32 during static = identity", "identity", "expected (ref/i32) -> ref/i32, found (T) -> T")]
+    [InlineData(Identity + "func outer(x: ref/i32) -> i32\n    let h: (ref/i32) -> ref/i32 during x = identity\n    return 0", "identity", "expected (ref/i32) -> ref/i32, found (T) -> T")]
+    [InlineData(Identity + "let f: (ref/i32) -> ref/i32 = identity<ref/i32 during static>", "identity<ref/i32 during static>", "expected (ref/i32) -> ref/i32, found (T) -> T")]
+    [InlineData(FirstOf + "let f: (ref/i32, ref/i64) -> ref/i32 = firstOf", "firstOf", "expected (ref/i32, ref/i64) -> ref/i32, found (T, ref/i32) -> T")]
 
     // A slot no position binds is no substituted signature, whether or not its contract would fit (InternalInvariant_Kd and
     // UnprovenOriginContract_Kd before PLAN G490).
-    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during q = unbound\n    return 0", "unbound", "the signature does not bind Type parameter 'T'")]
-    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during p = unbound\n    return 0", "unbound", "the signature does not bind Type parameter 'T'")]
-    public void ReferenceSlotFailuresNameTheirCause(string source, string reference, string cause)
+    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during q = unbound\n    return 0", "unbound", "expected (ref/i32, ref/i32) -> ref/i32, found (ref/i32, ref/i32) -> ref/i32")]
+    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during p = unbound\n    return 0", "unbound", "expected (ref/i32, ref/i32) -> ref/i32, found (ref/i32, ref/i32) -> ref/i32")]
+    public void ReferenceSlotFailuresAreTypeMismatches(string source, string reference, string label)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
-        Assert.Equal(reference, error.Text);
-        Assert.StartsWith("The generic function's Type parameters are bound from the expected signature without adaptations; " + cause, error.Note, StringComparison.Ordinal);
+        Assert.Equal((reference, label, (string?)null), (error.Text, error.Label, error.Note));
+    }
+
+    // G1128 R1.3 (h) (SPEC 10.5.3, 10.8; F's G147 ruling 16): a reference has no late solve, so a slot whose bindings from S differ in
+    // Origins that would be slot variables is the located Unsupported_Kd at the reference, its one record; dev's TypeMismatch_Kd (a
+    // Language error on the valid forms) goes. Labels from SPEC before any run (the design review's twins): r-fr1, r-fr2, r-fr2-u and
+    // r-fr3 valid; r-fr3-e invalid, which the limit also rejects. S's own per-call inputs are no slot variables, so a slot they bind keeps
+    // dev's records (ReferenceSlotFailuresNameTheirCause's Origin conflicts, the per-call rows), and so does a Constraint of the met binding.
+    [Theory]
+    [InlineData("r-fr1", "func pick2<T>(x: T, y: T) -> i32 => 0\nfunc u(w: ref/i32 during a, w2: ref/i32 during b) -> i32\n    let f: (ref/i32 during a, ref/i32 during b) -> i32 = pick2\n    return 0", "pick2")]
+    [InlineData("r-fr2", "func app2r<T>(g: (T) -> i32, h: (T) -> i32) -> i32 => 0\nfunc u(w: ref/i32 during a, w2: ref/i32 during b) -> i32\n    origin a outlives b\n    let f: ((ref/i32 during a) -> i32, (ref/i32 during b) -> i32) -> i32 = app2r\n    return 0", "app2r")]
+    [InlineData("r-fr2-u", "func app2r<T>(g: (T) -> i32, h: (T) -> i32) -> i32 => 0\nfunc u(w: ref/i32 during a, w2: ref/i32 during b) -> i32\n    let f: ((ref/i32 during a) -> i32, (ref/i32 during b) -> i32) -> i32 = app2r\n    return 0", "app2r")]
+    [InlineData("r-fr3", "func pick2r<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc u(w: ref/i32 during a, w2: ref/i32 during b) -> i32\n    origin b outlives a\n    let f: (ref/i32 during a, ref/i32 during b) -> ref/i32 during a = pick2r\n    return 0", "pick2r")]
+    [InlineData("r-fr3-e", "func pick2r<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc u(w: ref/i32 during a, w2: ref/i32 during b) -> i32\n    let f: (ref/i32 during a, ref/i32 during b) -> ref/i32 during a = pick2r\n    return 0", "pick2r")]
+    public void AReferenceSlotThatWouldTakeVariablesIsTheLimit(string name, string source, string reference)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\npublic func main() => ()");
+        Assert.False(c.Binding.Result.IsComplete, name);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), reference), (error.Code, error.Text));
+    }
+
+    // G1128 R1.3 (h): the limit's controls, valid by SPEC (labels before any run). A slot whose Type carries no Origin takes no variables
+    // (c-fr0, accepted); one covariant binding (c-fr1), two bindings of one Type (c-fr0r, c-fr2: by the shortcut theorem their solve is
+    // that binding) and written Type arguments, which fix the slot (c-fr2x), keep dev's result, no limit. Dev's UnprovenConstraint_Kd
+    // on these valid programs is its own (with one binding too, c-fr1), not G1128's: reported to F.
+    [Theory]
+    [InlineData("c-fr0", "func pick2<T>(x: T, y: T) -> i32 => 0\nfunc u() -> i32\n    let f: (i32, i32) -> i32 = pick2\n    return 0", "")]
+    [InlineData("c-fr1", "func id1<T>(x: T) -> i32 => 0\nfunc u(w: ref/i32 during a) -> i32\n    let f: (ref/i32 during a) -> i32 = id1\n    return 0", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    [InlineData("c-fr0r", "func pick2<T>(x: T, y: T) -> i32 => 0\nfunc u(w: ref/i32 during a) -> i32\n    let f: (ref/i32 during a, ref/i32 during a) -> i32 = pick2\n    return 0", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    [InlineData("c-fr2", Identity + "func u(w: ref/i32 during a) -> i32\n    let f: (ref/i32 during a) -> ref/i32 during a = identity\n    return 0", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    [InlineData("c-fr2x", Identity + "func u(w: ref/i32 during a) -> i32\n    let f: (ref/i32 during a) -> ref/i32 during a = identity<ref/i32 during a>\n    return 0", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    public void AReferenceSlotWithoutVariablesKeepsItsResult(string name, string source, string codes)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\npublic func main() => ()");
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code)));
+        Assert.True(codes.Length == 0 == c.Binding.Result.IsComplete, name);
     }
 
     // SPEC 10.5.3, 10.7, 15.6.1 (PLAN G490): a lone candidate's record reads the signature its trial substituted, its Item over the bound
@@ -307,11 +372,9 @@ public class GenericFunctionReferenceTest
         Assert.Contains("only the 1st parameter's per-call Origin would satisfy Type parameter 'T'", console.Text, StringComparison.Ordinal);
     }
 
-    // SPEC 10.8: two spellings of one Function Type bind one slot, and a result-only per-call slot wrapped in an anonymous function is accepted.
+    // SPEC 10.8: two spellings of one Function Type bind one slot.
     [Theory]
     [InlineData("func keep<T>(f: T) -> T => f@move\nlet m: ((ref/i32) -> ref/i32) -> (ref/i32) -> ref/i32 = keep")]
-    [InlineData(ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)")]
-    [InlineData(ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(func (a, b) => g(a, b), x@ref, x@ref)")]
     [InlineData(Identity + "let e: (i64) -> i64 = identity<i64>")]
     [InlineData(Identity + "let e: (Wrapping<i32>) -> Wrapping<i32> = identity<Wrapping<i32>>")]
     [InlineData(Identity + "let e: (char) -> char = identity<char>")]
@@ -325,6 +388,22 @@ public class GenericFunctionReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 10.2.2 item 2 (PLAN G924, K's revision; F's rulings 74 and 88; K on the board, 11-17 10:22): at an expected `ref/U` a
+    // declared result `T` is a returned value, matched against U. An anonymous function's result Type, fixed by its contextual
+    // Function Type, is that expected result for its body, so `g(a, b)` binds `T = i32` and the body returns the borrow of a
+    // temporary: invalid, where the earlier text bound `T = ref/i32` and accepted both (mk2_bare's move in another form; a declared
+    // `ref/T` result is matched against `ref/U`, mk2_ref).
+    [Theory]
+    [InlineData(ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)")]
+    [InlineData(ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(func (a, b) => g(a, b), x@ref, x@ref)")]
+    public void AResultOnlySlotAtAnExpectedReferenceIsAReturnedValue(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        // R7-O1 H: the temporary's Loan conflict, which the failed node hid, beside the relation (a counted dependent, Q13).
+        Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code).Distinct());
     }
 
     // SPEC 10.6: the record's cause is its own; an independent error stays visible and a use of the annotated binding adds none.
@@ -437,14 +516,16 @@ public class GenericFunctionReferenceTest
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
-    // SPEC 10.6: a warm rebind of a per-call slot failure, including one found through an Origin conflict, and of a Type mismatch whose
-    // Note names an Origin conflict, reuses the candidate buffers, the scratch bindings and the fact tables.
+    // SPEC 10.6: a warm rebind of a per-call slot failure, including one found through an Origin conflict, of a Type mismatch whose
+    // Note names an Origin conflict and of a reference slot that would take variables (G1128 R1.3 (h): the located limit) reuses the
+    // candidate buffers, the scratch bindings and the fact tables.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(Identity + "let h: (ref/i32) -> ref/i32 = identity\nlet n: i32 = 1\nlet m = h(n@ref)", nameof(DiagnosticCode.MissingOriginBinding_Kd))]
     [InlineData(FirstOf + "let f: (ref/i32, ref/i32) -> ref/i32 = firstOf", nameof(DiagnosticCode.MissingOriginBinding_Kd))]
     [InlineData(Pick + "let f: (ref/i32, ref/i32) -> ref/i32 = pick", nameof(DiagnosticCode.MissingOriginBinding_Kd))]
     [InlineData(Identity + "let h: (ref/i32) -> ref/i32 during static = identity", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("func pick2<T>(x: T, y: T) -> i32 => 0\nfunc u(w: ref/i32 during a, w2: ref/i32 during b) -> i32\n    let f: (ref/i32 during a, ref/i32 during b) -> i32 = pick2\n    return 0\npublic func main() => ()", nameof(DiagnosticCode.Unsupported_Kd))]
     [InlineData(Tagged + "let f: (ref/i32, string) -> ref/i32 = tagged", nameof(DiagnosticCode.MissingOriginBinding_Kd))] // The @move proof.
     [InlineData("func tag<T, M>(a: T) -> T => a@move\nlet f: (ref/i32) -> ref/i32 = tag<ref/i32, i64>", nameof(DiagnosticCode.MissingOriginBinding_Kd))]
     [InlineData("func firstOf<T>(a: T, b: ref/i32) -> T\n    T is Owned\n    return a@move\nlet f: (ref/i32, ref/i32) -> ref/i32 = firstOf", nameof(DiagnosticCode.UnprovenConstraint_Kd))]

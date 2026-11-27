@@ -27,7 +27,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private FunctionGroup GroupOf(Koto use, BindingSymbol? head)
-        => new(head, this.ReferenceRequirements(use), this.gatheredGroups?.GetValueOrDefault(ReferenceName(use)));
+        => new(head, this.ReferenceRequirements(use), GatheredGroupRows.GetValueOrDefault(ReferenceName(use)));
 
     // SPEC 9.6: the active group lookup gathered from Constraints for the use's member access, or none. A requirement reference
     // retains the requirement declaration, the conforming Self and its bound declaring Contract (Binding.RequirementItems.cs).
@@ -50,7 +50,7 @@ public sealed partial class Binding
             this.BindHeader(member);
         }
 
-        return this.CheckGatheredParameterShapes(use, group, aliasStage: true);
+        return this.CheckGatheredParameterShapes(use, group);
     }
 
     private readonly struct FunctionGroup(BindingSymbol? first, RequirementGroup? requirements, List<BindingSymbol>? gathered)

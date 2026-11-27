@@ -12,51 +12,58 @@ namespace XunitTest;
 public sealed partial class MirBuildTest
 {
     // SPEC 23.1.2, 3.6, 13.5.6 (PLAN G247; DECISIONS R4-M149, amending R4-M109 (a) and L1): a lending rvalue over a Place rooted at an
-    // Opaque temp (the derived value of `w`, `h` or `b`, each use of which fails its Type's constraint: S2 is neither a Dictionary key nor
-    // Equatable) is its consumer's derived value, an Opaque whose site names the temp. The forms: a Borrow of a Field chain, in
-    // parentheses, of the rejected name itself, an address; an upcast's view; a runtime index's guard and its element's Borrow, also with
-    // a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback, also a getter-only Property's
-    // standard side (whose getter takes its own derived value of the receiver located in the temp, DECISIONS R4-M109); a method's receiver;
-    // a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a Place in the temp). The
+    // Opaque temp (the derived value of `w`, `h` or `b`, each use of which rests on its unresolved Type: the key `Missing` names nothing,
+    // a local of no Type, PLAN G1073) is its consumer's derived value, an Opaque whose site names the temp. The forms: a Borrow of a
+    // Field chain, in parentheses, of the rejected name itself, an address; an upcast's view; a runtime index's guard and its element's
+    // Borrow, also with a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback; a
+    // method's receiver; a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a
+    // Place in the temp). A getter-only Property's update lends nothing: its read is a call whose receiver `w` rests on its unresolved
+    // Type (PLAN G214; before, the getter took its own derived value of the receiver, DECISIONS R4-M109), so the update is that failed
+    // read's derived value, and nothing of it lends; since DECISIONS Z27 the update's site names its target's kept receiver, w's
+    // derived value in its Opaque temp, as an enclosing use (derived; fail-before: w's root, no derived value). The
     // valid twin (an i32 key) lends the local each time and holds no Opaque value or construction record (R5's guard that a complete
     // compilation never reaches Unlent); a literal's Borrow, valid in both, lends its materialized temporary (implementation review 1's
     // B1). Each row: f's lending rvalues and derived values in order, a lent root by name, `opaque` for a temp an Opaque is assigned to,
-    // else `temp`; `derived` for an Opaque naming one such temp.
+    // else `temp`; `derived` for an Opaque naming one such temp. The lists of the `Missing` key are the MIR build's, read from G1278-A's
+    // run (F3; F's G1278-7, G1278-9 (4)): each holds only `derived` values (two to four; `w.inner.mutate()` none), so no row lends a
+    // Place in the temp. Under that key a method call over the temp rests whole (its receiver has no Type, so no method is selected, and
+    // its Opaque keeps only its arguments): its receiver is never lowered, so `w.inner.mutate()` lends nothing and `w.inner.pick()`'s
+    // derived value is its `let`'s, the match row's its Subject's (the Middle's C-563; F's G1278-12).
     [Theory]
-    [InlineData("let p = w.v@ref", "derived", "Shared w")]
-    [InlineData("let p = w.inner.n@uniq", "derived", "Uniq w")]
-    [InlineData("let p = (w.v)@ref", "derived", "Shared w")]
-    [InlineData("let p = h@ref", "derived", "Shared h")]
-    [InlineData("let p = w.v@raw", "derived", "Raw w")]
-    [InlineData("let view = w.sq@objref/Shape", "derived", "Shared w")]
-    [InlineData("let i = 1\n    let p = w.arr[i]@ref", "derived | derived", "Shared w | Shared w")]
-    [InlineData("let p = w.xs[g()]@ref", "derived | derived", "Shared w | Shared w")]
+    [InlineData("let p = w.v@ref", "derived | derived | derived", "Shared w")]
+    [InlineData("let p = w.inner.n@uniq", "derived | derived | derived | derived", "Uniq w")]
+    [InlineData("let p = (w.v)@ref", "derived | derived | derived", "Shared w")]
+    [InlineData("let p = h@ref", "derived | derived", "Shared h")]
+    [InlineData("let p = w.v@raw", "derived | derived | derived", "Raw w")]
+    [InlineData("let view = w.sq@objref/Shape", "derived | derived | derived", "Shared w")]
+    [InlineData("let i = 1\n    let p = w.arr[i]@ref", "derived | derived | derived", "Shared w | Shared w")]
+    [InlineData("let p = w.xs[g()]@ref", "derived | derived | derived", "Shared w | Shared w")]
     [InlineData("let i = 1\n    w.arr[i] = 3", "derived", "Shared w")]
     [InlineData("let s = w.xs[0..1]", "derived | derived", "Shared w | Raw w")]
-    [InlineData("let n = w.xs.capacity", "derived", "Shared w")]
-    [InlineData("let k = w.sq is Square", "derived", "Shared w")]
+    [InlineData("let n = w.xs.capacity", "derived | derived | derived", "Shared w")]
+    [InlineData("let k = w.sq is Square", "derived | derived | derived", "Shared w")]
     [InlineData("w.v += 1", "derived", "TwoPhaseUniq w")]
-    [InlineData("w.q += 1", "derived | derived", "TwoPhaseUniq w | Shared w")]
-    [InlineData("w.inner.mutate()", "derived", "TwoPhaseUniq w")]
+    [InlineData("w.q += 1", "derived", "TwoPhaseUniq w | Shared w")]
+    [InlineData("w.inner.mutate()", "", "TwoPhaseUniq w")]
     [InlineData("let r = w.inner.pick()", "derived", "Shared w")]
     [InlineData("let r: ref/i32 = match w.inner\n        let x => x.pick()", "derived", "Shared w")]
     [InlineData("b.item", "derived", "acquire b")]
-    [InlineData("let x = b.item", "derived", "acquire b")]
-    [InlineData("let x = keepS(b.item)", "derived", "acquire b")]
-    [InlineData("let r = w.v@s", "derived", "adapt w")]
+    [InlineData("let x = b.item", "derived | derived", "acquire b")]
+    [InlineData("let x = keepS(b.item)", "derived | derived | derived", "acquire b")]
+    [InlineData("let r = w.v@s", "derived | derived | derived", "adapt w")]
     [InlineData("let p = 1@ref", "Shared temp", "Shared temp")]
     [InlineData("let p = 5@uniq", "Uniq temp", "Uniq temp")]
     [InlineData("let p = (1)@ref", "Shared temp", "Shared temp")]
     public void AnOpaqueTempLendsNothing(string statement, string failed, string valid)
     {
-        foreach (var (key, expected) in new[] { ("S2", failed), ("i32", valid) })
+        foreach (var (key, expected) in new[] { ("Missing", failed), ("i32", valid) })
         {
             var c = Compile(RejectedRoots(key) + "    " + statement + "\npublic func main() => ()\n");
-            Assert.Equal(key == "S2", c.Binding.Issues.Any());
+            Assert.Equal(key == "Missing", c.Binding.Issues.Any());
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-            Assert.Equal(expected.Split(" | "), Lending(c, body, RejectedRoots(key).Length));
+            Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Lending(c, body, RejectedRoots(key).Length));
             if (key == "i32")
             {
                 // A complete compilation holds no Opaque value and no construction record, so none of its rvalues reaches Unlent.
@@ -66,8 +73,47 @@ public sealed partial class MirBuildTest
         }
     }
 
+    // The Middle's C-563 (SPEC 11.3, 11.3.1, 23.1.2; DECISIONS R4-M149): the method-receiver form AnOpaqueTempLendsNothing's `Missing` key
+    // cannot reach (`w.inner.mutate()` rests whole). A setter whose written receiver fails (`uniq/Missing`, its one record; SPEC 11.3.1
+    // fixes it as `uniq/Self`) executes over the failed self slot (PLAN G1073), and its `storage` keeps the Property's Type `In` (SPEC
+    // 11.3), so the method is selected and bound: `storage` is the slot's derived value in an Opaque temp, and the receiver's borrow of
+    // that temp is the call's derived value. The valid twin borrows `self`. This key observes existing behavior; no fail-before was run.
+    [Theory]
+    [InlineData("storage.mutate()", "TwoPhaseUniq self")]
+    [InlineData("storage.look()", "Shared self")]
+    public void AStorageReceiverOverAFailedSelfLendsNothing(string statement, string valid)
+    {
+        foreach (var (key, expected) in new[] { ("Missing", "derived | derived"), ("Self", valid) })
+        {
+            var c = Compile($"""
+                struct In
+                    public var n: i32 = 0
+                    public init() => ()
+                    public func mutate(self: uniq/Self) => ()
+                    public func look(self: ref/Self) => ()
+                struct HW
+                    public var x: In = In.init()
+                        set(self: uniq/{key}, value: In) -> ()
+                            {statement}
+                    public init() => ()
+                public func main() => ()
+
+                """);
+            string[] records = key == "Missing" ? ["UnresolvedBinding_Kd Missing"] : [];
+            Assert.Equal(records, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Empty(program.Records(MirRecordClass.Construction));
+            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "x.Set");
+            Assert.Equal(expected.Split(" | "), Lending(c, body, 0));
+            Assert.Equal(key == "Missing", body.HasOpaque);
+        }
+    }
+
     // A function `f<s/T>(value: s/T)` whose locals `w` (a struct), `h` (a Dictionary) and `b` (a struct of a pair-typed item) take a key
-    // Type: S2, neither a Dictionary key nor Equatable, so that each use of them fails its Type's constraint, or i32, the valid twin; `t`
+    // Type: `Missing`, which names nothing, so that each local's written Type is unresolved and each use of it rests (a local of no Type,
+    // MirLocal's own Opaque source; PLAN G1278: a written Type with a failed clause is judged only where it is written, so its locals'
+    // uses carry it and lend), or i32, the valid twin; `t`
     // is a valid string the independent-error rows move. Its statements follow (AnOpaqueTempLendsNothing, MirBorrowsTest's
     // AnOpaqueTempKeepsTheIndependentRecords).
     internal static string RejectedRoots(string key) => $$"""
@@ -76,9 +122,6 @@ public sealed partial class MirBuildTest
             protected init(size: i32) => self.size = size
         struct Square : Shape
             public init(size: i32) : base(size) => ()
-        struct S2
-            public var v: i32 = 0
-            public init() => ()
         struct In
             public var n: i32 = 0
             public init() => ()
@@ -132,7 +175,7 @@ public sealed partial class MirBuildTest
             { Kind: MirRvalueKind.Use } use when body.Operands[use.Start] is { Kind: MirOperandKind.PairAcquire } operand =>
                 $"acquire {Root(operand.Place.Root)}",
             { Kind: MirRvalueKind.Opaque } derived when body.OpaqueSites[derived.Arg] is { Count: 1 } site &&
-                Root(body.OpaqueRoots[site.Start]) == "opaque" => "derived",
+                Root(body.OpaqueUses[site.Start].Root) == "opaque" => "derived",
             _ => null,
         }).OfType<string>()];
     }

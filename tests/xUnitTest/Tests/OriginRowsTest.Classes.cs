@@ -69,7 +69,8 @@ public sealed partial class OriginRowsTest
     // binding's own atom, stays a Finite root under `owner/Self` (DECISIONS R4-M126 P5, superseding the interim Finite in every receiver
     // mode); under a borrowed receiver it resolves to ρ, so its relation is fixed-fixed and Binding's, no row (AClosuresValueAndAReceiverAre
     // ClassedByTheirRole reads its class). A local whose failed clause names no bound Origin keeps its Type's Origins (SPEC 15.3.3: a
-    // local's clause assumes nothing, so its failure rests nothing; H11b-0 B1): RepeatedSet's longer end is Fixed, the parameter's set.
+    // local's clause assumes nothing, so its failure rests nothing; H11b-0 B1): RepeatedSet's longer end is the `let` local's own slot
+    // region, Inferred as its `var` twin's (PLAN G492-a (ii); it was Fixed, the parameter's set, while a `let` slot took its initializer's).
     [Theory]
     [InlineData(Destructors, "drop", "self.buffer@ref", "Finite", "Receiver")]
     [InlineData(Destructors, "drop", "whole.buffer@ref", "Finite", "Helper")]
@@ -78,7 +79,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
-    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Fixed", "None")]
+    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Inferred", "None")]
     [InlineData(LocalOmission, "f", "x", "Fixed", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
     {
@@ -210,15 +211,16 @@ public sealed partial class OriginRowsTest
     // body it is written in: no row lies at a Type occurrence and no other declaration's Input is in that body's slice. An omitted inner
     // Origin ι is the body's variable, which the call's rows name where the body calls the value (k's argument fits into ι) and no row
     // names otherwise (g). The forms: G216's h1 and h2, a Closure body that needs the premise, a written enclosing Origin, a struct input,
-    // two inputs related by a written Origin, a Function Type annotation called, a named function's Function Type parameter called (its
-    // row was a declaration's), and a Function Type inside a Closure's parameter.
+    // a Function Type annotation called, a named function's Function Type parameter called (its row was a declaration's), and a Function
+    // Type inside a Closure's parameter. Two inputs related by a written Origin, `(p: ref/i32, r: ref/(ref/i32 during p))`, name the
+    // signature's own per-call Origin in an input, which SPEC 15.3.4 and 8.10 forbid (PLAN G972, the owner's O-403 (b)): its record is
+    // OriginRelationDiagnosticTest's g216 row.
     [Theory]
     [InlineData(HeaderOnly, "g", true, false)]
     [InlineData(HeaderCalled, "k", true, true)]
     [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> ref/i32 => p@follow\n    return 0\n", "g", true, false)]
     [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q)) -> i32 => p@follow@follow\n    return h(q@ref)\n", "k", false, false)]
     [InlineData(StructInput, "k", false, false)]
-    [InlineData("func g() -> i32\n    let h = func [] (p: ref/i32, r: ref/(ref/i32 during p)) -> i32 => 1\n    return 0\n", "g", false, false)]
     [InlineData(FunctionTypeCalled, "f", true, true)]
     [InlineData(FunctionTypeParameter, "g", false, false)]
     [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (cb: (ref/(ref/i32 during q)) -> i32) -> i32 => 0\n    return 0\n", "k", false, false)]

@@ -59,7 +59,7 @@ public class InheritedStorageTest
 
     // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
     // a Non-Copy Move, each one Language record at the access. Since the MIR decides acceptance (R6-check H5), a rejected read
-    // while a Field is uninitialized also has A1's `mir` record at the access (PLAN G105): published directly until A6's 2g-1
+    // while a Field is uninitialized also has A1's `mir` record at the access (PLAN G1324): published directly until A6's 2g-1
     // (DECISIONS R5-M184; H3b T51, class 4).
     [Theory]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x", nameof(DiagnosticCode.UninitializedPlace_Kd))]
@@ -82,7 +82,7 @@ public class InheritedStorageTest
     // whatever the receiver form: one InvalidAssignment_Kd at the call's own `self` (an empty snippet), the call resting on it. The call's
     // independent failures keep their records (SPEC 23.1.2): a failed argument, a mismatched one, a failed Type argument, a waiting
     // anonymous function, an object-borrow receiver's fit. A Type function named through `self` takes no receiver and keeps the general
-    // rules' record; before placement A1's record stays (PLAN G105). Each record is a code and the snippet it spans, after the call.
+    // rules' record; before placement A1's record stays (PLAN G1324). Each record is a code and the snippet it spans, after the call.
     [Theory]
     [InlineData(Placed + "        let h = self.peek()\n    func peek(self: ref/Self) -> i32 => self.a\n", "self.peek()", "InvalidAssignment_Kd|")]
     [InlineData(Placed + "        self.bump()\n    func bump(self: uniq/Self) => self.a += 1\n", "self.bump()", "InvalidAssignment_Kd|")]
@@ -113,6 +113,27 @@ public class InheritedStorageTest
             "struct Tally\n    var inner: Inner\n    var count: i32\n    public init(start: i32)\n        self.inner = Inner.init(start)\n" +
             "        self.count = self.inner.get() + Tally.seed(start)\n    func seed(x: i32) -> i32 => x + 1\npublic func main() => ()\n";
         Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
+    }
+
+    // SPEC 6.3.4, IMPL A.4 (D-932): a constructor's own Field is found at every depth below `self` (OwnedPathRoot has no bound of its
+    // own: SyntaxNesting's): a Take k steps below `self` is InvalidAssignment_Kd (no Non-Copy value is moved out of them) and an
+    // exclusive borrow the located Unsupported_Kd of PLAN G166; a 64-step bound let the Take through Binding at k = 65, refused only by
+    // MIR's MovedPlace_Kd at `init` (class 4), and refused the borrow with a Language error (class 3). A generic struct (Layout's
+    // 64-level window).
+    [Theory]
+    [InlineData(63, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData(64, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData(65, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData(63, "@uniq", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(64, "@uniq", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(65, "@uniq", nameof(DiagnosticCode.Unsupported_Kd))]
+    public void AConstructorsDeepFieldIsItsOwnAtEveryDepth(int k, string acquisition, string code)
+    {
+        var type = new string('(', k - 1) + "Array<i32>" + string.Concat(Enumerable.Repeat(", i32)", k - 1));
+        var source = $"struct C<T>\n    internal var t: {type}\n    public init(t: {type})\n        self.t = t@move\n" +
+            $"        let a = self.t{string.Concat(Enumerable.Repeat(".0", k - 1))}{acquisition}\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, source.IndexOf("let a = ", StringComparison.Ordinal) + 8), (error.Code, error.Span!.Value.Start));
     }
 
     // SPEC 6.3.4, 15.1.5: a constructor's writable Fields are lent exclusively, but no analysis models those Loans yet ("Field borrows end

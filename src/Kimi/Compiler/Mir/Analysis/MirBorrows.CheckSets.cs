@@ -223,9 +223,10 @@ internal sealed partial class MirBorrows
         }
 
         this.Operating(at);
+        var kept = this.KeptOperands(at);
         for (var j = 0; j < this.operating.Count; j++)
         {
-            this.Pass(Valued, j);
+            this.Pass(Valued, j < kept ? j : j + 1); // A value the operation consumes meets the later operands' accesses, not its own.
             if (this.operating[j] is { Kind: not MirOperandKind.Const } operand)
             {
                 this.Value(state, this.Read(state, operand.Place), operand.Place.Root);
@@ -243,8 +244,26 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A location's operands in operand order (MirUses's): an rvalue's, but a Reborrowing PairAcquire's, which is its Use's borrow; a
-    // SwitchInt's operand; a Call's Value callee, then its arguments.
+    // The leading operands of a location (Operating's order) whose values its operation keeps, so each is used after its own access (A3
+    // E13 (1a); SPEC 15.6): an rvalue's value operands (ValueOperands, val's one rule), every operand of a Call (its inputs, which its
+    // contract retains and its body uses); none of a SwitchInt's or of an rvalue that keeps none (a comparison, arithmetic, Len), whose
+    // operation uses its operands at its point and gives a value that carries none of them, as a Borrow is not checked against the Loan
+    // it forms.
+    private int KeptOperands(MirLocation at)
+    {
+        ref readonly var data = ref this.body.Blocks[at.Block];
+        if (at.Index < data.Count)
+        {
+            var assigned = this.body.Statements[data.Start + at.Index].Rvalue;
+            return this.ValueOperands(assigned.Kind == MirRvalueKind.Adapt ? cases.Adapt(assigned, out _) : assigned);
+        }
+
+        return data.Terminator.Kind == MirTerminatorKind.Call ? int.MaxValue : 0;
+    }
+
+    // A location's operands in operand order (MirUses's): an rvalue's, but a Reborrowing PairAcquire's, which is its Use's borrow; an
+    // Opaque site's kept uses' values, its activation's inputs as a Call's operands are (DECISIONS Z17c); a SwitchInt's operand; a Call's
+    // Value callee, then its arguments.
     private void Operating(MirLocation at)
     {
         this.operating.Clear();
@@ -256,6 +275,14 @@ internal sealed partial class MirBorrows
             {
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 this.operating.AddRange(this.body.Operands.Slice(rvalue.Start, rvalue.Count));
+            }
+
+            foreach (var use in this.KeptUses(statement))
+            {
+                if (use is { Projection: 0, Root: >= 0 })
+                {
+                    this.operating.Add(MirOperand.Copy(use));
+                }
             }
 
             return;

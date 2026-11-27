@@ -4,15 +4,26 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Place authority, raw concern (SPEC 5.7; design-final §4): what a Place's path reaches (PathOrigin), in one walk over NextPathStep:
+// Place authority, raw concern (SPEC 5.2, 5.2.2, 5.7; design-final §4): what a raw Place is, its root (IsRawRoot) and the walks from a
+// Place to that root (IsRawPlace: a Take without state tracking; IsRawRooted: a borrow, an address and place-ness), which the Place
+// classification, the conversions, the unsafe-context rule and the HIR publisher read; and what a Place's path reaches (PathOrigin),
+// in one walk over NextPathStep:
 // the Origin it is reached through, which a `during self` layer is read with (ReadHolder) and a typed path states (BindAddress), and
-// the stored Field it is or lies inline in, which the allowlist of a layer reached through no dereference judges (HolderPlaceFailure).
+// the stored Field it is or lies inline in, which the allowlist of a layer reached through no dereference judges (JudgeHolderPlace).
+// Each walks syntax only, every step to a strict descendant, so it has no bound of its own: a published tree's depth is at most
+// SyntaxNesting.Limit (IMPL A.4), and no count of steps or selections changes its answer (D-932).
 public sealed partial class Binding
 {
-    // The position an inline part step selects in its owner's Type (a Tuple element's, 0 for a fixed-array element); null for any other
-    // step (SPEC 3.4.3).
-    private static int? InlinePosition(PathStep step, Koto source)
-        => step is PathStep.Member or PathStep.InlinePart && ElementAccess.TryType((BinaryKoto)source, out _, out var position) ? Math.Max(position, 0) : null;
+    private long rawWalkSteps;
+
+    // The steps IsRawPlace and IsRawRooted have taken, never reset (a scaling row's work count, as PathFoldWork).
+    internal long RawWalkWork => this.rawWalkSteps;
+
+    // SPEC 5, 5.2, 5.3: the root of a raw Place's path, `*p` or `p[n]` (the node itself, already unwrapped), the one test of it: the raw
+    // walks (IsRawPlace, IsRawRooted), the Place classification (IsBarePlace, LendsPlace, PlaceOrigin, PlaceOriginSource, TakeJudgment),
+    // its path step (NextPathStep, which PathFold reads) and the unsafe-context rule (RequiresUnsafe) read it.
+    private static bool IsRawRoot(Koto source)
+        => source is DereferenceKoto || (source is IndexKoto index && HirTables.TypeOf(index.Left) is { IsPointer: true });
 
     // The stored Type of a Place selected in place from a stored Field: the Field's declared Type, or its element at `positions` (the
     // leaf's selection first); null without a Field, or where a selection is not of a Tuple or fixed array.
@@ -28,6 +39,59 @@ public sealed partial class Binding
         return stored;
     }
 
+    // SPEC 5.2, 4.7.1, 15.1.5: a raw Place, the Place a Take moves without state tracking: *p, p[n], and each part of one the raw
+    // storage holds itself (TyCtxt.RawPart: a stored Field, a Tuple element, a fixed-array element at an integer or from-end position).
+    // An Array, view, Dictionary or user element, and a part past a stored reference, is a referent, never a raw Place. MIR's move paths
+    // read the same TyCtxt.RawPart per step (MirMoveData.Resolve).
+    private bool IsRawPlace(Koto source)
+    {
+        for (source = KotoHelper.UnwrapParentheses(source); !IsRawRoot(source); source = KotoHelper.UnwrapParentheses(source))
+        {
+            this.rawWalkSteps++;
+            if (source is not BinaryKoto element || !this.IsSyntax(element) || !TyCtxt.RawPart(HirTables.TypeOf(element.Left)) ||
+                (element is IndexKoto && KotoHelper.UnwrapParentheses(element.Right) is var key &&
+                    (key is RangeKoto || (key is not FromEndIndexKoto && HirTables.TypeOf(element.Right) is not { IsInteger: true }))))
+            {
+                return false;
+            }
+
+            source = element.Left;
+        }
+
+        return true;
+    }
+
+    // SPEC 5.2.2, 4.7.1: a Place rooted at a raw Place: *p or p[n], or a Place reached from one by built-in steps (IsSyntax): a stored
+    // Field, a Tuple element and a built-in (no user indexer's) element at an integer position, an Array's included (its receiver is the
+    // raw Place's part), each step also past a reference stored in the raw storage (BorrowRawPlace then bounds a borrow by that
+    // reference's Origin). A range or from-end position ends it, so a from-end raw Place (IsRawPlace) is not rooted here. Its borrow is a
+    // fresh anchor (BorrowRawPlace), its address and its place-ness the raw Place's; only IsRawPlace's Places offer Take.
+    private bool IsRawRooted(Koto source)
+    {
+        for (source = KotoHelper.UnwrapParentheses(source); !IsRawRoot(source); source = KotoHelper.UnwrapParentheses(source))
+        {
+            this.rawWalkSteps++;
+            if (source is not BinaryKoto element || !this.IsRootedStep(element))
+            {
+                return false;
+            }
+
+            source = element.Left;
+        }
+
+        return true;
+    }
+
+    // One step of IsRawRooted: a built-in selection (IsSyntax) at no range or from-end position, an integer one for an element.
+    private bool IsRootedStep(BinaryKoto element)
+        => this.IsSyntax(element) && (element is not IndexKoto || (KotoHelper.UnwrapParentheses(element.Right) is not (RangeKoto or FromEndIndexKoto) &&
+            HirTables.TypeOf(element.Right) is { IsInteger: true }));
+
+    // The position an inline part step selects in its owner's Type (a Tuple element's, 0 for a fixed-array element); null for any other
+    // step (SPEC 3.4.3).
+    private int? InlinePosition(PathStep step, Koto source)
+        => step is PathStep.Member or PathStep.InlinePart && this.TryType((BinaryKoto)source, out _, out var position) ? Math.Max(position, 0) : null;
+
     // SPEC 5.7 (Reading a Field, Typed paths): the Origin of the last borrow or raw pointer that a Place's path dereferences, from the
     // leaf through NextPathStep: a member's, a borrowed element's or an inline part's the innermost borrow, raw or pair layer of the Type
     // it is selected from; a followed borrow's outer Origin; a pair follow's slot; a raw pointer's Origin (none when it states none); a
@@ -41,18 +105,24 @@ public sealed partial class Binding
         Span<int> positions = stackalloc int[16];
         var selected = 0;
         MemberAccessKoto? field = null;
-        var source = KotoHelper.UnwrapParentheses(place);
-        for (var depth = 0; depth < 64; depth++)
+        for (var source = KotoHelper.UnwrapParentheses(place); ; source = KotoHelper.UnwrapParentheses(source))
         {
-            var step = NextPathStep(source, out var next);
+            var step = this.NextPathStep(source, out var next);
             if (field is null && selected >= 0)
             {
                 if (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true } member)
                 {
                     field = member;
                 }
-                else if (selected < positions.Length && InlinePosition(step, source) is { } position)
+                else if (this.InlinePosition(step, source) is { } position)
                 {
+                    if (selected == positions.Length)
+                    {
+                        var grown = new int[2 * selected];
+                        positions.CopyTo(grown);
+                        positions = grown;
+                    }
+
                     positions[selected++] = position;
                 }
                 else
@@ -63,13 +133,13 @@ public sealed partial class Binding
 
             if (this.Dereference(step, source, next) is { } reached)
             {
-                return reached with { Field = field, Stored = StoredPart(field, positions[..Math.Max(selected, 0)]) };
+                // Read once at the Place (the owner's O-385 (a)): a `let` region of its body as its value (PLAN G492-a (ii)).
+                var origin = reached.Origin is { } layer ? this.RegionValueAtUse(layer, place) : null;
+                return reached with { Origin = origin, Field = field, Stored = StoredPart(field, positions[..Math.Max(selected, 0)]) };
             }
 
-            source = KotoHelper.UnwrapParentheses(next);
+            source = next;
         }
-
-        return new(false, null, field, StoredPart(field, positions[..Math.Max(selected, 0)]));
     }
 
     // One step of PathOrigin: what a step that ends the walk reaches, null for one the walk continues past.
@@ -81,7 +151,7 @@ public sealed partial class Binding
                 return this.Dereferenced(followed);
             case PathStep.PairFollow or PathStep.RawFollow when next.BoundType is { } layer:
                 return this.Reached(layer);
-            case PathStep.UserIndex when ElementAccess.IndexerCall(source, exclusive: false)?.BoundType is { } element:
+            case PathStep.UserIndex when this.IndexerCall(source, exclusive: false)?.BoundType is { } element:
                 return this.Reached(element);
             case PathStep.SliceElement when (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0]) is { } slice:
                 return this.Dereferenced(slice);
@@ -103,7 +173,7 @@ public sealed partial class Binding
         BoundType? innermost = null;
         for (; BelowLayer(type) is { } below; type = below)
         {
-            innermost = type!.Semantics == SemanticsKind.Raw || IsBorrow(type.Semantics) || TryPairLayer(type, out _, out _) ? type : innermost;
+            innermost = type!.IsPointer || IsBorrow(type.Semantics) || TryPairLayer(type, out _, out _) ? type : innermost;
         }
 
         return innermost;
@@ -116,21 +186,18 @@ public sealed partial class Binding
         => prefix.Kind == BoundTypeKind.Slice ? new(true, prefix.Origin)
             : prefix is { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice, OriginArguments: [var slice] } ? new(true, slice)
             : TryPairLayer(prefix, out _, out _) ||
-                (prefix.Kind == BoundTypeKind.Semantics && (prefix.Semantics == SemanticsKind.Raw || IsBorrow(prefix.Semantics))) ? this.Reached(prefix) : null;
+                prefix.IsPointer || (prefix.Kind == BoundTypeKind.Semantics && IsBorrow(prefix.Semantics)) ? this.Reached(prefix) : null;
 
     // The layer a path dereferences: a raw pointer's Origin, a borrow's outer Origin, or a pair layer's slot; Dereferences is null for a
     // pair layer admitting a non-borrow case or a layer that is no borrow (U2).
     private RawPath Reached(BoundType layer)
     {
-        if (layer.Semantics == SemanticsKind.Raw && layer.Kind == BoundTypeKind.Semantics)
+        if (layer.IsPointer)
         {
             return new(true, layer.RawOrigin);
         }
 
-        var borrow = TryPairLayer(layer, out _, out _)
-            ? this.LayerAdmitted(layer) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0
-            : layer.Kind == BoundTypeKind.Semantics && IsBorrow(layer.Semantics);
-        return new(borrow ? true : null, this.OuterOrigin(layer));
+        return new(this.HasBorrowSemantics(layer) ? true : null, this.OuterOrigin(layer));
     }
 
     // SPEC 5.7, 6.3.4, 16.3.1 (DECISIONS BU-23): the Origin of a constructor's or destructor's receiver `self`, its Place's atom.

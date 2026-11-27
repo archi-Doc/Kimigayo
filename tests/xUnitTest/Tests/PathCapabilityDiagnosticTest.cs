@@ -23,6 +23,13 @@ public class PathCapabilityDiagnosticTest
         "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public init() => ()\n" +
         "struct Outer\n    public var point: Point = Point.init()\n    public init() => ()\nfunc keep(i: Inner) => ()\n";
 
+    // A Field with a custom get and the standard set, beside a standard Field (D-818).
+    private const string CustomGet = "struct W\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public var v: i32 = 0\n    public init() => ()\n";
+
+    // The same Field written through a shared receiver in its own method (D-818's sixth instance, the review's rv.ref-self).
+    private const string CustomGetSelf = "struct W\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public init() => ()\n" +
+        "    public func put(self: ref/Self) => self.q = 1\n";
+
     // A function f whose var entries store exclusive references to Point.
     private const string Entries = "func f(value: uniq/Point during a)\n    var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]\n";
 
@@ -61,6 +68,39 @@ public class PathCapabilityDiagnosticTest
     // A struct Pt returned by mk and by Holder's computed Field cpt: Temporary Values whose Fields are lent with them (SPEC 3.4.1, 11.5).
     private const string Made = "struct Pt\n    public var x: i32 = 0\n    public init() => ()\nfunc mk() -> Pt => Pt.init()\n" +
         "struct Holder\n    public computed cpt: Pt\n        get() -> Pt => Pt.init()\n    public init() => ()\n";
+
+    // A struct Tw returned by tw(): a standard, a custom-get, a custom-set and a let Field, a nested Pt and a Tuple; a Copy struct Tc;
+    // a fixed array and an Array returned by calls (D-827). Read with Made and Take.
+    private const string Temps =
+        "struct Tw\n    public var v: i32 = 0\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public var s: i32 = 0\n        set(value: i32) -> () => storage = value\n" +
+        "    public let k: i32 = 0\n    public var pt: Pt = Pt.init()\n    public var pr: (i32, i32) = (0, 0)\n    public init() => ()\nfunc tw() -> Tw => Tw.init()\n" +
+        "struct Tc\n    Self is Copy\n    public var v: i32 = 0\n    public init() => ()\nfunc fixed() -> [2 of i32] => [2 of 0]\n" +
+        "func array() -> Array<i32>\n    let a: Array<i32> = [1, 2]\n    return a@move\n";
+
+    // A struct Bc with a uniq/Self method (D-827).
+    private const string Bump = "struct Bc\n    public var v: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.v += 1\n";
+
+    // Through a pair layer's owner case (D-827): implicit selections of a temporary's part, whole borrows and receivers of the temporary.
+    private const string FollowWhole = Bump + "func pass<s/T>(x: s/T) -> s/T\n    s is owner or uniq\n    return x@move\nfunc mut(r: uniq/Tw) => r.v = 2\n" +
+        "func see(r: ref/Tw) -> i32 => r.v\nfunc f<s/T>(x: s/T, a: s/Tw, b: s/Tw, c: s/Tw, d: s/Tw, e: s/Tw, m: s/Bc, n: s/Bc)\n    s is owner or uniq\n" +
+        "    a@move.v = 1\n    pass(b@move).v = 1\n    _ = look(c@move.v@ref)\n    mut(d@move@follow@uniq)\n    _ = see(e@move@follow@ref)\n    m@move@follow.bump()\n" +
+        "    n@move.bump()\nfunc g() => f(1, tw(), tw(), tw(), tw(), tw(), Bc.init(), Bc.init())\n";
+
+    // A struct G with an Origin parameter, a reference Field and a drop, returned by mkG, and a Tuple with a reference element returned
+    // by pr (D-827): f and g write a borrow of another Origin than the temporary's own into its reference part (C-414's C6 and K3), h
+    // one of the temporary's own Origin (K2).
+    private const string RefPrelude = "struct G {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n    drop\n" +
+        "        Console.writeLine(\"d\")\nfunc mkG(x: ref/i32) -> G{s}\n    origin s.a == x\n    return G.init(x)\nfunc pr(x: ref/i32) -> (ref/i32 during x, i32)\n" +
+        "    return (x, 1)\n";
+
+    // A temporary whose shared part holds x@ref while an exclusive borrow of x is written into its other part.
+    private const string ExclusivePart = "struct UX {a, b}\n    public var r: ref/i32 during a\n    public var u: uniq/i32 during b\n" +
+        "    public init(r: ref/i32 during a, u: uniq/i32 during b)\n        self.r = r\n        self.u = u@move\n" +
+        "func mkUX(r: ref/i32, u: uniq/i32) -> UX{s}\n    origin s.a == r\n    origin s.b == u\n    return UX.init(r, u@move)\n" +
+        "func fx()\n    var x = 1\n    var z = 2\n    mkUX(x@ref, z@uniq).u = x@uniq\n";
+
+    private const string RefParts = RefPrelude + "func f()\n    var x = 1\n    let y = 2\n    mkG(y@ref).r = x@ref\n    x = 3\nfunc g()\n    let x = 1\n    let y = 2\n" +
+        "    pr(y@ref).0 = x@ref\nfunc h()\n    let y = 2\n    mkG(y@ref).r = y@ref\n";
 
     // Enums Color and Shape (a payload of Color) and functions borrowing them or an Option<i32>, shared or exclusively.
     private const string Cases = "enum Color\n    Red\n    Blue\nenum Shape\n    Dot(Color)\n    Box(i32, Color)\n" +
@@ -162,13 +202,15 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Element + LetEntries + "    entries[1].n = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Element + LetEntries + "    entries[1].n += 1", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Element + LetEntries + "    let r = entries[1].inner@uniq", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData(Element + LetEntries + "    entries[1].inner.mutate()", DiagnosticCode.NoApplicableOverload_Kd)]
+    // R7-E4 E4a-3 (SPEC 7.3.3, 15.1.5; Q13 record selection): a receiver a `let` root denies records its written twin's failure (here
+    // and the `vals[0]` row below; before, NoApplicableOverload_Kd).
+    [InlineData(Element + LetEntries + "    entries[1].inner.mutate()", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Element + LetEntries + "    keep(entries[1].inner@move)", DiagnosticCode.ExclusivePathTake_Kd)]
     [InlineData(Element + "func f(value: uniq/Point during a)\n    let outer: Dictionary<i32, Dictionary<i32, uniq/Point during a>> = [1: [2: value@move]]\n    outer[1][2].n = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Element + "func f(d: Dictionary<i32, uniq/Point during x>) => d[1].n = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Element + "func f(vals: Array<uniq/Point during x>) => vals[0].n = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Element + "func f(value: uniq/Point during a)\n    let vals: Array<uniq/Point during a> = [value@move]\n    vals[0].n = 5", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData(Element + "func f(value: uniq/Point during a)\n    let vals: Array<uniq/Point during a> = [value@move]\n    vals[0].inner.mutate()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData(Element + "func f(value: uniq/Point during a)\n    let vals: Array<uniq/Point during a> = [value@move]\n    vals[0].inner.mutate()", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Element + "func f(p: ref/(rc/Point)) => p.n = 5", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Element + "func f(p: ref/(rc/Point)) => keep(p.inner@move)", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Element + "func f(p: uniq/(rc/Point)) => p.n = 5", DiagnosticCode.SharedPathAccess_Kd)]
@@ -180,13 +222,24 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Take + Box + "func f() -> ()\n    var b = Box.init()\n    take((b.calc)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Leveled + "func f<T>(t: uniq/T) -> ()\n    T is Leveled\n    take((t.level)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Fixed + "func f(p: uniq/Fixed) -> () => take((p.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
-    public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
+    [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd, "t.y")]
+    // SPEC 15.6.2, 13.7.1, 11.2 (D-818): a write or an update of a standard-set target behind a custom get is denied by the shared layer
+    // on its path, as with the standard get (the `w.v` twin); before D-818 the target was taken as a getter result, a root, which gave
+    // InvalidAssignment_Kd.
+    [InlineData(CustomGet + "func f(w: ref/W) => w.q = 1", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGet + "func f(w: ref/W) => w.q += 1", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGet + "func f(w: ref/W) => w.v = 1", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGet + "func f(w: ref/W)\n    var h = func [w] (c: bool) -> ()\n        w.q = 1\n    h(true)", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGetSelf, DiagnosticCode.SharedPathAccess_Kd)]
+    public void TheDenyingLayerIsReported(string source, DiagnosticCode code, string? limit = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.DoesNotContain(c.Problems, x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.UninitializedPlace_Kd);
+        // A Field of a Type parameter's open-struct base is the MIR builder's located limit in every position, valid programs included, so
+        // the borrow's kept operand reports it (DECISIONS Z16, G147 ruling 5's row 4).
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd ||
+            (x.Code == DiagnosticCode.Unsupported_Kd && (limit is null || c.SyntaxOf(x.Subject).ToString() != limit)));
     }
 
     // SPEC 15.6, 15.6.2, 15.6.4, 11.2: a static Field and its parts are lent as their accessors allow, but no analysis models static Loans
@@ -200,6 +253,8 @@ public class PathCapabilityDiagnosticTest
     // 3.6), and a getter result is lent only shared (SPEC 11.5). Each row asserts the records its own text locates, after the prelude,
     // whose StaticStorage records one test asserts (OI-1 (a′), DECISIONS R5-M156).
     [Theory]
+    // R7-E4 E4a-2 (the design review's C1, Q13 M4): a written Borrow's denial (InvalidAssignment_Kd, SharedPathAccess_Kd) is located at its
+    // Place, ReportWrite's target, no longer at the conversion; the located Unsupported_Kd stays at the conversion.
     [InlineData("        ()\nfunc f()\n    let r = State.dict[1]@ref", "State.dict", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = (State.dict)[1]@ref", "(State.dict)", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32 => State.dict[1]", "State.dict", DiagnosticCode.Unsupported_Kd)]
@@ -258,20 +313,20 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        ()\nfunc f()\n    let r = (State.handle).x@uniq", "(State.handle).x@uniq", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.shared.x@ref", "State.shared.x@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        let r = handle.x@uniq", "handle.x@uniq", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = State.shared.x@uniq", "State.shared.x@uniq", DiagnosticCode.SharedPathAccess_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = State.ring.size@uniq", "State.ring.size@uniq", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("        ()\nfunc f() => take((State.limit)@uniq)", "(State.limit)@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.shared.x@uniq", "State.shared.x", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.ring.size@uniq", "State.ring.size", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f() => take((State.limit)@uniq)", "(State.limit)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = (State.limit)@ref", "(State.limit)@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => take((State.counter)@uniq)", "(State.counter)@uniq", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.pair.0@ref", "State.pair.0@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = (State.pair).1@ref", "(State.pair).1@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.fa[1]@ref", "State.fa[1]@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.values[0]@ref", "State.values[0]@ref", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = (State.limit)@uniq/i32", "(State.limit)@uniq/i32", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = (State.limit)@uniq/i32", "(State.limit)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = (State.counter)@raw", "(State.counter)@raw", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = (State.handle)@objref", "(State.handle)@objref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is ref\n    _ = (State.limit)@s", "(State.limit)@s", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("        ()\nfunc f() => take((State.calc)@uniq)", "(State.calc)@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f() => take((State.calc)@uniq)", "(State.calc)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.counter@uniq\n    r@follow = 3", "State.counter@uniq", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32\n    let r = State.counter@ref\n    return r@follow", "State.counter@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32\n    let r = State.limit@ref\n    return r@follow", "State.limit@ref", DiagnosticCode.Unsupported_Kd)]
@@ -291,13 +346,13 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        ()\nfunc f<s/T>()\n    s is owner or ref\n    _ = State.counter@s", "State.counter@s", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.counter@s", "State.counter@s", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is ref or uniq\n    _ = State.counter@s", "State.counter@s", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("        ()\nfunc f<s/T>()\n    s is ref or uniq\n    _ = State.limit@s", "State.limit@s", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = State.limit@uniq", "State.limit@uniq", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = State.guarded@uniq", "State.guarded@uniq", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = State.custom@uniq", "State.custom@uniq", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = State.fixed.x@uniq", "State.fixed.x@uniq", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.limit@s", "State.limit@s", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("        ()\nfunc f()\n    let r = State.ring@objuniq/Shape", "State.ring@objuniq/Shape", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f<s/T>()\n    s is ref or uniq\n    _ = State.limit@s", "State.limit", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.limit@uniq", "State.limit", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.guarded@uniq", "State.guarded", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.custom@uniq", "State.custom", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.fixed.x@uniq", "State.fixed.x", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.limit@s", "State.limit", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.ring@objuniq/Shape", "State.ring", DiagnosticCode.InvalidAssignment_Kd)]
     public void AStaticBorrowIsUnsupported(string body, string at, DiagnosticCode code)
     {
         var source = Statics + body + "\npublic func main() => ()\n";
@@ -309,7 +364,7 @@ public class PathCapabilityDiagnosticTest
     // result's) are reported beside it (DECISIONS BU-25; fail-before: the callee's record alone).
     [Theory]
     [InlineData("        _ = f1(missing)", "f1", "missing", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("        _ = f1(1) + \"t\"", "f1", "\"t\"", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("        _ = f1(1) + \"t\"", "f1", "f1(1) + \"t\"", DiagnosticCode.NonNumericOperand_Kd)] // PLAN G1356, Q13: was TypeMismatch_Kd at "t"
     [InlineData("        let w: string = f1(2)", "f1", "f1(2)", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("        _ = f1(\"s\")", "f1", "f1(\"s\")", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("        _ = f1(1, 2)", "f1", "f1(1, 2)", DiagnosticCode.NoApplicableOverload_Kd)]
@@ -454,6 +509,77 @@ public class PathCapabilityDiagnosticTest
         var check = DiagnosticCorpus.Check(source);
         Assert.True(check.Accepted && check.Diagnostics.Length == 0, $"{form}: {string.Join("; ", check.Diagnostics.Select(static x => x.Code))}");
         Assert.Contains(function, MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
+    }
+
+    // PLAN G1068, G203 (D-827; SPEC 3.4.1, 3.6, 11.3.1, 13.7.1, 15.1.5): a newly owned temporary is a writable root, so a part of it is
+    // written, updated and exclusively borrowed as its Property permissions allow: a call result's Field (a custom get's too, whose
+    // getter the write does not call; a custom set's, called on the temporary), nested, in parentheses, a Tuple, fixed-array or Array
+    // element, a Tuple literal's element, an owned handle's payload (also through `@follow`, whole), a Copy (`c@copy.v`, of a getter
+    // result too: a new temporary), a moved value (`t@move.v`), a uniq/Self Receiver Expression on a part or on the object of a part's
+    // obj handle, and through a pair layer's owner case, explicit or implicit, also borrowed whole (SPEC 13.5.5: P itself); the
+    // referent of an exclusive borrow of a temporary is written whole (13.5.5: the referent of uniq/T offers Write). Check accepts each
+    // program with no record and a Library build generates the function that writes.
+    [Theory]
+    [InlineData("field", "func f()\n    tw().v = 1\n    tw().q = 1\n    tw().s = 1\n")]
+    [InlineData("update", "func f()\n    tw().v += 1\n    tw().q += 1\n    tw().s += 1\n    tw().v++\n    ++tw().q\n    tw().s++\n")]
+    [InlineData("nested", "func f()\n    tw().pt.x = 1\n    tw().pr.0 = 1\n    (tw()).v = 1\n")]
+    [InlineData("elements", "func f(i: isize)\n    pair().0 = 1\n    fixed()[0] = 1\n    fixed()[0]++\n    fixed()[i] = 1\n    array()[0] += 1\n    (1, 2).0 = 5\n")]
+    [InlineData("replace", "func strs() -> [1 of string] => [\"old\"]\nfunc f()\n    strs()[0] = \"new\"\n    tw().pt = Pt.init()\n")]
+    [InlineData("copy", "func f()\n    let c = Tc.init()\n    c@copy.v = 1\n    c@copy.v += 1\n")]
+    [InlineData("getter_copy", "struct Gc\n    public var a: Tc = Tc.init()\n        get() -> Tc => storage\n    public init() => ()\nfunc gc() -> Gc => Gc.init()\nfunc f()\n    gc().a@copy.v = 1\n    gc().a = Tc.init()\n")]
+    [InlineData("move", "func f(t: Tw)\n    t@move.v = 1\n    let u = Tw.init()\n    u@move.q = 1\n")]
+    [InlineData("payload", "func f()\n    Kimi.Intrinsics.makeObj(Tw.init()).v = 1\n    Kimi.Intrinsics.makeObj(Tw.init())@follow.v = 1\n    Kimi.Intrinsics.makeObj(Tw.init())@follow = Tw.init()\n")]
+    [InlineData("borrow", "func f()\n    take(tw().v@uniq)\n    take(pair().0@uniq)\n    take(tw().pt.x@uniq)\n    let c = Tc.init()\n    take(c@copy.v@uniq)\n")]
+    [InlineData("receiver", Bump + "struct Bh\n    public var h: obj/Bc = Kimi.Intrinsics.makeObj(Bc.init())\n    public var c: Bc = Bc.init()\n    public init() => ()\nfunc bh() -> Bh => Bh.init()\nfunc f()\n    bh().c.bump()\n    bh().h.bump()\n")]
+    [InlineData("referent", "func f()\n    tw()@uniq@follow = Tw.init()\n    tw()@uniq@follow.v = 1\n")]
+    [InlineData("follow", "func f<s/T>(x: s/T, a: s/Tw, b: s/Tw, c: s/Tw, d: s/Tw)\n    s is owner or uniq\n    a@move@follow.v = 1\n    take(b@move@follow.v@uniq)\n    _ = look(c@move@follow.v@ref)\n    d@move.v += 1\nfunc g() => f(1, tw(), tw(), tw(), tw())\n")]
+    [InlineData("follow_whole", FollowWhole)]
+    public void APartOfATemporaryIsWritable(string form, string body)
+    {
+        var source = Take + Made + Temps + body + "public func main() => ()\n";
+        var check = DiagnosticCorpus.Check(source);
+        Assert.True(check.Accepted && check.Diagnostics.Length == 0, $"{form}: {string.Join("; ", check.Diagnostics.Select(static x => x.Code))}");
+        Assert.Contains("f", MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
+    }
+
+    // The invalid counterparts of APartOfATemporaryIsWritable keep their records: a getter temporary's part (SPEC 11.5), a let Field
+    // (11.1, 11.2), an exclusive borrow of a custom accessor's Field (11.2), a moved value read after its temporary's write (15.1.1), and
+    // an unspelled exclusive argument, the part being an owned Place outside a Receiver Expression (15.1.5's lending rule); through a
+    // pair layer, an owned-Type parameter's or a let local's part in the owner case, also as a uniq/Self Receiver Expression (15.1.5),
+    // and a ref case (13.5.5); a Temporary Value itself as an assignment's target, also parenthesized (13.7.1: no Place expression, the
+    // owner's O-438 (a)); a borrow of a temporary's part used after the temporary ends or returned (3.6: it cannot outlive it). A
+    // borrow of another Origin than the temporary's own written into its reference part is valid (3.4.1: a Place in its Temporary
+    // Place; 3.6: writable; 15.6: the written value's Loans are added to the holder) and accepted since R7-O1 H, which deletes Binding's
+    // body Origin judgment and with it PLAN G1068's located limit at such a write (A5 judges it; the Middle's Phase 7 ruling names the
+    // acceptance move); its invalid twins (the temporary kept alive, an exclusive write beside the temporary's shared part, a written
+    // Origin that cannot outlive the Field's) stay rejected. Only the records after the preludes are compared.
+    [Theory]
+    [InlineData("getter", "func f() => Holder.init().cpt.x = 1\n", "InvalidAssignment_Kd Holder.init().cpt.x")]
+    [InlineData("getter_borrow", "func f() => take(Holder.init().cpt.x@uniq)\n", "InvalidAssignment_Kd Holder.init().cpt.x")]
+    [InlineData("let", "func f() => tw().k = 1\n", "InaccessibleBinding_Kd tw().k")]
+    [InlineData("let_borrow", "func f() => take(tw().k@uniq)\n", "InvalidAssignment_Kd tw().k")]
+    [InlineData("custom_borrow", "func f()\n    take(tw().q@uniq)\n    take(tw().s@uniq)\n", "InvalidAssignment_Kd tw().q; InvalidAssignment_Kd tw().s")]
+    [InlineData("moved", "func f() -> i32\n    var u = Tw.init()\n    u@move.v = 1\n    return u.v\n", "MovedPlace_Kd u.v")]
+    [InlineData("unspelled", "func f() => take(tw().v)\n", "ExclusiveBorrowRequired_Kd tw().v")]
+    [InlineData("follow_param", "func f<s/T>(x: s/T, n: s/Tw, m: s/Tw)\n    s is owner or uniq\n    n@follow.v = 1\n    take(m@follow.v@uniq)\n", "InvalidAssignment_Kd m@follow.v; InvalidAssignment_Kd n@follow.v")]
+    [InlineData("follow_shared", "func f<s/T>(x: s/T, n: s/Tw)\n    s is owner or ref\n    n@move@follow.v = 1\n", "SharedPathAccess_Kd n@move@follow.v")]
+    [InlineData("follow_let", Bump + "func f<s/T>(x: s/T, n: s/Tw, b: s/Bc)\n    s is owner or uniq\n    let m = n@move\n    take(m@follow.v@uniq)\n    b.bump()\n", "InvalidAssignment_Kd m@follow.v; NoApplicableOverload_Kd b.bump()")]
+    [InlineData("whole", "func f()\n    tw() = Tw.init()\n    (tw()) = Tw.init()\n    1 = 2\n    var u = Tw.init()\n    u@move = Tw.init()\n", "InvalidAssignment_Kd (tw()); InvalidAssignment_Kd 1; InvalidAssignment_Kd tw(); InvalidAssignment_Kd u@move")]
+    [InlineData("outlive", "func f()\n    let r = tw().v@uniq\n    take(r)\n    let t = pair().0@uniq\n    t@follow = 3\n", "ComparisonLoanConflict_Kd pair(); ComparisonLoanConflict_Kd tw()")]
+    [InlineData("return", "func g(w: uniq/Tw) -> uniq/i32 during w\n    return tw().v@uniq\n", "UnsatisfiedOriginRelation_Kd tw().v@uniq")] // The twin at `return` went (R7-O1 H).
+    [InlineData("origin_limit", RefParts, "")]
+    // Its invalid twins: the temporary kept alive past a write of the borrowed local, an exclusive write beside the temporary's
+    // shared part, and a written Origin that cannot outlive the Field's.
+    [InlineData("origin_kept", RefPrelude + "func fk()\n    var x = 1\n    let y = 2\n    var t = mkG(y@ref)\n    t.r = x@ref\n    x = 3\n    Console.writeLine(\"\\(t.r@follow)\")\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("origin_excl", ExclusivePart, "ComparisonLoanConflict_Kd x@ref")]
+    [InlineData("origin_short", RefPrelude + "func fs(p: ref/i32)\n    let l = 5\n    mkG(p).r = l@ref\n", "UnsatisfiedOriginRelation_Kd l@ref")]
+    public void APartOfATemporaryKeepsItsPermissions(string form, string body, string records)
+    {
+        var prelude = Take + Made + Temps;
+        var source = prelude + body + "public func main() => ()\n";
+        var shown = DiagnosticCorpus.Check(source).Diagnostics.Where(x => x.Span!.Value.Start >= prelude.Length)
+            .Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]).Order(StringComparer.Ordinal);
+        Assert.True(string.Join("; ", shown) == records, $"{form}: expected [{records}], found [{string.Join("; ", shown)}]");
     }
 
     [Fact]

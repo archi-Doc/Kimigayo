@@ -10,9 +10,39 @@ public sealed partial class Binding
 {
     private BoundType? BindVariable(VariableKoto variable, BindingScope scope)
     {
-        // A variable is checked in its own frame, also when a use binds it first (BindReference).
+        // A variable is checked in its own frame, also when a use binds it first (BindReference), and a local in its declaring body
+        // (FormingBodyOf; PLAN G1369), also when a use, a capture or a nested header binds it first. A Closure body's local reads its
+        // literal's environment (BodyEnvironment, which forms it when the local comes first; PLAN G230-H (i)) and rests on the literal
+        // where that failed, as the literal's binding then binds no body (SPEC 23.1.2). Where it is not ready, the demand cannot form
+        // the declaration before its evaluating construct binds (F's G230H-6, Q-B's class): it rests with no record and no read, the
+        // local stays unbound, and its statement binds it.
         var frame = this.BeginConsultation(variable);
-        var type = this.BindVariableCore(variable, scope);
+        var body = this.FormingBodyOf(variable);
+        var environment = this.BodyEnvironment(body, out var literal);
+        if (environment == DeclState.NotStarted)
+        {
+            this.DropConsultation(frame);
+            return null;
+        }
+
+        BoundType? type;
+        if (environment == DeclState.Error)
+        {
+            type = this.CompleteDependent(variable, literal!);
+        }
+        else
+        {
+            var saved = this.EnterBody(body);
+            try
+            {
+                type = this.BindVariableCore(variable, scope);
+            }
+            finally
+            {
+                this.formingBody = saved;
+            }
+        }
+
         this.EndConsultation(variable, frame);
         this.Consulted(variable);
         return type;
@@ -29,12 +59,18 @@ public sealed partial class Binding
         // Interim until R7-D2 d4 (Binding.DeclQuery): the variable binding and the header read each other's Running state.
         if (symbol.Resolving || this.QueryState(symbol, DeclQueryKind.Signature) == DeclState.Running)
         {
-            return this.Fail(variable, BindingFailure.Cycle, true);
+            return this.Record(variable, BindingFailure.Cycle, [], unresolved: true);
         }
 
+        // SPEC 11.6, 23.1.2 (DECISIONS BU-105; G812 rulings 173, 174): a header whose query failed (Error, its re-entry's cycle) is final in
+        // the pass, even where the computation the re-entry interrupted formed its Type: the declaration rests at that record and records
+        // nothing more (its Type stays the header's and it is not completed), while its parts are still bound (the initializer, the
+        // literal bodies its header left and the accessor bodies), so their independent records stay visible.
+        var rests = false;
         if (symbol.Property is not null)
         {
             this.BindHeader(symbol);
+            rests = this.QueryRecord(symbol, DeclQueryKind.Signature) is not null;
             this.CheckCaseBound(variable);
         }
 
@@ -46,9 +82,9 @@ public sealed partial class Binding
 
         var originDeclaration = this.BeginOriginDeclaration(variable, scope);
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
-        if (symbol.Kind == BindingSymbolKind.Local && declared is { ContainsParameter: true })
+        if (symbol.Kind == BindingSymbolKind.Local && declared is not null)
         {
-            declared = this.SubstituteIdentityPremises(declared, scope); // SPEC 8.2: one Type in the premise's scope.
+            declared = this.ClassForm(declared, scope, out _); // SPEC 8.2.3: one Type in the premise's scope.
         }
 
         if (originDeclaration is not null)
@@ -59,9 +95,10 @@ public sealed partial class Binding
         }
 
         // A Property's initializer and its fit are its initializer's body (SPEC 11.8, 6.3.3; DECISIONS R4-M101 E1, E4); a local's are
-        // the body that binds the local. The local's region slots are numbered once, in binding order: its initializer's Origins with no
-        // candidate first (ResolveInitializerOrigins), then its Type's (InferLocalOrigins, LocalBorrowType; SPEC 15.3.6).
-        var slot = -1;
+        // its declaring body, which BindVariable entered. The local's region slots are numbered once, in binding order: the slots its
+        // equalities fix first (FixedRegions, whoever completed the declaration), then its initializer's Origins with no candidate
+        // (ResolveInitializerOrigins), then its Type's (InferLocalOrigins, LocalBorrowType; SPEC 15.3.6).
+        var slot = -1 - FixedRegions(this.originDeclarations.GetValueOrDefault(variable));
         var saved = this.EnterBody(symbol.Property is null ? this.formingBody : InitializerBody(symbol));
         BoundType? inferred;
         try
@@ -79,8 +116,8 @@ public sealed partial class Binding
                 // Select the Copy-read shape before inferring omitted Origins. Comparing the
                 // unresolved Origin with the stored reference's Origin would reject ref/ref/T
                 // initializers before the ordinary lifetime constraints can be inferred.
-                if (variable.InitializerKoto is { } value && !ReferenceTypes.StorageMatches(inferred, declared) &&
-                    this.ReadTypeReferent(inferred, scope) is { } referent && ReferenceTypes.StorageMatches(referent, declared))
+                if (variable.InitializerKoto is { } value && !TyCtxt.StorageMatches(inferred, declared) &&
+                    this.ReadTypeReferent(inferred, scope, variable) is { } referent && TyCtxt.StorageMatches(referent, declared))
                 {
                     this.adaptations[value] = new(ExpectedAdaptationKind.ReferentRead, referent);
                     inferred = referent;
@@ -89,9 +126,13 @@ public sealed partial class Binding
                 declared = this.InferLocalOrigins(declared, inferred, variable, scope, slot);
             }
 
+            // The misfit fails the node that delivers the value: a Property's initializer, as a body's delivering node does (a return
+            // jump, an expression body, an accessor body: BindAccessorBody), so the Property keeps its Type (SPEC 11.6, 23.1.2); a local's
+            // declaration, the statement of the body that binds it.
             if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable, out var failure))
             {
-                this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared, failure);
+                var value = variable.InitializerKoto ?? variable;
+                this.FailMismatch(symbol.Property is null ? variable : value, value, inferred, declared, failure);
             }
         }
         finally
@@ -110,17 +151,18 @@ public sealed partial class Binding
         }
 
         // An unavailable written Type cannot be replaced by the initializer's Type.
-        symbol.Type = variable.TypeKoto is null ? declared ?? inferred : declared;
+        symbol.Type = variable.TypeKoto is null && !rests ? declared ?? inferred : declared;
         variable.NameKoto.BoundSymbol = symbol;
         Complete(variable.NameKoto, symbol.Type);
         if (variable is PropertyKoto property)
         {
             // SPEC 23.1.2 (DECISIONS G52-1): a Property's verdict, stored or computed, reads no binding result of its accessors (its Type is
-            // its header's or its initializer's, SPEC 11.4, 11.6), so they are bound outside its frame, as a container's declarations are
-            // (BindContainedDeclarations).
+            // its header's or its initializer's, SPEC 11.4, 11.6), nor of the literal bodies its header left (G812 ruling 174, SPEC 10.5.4),
+            // so they are bound outside its frame, as a container's declarations are (BindContainedDeclarations).
             var consultation = this.SuspendConsultation();
             try
             {
+                this.BindLeftBodies(symbol.Property!);
                 for (var i = 0; i < property.Accessors.Count; i++)
                 {
                     this.BindNode(property.Accessors[i], scope);
@@ -140,9 +182,9 @@ public sealed partial class Binding
                 this.Consulted(written);
             }
 
-            this.Fail(variable, BindingFailure.MissingType, true);
+            this.Record(variable, BindingFailure.MissingType, [], unresolved: true);
         }
 
-        return Complete(variable, symbol.Type);
+        return rests ? null : Complete(variable, symbol.Type);
     }
 }

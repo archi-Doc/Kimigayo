@@ -10,12 +10,12 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, (ConstraintProof Proof, BoundConstraint? Failed)> comparedParts = new(); // ComparisonProof's composite parts.
 
     // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of the legacy plan, of
-    // TyCtxt.Comparison and of the built-in target (CompilerRequirementTarget): elementwise over its parts (a Tuple or a safe `ref` layer),
+    // TyCtxt.Comparison and of the comparison built-in rows (ImplTable.Builtin): elementwise over its parts (a Tuple or a safe `ref` layer),
     // natively (a built-in Type; under source operators also a numeric Type, by IEEE), else by the Contract's mapping for the Type: its
     // witness when the Type is closed, its requirement in every instance when it has an abstract part.
     internal static ComparisonKind ComparisonKindOf(BoundType self, KimiDeclarationId? contract, bool operators)
-        => ComparisonTypes.IsComposite(self) ? ComparisonKind.Composite
-            : ComparisonTypes.OperatorTableRuns(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
+        => TyCtxt.IsComposite(self) ? ComparisonKind.Composite
+            : TyCtxt.OperatorTableRuns(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
             : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
 
     // The legacy composition under the Contract's mapping: CallPlan leaves from RequirementImplementation under the built-in target's scope (a
@@ -75,16 +75,16 @@ public sealed partial class Binding
     // part's answer depends on the part alone in one query (its contract, scope and operators fixed), so each distinct one is composed
     // once (DECISIONS BU-19, BU-55).
     private ConstraintProof ComparisonProof(
-        BoundType type, BindingSymbol contract, BindingScope scope, bool operators, out BoundConstraint? failedRequirement)
+        BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site, bool operators, out BoundConstraint? failedRequirement)
     {
-        (var proof, failedRequirement) = this.ComparisonProof(type, contract, scope, operators, this.comparedParts.Begin(this.storageVersion));
+        (var proof, failedRequirement) = this.ComparisonProof(type, contract, scope, site, operators, this.comparedParts.Begin(this.storageVersion));
         return proof;
     }
 
     private (ConstraintProof Proof, BoundConstraint? Failed) ComparisonProof(
-        BoundType type, BindingSymbol contract, BindingScope scope, bool operators, uint query)
+        BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site, bool operators, uint query)
     {
-        if (!ComparisonTypes.IsComposite(type))
+        if (!TyCtxt.IsComposite(type))
         {
             if (operators && type.IsNumeric)
             {
@@ -92,7 +92,7 @@ public sealed partial class Binding
             }
 
             var requirement = this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract));
-            var proof = this.ProveConstraint(requirement, scope);
+            var proof = this.ProveConstraint(requirement, scope, site);
             return (proof, proof == ConstraintProof.Proven ? null : requirement);
         }
 
@@ -104,7 +104,7 @@ public sealed partial class Binding
         var result = (Proof: ConstraintProof.Proven, Failed: (BoundConstraint?)null);
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var part = this.ComparisonProof(type.Components[i], contract, scope, operators, query);
+            var part = this.ComparisonProof(type.Components[i], contract, scope, site, operators, query);
             var combined = CombineProof(result.Proof, part.Proof, true);
             result = (combined, combined != result.Proof ? part.Failed : result.Failed);
         }

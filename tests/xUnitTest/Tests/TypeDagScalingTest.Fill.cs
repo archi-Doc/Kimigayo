@@ -33,7 +33,7 @@ public partial class TypeDagScalingTest
             Assert.Empty(program.Findings);
             Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
             var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-            var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+            var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
             flow.Begin(body);
             moves.Build(body, flow);
             return moves.Created;

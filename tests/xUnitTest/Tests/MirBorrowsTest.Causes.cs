@@ -89,6 +89,9 @@ public sealed partial class MirBorrowsTest
             "    var r = local@ref\n    var q = local@ref\n    if c\n        return r\n    p@follow = q\n    return x\n",
         ["chain-retention"] = ChainHolder + "func chainKept(q: ref/i32) -> Holder during q\n    let local = 1\n    var h = local@ref\n    var h2 = h@ref\n" +
             "    return mkE(h2@ref)\n",
+        ["chain-generic"] = "struct Box<T>\n    public var v: T\nfunc mkC<T>(x: ref/(ref/T during b)) -> Box<T>\n    loop => ()\n" +
+            "func chainGen(q: ref/i32) -> Box<ref/i32 during q>\n    let local = 1\n    var h = local@ref\n    var h2 = h@ref\n" +
+            "    return mkC(h2@ref)\n",
         ["two-views"] = "func pp<s/T>(target: uniq/(ref/i32 during a), x: s/T)\n    s is owner or ref\n    let local = 1\n    var r = local@ref\n" +
             "    target@follow = r\n",
         ["pair-application-part"] = "func pa<s/T>(x: s/i32 during b, m: s/T, target: uniq/(ref/(s/i32 during b) during a))\n" +
@@ -184,24 +187,67 @@ public sealed partial class MirBorrowsTest
         ["inv-var-gen"] = "func g<T>(p: uniq/(ref/T during a) during u, y: T) -> i32\n    var r = p@move\n    r@follow = y@ref\n    return 0\n",
     };
 
+    // Z19's programs (the design's f9 twins, the design reviews' r, rw and q twins), each with a `public func main`.
+    private static readonly Dictionary<string, string> JudgedSources = new()
+    {
+        ["f9a"] = "func f(n: i32, y: ref/i32 = n@ref) -> i32 => y@follow\nfunc caller() -> i32 => f(3)\n",
+        ["f9b"] = "func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\n",
+        ["f9c"] = "func f(n: i32, y: ref/i32 during a = n@ref) -> ref/i32 during a => y\n",
+        ["f9d"] = "func f(x: uniq/i32 during a, y: (ref/i32 during a, i32) = (x, 1)) => ()\n",
+        ["f9e2"] = "func f(n: i32, y: (ref/i32 during a, i32) = (n@ref, 1)) -> ref/i32 during a => y.0\n",
+        ["f9h"] = "func f(n: i32, y: ref/i32 = label w: do\n    let r = n@ref\n    exit to w r\n) -> i32 => y@follow\n",
+        ["f9i"] = "func f(n: i32, y: ref/i32 = n@ref, z: ref/i32 = n@ref) -> i32 => y@follow\n",
+        ["f9j"] = "func f(n: i32, p: raw/(ref/i32 during a), y: i32 = label w: do\n    unsafe => p[0] = n@ref\n    exit to w 0\n) => ()\n",
+        ["f9l"] = "func f(n: i32, q: ref/i32 during a, y: i32 = label w: do\n    let r: ref/i32 during a = n@ref\n    exit to w 0\n) => ()\n",
+        ["r1"] = "func f(x: uniq/i32 during a, n: i32, y: ref/i32 during a = n@ref, z: ref/i32 during a = x) -> i32 => y@follow + z@follow\n",
+        ["r2"] = "func g(x: uniq/i32 during a, n: i32, c: bool, y: ref/i32 during a = label w: do\n    if c\n        exit to w n@ref\n" +
+            "    exit to w x\n) -> i32 => y@follow\n",
+        ["r5"] = "func h2(n: i32, c: bool, y: ref/i32 = label w: do\n    var i = 0\n    while i < 3\n        if c\n            exit to w n@ref\n" +
+            "        i = i + 1\n    $abort(\"none\")\n) -> i32 => y@follow\n",
+        ["r11"] = "func same(v: ref/i32 during q) -> ref/i32 during q => v\nfunc sc(n: i32, y: ref/i32 during a = same(n@ref)) -> i32 => y@follow\n",
+        ["r12"] = "func putr(p: raw/(ref/i32 during a), v: ref/i32 during a) => unsafe => p[0] = v\n" +
+            "func cs(n: i32, p: raw/(ref/i32 during a), y: i32 = label w: do\n    putr(p, n@ref)\n    exit to w 0\n) => ()\n",
+        ["r6"] = "func kv<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is owner or uniq\n    return y@follow\n",
+        ["r6g"] = "func ku2<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is uniq\n    return y@follow\n",
+        ["r6o"] = "func ko<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is owner\n    return y@follow\n",
+        ["q6"] = "func q6<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during b = x@follow@ref) -> i32\n    s is owner or ref or uniq\n" +
+            "    return y@follow\n",
+        ["q7"] = "func q7<s/T, t/U>(x: s/(t/i32 during b) during b, m: s/T, n: t/U, y: ref/i32 during b = x@follow@follow@ref) -> i32\n" +
+            "    s is owner or uniq\n    t is owner or uniq\n    return y@follow\n",
+        ["q10"] = "func q10<s/T>(x: s/i32 during b, m: s/T, p: raw/(ref/i32 during c), y: i32 = label w: do\n" +
+            "    unsafe => p[0] = x@follow@ref\n    exit to w 0\n)\n    s is owner or uniq\n    return\n",
+        ["tc"] = "func kc<s/T>(x: s/i32 during b, m: s/T, y: ref/i32 during c = x@follow@ref) -> i32\n    s is owner or uniq\n    return y@follow\n",
+        ["rw3"] = "func kv3<s/T>(x: s/i32 during b, m: s/T, p: uniq/(ref/i32 during b))\n    s is owner or uniq\n    var y = x@move\n" +
+            "    p@follow = y@follow@ref\n    y@follow = 2\n",
+        ["rw3g"] = "func kv3g<s/T>(x: s/i32 during b, m: s/T, p: uniq/(ref/i32 during b))\n    s is uniq\n    var y = x@move\n" +
+            "    p@follow = y@follow@ref\n    y@follow = 2\n",
+        ["rw3o"] = "func kv3o<s/T>(x: s/i32 during b, m: s/T, p: uniq/(ref/i32 during b))\n    s is owner\n    var y = x@move\n" +
+            "    p@follow = y@follow@ref\n    y@follow = 2\n",
+        ["q1"] = "func q1<s/T>(x: s/i32 during b, m: s/T, out: uniq/(ref/i32 during c))\n    s is owner or uniq\n    out@follow = x@follow@ref\n",
+        ["q5"] = "func q5<s/T>(x: ref/i32, z: s/i32 during x, m: s/T) -> ref/i32 during x\n    s is owner or uniq\n    let values = [1, 2, 3]\n" +
+            "    let sl = values[0..2]\n    var view = z@follow@ref\n    view = sl[0]@ref\n    return view\n",
+        ["q13"] = "func id(v: ref/i32 during q) -> ref/i32 during q => v\nfunc q13<s/T>(x: s/i32 during b, m: s/T, out: uniq/(ref/i32 during b))\n" +
+            "    s is owner or uniq\n    let r = id(x@follow@ref)\n    out@follow = r\n",
+    };
+
     // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in
     // transit (a Result temp, _0) or storage the body does not own (E), received as the borrow or a Copy or Reborrow of it into a part
     // every Origin of which is Fixed, is derived from the Refuted problems of its Borrow's Origin: a return through locals, a Reborrow and
     // a Slice handle, a generic call's result (the call clause), a store through a parameter, through two paths (both causes), in a loop,
     // through a guard candidate's call (err(ended)), a read through a reference to a whole value (B's read-through clause, Content
-    // retention, and a Chain row's reads of whole holders, R4-M138; the outer layers' Loans, whose Origins mkE leaves free, have no Refuted
-    // relation), a write through a reference to a whole local (B's write-through row), a container's or a closure environment's append (A's
-    // receiving check over every Origin of the receiving Type), a candidate the access does not conflict with (R4-M96's exact scan, B), a
-    // pair binder's view, a pair application in the receiving Type (judged in its cases, SPEC 8.15.2: Fixed meets `i32` and
-    // `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same through a call's
-    // store into what a `null` argument's stated raw layer covers (its constant's Type taken in the case too, MirCases.TypeOf; PLAN G723;
-    // fail-before: independent), a conflict-free branch's write beside a derived end (keepA), and a conflict with more causes than the
-    // record's first fact buffer holds (four raw addresses joined into p, each a Refuted relation; PLAN G786, fail-before: an exception),
-    // and a store through a reassignable local whose region slot the body's relations make equal to a fixed Origin (`var r = p@move`,
-    // invariant under uniq, SPEC 15.6.1): into the referent, a Tuple part, a Field, by a call's store, and under a pair binder whose
-    // masked row puts the run's two views in two classes (PLAN G824: Fixed's Inferred atom equal to a Fixed one in every class; fail-before:
-    // independent).
-    // Fail-before: no Cause fact exists (chain-retention: no conflict at `local`, a Chain row read as one read).
+    // retention, and a Chain row's reads of whole holders, R4-M138: chain-generic, mkC's kept-T row past x's second layer into a result
+    // that holds no raw layer), a write through a reference to a whole local (B's write-through row), a container's or a closure
+    // environment's append (A's receiving check over every Origin of the receiving Type), a candidate the access does not conflict with
+    // (R4-M96's exact scan, B), a pair binder's view, a pair application in the receiving Type (judged in its cases, SPEC 8.15.2: Fixed
+    // meets `i32` and `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same
+    // through a call's store into what a `null` argument's stated raw layer covers (its constant's Type taken in the case too,
+    // MirCases.TypeOf; PLAN G723; fail-before: independent), a conflict-free branch's write beside a derived end (keepA), and a conflict
+    // with more causes than the record's first fact buffer holds (four raw addresses joined into p, each a Refuted relation; PLAN G786,
+    // fail-before: an exception), and a store through a reassignable local whose region slot the body's relations make equal to a fixed
+    // Origin (`var r = p@move`, invariant under uniq, SPEC 15.6.1): into the referent, a Tuple part, a Field, by a call's store, and under
+    // a pair binder whose masked row puts the run's two views in two classes (PLAN G824: Fixed's Inferred atom equal to a Fixed one in
+    // every class; fail-before: independent).
+    // Fail-before: no Cause fact exists.
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
     [InlineData("j-bad-v", "bad: let local: i32 = 1 <- r")]
@@ -221,18 +267,24 @@ public sealed partial class MirBorrowsTest
     [InlineData("e3c4d30c20af", "leak: var local = values <- local@uniq")]
     [InlineData("0433a531b1ba", "leak: var v = view@move <- v[0]@follow@uniq")]
     [InlineData("38df74b325ce", "leak: var slot = p <- rr@follow@follow@uniq")]
-    [InlineData("27e4888a2ae9", "g: let m: i32 = 5 <- q")]
+    // PLAN G1115: y's layer's premise over the pair's solution bounds the call's c, so m@ref's borrow reaches the returned result and
+    // SPEC 15.6.5 names the Refuted relation at the returned value. R7-O1 H (F-H-9's class, as j-bad): Binding's twin at the call is
+    // gone, so the MIR builds m@ref's Loan and the storage end's conflict is derived from that relation; the published record stays one.
+    [InlineData("27e4888a2ae9", "g: let m: i32 = 5 <- f(m@ref, q)")]
     [InlineData("d4a09871a00b", "g: let local: i32 = 1 <- x")]
     [InlineData("write-through-store", "w: let local = 1 <- x")]
     [InlineData("content-retention", "cr: let local = 1 <- first(h@ref)")]
-    [InlineData("chain-retention", "chainKept: var h2 = h@ref | chainKept: var h = local@ref | chainKept: let local = 1 <- mkE(h2@ref)")]
+    // The Chain row's case after G841c moved chain-retention (the implementation review's C1; a pin, dev's CLI publishes the same records).
+    // `var h`'s record is A5's reading of a Chain row as chain(S) with no Type test (R4-M138, its rejected Type skip): _0 also carries
+    // h@ref's Loan, whose Origin b mkC leaves free, so it is independent; SPEC does not require that record.
+    [InlineData("chain-generic", "chainGen: var h = local@ref | chainGen: let local = 1 <- mkC(h2@ref)")]
     [InlineData("f02fb5c218bc", "store: let local: i32 = 1 <- local@ref")]
     [InlineData("container-deep", "deep: let local: i32 = 1 <- local@ref")]
     [InlineData("3c4ffb8ea44b", ": let local: i32 = 1 <- local@ref")]
     [InlineData("noncfl-candidate-v", "h: s.1 = 5 <- r")]
     [InlineData("store-every-origin", "se: var r = local@ref <- r@ref")]
     [InlineData("merge-two-paths-v", "f: let local = 1 <- q; r")]
-    [InlineData("g526-borrow-arg-v", "g: let v: i32 = 1 <- let h: H2 during q = mkr(v@ref)")]
+    [InlineData("g526-borrow-arg-v", "g: let v: i32 = 1 <- mkr(v@ref)")] // The cause's fit at the initializer (R7-O1 H's D5).
     [InlineData("two-views", "pp: let local = 1 <- r")]
     [InlineData("pair-application-part", "pa: var local = x@copy <- local@ref")]
     [InlineData("pair-application-null", "pn: var local = x@copy <- local@ref")]
@@ -242,6 +294,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("fld-var-bad", "g: let b = 1 <- p@move")]
     [InlineData("call-store-var", "g: let b = 1 <- p@move")]
     [InlineData("pair-views-slot", "pw: let b = 1 <- p@move")]
+    // The twins' literal forms (R4-M122's until R7): Binding judges no body relation (R7-O1 H), so the returned or stored Borrow is built
+    // and its conflict is derived from the Refuted relation, listed on the MIR side with its Cause; the published record stays one
+    // (F-H-9's class; R4-M108's Opaque limit ended).
+    [InlineData("j-bad", "bad: let local: i32 = 1 <- local@ref")]
+    [InlineData("m-write4", "w4: x = 2 <- x@ref")]
     public void AConflictCausedOnlyByRefutedRelationsIsDerived(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -250,8 +307,10 @@ public sealed partial class MirBorrowsTest
     // its Origin is not Fixed, a local a call writes that is read later, an aggregate argument a call retains (fK and g526-agg-arg's
     // `.Some(v@ref)`, R4-M104), a call result read by part, a conflict with no Refuted relation, a report of one key both derived and
     // direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the storage the body does not own (B's
-    // read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails chain-through-e); the twins' literal forms
-    // report the relation only (until R7, R4-M122) and a repair loses the conflict; a store through an equated slot into a Type parameter's
+    // read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails chain-through-e), and a Chain row's reads
+    // of whole holders into a result whose raw Field its Type states without an Origin, where the call may store the chain through its own
+    // pointer, so E keeps it (chain-retention; SPEC 5.7 Calls, 15.6.4; G841c, the owner's O-528 (a); a derived conflict before); a repair loses the
+    // conflict; a store through an equated slot into a Type parameter's
     // part (`ref/T during a`: Fixed fails closed on an abstract part, R4-M132; PLAN G824 leaves it). Pins: each passes before.
     [Theory]
     [InlineData("m-write", "w: x = 1")]
@@ -281,9 +340,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("merge-derived-direct-v", "g: let local = 1")]
     [InlineData("content-through-e", "contentViaE: let local = 1")]
     [InlineData("chain-through-e", "chainViaE: var r = slot@follow@ref | chainViaE: let local = 1")]
+    [InlineData("chain-retention", "chainKept: var h2 = h@ref | chainKept: var h = local@ref | chainKept: let local = 1")]
     [InlineData("rv-guard-annot", "")]
-    [InlineData("j-bad", "")]
-    [InlineData("m-write4", "")]
     [InlineData("j-bad-v.r1", "")]
     [InlineData("m-store-v.r1", "")]
     [InlineData("inv-var-gen", "g: T")]
@@ -320,7 +378,9 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(46, causes);
+        // R7-O1 H: j-bad's, m-write4's and 27e4888a2ae9's derived conflicts (F-H-9's class; 27e4888a2ae9's cause is the Refuted relation
+        // at the returned value since PLAN G1115, AConflictCausedOnlyByRefutedRelationsIsDerived).
+        Assert.Equal(48, causes);
     }
 
     // PLAN G824: pair-views-slot's one run covers both views (no view decides a check), which its masked row (the pair layer's
@@ -335,8 +395,8 @@ public sealed partial class MirBorrowsTest
         Assert.Equal((2, false), (stratum.Origins.Classes, stratum.ViewDependent));
     }
 
-    // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a
-    // requirement of its own that rule W never derives: no problem of the program carries a Cause fact.
+    // SPEC 7.2.3 (R26): a default template's Reborrow its result keeps is DefaultArgumentBorrow_Kd, a requirement of its own that rule W
+    // does not derive: no Refuted chain, so no problem of the program carries a Cause fact.
     [Fact]
     public void ADefaultArgumentBorrowRecordsNoCause()
     {
@@ -344,6 +404,81 @@ public sealed partial class MirBorrowsTest
         Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.DefaultArgumentBorrow_Kd);
         Assert.Empty(DerivedProblems(program));
     }
+
+    // SPEC 7.2.3, 15.6.5, 23.1.2 (Z19, the owner's O-496 (a)): a default keeping a new Borrow of a preceding slot whose relation is Refuted
+    // fails once, so DefaultArgumentBorrow_Kd is derived from the relation by rule W where every carrier holds the Loan as its direct
+    // arrival: kept by the result, through a local, by two defaults, by a raw store, from inside a loop, by a call's result or store, and
+    // one of two Loans of a default (r1's and r2's Reborrow stays direct). Fail-before: R26 carried no cause.
+    [Theory]
+    [InlineData("f9a", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("f9c", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("f9h", "r UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- r")]
+    [InlineData(
+        "f9i",
+        "n@ref UnsatisfiedOriginRelation_Kd views 1",
+        "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref",
+        "n@ref UnsatisfiedOriginRelation_Kd views 1",
+        "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("f9j", "n@ref UnsatisfiedOriginRelation_Kd views 1", "p[0] = n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("r1", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref", "x DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("r2", "n@ref UnsatisfiedOriginRelation_Kd views 1", "x DefaultArgumentBorrow_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("r5", "n@ref UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    [InlineData("r11", "same(n@ref) UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1 <- same(n@ref)")]
+    [InlineData("r12", "n@ref UnsatisfiedOriginRelation_Kd views 1", "putr(p, n@ref) DefaultArgumentBorrow_Kd views 1 <- n@ref")]
+    public void ADefaultsBorrowWithARefutedRelationIsDerived(string name, params string[] expected)
+        => Assert.Equal(expected, Judged(JudgedSources[name]));
+
+    // SPEC 7.2.3, 15.6.5 (Z19): where rule W does not derive, each record stays direct: a Reborrow of a preceding argument (no Refuted
+    // chain, alone or inside a Tuple), the slot's Borrow kept inside an aggregate (not a Copy, R4-M104), and an annotated local's Refuted
+    // relation with nothing kept past entry (no R26 failure). Pins: each passes before.
+    [Theory]
+    [InlineData("f9b", "x DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("f9d", "x DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("f9e2", "(n@ref, 1) UnsatisfiedOriginRelation_Kd views 1", "n@ref DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("f9l", "n@ref UnsatisfiedOriginRelation_Kd views 1")]
+    public void ADefaultsBorrowAnotherCarrierKeepsStaysDirect(string name, params string[] expected)
+        => Assert.Equal(expected, Judged(JudgedSources[name]));
+
+    // SPEC 15.6.5, 15.6.3 (Z19's rule (A)): where the Semantics case decides whether a Ref passes a borrow layer, the Ref's own Origin is an
+    // inferred region in the classes passing one, so its relation is judged per case (views: owner 1, then each further case's bit): a
+    // Refuted relation names the owner case only and a record it does not cause stays direct in the other cases (B1: r6, r6g, r6o; the
+    // default with a third case, whose ref case forms no Loan, or two pair binders, q6, q7; with a raw store and an Unproven relation in the
+    // uniq case, q10, tc; a conflict, rw3, rw3g, rw3o); a requirement above the containment is still judged in the promoted class (q1's P),
+    // a Ref through a slice keeps its relation in both cases (q5), and a call retention's pair reads the class's kinds (q13, CR3); the
+    // owner case's end of the parameter, caused only by the relation, is derived (q1, q13). Fail-before: the relation named every case
+    // (r6g, rw3g and rw3o pass before).
+    [Theory]
+    [InlineData("r6", "x@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@ref DefaultArgumentBorrow_Kd views 3")]
+    [InlineData("r6g", "x@follow@ref DefaultArgumentBorrow_Kd views 1")]
+    [InlineData("r6o", "x@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@ref DefaultArgumentBorrow_Kd views 1 <- x@follow@ref")]
+    [InlineData("q6", "x@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@ref DefaultArgumentBorrow_Kd views 5")]
+    [InlineData("q7", "x@follow@follow@ref UnsatisfiedOriginRelation_Kd views 1", "x@follow@follow@ref DefaultArgumentBorrow_Kd views 15")]
+    [InlineData(
+        "q10",
+        "x@follow@ref UnsatisfiedOriginRelation_Kd views 1",
+        "x@follow@ref UnprovenOriginRelation_Kd views 2",
+        "p[0] = x@follow@ref DefaultArgumentBorrow_Kd views 3")]
+    [InlineData(
+        "tc",
+        "x@follow@ref UnsatisfiedOriginRelation_Kd views 1",
+        "x@follow@ref UnprovenOriginRelation_Kd views 2",
+        "x@follow@ref DefaultArgumentBorrow_Kd views 3")]
+    [InlineData("rw3", "y@follow@ref UnsatisfiedOriginRelation_Kd views 1", "y@follow = 2 ComparisonLoanConflict_Kd views 3")]
+    [InlineData("rw3g", "y@follow = 2 ComparisonLoanConflict_Kd views 1")]
+    [InlineData("rw3o", "y@follow@ref UnsatisfiedOriginRelation_Kd views 1", "y@follow = 2 ComparisonLoanConflict_Kd views 1 <- y@follow@ref")]
+    [InlineData(
+        "q1",
+        "x@follow@ref UnsatisfiedOriginRelation_Kd views 1",
+        "x@follow@ref UnprovenOriginRelation_Kd views 2",
+        "s/i32 during b ComparisonLoanConflict_Kd views 1 <- x@follow@ref")]
+    [InlineData(
+        "q5",
+        "view UnsatisfiedOriginRelation_Kd views 1",
+        "view UnsatisfiedOriginRelation_Kd views 3",
+        "let values = [1, 2, 3] ComparisonLoanConflict_Kd views 3")]
+    [InlineData("q13", "r UnsatisfiedOriginRelation_Kd views 1", "s/i32 during b ComparisonLoanConflict_Kd views 1 <- r")]
+    public void ACaseDecidedBorrowLayerJudgesEachCase(string name, params string[] expected)
+        => Assert.Equal(expected, Judged(JudgedSources[name]));
 
     // V16 (DECISIONS R4-M132; the design review's A-B1): rule W keeps A5 within its dense bound where every stored Loan is a W element: N
     // locals borrowed and stored through a parameter, stored on one branch (joined), read through the parameter after each store (A-B1's
@@ -510,6 +645,20 @@ public sealed partial class MirBorrowsTest
             .Select(x => $"{Function(c.SyntaxOf(x.Problem.Subject))}: {Line(c, x.Problem.Subject)}{Code(x.Problem.Code)}" + Causes(c, program, x.Index))];
 
         static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;
+    }
+
+    // A program's Origin, Loan and R26-borrow problems in report order: the subject's first line, the code, the views and its causes'
+    // subjects; the MIR the driver analyzed, with no validator finding.
+    private static string[] Judged(string source)
+    {
+        DiagnosticCode[] codes = [.. LoanCodes, DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.UnprovenOriginRelation_Kd,
+            DiagnosticCode.DefaultArgumentBorrow_Kd];
+        var c = MirBuildTest.Compile(source + "public func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        return [.. program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i))
+            .Where(x => codes.Contains(x.Problem.Code) && x.Problem.Subject.Module == 0)
+            .Select(x => $"{Line(c, x.Problem.Subject)} {x.Problem.Code} views {x.Problem.Views}" + Causes(c, program, x.Index))];
     }
 
     // The problems rule W derived, with Cause facts (their tail).

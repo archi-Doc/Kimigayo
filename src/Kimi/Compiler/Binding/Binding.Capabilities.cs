@@ -6,17 +6,17 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConstraint Proposition, BindingScope Scope, bool Derivation), CapabilityWork> capabilityNodes = new(
-        KimiLibrarySize.Stated.CapabilityNodes);
+    private readonly Dictionary<(BoundConstraint Proposition, BindingScope Scope, bool Derivation), CapabilityWork> capabilityNodes = new();
 
     private readonly HashSet<(CapabilityWork Source, CapabilityWork Consumer)> capabilityEdges = new();
     private readonly Queue<CapabilityWork> capabilityQueue = new();
-    private readonly List<CapabilityWork> pendingCapabilities = []; // The works left Pending (a temporary carrier; removal: R7-C2e2 e2-5b).
+    private readonly List<CapabilityWork> dependentCapabilities = []; // The works whose answer depends on an open obligation (Depends).
     private readonly List<CapabilityWork> capabilityEvaluated = []; // The outermost request's evaluations: the coinductive step's candidates.
     private readonly Queue<CapabilityWork> assumptionQueue = new();
     private bool assuming; // The coinductive step is evaluating (AssumeResidual).
     private bool assumptionVoid; // It read a work never evaluated.
     private int assumptionDepth; // ObligationDepth when its evaluation began: an assumption is not read through a newer obligation.
+    private int assumedReads; // The assumptions read in the running coinductive step (ProvisionalReads' temporary carrier; removal: R7-C2e2 e2-5b).
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -31,14 +31,14 @@ public sealed partial class Binding
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result, without choosing any acquisition operation.</returns>
-    public ConstraintProof ProveCopy(BoundType type, Koto context) => this.ProveCopy(type, this.ConstraintScope(context));
+    public ConstraintProof ProveCopy(BoundType type, Koto context) => this.ProveCopy(type, this.ConstraintScope(context), context);
 
     /// <summary>Queries the recursive Owned guarantee, independently of heap/global borrow restrictions.</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result; unresolved Origins remain Unknown.</returns>
     public ConstraintProof ProveOwned(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context));
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context), context);
 
     /// <summary>Queries compiler-intrinsic PrimitiveInteger (SPEC 8.7.4) under lexical Constraints. Its reader, WrappingIntegerTest,
     /// observes through it that a wrapping integer Type satisfies no PrimitiveInteger (SPEC 3.1.1); no program of that class reaches
@@ -47,21 +47,102 @@ public sealed partial class Binding
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result; a proven Type is an owner integer scalar in every instance.</returns>
     public ConstraintProof ProvePrimitiveInteger(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context));
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context), context);
 
     /// <summary>Queries complete owner Core evidence without inspecting stored fields.</summary>
     /// <param name="type">The normalized complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The four-valued Sealed proof.</returns>
-    public ConstraintProof ProveSealed(BoundType type, Koto context) => this.ProveSealed(type, this.ConstraintScope(context));
+    public ConstraintProof ProveSealed(BoundType type, Koto context) => this.ProveSealed(type, this.ConstraintScope(context), context);
 
-    // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises).
-    internal ConstraintProof ProveCopy(BoundType type, BindingScope scope)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope);
+    // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises), from `site`
+    // (QuerySite): during the pass a judgment's query runs in its caller's consultation frame, or in a site frame at its node where none
+    // is open (BeginProof), so what its proof forms past the height limit is refused at that site (Binding.TypeHeight). MIR's query is
+    // QuerySite.AfterPass: after the pass a capability work's evaluation is the innermost after-run owner of a height refusal in it
+    // (OpenCapabilityOwner; PLAN G651 U2b, C8 ruling 30), which fails no node: the work answers Unknown with no record, as the round
+    // bound's (R7-M38; a lint's, MIR's or the editor's question is no judgment); a formation opened inside it owns its own refusal, which
+    // its readers outside the work answer to their own owners, and the instance collector's own formations keep R7-T1's answer.
+    internal ConstraintProof ProveCopy(BoundType type, BindingScope scope, QuerySite site)
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope, site);
 
-    internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
+    internal ConstraintProof ProveSealed(BoundType type, BindingScope scope, QuerySite site) => this.RequestCapability(type, this.Library.Sealed, scope, site);
 
-    private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
+    // SPEC 3.5.2, 8.7.2, 8.7.3: what a set of outer Semantics, other than owner alone, states of an intrinsic capability of a layer
+    // whatever its target: a shared or raw layer Copies and an exclusive or object layer does not; a Sealed or ObjectPayload Type has
+    // an owner case. DECISIONS BU-240 (temporary, removed with (R)): read by the case set of a binding that forms no Type alone
+    // (SplitCases); a formed pair layer is judged over its admitted cases by the engine (the owner's O-417 (a)), which gives these
+    // verdicts case by case.
+    private static ConstraintProof LayerEvidence(IntrinsicKind intrinsic, SemanticsMask mask)
+    {
+        const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
+        const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
+        return intrinsic switch
+        {
+            IntrinsicKind.Copy => (mask & ~copy) == 0 ? ConstraintProof.Proven : (mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown,
+            IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload when (mask & SemanticsMask.Owner) == 0 => ConstraintProof.Refuted,
+            _ => ConstraintProof.Unknown,
+        };
+    }
+
+    // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
+    // function and is no Container that the function is a member of below the body.
+    private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
+        => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
+
+    // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
+    // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
+    private static Koto? EnclosingBody(Koto declaration)
+    {
+        for (var current = declaration.Parent; current is not null; current = current.Parent)
+        {
+            if (current is FunctionKoto or PropertyAccessorKoto)
+            {
+                return current;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 8.15.2, 8.14: the verdict of a family judged once over its cases (an adaptation family's members, a pair layer's admitted cases,
+    // SymbolicCapability): the verdict common to every case so far, else Unknown, as cases that differ decide nothing (Unknown Copy is
+    // never Non-Copy); null before the first case.
+    private static ConstraintProof CommonVerdict(ConstraintProof? common, ConstraintProof next)
+        => common is null || common == next ? next : ConstraintProof.Unknown;
+
+    // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
+    // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
+    // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
+    // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
+    // arguments are its whole dependence.
+    // A signature is unreadable, none, where its header did not bind (an Item's function, the Type BindConcreteClosure starts with) or
+    // BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300).
+    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
+    {
+        if (type.Kind == BoundTypeKind.Function)
+        {
+            return type.Binder is { } binder ? (type, binder) : null;
+        }
+
+        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
+        {
+            return null;
+        }
+
+        if (type.Symbol?.Declaration is not FunctionKoto definition)
+        {
+            throw new InvalidOperationException($"Callable Type `{type}` names no function (InternalInvariant; BU-73).");
+        }
+
+        if (type.Kind == BoundTypeKind.FunctionItem)
+        {
+            return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
+        }
+
+        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
+    }
+
+    private bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
         if (kind == IntrinsicKind.PrimitiveInteger)
@@ -78,7 +159,7 @@ public sealed partial class Binding
 
         if (kind == IntrinsicKind.ObjectPayload)
         {
-            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
+            if (type.Symbol?.Declaration is { } declaration && this.InvalidDeclarationCause(declaration) is not null)
             {
                 result = ConstraintProof.Error;
                 return true;
@@ -91,14 +172,14 @@ public sealed partial class Binding
             }
 
             // The judgment is shallow: outer owner Semantics, a Core other than Never, and no inherited opt-out.
-            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || type.Symbol?.ObjectPayloadOptOut is not null
+            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || this.ObjectPayloadOptOut(type.Symbol) is not null
                 ? ConstraintProof.Refuted : ConstraintProof.Proven;
             return true;
         }
 
         if (kind == IntrinsicKind.Sealed)
         {
-            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
+            if (type.Symbol?.Declaration is { } declaration && this.InvalidDeclarationCause(declaration) is not null)
             {
                 result = ConstraintProof.Error;
                 return true;
@@ -153,83 +234,17 @@ public sealed partial class Binding
             return true;
         }
 
+        if (kind == IntrinsicKind.Copy && this.capabilityMode == BindingMode.Final && type.Kind != BoundTypeKind.SemanticsAdaptation && !type.IsAbstract &&
+            type.Symbol?.Declaration is DeclarationContainerKoto container && !(this.copyByType.TryGetValue(container, out var copies) && copies.Count != 0))
+        {
+            // SPEC 3.5.2 "only by opt-in": a struct or enum without a Copy declaration is not Copy, decided from the declaration alone, also
+            // while the headers are bound (G1220-1 O2). A Final pass registers every Copy declaration before its headers (BindConstraints);
+            // a Provisional one can leave a clause pending, so NominalCopy answers Unknown there.
+            result = ConstraintProof.Refuted;
+            return true;
+        }
+
         return false;
-    }
-
-    // Whether a capability judgment reads a Type's declaration (a struct, enum or other container) rather than its parts (SPEC 4.5: a
-    // collection by its element Types, whatever its Symbol).
-    private static bool JudgedByDeclaration(BoundType type)
-        => type.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Symbol?.Declaration is DeclarationContainerKoto;
-
-    // A requirement Item's Contract reference: metadata, of which only the bound Type arguments are retained bindings.
-    private static BoundType? RequirementReference(BoundType type)
-        => type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && type.Components.Count > 1
-            ? type.Components[1] : null;
-
-    // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
-    // function and is no Container that the function is a member of below the body.
-    private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
-        => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
-
-    // The declaration a Type parameter's syntax belongs to (a function or a Container, a Contract's Self included).
-    private static Koto DeclaringNode(Koto declaration)
-    {
-        for (var current = declaration; current is not null; current = current.Parent)
-        {
-            if (current is DeclarationKoto)
-            {
-                return current;
-            }
-        }
-
-        return declaration;
-    }
-
-    // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
-    // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
-    private static Koto? EnclosingBody(Koto declaration)
-    {
-        for (var current = declaration.Parent; current is not null; current = current.Parent)
-        {
-            if (current is FunctionKoto or PropertyAccessorKoto)
-            {
-                return current;
-            }
-        }
-
-        return null;
-    }
-
-    // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
-    // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
-    // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
-    // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
-    // arguments are its whole dependence.
-    // A signature is unreadable, none, where its header did not bind (an Item's function, the Type BindConcreteClosure starts with) or
-    // BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300).
-    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
-    {
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            return type.Binder is { } binder ? (type, binder) : null;
-        }
-
-        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
-        {
-            return null;
-        }
-
-        if (type.Symbol?.Declaration is not FunctionKoto definition)
-        {
-            throw new InvalidOperationException($"Callable Type `{type}` names no function (InternalInvariant; BU-73).");
-        }
-
-        if (type.Kind == BoundTypeKind.FunctionItem)
-        {
-            return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
-        }
-
-        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
     }
 
     private void ResetCapabilities(BindingMode mode)
@@ -247,10 +262,9 @@ public sealed partial class Binding
     private void ClearCapabilityResults()
     {
         this.summaryEpoch++; // Component summaries follow the capability results' lifecycle.
-        this.ClearKeptRows(); // So do Enumerate's kept rows (ContractSolver).
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
-        this.pendingCapabilities.Clear();
+        this.dependentCapabilities.Clear();
         this.capabilityEvaluated.Clear();
         this.assumptionQueue.Clear();
         this.assuming = false;
@@ -261,7 +275,24 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation = false)
+    // R7-C3 (C7): a capability work is keyed by the subject its judge judged (CapabilityKey): the proposition in its form in the view
+    // (ProveProposition's normalization, J1), its subject read as its class's Member (RequestCapability). A reader of the work the judge
+    // formed for a proposition it asked reads that key, never the proposition as written (rv.tp3-u: an anonymous function's header
+    // under `U is W` forms the erasure subject).
+    private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) JudgedCapabilityKey(BoundConstraint asked, BindingScope scope)
+    {
+        var judged = this.NormalizeProofConstraint(asked, scope, out _);
+        return this.CapabilityKey(this.MemberOf(judged.Subject!, scope, out _), judged.Contract!, scope, derivation: false);
+    }
+
+    // The one key of capability works: the judged subject (its class's Member) and the intrinsic Contract in the view.
+    private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) CapabilityKey(BoundType member, BindingSymbol intrinsic, BindingScope scope, bool derivation)
+        => (this.InternConstraint(new(ConstraintKind.Contract, member, contract: intrinsic)), scope, derivation);
+
+    // A capability request from `site` (QuerySite; PLAN G651 a1): the outermost request drains the engine (a judgment's, or a
+    // proposition's atom inside its proof, JudgeConstraintAtom: QuerySite.Nested), a request inside a work's evaluation is the work's
+    // read (QuerySite.Nested).
+    private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, QuerySite site, bool derivation = false)
     {
         var contexts = this.OperandContexts(type);
         if (contexts.Unresolved)
@@ -269,49 +300,33 @@ public sealed partial class Binding
             return contexts.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
         }
 
+        type = this.MemberOf(type, scope, out _); // R7-C2c2 c2-4 (design R1.1): the capability judge's subject is its class's Member
+
         if (!this.capabilitiesReady)
         {
-            if (this.running && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
+            if (this.running && !derivation && this.TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
             {
-                return concrete;
+                return this.WithClassPremises(concrete, type, intrinsic, scope);
+            }
+
+            if (this.inferringHeader && !derivation)
+            {
+                this.DemandContainedHeaders(type, intrinsic.Intrinsic, scope); // SPEC 11.6: a fact about a Type containing the Property
             }
 
             return ConstraintProof.Unknown;
         }
 
-        if (!derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
+        if (!derivation && this.TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
         {
-            return leaf;
+            return this.WithClassPremises(leaf, type, intrinsic, scope);
         }
 
-        // A proof can re-enter a declaration with ever larger arguments: Copy's conditional premise over a projection, and Owned's
-        // projection normalized at the use through a conformance binding that uses itself (SPEC 8.3.3, DECISIONS BU-22); the second
-        // growth step stays Unknown. Removal condition: SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200).
-        if (!derivation && type.Symbol is not null)
-        {
-            var growing = false;
-            var depth = type.Height;
-            for (var ancestor = this.capabilityConsumer; ancestor is not null; ancestor = ancestor.Parent)
-            {
-                if (ReferenceEquals(ancestor.Type.Symbol, type.Symbol) && !ReferenceEquals(ancestor.Type, type))
-                {
-                    var previous = ancestor.Type.Height;
-                    if (depth > previous)
-                    {
-                        if (growing)
-                        {
-                            return ConstraintProof.Unknown;
-                        }
-
-                        growing = true;
-                        depth = previous;
-                    }
-                }
-            }
-        }
-
-        var proposition = this.InternConstraint(new(ConstraintKind.Contract, type, contract: intrinsic));
-        var key = (proposition, scope, derivation);
+        // A proof can re-enter a declaration with ever larger arguments (Copy's conditional premise over a projection; Owned's projection
+        // normalized at the use through a conformance binding that uses itself): each re-entry forms a higher Type, so the first one past
+        // the height limit is refused where it is formed, the limit's one Resource record, which the proof rests on (SPEC 8.3.3 Limits,
+        // Binding.TypeHeight; R7-C6 a, PLAN G200). No guard of the proof's own: whether the limit is reached depends on the Type alone.
+        var key = this.CapabilityKey(type, intrinsic, scope, derivation);
         if (!this.capabilityNodes.TryGetValue(key, out var work))
         {
             work = new(type, intrinsic, scope, derivation);
@@ -320,7 +335,6 @@ public sealed partial class Binding
 
         if (!work.Evaluated && !work.Queued)
         {
-            work.Parent = this.capabilityConsumer;
             work.Queued = true;
             this.capabilityQueue.Enqueue(work);
         }
@@ -341,6 +355,7 @@ public sealed partial class Binding
                 }
                 else if (work.Assumed && consumer.Assumed && this.ObligationDepth == this.assumptionDepth)
                 {
+                    this.assumedReads++;
                     return ConstraintProof.Proven;
                 }
             }
@@ -350,7 +365,9 @@ public sealed partial class Binding
             return this.ReadVerdict(work.Result, null, work.Fact);
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
+        this.BeginClearParts(); // A chain of works over shared parts walks each part once (OperandContexts; R7-C6 a).
+        var parent = this.OpenCapabilityOwner(); // After the run, the works' height refusals are theirs (C8 ruling 30).
         try
         {
             do
@@ -365,12 +382,14 @@ public sealed partial class Binding
             this.capabilityConsumer = null;
             this.assuming = false;
             this.capabilityEvaluated.Clear();
+            this.EndClearParts();
+            this.Restore(parent);
         }
 
         this.ScopeReads = default;
         this.ScopeReads.Origin = work.Result == ConstraintProof.Proven ? null : work.Origin;
         var verdict = this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
-        this.ForgetPendingCapabilities();
+        this.ForgetDependentCapabilities();
         return verdict;
     }
 
@@ -387,13 +406,15 @@ public sealed partial class Binding
             this.ScopeReads = default;
             next.Parts?.Clear();
             next.Reads.Clear();
-            var reads = this.reentryReads;
+            var mark = this.BeginAnswer();
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
-            next.Pending = this.reentryReads != reads;
-            if (next.Pending)
+            var bodyBinding = this.dependence == BodyBinding;
+            next.Depends = this.EndAnswer(mark, result);
+            next.ReadsBodyBinding = next.Depends && bodyBinding;
+            if (next.Depends)
             {
-                this.pendingCapabilities.Add(next);
+                this.dependentCapabilities.Add(next);
             }
 
             next.OwnCause = this.ProofCause(result); // Payload of the final iteration, outside the fixpoint's equality, as Fact.
@@ -411,9 +432,19 @@ public sealed partial class Binding
         this.capabilityConsumer = null;
     }
 
-    // The nominal obligations open (the open set's and the conformance verifications in progress, the two guards of SPEC 8.3.3
-    // Recursion): an assumption is not read through one opened during the evaluation that reads it (AssumeResidual).
-    private int ObligationDepth => this.openObligations.Count + this.conformanceChecks;
+    // The nominal obligations open (SPEC 8.3.3 Recursion's one table): an assumption is not read through one opened during the
+    // evaluation that reads it (AssumeResidual). Its one reader compares two of its values within one evaluation, so the agreement
+    // window conformanceChecks also counts (entered only from ValidateConformances' final loop, never inside an evaluation) is not in it.
+    private int ObligationDepth => this.openObligations.Count;
+
+    // SPEC 8.3.3 Finality: the reads of a verdict not settled yet that the obligation table does not record, the running coinductive
+    // step's assumptions, each valid only at the obligation depth its evaluation began (an open obligation's re-entry reads are the
+    // answer's dependence: BeginAnswer, EndAnswer). An answer computed while the count grows, or that depends on an open obligation,
+    // rests on one of them; any other rests on settled verdicts alone and holds at any deeper obligation (Formation's nested reads). A whole
+    // request inside the computation leaves it unchanged: its step's reads end with the step. Temporary carrier with assumedReads;
+    // removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer, which then says whether an answer rests on a provisional verdict
+    // (Formation's Settled and unsettledReads go with it).
+    private int ProvisionalReads => this.assuming ? this.assumedReads : 0;
 
     // SPEC 8.3.3 Limits, 23.1.1 (DECISIONS BU-22): each Unknown or Error work of the request rests on the least Cause by CauseKey among
     // its own (what its last evaluation read from anything but a work) and those of the works it read that settled at its verdict.
@@ -521,7 +552,7 @@ public sealed partial class Binding
         for (var i = 0; i < evaluated.Count; i++)
         {
             var work = evaluated[i];
-            if (work.Coinductive && work.Result == ConstraintProof.Unknown && !work.Pending && !work.Assumed && work.Evaluated)
+            if (work.Coinductive && work.Result == ConstraintProof.Unknown && !work.Depends && !work.Assumed && work.Evaluated)
             {
                 work.Assumed = true;
                 work.Queued = true;
@@ -536,6 +567,7 @@ public sealed partial class Binding
 
         this.assuming = true;
         this.assumptionVoid = false;
+        this.assumedReads = 0;
         this.CoinductiveStepWork++;
         while (!this.assumptionVoid && this.assumptionQueue.TryDequeue(out var next))
         {
@@ -549,12 +581,13 @@ public sealed partial class Binding
             this.ScopeReads = default;
             next.Parts?.Clear();
             next.Reads.Clear();
-            var reads = this.reentryReads;
+            var mark = this.BeginAnswer();
             this.assumptionDepth = this.ObligationDepth;
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
             this.capabilityConsumer = null;
-            if (result != ConstraintProof.Proven || this.reentryReads != reads)
+            _ = this.EndAnswer(mark, result); // Restores the enclosing dependence; a dependent answer is Unknown, so not Proven either.
+            if (result != ConstraintProof.Proven)
             {
                 next.Assumed = false;
                 for (var i = 0; i < next.Dependents.Count; i++)
@@ -579,7 +612,7 @@ public sealed partial class Binding
         for (var i = 0; i < evaluated.Count; i++)
         {
             var work = evaluated[i];
-            if (!work.Coinductive || work.Result != ConstraintProof.Unknown || work.Pending)
+            if (!work.Coinductive || work.Result != ConstraintProof.Unknown || work.Depends)
             {
                 continue;
             }
@@ -615,19 +648,20 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.3.3 Finality (R7-C2e2 e2-5a): an evaluation that read an open obligation (reentryReads) supplied no evidence there, and
-    // that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that proof ends. None is kept
-    // past the outermost request, which has answered its requester inside that proof: each returns to its initial state and is
-    // evaluated again when next requested. A work whose last evaluation read none stays, unless it read one that did. A forgotten work
-    // stays in its sources' Dependents and edges: a later change of a source evaluates it again with no Parent, which only the growth
-    // guard reads (no verdict depends on it). Temporary carrier with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion.
-    private void ForgetPendingCapabilities()
+    // SPEC 8.3.3 Finality (R7-C2e2 e2-5a, e2-3b): an evaluation whose answer depends on an open obligation (EndAnswer) supplied no
+    // evidence there, and that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that
+    // proof ends. None is kept past the outermost request, which has answered its requester inside that proof: each returns to its
+    // initial state, keeping Depends until it is evaluated again when next requested (read as Final by the erasure's Owned owner,
+    // OwnedMember). A work whose last evaluation depends on none stays, unless it read one that does (a decided reader holds whatever
+    // that one settles to, EndAnswer, so evaluating it again changes no verdict: one spread for every reader). A forgotten work stays in
+    // its sources' Dependents and edges: a later change of a source evaluates it again.
+    private void ForgetDependentCapabilities()
     {
-        var pending = this.pendingCapabilities;
-        for (var i = 0; i < pending.Count; i++)
+        var dependents = this.dependentCapabilities;
+        for (var i = 0; i < dependents.Count; i++)
         {
-            var work = pending[i];
-            if (!work.Pending)
+            var work = dependents[i];
+            if (!work.Depends)
             {
                 continue;
             }
@@ -635,20 +669,30 @@ public sealed partial class Binding
             foreach (var dependent in work.Dependents)
             {
                 this.capabilityEdges.Remove((work, dependent));
-                if (dependent.Evaluated && !dependent.Pending)
+                if (dependent.Evaluated && !dependent.Depends)
                 {
-                    dependent.Pending = true;
-                    pending.Add(dependent);
+                    dependent.Depends = true;
+                    dependent.ReadsBodyBinding = work.ReadsBodyBinding;
+                    dependents.Add(dependent);
                 }
             }
 
-            work.Reset();
+            work.Forget(); // Forgotten, not judged (Depends stays): its last evaluation's answer depends on an open obligation or the body's binding (the erasure's Final, OwnedMember).
         }
 
-        pending.Clear();
+        dependents.Clear();
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)
+        => this.WithClassPremises(this.CapabilityByStructure(work), work.Type, work.Intrinsic, work.Scope);
+
+    // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): a constructed Type's premise rows are its identity class's (ClassKey), joined with its closed
+    // world by PremiseJoin; every answer of the capability judge for a constructed Type passes here (the leaf shortcuts and the
+    // computed work). An abstract Type reads its premises in SymbolicCapability.
+    private ConstraintProof WithClassPremises(ConstraintProof proof, BoundType type, BindingSymbol intrinsic, BindingScope scope)
+        => PremiseJoin(proof != ConstraintProof.Error && !type.IsAbstract && HasTypeIdentity(scope) && this.PremiseRefines(type, intrinsic, scope), proof);
+
+    private ConstraintProof CapabilityByStructure(CapabilityWork work)
     {
         var type = work.Type;
         if (this.OperandContexts(type).Invalid)
@@ -656,26 +700,29 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (TryLeafCapability(type, work.Intrinsic.Intrinsic, out var leaf))
+        if (this.TryLeafCapability(type, work.Intrinsic.Intrinsic, out var leaf))
         {
             return leaf;
         }
 
         if (type.Kind == BoundTypeKind.SemanticsAdaptation)
         {
-            var result = ConstraintProof.Unknown;
+            ConstraintProof? result = null;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                var child = this.RequestCapability(type.Components[i], work.Intrinsic, work.Scope);
+                var saved = this.ScopeReads.Origin;
+                this.ScopeReads.Origin = null;
+                var child = this.RequestCapability(type.Components[i], work.Intrinsic, work.Scope, QuerySite.Nested);
+                this.ScopeReads.Origin = work.Part(i, child, this.ScopeReads.Origin, saved, type.Components[i]);
                 if (child == ConstraintProof.Error)
                 {
                     return child;
                 }
 
-                result = i == 0 || result == child ? child : ConstraintProof.Unknown;
+                result = CommonVerdict(result, child);
             }
 
-            return result;
+            return result ?? ConstraintProof.Unknown;
         }
 
         if (type.IsAbstract)
@@ -709,7 +756,10 @@ public sealed partial class Binding
                 return this.StorageFormation(work, type.Symbol!);
             }
 
-            var origin = OwnedOrigin(type) is not { } owned ? ConstraintProof.Proven : this.StaticOrigin(owned, work.Scope);
+            // A layer's own Origin is its first Origin part (CapabilityPart).
+            var own = OwnedOrigin(type);
+            var origin = own is null ? ConstraintProof.Proven : this.StaticOrigin(own, work.Scope);
+            this.ScopeReads.Origin = work.Part(type.Components.Count, origin, own, this.ScopeReads.Origin, null);
             return this.InstanceCapability(work, CombineProof(origin, this.StructuralCapability(work), true));
         }
 
@@ -719,7 +769,7 @@ public sealed partial class Binding
     // The capability engine stays coinductive over structure (SPEC 15.3.5); the formation of an instance it reads is a
     // nominal judgment, read inductively through the solver's re-entry rule (InstanceFormation, SPEC 8.6.1, 8.3.3).
     private ConstraintProof InstanceCapability(CapabilityWork work, ConstraintProof result)
-        => result == ConstraintProof.Proven ? CombineProof(result, this.InstanceFormation(work.Type, work.Scope), true) : result;
+        => result == ConstraintProof.Proven ? CombineProof(result, this.InstanceFormation(work.Type, work.Scope, QuerySite.Nested), true) : result;
 
     private ConstraintProof NominalCopy(CapabilityWork work, DeclarationContainerKoto container)
     {
@@ -743,20 +793,28 @@ public sealed partial class Binding
 
         if (!this.copyByType.TryGetValue(container, out var declarations) || declarations.Count == 0)
         {
-            return this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return ConstraintProof.Unknown; // A Provisional pass's: a pending clause may still name Copy. At Final the leaf rule refutes it.
         }
 
         var result = ConstraintProof.Refuted;
         for (var i = 0; i < declarations.Count; i++)
         {
             var declaration = declarations[i];
-            var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Library.Copy, declaration.Scope, derivation: true);
-            if (declaration.Clause.BindingState == BindingState.Invalid || validation is ConstraintProof.Error or ConstraintProof.Refuted)
+            var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Library.Copy, declaration.Scope, QuerySite.Nested, derivation: true);
+            if (declaration.Clause.BindingState == BindingState.Invalid)
+            {
+                // SPEC 23.1.2 (R7-C6 a, F's C8 rulings 25 and 29): the failed opt-in keeps its own record, on which this Error rests (the
+                // proof channel's cause): a judgment reading the Type's Copy rests on a limit's record (ProofRestsOnLimit); after a
+                // Language failure its readers keep their records as before (RestsOnRecoveryOrLimit).
+                return this.ReadVerdict(ConstraintProof.Error, declaration.Failed, null);
+            }
+
+            if (validation is ConstraintProof.Error or ConstraintProof.Refuted)
             {
                 return ConstraintProof.Error;
             }
 
-            var condition = this.ProveConditionalPremises(declaration.Premises, work.Type, work.Scope);
+            var condition = this.ProveConditionalPremises(declaration.Premises, work.Type, work.Scope, QuerySite.Nested);
 
             result = CombineProof(result, CombineProof(validation, condition, true), false);
         }
@@ -771,7 +829,12 @@ public sealed partial class Binding
         var call = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.CallSignature(work.Type) : null;
         if (call is { Signature: { } own, Binder: var binder } && ReferenceEquals(own, work.Type))
         {
-            return this.SignatureCapability(work, own, binder);
+            var closed = this.ClosedSignature(own, binder);
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var signature = this.RequestCapability(closed, work.Intrinsic, work.Scope, QuerySite.Nested);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, signature, this.ScopeReads.Origin, saved, closed);
+            return signature;
         }
 
         if (work.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
@@ -783,9 +846,17 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _, _) in new CapabilityParts(work.Type))
+            var elements = new CapabilityParts(work.Type, BoundType.Unit);
+            while (elements.MoveNext())
             {
-                owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
+                if (elements.Current.Part is { } element)
+                {
+                    var saved = this.ScopeReads.Origin;
+                    this.ScopeReads.Origin = null;
+                    var proof = this.RequestCapability(element, work.Intrinsic, work.Scope, QuerySite.Nested);
+                    owned = CombineProof(owned, proof, true);
+                    this.ScopeReads.Origin = work.Part(elements.Member, proof, this.ScopeReads.Origin, saved, element);
+                }
             }
 
             return owned;
@@ -798,17 +869,29 @@ public sealed partial class Binding
 
         // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        var parts = new CapabilityParts(work.Type);
+        // A nested definition's inherited arguments are OwnedOrigins' parts (SPEC 15.2.3), so Owned reads them; Copy reads a Closure's
+        // captures only (SPEC 3.2.1). An unreadable instance (InheritedArguments) answers BU-22's limit with the definition as the site.
+        var inherited = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.InheritedArguments(work.Type) : BoundType.Unit;
+        if (inherited is null)
+        {
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = work.Type.Symbol!.Declaration }, null);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved, null);
+        }
+
+        var parts = new CapabilityParts(work.Type, inherited ?? BoundType.Unit);
         while (parts.MoveNext())
         {
             var (part, origin, argument) = parts.Current;
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
             var proof = part is null ? (work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.StaticOrigin(origin, work.Scope) : ConstraintProof.Proven)
-                : argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
-                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
+                : argument ? this.RequestCapability(part, work.Intrinsic, work.Scope, QuerySite.Nested)
+                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope, QuerySite.Nested);
             result = CombineProof(result, proof, true);
-            this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved);
+            this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved, part);
         }
 
         // A Closure's call signature, or what a Function Item inherits (InheritedEnvironment), is a part after its captures or bound
@@ -818,18 +901,27 @@ public sealed partial class Binding
         {
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
-            var proof = closure.Signature is { } signature ? this.SignatureCapability(work, signature, closure.Binder)
+            var closed = closure.Signature is { } signature ? this.ClosedSignature(signature, closure.Binder) : null;
+            var proof = closed is not null ? this.RequestCapability(closed, work.Intrinsic, work.Scope, QuerySite.Nested)
                 : this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = closure.Binder }, null);
             result = CombineProof(result, proof, true);
-            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved, closed);
         }
 
         return result;
     }
 
+    // SPEC 15.2.3, 15.6.1 (DECISIONS BU-73): a Type as a borrow layer stores it: a held Function Type is its closed call signature (its
+    // fixed Origins are stored, its per-call Origins never are: SPEC 15.3.4), every other Type is itself. The one reading of a held Function
+    // Type for the well-formedness walks of stored Origins: the judged relations (RetainInnerOutlives) and the premises
+    // (StoredPremisePart); a use's walk (WellFormedPremises.EnterStored) does not enter a held Function Type yet (its contract says why).
+    private BoundType StoredSignature(BoundType type)
+        => type.Kind == BoundTypeKind.Function && type.Binder is { } binder ? this.ClosedSignature(type, binder) : type;
+
     // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
-    // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed.
-    private ConstraintProof SignatureCapability(CapabilityWork work, BoundType signature, Koto binder)
+    // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed. The closed signature is the
+    // part Owned judges, and a held Function Type's part of a borrow layer's well-formedness (StoredSignature, SPEC 15.6.1).
+    private BoundType ClosedSignature(BoundType signature, Koto binder)
     {
         var count = InputOriginCount(binder);
         var inputs = this.originScratch.Rent(count);
@@ -837,7 +929,7 @@ public sealed partial class Binding
         {
             inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
             var images = new PerCallImages(inputs.AsSpan(0, count), BoundOrigin.Static, BoundOrigin.Static);
-            return this.RequestCapability(this.SubstituteStoredOrigins(signature, binder, [], images), work.Intrinsic, work.Scope);
+            return this.SubstituteStoredOrigins(signature, binder, [], images);
         }
         finally
         {
@@ -845,12 +937,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) inherits, read
-    // from its declaration as its Item is formed: the Origins and Type parameters its declared signature names whose binder lies outside it
-    // and is no Container it is a member of below that body (whose slots its bound arguments instantiate), as one environment Tuple
-    // (EnvironmentTuple). Atoms bound inside its declaration (its own Origins, a Constraint set's slot, a nested Function Type's inputs)
-    // are per-call, and a Type a projection or a bound argument derives from them is never judged itself (15.2.3 counts the arguments).
-    // Null when a declared Type did not bind.
+    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) depends on by
+    // naming it, beyond its inherited parameters (CapabilityParts' environment parts, SPEC 6.1.3), read from its declaration as its Item is
+    // formed: the Origins its declared signature names whose binder lies outside it and is no Container it is a member of below that body,
+    // an enclosing Container's Origin slot excepted (an inherited parameter), as one environment Tuple (EnvironmentTuple): an enclosing
+    // function's Origins (SPEC 15.3: no function Origin parameter list) and a local's. Atoms bound inside its declaration (its own Origins,
+    // a Constraint set's slot, a nested Function Type's inputs) are per-call, and a Type a projection or a bound argument derives from them
+    // is never judged itself (15.2.3 counts the arguments). Null when a declared Type did not bind.
     private BoundType? InheritedEnvironment(FunctionKoto function, Koto body)
     {
         if (function.BoundSymbol?.Type is not { } result)
@@ -876,18 +969,15 @@ public sealed partial class Binding
             var signature = this.types.Tuple(declared.AsSpan(0, count + 1));
             var summary = this.SummaryOf(signature);
             var origins = this.originScratch.Rent(summary.Nodes.Length + summary.RawNodes.Length);
-            var types = this.RentTypes(this.InheritedParameters(signature, function, body, null, 0, this.visitedParts.Begin(this.storageVersion)));
             try
             {
                 var o = InheritedOrigins(summary.Nodes, function, body, origins, 0);
                 o = InheritedOrigins(summary.RawNodes, function, body, origins, o);
-                var t = this.InheritedParameters(signature, function, body, types, 0, this.visitedParts.Begin(this.storageVersion));
-                return this.EnvironmentTuple(types.AsSpan(0, t), origins.AsSpan(0, o));
+                return this.EnvironmentTuple([], origins.AsSpan(0, o));
             }
             finally
             {
                 this.originScratch.Return(origins, clearArray: true);
-                this.typeScratch.Return(types, clearArray: true);
             }
         }
         finally
@@ -899,7 +989,8 @@ public sealed partial class Binding
         {
             for (var i = 0; i < nodes.Length; i++)
             {
-                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body))
+                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body) &&
+                    !(atom.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto))
                 {
                     into[count++] = atom;
                 }
@@ -909,43 +1000,6 @@ public sealed partial class Binding
         }
     }
 
-    // The Type parameters a declared signature inherits, each part visited once per walk (DECISIONS BU-19): counted, or written into `into`.
-    private int InheritedParameters(BoundType type, FunctionKoto function, Koto body, BoundType[]? into, int count, uint query)
-    {
-        if (type.Kind == BoundTypeKind.Parameter)
-        {
-            if (type.Symbol?.Declaration is { } declaration && Inherited(DeclaringNode(declaration), function, body))
-            {
-                if (into is not null)
-                {
-                    into[count] = type;
-                }
-
-                count++;
-            }
-
-            return count;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var part = type.Components[i];
-            if (part.HasAbstractPart && this.FirstVisit(part, query))
-            {
-                count = this.InheritedParameters(part, function, body, into, count, query);
-            }
-        }
-
-        return count;
-    }
-
-    // An environment's parts as one Type (SPEC 7.7.4, 15.2.3): a Tuple of its Type parts whose Origin arguments are its Origin parts, which
-    // CapabilityParts reads back in this order; Unit when it has none. Invariant: it is the only Tuple whose Origin arguments are Origin
-    // parts, and the only producer of a Tuple with Origin arguments (TyCtxt.Tuple gives none); it is a capability subject (the erasure's,
-    // an Item's signature part), never a value's Type. A new producer of a Tuple with Origin arguments must not reach CapabilityParts.
-    private BoundType EnvironmentTuple(ReadOnlySpan<BoundType> types, ReadOnlySpan<BoundOrigin> origins)
-        => types.IsEmpty && origins.IsEmpty ? BoundType.Unit : this.types.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, types, originArguments: origins);
-
     // Copy's derivation over the stored Types of a declaration's Self (SPEC 3.5.2); Owned reads component summaries.
     private ConstraintProof StoredCapability(CapabilityWork work, AdtDef shape)
     {
@@ -953,7 +1007,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Types.Count; i++)
         {
             var type = this.StoredType(shape.Types[i], work.Type);
-            var proof = shape.Types[i].BindingState == BindingState.Invalid ? ConstraintProof.Error : type is null ? ConstraintProof.Unknown : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: work.Intrinsic)), work.Scope);
+            var proof = shape.Types[i].BindingState == BindingState.Invalid ? ConstraintProof.Error : type is null ? ConstraintProof.Unknown : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: work.Intrinsic)), work.Scope, QuerySite.Nested);
             if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy && type is not null && this.HoldsHolder(type))
             {
                 proof = ConstraintProof.Refuted; // SPEC 5.7: a `during self` layer makes its Type non-Copy.
@@ -968,164 +1022,42 @@ public sealed partial class Binding
     private ConstraintProof SymbolicCapability(CapabilityWork work)
     {
         var negative = false;
-        var parameterIdentity = HasParameterIdentity(work.Scope);
-        var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true, out _) : work.Type;
+        var subject = work.Type; // its class's Member and rows reach it through RequestCapability's MemberOf and the supply's keys
         var positive = this.PremiseRefines(subject, work.Intrinsic, work.Scope); // SPEC 8.3.2's refinement row (ContractSolver).
-        for (var scope = work.Scope; scope is not null; scope = scope.Parent)
+        if (TryPairLayer(work.Type, out var pair, out _) && this.AdmittedSemantics(pair, work.Scope) is not SemanticsMask.None and var admitted)
         {
-            if (scope.Constraints is not { } environment)
+            // SPEC 8.15.2, 8.3.4, 15.6.1 (the owner's O-417 (a)): a pair layer is judged once over every case its binder admits here,
+            // each case's complete Type (CaseType) a part, member its Semantics' order (read by no explanation: a pair layer's work is
+            // never an erasure's subject). The verdict common to every case (CommonVerdict, a family's rule) is the layer's one
+            // Semantics evidence (no premise row reads a Semantics fact's mask); cases that differ give none: Unknown Copy is never
+            // Non-Copy (SPEC 8.14), and Owned's refuted case reaches the erasure through its part (OwnedMember). So Copy in every case
+            // is the engine's Proven. A binder that admits no case has a failed environment, whose Error the premise loop returns.
+            ConstraintProof? cases = null;
+            for (var i = 0; i < SemanticsOrder.Length; i++)
             {
-                continue;
-            }
-
-            if (environment.Invalid)
-            {
-                return this.InvalidEnvironment(environment);
-            }
-
-            foreach (var available in environment.Facts)
-            {
-                if (!this.AvailableConstraintFact(environment, available, out _))
+                if ((admitted & SemanticsOrder[i].ToMask()) == 0)
                 {
                     continue;
                 }
 
-                int? serial = null; // The loop's judgments may write the chain: a serial per fact.
-                var fact = parameterIdentity ? this.Reading(available, work.Scope, ref serial) : available;
-                var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
-                if (!this.FactStates(fact, subject, out var stated) && !appliedSemantics)
+                var single = new PairCase(work.Type.Symbol!, SemanticsOrder[i]);
+                var type = this.CaseType(work.Type, new ReadOnlySpan<PairCase>(in single));
+                var saved = this.ScopeReads.Origin;
+                this.ScopeReads.Origin = null;
+                var proof = this.RequestCapability(type, work.Intrinsic, work.Scope, QuerySite.Nested);
+                this.ScopeReads.Origin = work.Part(i, proof, this.ScopeReads.Origin, saved, type);
+                if (proof == ConstraintProof.Error)
                 {
-                    continue;
+                    return proof;
                 }
 
-                var evidence = ConstraintProof.Unknown;
-                if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
-                {
-                    evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
-                }
-                else if (fact.Kind == ConstraintKind.Semantics)
-                {
-                    const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
-                    const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
-                    if (fact.Mask == SemanticsMask.Owner)
-                    {
-                        var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
-                        if (target is not null && !ReferenceEquals(target, work.Type))
-                        {
-                            evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, target, contract: work.Intrinsic)), work.Scope);
-                        }
-                    }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy)
-                    {
-                        evidence = (fact.Mask & ~copy) == 0 ? ConstraintProof.Proven : (fact.Mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
-                    }
-                    else if (work.Intrinsic.Intrinsic is IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload && (fact.Mask & SemanticsMask.Owner) == 0)
-                    {
-                        evidence = ConstraintProof.Refuted;
-                    }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Raw)
-                    {
-                        var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
-                        if (target is not null && !ReferenceEquals(target, work.Type))
-                        {
-                            evidence = this.RequestCapability(target, work.Intrinsic, work.Scope);
-                        }
-                    }
-                }
-
-                if (evidence == ConstraintProof.Error)
-                {
-                    return evidence;
-                }
-
-                positive |= evidence == ConstraintProof.Proven;
-                negative |= evidence == ConstraintProof.Refuted;
+                cases = CommonVerdict(cases, proof);
             }
+
+            positive |= cases == ConstraintProof.Proven;
+            negative |= cases == ConstraintProof.Refuted;
         }
 
         return positive && negative ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
-    }
-
-    // The parts a capability judgment decomposes a Type into when no declaration judges it (SPEC 15.2.3): its components, a requirement
-    // Item's Contract reference replaced by that reference's Type arguments (Argument), then its Origin parts: that reference's Origin
-    // arguments (a Contract's inherited Origins, SPEC 6.1.3), or an environment Tuple's (EnvironmentTuple). An environment's parts have
-    // this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a Closure's capture index). StructuralCapability,
-    // ErasureSubject and the component summaries' walk read this one enumeration.
-    private ref struct CapabilityParts(BoundType type)
-    {
-        private readonly BoundType type = type;
-        private readonly BoundType? reference = RequirementReference(type);
-        private int index = -1;
-        private int argument = -1;
-        private int origin = -1;
-
-        // A Type part, or an Origin part (Part null); Argument for a requirement reference's Type argument.
-        public (BoundType? Part, BoundOrigin? Origin, bool Argument) Current { readonly get; private set; }
-
-        // The current part's member: its component's index; a requirement reference's Type and Origin arguments are member 1; an
-        // environment Tuple's Origin part follows its components.
-        public readonly int Member => this.argument >= 0 || (this.origin >= 0 && this.reference is not null) ? 1
-            : this.origin >= 0 ? this.type.Components.Count + this.origin : this.index;
-
-        // The Origin parts: a requirement reference's Origin arguments, or an environment Tuple's, read by EnvironmentTuple's invariant
-        // that only an environment Tuple has Origin arguments.
-        private readonly IReadOnlyList<BoundOrigin> Origins => this.reference?.OriginArguments ?? (this.type.Kind == BoundTypeKind.Tuple ? this.type.OriginArguments : []);
-
-        // The member of the part at an ordinal of this enumeration, an environment Tuple's member (ErasureSubject).
-        public static int MemberAt(BoundType type, int ordinal)
-        {
-            var parts = new CapabilityParts(type);
-            for (var i = 0; parts.MoveNext(); i++)
-            {
-                if (i == ordinal)
-                {
-                    return parts.Member;
-                }
-            }
-
-            throw new InvalidOperationException($"`{type}` has no part {ordinal} (InternalInvariant; BU-73).");
-        }
-
-        public readonly CapabilityParts GetEnumerator() => this;
-
-        public bool MoveNext()
-        {
-            if (this.origin >= 0 || this.index >= this.type.Components.Count)
-            {
-                this.origin++;
-                if (this.origin < this.Origins.Count)
-                {
-                    this.Current = (null, this.Origins[this.origin], false);
-                    return true;
-                }
-
-                return false;
-            }
-
-            if (this.argument >= 0 && ++this.argument < this.reference!.Components.Count)
-            {
-                this.Current = (this.reference.Components[this.argument], null, true);
-                return true;
-            }
-
-            this.argument = -1;
-            while (++this.index < this.type.Components.Count)
-            {
-                if (this.index != 1 || this.reference is null)
-                {
-                    this.Current = (this.type.Components[this.index], null, false);
-                    return true;
-                }
-
-                if (this.reference.Components.Count != 0)
-                {
-                    this.argument = 0;
-                    this.Current = (this.reference.Components[0], null, true);
-                    return true;
-                }
-            }
-
-            return this.MoveNext();
-        }
     }
 }

@@ -25,6 +25,7 @@ public sealed class TransferJudgmentTest
     [InlineData("func bad(x: string, y: string = (x)) => ()\npublic func main()\n    bad(Text.toString(1))\n", "DefaultArgumentMove_Kd (x)")]
     [InlineData("func f<s/T>(value: s/T)\n    s is owner or ref\n    let b = value\npublic func main()\n    let n = 1\n    f(n)\n", "TransferRequired_Kd value repair case=s = owner | Found under the Semantics case s = owner (SPEC 8.15)")]
     [InlineData("func f<t/U, s/T>(value: s/t/U)\n    s is owner or uniq\n    t is owner or ref\n    let b = value\npublic func main() => ()\n", "TransferRequired_Kd value repair case=t = owner, s = owner | Found under the Semantics case t = owner, s = owner (SPEC 8.15)")]
+    [InlineData("func f<s/T>(value: s/T)\n    s is owner\n    let b = value\npublic func main() => ()\n", "TransferRequired_Kd value repair")] // PLAN G181 (c): an owner-only pair; every case moves, so no case fact.
     [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    items[0]@follow = 7\n", "")]
     [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    let r = items[0]@follow\n", "")]
     [InlineData("func peek<t/U>(value: t/U, seen: U = value@follow) -> U\n    t is owner or uniq\n    U is Copy\n    return seen\nfunc caller<s/T>(x: s/T) -> T\n    s is owner or uniq\n    T is Copy\n    return peek(x)\n", "")]
@@ -32,6 +33,15 @@ public sealed class TransferJudgmentTest
     [InlineData("func p<s/T>(q: uniq/(s/T during h) during k)\n    s is ref or uniq\n    let through = q@follow\n", "")]
     [InlineData("func k<s/T>(a: s/T, b: s/T = a) -> ()\n    s is owner or ref\npublic func main() => ()\n", "DefaultArgumentMove_Kd a | Found under the Semantics case s = owner (SPEC 8.15)")]
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x")]
+
+    // R7-E4 E4a-2 (the design review's C3, PLAN G421 (i)): a value call's arguments are acquired each at its own parameter, so each bare
+    // Non-Copy argument is its own record (SPEC 15.1.5, 23.1.2).
+    [InlineData("struct R\n    public init() => ()\nfunc k(f: (R, R) -> ()) -> ()\n    var a = R.init()\n    var b = R.init()\n    f(a, b)\npublic func main() => ()\n", "TransferRequired_Kd a repair; TransferRequired_Kd b repair")]
+
+    // R7-E4 E4b C4 (F ruling 32): each Non-Copy capture of an omitted list is its own record, whatever the Closure's slot holds (SPEC
+    // 7.7.2 "each must be Copy", 23.1.2): two Non-Copy parameters, and t beside x's interim limit (PLAN G170), which took the slot first.
+    [InlineData("func run(a: string, b: string) -> bool\n    let action = func () => a == b\n    return action()\npublic func main() => ()\n", "TransferRequired_Kd func () => a == b | The omitted capture list captures a only by Copy; it never infers a Move, a borrow or a Reborrow; TransferRequired_Kd func () => a == b | The omitted capture list captures b only by Copy; it never infers a Move, a borrow or a Reborrow")]
+    [InlineData("func inspect(text: ref/string) -> i32 => 3\nfunc f<s/T, r/U>(m: s/T, n: r/U, x: T, w: ref/i32 during a, t: string) -> i32\n    s is owner or ref\n    r is owner or ref\n    T is r/i32 during a\n    var g = func () -> i32 => x + inspect(t@ref)\n    return g()\npublic func main() => ()\n", "TransferRequired_Kd func () -> i32 => x + inspect(t@ref) | The omitted capture list captures t only by Copy; it never infers a Move, a borrow or a Reborrow")]
     public void ABareMoveIsBindingsRecord(string source, string expected) => Assert.Equal(expected, Records(source));
 
     // SPEC 4.7.2, 13.5.5 (PLAN G384, resolved by the H5 merge): an index expression denotes an element Place without copying it, and

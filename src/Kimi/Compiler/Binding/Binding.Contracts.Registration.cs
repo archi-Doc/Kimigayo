@@ -26,8 +26,9 @@ public sealed partial class Binding
     // Object forms over a concrete Type formed before the opt-outs are published (VerifyEarlyObjectForms).
     private List<(Koto Use, BoundType Target)>? earlyObjectForms;
 
-    // Whether this pass's conformance declarations have registered (RegisterConformances, after BindConstraints' pass 0).
-    private bool conformancesRegistered;
+    /// <summary>Gets the path entries the conformance table's lookups compared in its identities' rows so far (ImplTable.PathScans), read
+    /// by the scaling tests.</summary>
+    internal long ConformancePathScans => this.impls.PathScans;
 
     // SPEC 8.6.1: `Self is C` in a Type declaration declares conformance; RegisterConformances registers exactly these clauses.
     private static bool DeclaresConformance(IsKoto clause)
@@ -52,7 +53,7 @@ public sealed partial class Binding
             }
         }
 
-        this.conformancesRegistered = true;
+        this.impls.Advance(ImplTable.AdmissionPoint.SelfClauses); // Point 1: this pass's conformance declarations have registered (rule (a)).
         this.VerifyEarlyProjections();
         this.PublishInheritedOptOuts();
 
@@ -65,11 +66,11 @@ public sealed partial class Binding
             }
             else if (constraint.Contract is { } closed && this.IsClosedContractGrant(closed, type))
             {
-                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
+                this.Record(use, BindingFailure.ClosedContractConformance, []); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
             }
             else if (constraint.Contract is { } intrinsic && IntrinsicContract.Of(intrinsic.Intrinsic).Declaration is not BindingFailure.None and var failure)
             {
-                this.Fail(use, failure); // SPEC 8.7.1: decided by the Type's structure alone.
+                this.Record(use, failure, []); // SPEC 8.7.1: decided by the Type's structure alone.
             }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract })
             {
@@ -84,7 +85,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.Fail(use, BindingFailure.InvalidSelfClause);
+                    this.Record(use, BindingFailure.InvalidSelfClause, []);
                 }
             }
         }
@@ -109,7 +110,7 @@ public sealed partial class Binding
             {
                 if (this.AlsoAssociated(type, name, use, scope))
                 {
-                    this.Fail(use, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
+                    this.Record(use, BindingFailure.Ambiguous, [], unresolved: true); // SPEC 9.7.3: it resolves both ways.
                 }
             }
             else if (use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
@@ -148,6 +149,7 @@ public sealed partial class Binding
 
         foreach (var (use, target) in forms)
         {
+            // Transitional, R7-E5 (B's E3 ruling 4, O6 (a)): a form that already failed keeps its first failure, as a Fail does.
             if (use.BindingFailure == BindingFailure.None)
             {
                 this.RenouncedObjectTarget(use, target);
@@ -161,7 +163,7 @@ public sealed partial class Binding
     // the form with NotObjectPayload_Kd naming the declaring Type. BindType reads it at formation and VerifyEarlyObjectForms once more.
     private bool RenouncedObjectTarget(Koto form, BoundType target)
     {
-        if (target.Symbol?.ObjectPayloadOptOut is not { } renounced)
+        if (this.ObjectPayloadOptOut(target.Symbol) is not { } renounced)
         {
             return false;
         }
@@ -170,11 +172,17 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 8.7.3: a Type's ObjectPayload opt-out, its own or inherited, as the running pass reads it, the one read of it: a library Type's
+    // from the Self-clause registrar's step (point 1, rule (a)), where the library's registration published it; a program Type's as its
+    // pass writes it.
+    private BindingSymbol? ObjectPayloadOptOut(BindingSymbol? type)
+        => type is not null && this.impls.Admits(type, ImplTable.AdmissionPoint.SelfClauses) ? type.ObjectPayloadOptOut : null;
+
     private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
     {
         foreach (var layer in this.BaseLayers(structure))
         {
-            if (layer.ObjectPayloadOptOut is { } optOut)
+            if (this.ObjectPayloadOptOut(layer) is { } optOut)
             {
                 return optOut;
             }

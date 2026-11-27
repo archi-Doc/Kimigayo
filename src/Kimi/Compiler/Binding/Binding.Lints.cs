@@ -9,8 +9,8 @@
 // Final pass as Binding records: requirement Binding with BindingFailure.None and the row as condition, so a lint never shares
 // a check key with Binding's own warnings (condition 0). A row that reads Binding's result at a node Binding failed, or rests
 // on syntax a recovery guessed, records nothing when its code is a warning and is derived from those causes when it is an Error.
-// GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), and RestingCauses, the
-// causes a check resting on one of them rests on.
+// GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), whose causes are
+// RestingCauses' (Binding.Diagnostics.Prerequisites).
 // LintErrorRecords lists the Error records, derived ones included, as a lasting fact whose readers are tests only (DECISIONS R5-M189).
 // Invariants: never fails a node; at one node the discard rows keep only the first (SPEC 17.5's priority); a warm rebind
 // allocates nothing (duplicates are resolved by sorting at report time, never by a Koto-keyed set).
@@ -86,11 +86,12 @@ public sealed partial class Binding
     internal IEnumerable<(Koto Node, DiagnosticCode Code)> LintErrorRecords
         => this.lints.Where(static x => IsError(x.Row)).Select(static x => (x.Node, LintTable[(int)x.Row].Code));
 
-    /// <summary>Gets the node completions the latest lint walk composed, which a scaling check reads: each node once per walk.</summary>
+    /// <summary>Gets the latest lint walk's completion work (StructuralCompletion.Work), which a scaling check reads: each node once per
+    /// walk.</summary>
     internal long LintCompletionWork => this.lintWalk?.CompletionWork ?? 0;
 
-    /// <summary>Gets the node completions the guess queries composed since the first, which a scaling check reads.</summary>
-    internal long GuessCompletionWork => this.guessedCompletion?.Composed ?? 0;
+    /// <summary>Gets the guess queries' completion work (StructuralCompletion.Work) since the first, which a scaling check reads.</summary>
+    internal long GuessCompletionWork => this.guessedCompletion?.Work ?? 0;
 
     /// <summary>Gets the nodes a completion check rests on when the syntax from a node up to a root completes normally only through
     /// nodes whose completion StructuralCompletion cannot know from what it reads: a body the parser supplied for a missing one
@@ -105,13 +106,16 @@ public sealed partial class Binding
     /// <returns>The nodes in walk order, or empty when the check does not rest on a guess.</returns>
     internal ReadOnlySpan<Koto> GuessedCompletionNodes(Koto node, Koto root)
     {
-        if (!node.CodeContext.HasRecoveries && this.Result.IsComplete)
+        // A check rests on no guess when the node's own pass is complete and its syntax recovered nothing: the running pass, or for a
+        // frozen library node the library's pass, which is complete and without recoveries. So no walk composes a frozen node
+        // (StructuralCompletion's invariant; KimiLibraryShapeTest.TheGuessRuleAnswersNoneAtAFrozenNode).
+        if (!node.CodeContext.HasRecoveries && (node.SyntaxOwner is { Frozen: true } || this.Result.IsComplete))
         {
             return default;
         }
 
         var structural = this.ResultStructure();
-        var guessed = this.guessedCompletion ??= new(this.ResultNeverEvidence, this.RecordGuess);
+        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess, static (ref NodeColumns columns) => ref columns.GuessedCompletions);
         var nodes = this.guessNodes ??= new();
         guessed.Clear();
         nodes.Clear();
@@ -145,13 +149,6 @@ public sealed partial class Binding
 
         return [.. causes];
     }
-
-    /// <summary>Gets the causes a check resting on a node rests on (docs/dev/DIAGNOSTICS.md §4.3): a supplied body's syntax Error,
-    /// else the node's Binding causes, else the unresolved mark for an expression the guess rule counts as unresolved.</summary>
-    /// <param name="node">The node, such as one of GuessedCompletionNodes.</param>
-    /// <returns>The causes, or null at a node outside the guess rule with no Binding causes.</returns>
-    internal DiagnosticKey[]? RestingCauses(Koto node)
-        => SuppliedCause(node) is { } supplied ? [supplied] : this.FailureCauses(node) ?? (IsUnresolvedGuess(node) ? [DiagnosticKey.Unresolved] : null);
 
     // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
     private static bool IsBodyItem(Koto node) => node.Parent switch
@@ -219,10 +216,10 @@ public sealed partial class Binding
 
     // A direct record's message argument, primary location and repairs (SPEC 23.1.3): a discard's, and an unused Unsafe Block's, which
     // is located at its keyword (SPEC 14.3).
-    private static (object? Argument, SourceSpan? Span, DiagnosticRepairFact[]? Repairs) LintFacts(Koto node, LintRow row) => row switch
+    private static (object? Argument, SourceSpan? Span, DiagnosticRepairFact[]? Repairs) LintFacts(Koto node, LintRow row, DiagnosticCollection? store) => row switch
     {
-        LintRow.DiscardedResult or LintRow.UnusedTrySuccess => (null, null, DiscardRepairs(node, row)),
-        LintRow.UnnecessaryUnsafeBlock => (null, new SourceSpan(node.Span.Start, Constants.UnsafeKeyword.Length), RemoveUnsafeRepairs((UnsafeBlockKoto)node)),
+        LintRow.DiscardedResult or LintRow.UnusedTrySuccess => (null, null, DiscardRepairs(node, row, store)),
+        LintRow.UnnecessaryUnsafeBlock => (null, new SourceSpan(node.Span.Start, Constants.UnsafeKeyword.Length), RemoveUnsafeRepairs((UnsafeBlockKoto)node, store)),
         LintRow.InvalidJumpTarget => (((JumpKoto)node).Keyword, null, null),
         LintRow.OverlappingLabel => (((LabeledKoto)node).Label, null, null),
         _ => default,
@@ -231,25 +228,25 @@ public sealed partial class Binding
     // SPEC 17.5.1, 23.1.3: a discarded Result or try success value that is a direct item of an indented body offers `_ = ` before it
     // and, for a Result whose error Type the enclosing function's failure return target takes (SPEC 17.3), `_ = try ` first; `_ =`
     // puts the expression in Value Context (SPEC 14.2.4) and changes no scope, so no condition is relevant.
-    private static DiagnosticRepairFact[]? DiscardRepairs(Koto node, LintRow row)
+    private static DiagnosticRepairFact[]? DiscardRepairs(Koto node, LintRow row, DiagnosticCollection? store)
     {
-        if (node.Parent is not CodeBlockKoto { IsExpressionBody: false })
+        if (store is null || node.Parent is not CodeBlockKoto { IsExpressionBody: false })
         {
             return null;
         }
 
         var start = new SourceSpan(node.Span.Start, 0);
-        var discard = new DiagnosticRepairFact(RepairKind.ExplicitDiscard, null, [node.Edit(start, "_ = ")], RepairConditionSet.None);
+        var discard = new DiagnosticRepairFact(RepairKind.ExplicitDiscard, null, [store.Edit(start, "_ = ", node.CodeContext.SourceDocument)], RepairConditionSet.None);
         return row == LintRow.DiscardedResult && FailureTargetFits(node)
-            ? [new(RepairKind.PropagateFailure, null, [node.Edit(start, "_ = try ")], RepairConditionSet.None), discard]
+            ? [new(RepairKind.PropagateFailure, null, [store.Edit(start, "_ = try ", node.CodeContext.SourceDocument)], RepairConditionSet.None), discard]
             : [discard];
     }
 
     // SPEC 14.3, 23.1.3: removing an unused Unsafe Block keeps its statements' meaning only when its Body, an independent scope (SPEC
     // 14.2.1), declares no Name and registers no defer (Structure); a statement of an indented body whose lines allow the edit offers it.
-    private static DiagnosticRepairFact[]? RemoveUnsafeRepairs(UnsafeBlockKoto block)
+    private static DiagnosticRepairFact[]? RemoveUnsafeRepairs(UnsafeBlockKoto block, DiagnosticCollection? store)
     {
-        if (block.Parent is not CodeBlockKoto { IsExpressionBody: false })
+        if (store is null || block.Parent is not CodeBlockKoto { IsExpressionBody: false })
         {
             return null;
         }
@@ -262,13 +259,13 @@ public sealed partial class Binding
             }
         }
 
-        return RemoveUnsafeEdits(block) is { } edits ? [new(RepairKind.RemoveUnsafe, null, edits, RepairConditionSet.Structure)] : null;
+        return RemoveUnsafeEdits(block, store) is { } edits ? [new(RepairKind.RemoveUnsafe, null, edits, RepairConditionSet.Structure)] : null;
     }
 
     // The edits that remove an Unsafe Block statement from an indented body: delete `unsafe => ` before an inline Body on the same
     // line, or delete the unsafe line and one indentation level of every line of an indented Body. No candidate when the unsafe line
     // holds other text, a Body line lacks a full level of space indentation, or a string literal spans lines (its content would change).
-    private static DiagnosticEditFact[]? RemoveUnsafeEdits(UnsafeBlockKoto block)
+    private static DiagnosticEditFact[]? RemoveUnsafeEdits(UnsafeBlockKoto block, DiagnosticCollection store)
     {
         if (block.CodeContext.SourceDocument is not { } document)
         {
@@ -289,7 +286,7 @@ public sealed partial class Binding
         {
             var bodyStart = body.Span.Start;
             return document.GetPosition(bodyStart).Line == line && text[keywordEnd..bodyStart].Trim().SequenceEqual("=>")
-                ? [block.Edit(SourceSpan.FromBounds(block.Span.Start, bodyStart), string.Empty)] : null;
+                ? [store.Edit(SourceSpan.FromBounds(block.Span.Start, bodyStart), string.Empty, document)] : null;
         }
 
         var lineEnd = lineStart + document.GetLineSpan(line).Length;
@@ -301,7 +298,7 @@ public sealed partial class Binding
 
         var edits = new List<DiagnosticEditFact>(lastLine - line + 1)
         {
-            block.Edit(SourceSpan.FromBounds(lineStart, document.LineStarts[line + 1]), string.Empty),
+            store.Edit(SourceSpan.FromBounds(lineStart, document.LineStarts[line + 1]), string.Empty, document),
         };
         for (var current = line + 1; current <= lastLine; current++)
         {
@@ -316,7 +313,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            edits.Add(block.Edit(new(document.LineStarts[current], Constants.IndentationSpaces), string.Empty));
+            edits.Add(store.Edit(new(document.LineStarts[current], Constants.IndentationSpaces), string.Empty, document));
         }
 
         return edits.ToArray();
@@ -344,35 +341,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (ElementAccess.IsRawRoot), pointer
-    // arithmetic, noinit, or one of the node's calls whose selected target is an unsafe function (the requirement is checked after
-    // selection); null while Binding has not resolved an expression, whose need is then unknown.
-    private static bool? RequiresUnsafe(Koto node)
-    {
-        if (node.BindingState != BindingState.Resolved)
-        {
-            return node is ExpressionKoto or NoInitKoto ? null : false;
-        }
-
-        if (node is NoInitKoto || ElementAccess.IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
-            ReferenceTypes.IsPointer(arithmetic.Left.BoundType)))
-        {
-            return true;
-        }
-
-        for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
-        {
-            if (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Modifier: var modifier } && (modifier & ModifierKind.Unsafe) != 0)
-            {
-                return true;
-            }
-        }
-
-        // SPEC 5.7: a claim needs an unsafe context unless the premises prove that its operand's Origin fits.
-        return node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType.RawOrigin: { } claimed } claim &&
-            !claim.CodeContext.Compilation.Binding.ClaimFits(claim, claimed) ? null : false;
-    }
-
     // One node's records in sequence, a discarded tail's innermost root first; the comparison is total, so the order is stable.
     private static int CompareLints((Koto Node, LintRow Row, Koto? Root) x, (Koto Node, LintRow Row, Koto? Root) y)
     {
@@ -390,14 +358,51 @@ public sealed partial class Binding
         return order != 0 ? order : (y.Root?.SyntaxId ?? 0).CompareTo(x.Root?.SyntaxId ?? 0);
     }
 
+    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (IsRawRoot), pointer
+    // arithmetic, noinit, or one of the node's calls whose selected target is an unsafe function (the requirement is checked after
+    // selection); null while Binding has not resolved an expression, whose need is then unknown.
+    private bool? RequiresUnsafe(Koto node)
+    {
+        if (node.BindingState != BindingState.Resolved)
+        {
+            return node is ExpressionKoto or NoInitKoto ? null : false;
+        }
+
+        if (node is NoInitKoto || IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
+            arithmetic.Left.BoundType is { IsPointer: true }))
+        {
+            return true;
+        }
+
+        for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
+        {
+            if (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Modifier: var modifier } && (modifier & ModifierKind.Unsafe) != 0)
+            {
+                return true;
+            }
+        }
+
+        // SPEC 5.7: a claim needs an unsafe context unless the premises prove that its operand's Origin fits.
+        return node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType.RawOrigin: { } claimed } claim &&
+            !this.ClaimFits(claim, claimed) ? null : false;
+    }
+
     // The last step of a Final pass: one walk of each source module (the library is not linted).
     private void WalkLints()
     {
         var walk = this.lintWalk ??= new(this);
         walk.Begin();
-        foreach (var module in this.compilation.SourceModules)
+        var site = this.OpenBodySite(default); // PLAN G651 U2b R5: the lint walk's after-run site, its marks dropped (lints precede MIR).
+        try
         {
-            walk.Visit(module.RootKoto);
+            foreach (var module in this.compilation.SourceModules)
+            {
+                walk.Visit(module.RootKoto);
+            }
+        }
+        finally
+        {
+            _ = this.CloseBodySite(site);
         }
     }
 
@@ -422,14 +427,15 @@ public sealed partial class Binding
                 LintGuess.Target when node is LabeledKoto or JumpKoto { Label: "" } && node.CodeContext.RecoveryCause(node) is { } syntax => [syntax],
                 _ => null,
             };
+            var store = this.compilation.StoreOf(node); // Core's store decision (PLAN G1083): never the node's own collection.
             if (causes is null)
             {
-                var (argument, span, repairs) = LintFacts(node, row);
-                node.Report(requirement, code, argument, condition: (ushort)row, span: span, repairs: repairs);
+                var (argument, span, repairs) = LintFacts(node, row, store);
+                node.ReportIn(store, requirement, code, argument, condition: (ushort)row, span: span, repairs: repairs);
             }
             else if (IsError(row))
             {
-                node.ReportDerived(requirement, causes, (ushort)row);
+                node.ReportDerivedIn(store, requirement, causes, (ushort)row);
             }
         }
     }
@@ -475,7 +481,7 @@ public sealed partial class Binding
         {
             this.lints.Add((node, LintRow.OverlappingLabel, null));
         }
-        else if (node is InvocationKoto call && CallPlan.Of(call) is { Target.LibraryDeclaration: KimiDeclarationId.WriterWrite } write)
+        else if (node is InvocationKoto call && CallPlan.Of(this, call) is { Target.LibraryDeclaration: KimiDeclarationId.WriterWrite } write)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
@@ -534,7 +540,7 @@ public sealed partial class Binding
                 (node is not InvocationKoto call || this.AreEffectFree(call.ArgumentNodes));
         }
 
-        return ScalarTypes.Supports(this.SuppliedType(node)) && node switch
+        return this.SuppliedType(node) is { IsScalar: true } && node switch
         {
             NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto => true,
             IdentifierNameKoto => IsStableName(node),
@@ -624,20 +630,20 @@ public sealed partial class Binding
     {
         // Binding's structural completion with its Never evidence, cleared once per walk: the descents of discarded tails and the
         // end arrivals compose each node's completion once.
-        private readonly StructuralCompletion completion = new(binding.ResultNeverEvidence);
+        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.LintCompletions);
 
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;
 
-        // The completions the structural completion composed before this walk.
-        private long composedBefore;
+        // The structural completion's work before this walk.
+        private long workBefore;
 
         // SPEC 14.3: whether an operation in the innermost Unsafe Block being walked used its permission, and whether one whose need
         // is unknown, such as an unresolved operation, may have.
         private bool unsafeUsed;
         private bool unsafeUncertain;
 
-        internal long CompletionWork => this.completion.Composed - this.composedBefore;
+        internal long CompletionWork => this.completion.Work - this.workBefore;
 
         public override void Visit(Koto node)
         {
@@ -674,14 +680,14 @@ public sealed partial class Binding
         internal void Begin()
         {
             this.completion.Clear();
-            this.composedBefore = this.completion.Composed;
+            this.workBefore = this.completion.Work;
         }
 
         // SPEC 5, 7.6, 14.3: an operation that needs an unsafe context outside one records row 7; inside one, it uses the innermost
         // Unsafe Block's permission, which an operation whose need is unknown may also use.
         private void LintUnsafe(Koto node)
         {
-            switch (RequiresUnsafe(node))
+            switch (binding.RequiresUnsafe(node))
             {
                 case true when !KotoHelper.IsUnsafeContext(node):
                     binding.lints.Add((node, LintRow.UnsafeBlockRequired, null));
@@ -712,7 +718,7 @@ public sealed partial class Binding
 
         private void VisitFunction(FunctionKoto function)
         {
-            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(function))
+            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(binding.compilation, function))
             {
                 return;
             }

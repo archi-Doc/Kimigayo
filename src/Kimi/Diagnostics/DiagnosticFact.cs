@@ -3,6 +3,7 @@
 #pragma warning disable SA1402 // The fact and its keys are one unit.
 
 using System.Runtime.CompilerServices;
+using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Diagnostics;
@@ -139,7 +140,85 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
 /// <param name="Repairs">The repair candidates the recorder offers (SPEC 23.1.3), validated and ordered at the recording boundary, or <see langword="null"/> for none.</param>
 internal readonly record struct DiagnosticFact(
     DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, DiagnosticKey[]? DerivedFrom,
-    object?[]? Evidence = null, DiagnosticRelatedFact[]? Related = null, DiagnosticRepairFact[]? Repairs = null);
+    object?[]? Evidence = null, DiagnosticRelatedFact[]? Related = null, DiagnosticRepairFact[]? Repairs = null)
+{
+    /// <summary>Gets a value indicating whether this fact is about one document, its own (PLAN G949 Stage 2 U3; the Front's U2b C3): every
+    /// source index it holds, a subject-less <see cref="Key"/>'s, each <see cref="DerivedFrom"/> key's, each related location's and each
+    /// repair edit's, is <see cref="Source"/> or -1 (a subject prerequisite's included). A subject primary key is identified by its node, not
+    /// its index, and may name another document than the fact's location (a node's report located at another node). <see cref="WithSource"/>
+    /// rests on it.</summary>
+    internal bool IsAboutOneDocument
+    {
+        get
+        {
+            var source = this.Source;
+            var one = this.Key.Subject is not null || Holds(this.Key.Source, source);
+            foreach (var key in this.DerivedFrom ?? [])
+            {
+                one &= Holds(key.Source, source);
+            }
+
+            foreach (var related in this.Related ?? [])
+            {
+                one &= Holds(related.Source, source);
+            }
+
+            foreach (var repair in this.Repairs ?? [])
+            {
+                foreach (var edit in repair.Edits)
+                {
+                    one &= Holds(edit.Source, source);
+                }
+            }
+
+            return one;
+
+            static bool Holds(int index, int source) => index < 0 || index == source;
+        }
+    }
+
+    /// <summary>Gets this fact numbered in another owner's source table (PLAN G949 Stage 2 U3; the Front's U2b C3): the one renumbering of a
+    /// fact about one document (<see cref="IsAboutOneDocument"/>), which moves every source index it holds, <see cref="Source"/>, a
+    /// subject-less <see cref="Key"/>, each <see cref="DerivedFrom"/> key, each related location and each repair edit, to the document's
+    /// index there; -1 stays -1. No reader renumbers a field itself. A subject primary key keeps its index: it names the subject's document,
+    /// not this fact's location, and no reader of a registered list reads it (equality, hash and order read the node; the one reader of a
+    /// subject key's index, <see cref="DiagnosticOwner.SyntaxTransfer"/>, never selects a detached library fact).</summary>
+    /// <param name="source">The index of the fact's document in the other owner's source table.</param>
+    /// <returns>The renumbered fact.</returns>
+    internal DiagnosticFact WithSource(int source)
+        => this with
+        {
+            Key = this.Key.Subject is null ? Moved(this.Key, source) : this.Key,
+            Source = this.Source < 0 ? this.Source : source,
+            DerivedFrom = this.DerivedFrom is { } derived ? Array.ConvertAll(derived, x => Moved(x, source)) : null,
+            Related = this.Related is { } related ? Array.ConvertAll(related, x => x.Source < 0 ? x : x with { Source = source }) : null,
+            Repairs = this.Repairs is { } repairs
+                ? Array.ConvertAll(repairs, x => x with { Edits = Array.ConvertAll(x.Edits, y => y.Source < 0 ? y : y with { Source = source }) }) : null,
+        };
+
+    private static DiagnosticKey Moved(DiagnosticKey key, int source)
+        => key.Source < 0 ? key : new(key.Subject, source, key.Start, key.Length, key.Requirement, key.Condition, key.Context);
+}
+
+/// <summary>A record taken out of its collection as a location and its code (PLAN G949 Stage 2 U2a: a refused library's records, which a
+/// reading compilation publishes at their locations): no message argument, no fact beyond its requirement and location.</summary>
+/// <param name="Code">The record's code.</param>
+/// <param name="Requirement">The record's requirement.</param>
+/// <param name="Document">The location's document, or null for a record about an input without a document.</param>
+/// <param name="Span">The location, or null with no document.</param>
+internal readonly record struct LocatedRecord(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceDocument? Document, SourceSpan? Span);
+
+/// <summary>A module's syntax records taken out of their owner (PLAN G949 Stage 2 U2b; form (R)): the frozen library's syntax list, each
+/// record with its document, and the excluded syntax of those documents (SPEC 19.4; B's U3 ruling 25), so a reading compilation that
+/// registers it read-only from U3 names a record's excluding directive.</summary>
+/// <param name="Facts">The records.</param>
+/// <param name="Documents">Each record's document, or null for none.</param>
+/// <param name="Excluded">Each excluded range of a record's document, with that document's index in the owner it was taken from.</param>
+internal sealed record DetachedSyntax(DiagnosticFact[] Facts, SourceDocument?[] Documents, (int Source, DiagnosticOwner.ExcludedRange Range)[] Excluded)
+{
+    /// <summary>Gets an empty list.</summary>
+    internal static DetachedSyntax Empty { get; } = new([], [], []);
+}
 
 /// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.1.3).</summary>
 /// <param name="Source">The source table index of the recorded input.</param>

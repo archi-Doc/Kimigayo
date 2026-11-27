@@ -4,9 +4,11 @@
 // R5-M67, R5-M70, R5-M74, R5-M146, R5-M149, R5-M150): every body instance, type-driven item and shim a root requires through runtime or
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram whose bodies the MIR analyses' stepping path has stepped (A2's table holds them, MirDropTable.Holds:
-// a run that replays a body it does not hold misses, Round below), as code generation reads them; the root range (Source.Module below it,
-// not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
+// a run stops before a body it does not hold, Round below), as code generation reads them; every A2 entry it reads is the
+// version's, since its runs follow the version's library step and MirProgram cleared the program store where the version started
+// (PLAN G951 U2-K-b, F18); the root range (Source.Module below it,
+// not a mode), every body of it built before the version's first run (the collector's range within the builder's); TyCtxt (Instantiates, Erase,
+// Answered, Apply, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
 // an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
 // MirProgram.StaticInit; the Target and Need columns of the intrinsic rows; LayoutNeeds; the capability table; the
@@ -19,8 +21,9 @@
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
-// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: the library segment's kept while its library version holds, PLAN
-// G950) lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
+// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: in the library store, kept while its library segment holds, PLAN
+// G950, for a body A2's library store holds, MirDropTable.LibraryHolds, which is stable within a version; else in the program store)
+// lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
 // call none, X5; a Closure environment, an erasure and a function item constant; a Drop), each with its runtime bit from one MirReach
 // walk without CheckTarget edges. An item's targets are
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
@@ -33,8 +36,8 @@
 // InstanceCollector.Objects.cs: a created payload's descriptor's glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
-// P42 has not brought, a generic container's included, DECISIONS R5-M82), judged in the root loop every version before LayOutImports
-// (PLAN G950: never kept with a template); Binding's refusals are Opaque values, so it never repeats them.
+// P42 has not brought, a generic container's included, DECISIONS R5-M82), judged in the root loop of every version's first run before
+// LayOutImports (PLAN G950: never kept with a template); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
 // construction receiver, DECISIONS BU-48; its aggregates; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108),
@@ -42,39 +45,54 @@
 // root's storage, at the form (LayoutNeeds' rows and the Need columns, the Type its TypeOf names, past Layout.Indirect's boundary or a
 // pair layer the item's case makes a referent; DECISIONS R5-M149, R5-M166), and the parameters and result of each import a root module
 // declares, at their written Types (no item; SPEC 22.6, DECISIONS R5-M150) take Layout's verdict: a limit is GenerationResourceLimit_Kd
-// once per erased Type and declaration, at the least of that declaration's failing uses, made at the run's end (DECISIONS R5-M171), a
+// once per erased Type and declaration, at the least of that declaration's failing uses, a use in MirReport's limit table (MirReport.Limit),
+// whose records the version's last run flushes at its end (DECISIONS R5-M171), a
 // C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
 // a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
 // complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
-// Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
-// (Made): Prepared makes it; Rejected rests on a part Binding rejected, as Layout's Rejected, which a complete compilation has none of
-// (TyCtxt.BindingComplete), so it is a broken contract at its site (Report); a limit is the storage-nesting gap. Every row reads a Type of
-// an instance at its site through In or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
-// under a substitution; those read no verdict and serve code generation and a Type whose verdict its site already read (Rest's operand and
-// environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
-// argument, a part of the Item Type its site made).
+// Formation (DECISIONS BU-36, BU-38; R7-T1): a Type or substitution of an item's instance is the substitution alone, never its
+// storage verdict (Binding's bound is retention's and A4's, not the collector's: a finite Type past it is generated, its growth R5-M170's
+// rule). Each run (a stop falls between items, outside every formation) is Binding's one answer frame (TyCtxt.OpenAnswer, closed in a finally, so no throw leaves it open), so every Type the
+// run causes Binding to form answers a refusal past IMPL A.4's height to the formation owning it, of three: a substitution at a site, an
+// instance's stored Types, and a requirement's witness resolution (TyCtxt.Witness: the Contract instance, the conformances it forms and
+// the selected conformance's premises, SPEC 8.6.1, 8.8.2, its target's Cause). Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed
+// substitution through TyCtxt's formation query (TyCtxt.Answered), and a witness target where it calls Witness, whose cause the collector
+// reads once, at its requesting site (Formed): Formed makes it; HeightLimit is TypeHeightLimit_Kd (Resource, IMPL 21.3.2) at the site (a local's at the local, the Type it writes
+// forming it), once per requesting declaration and forming site at its least use, as a Layout limit is (DECISIONS R5-M171); Incomplete is
+// a broken contract at the site (Report). An instance's stored Types past the height are its own cause (AdtDef.InstanceStorage.HeightLimit),
+// which every reader of the instance reads: Layout as its HeightLimit, mapped here (RecordOf) to TypeHeightLimit_Kd at the use, once per
+// erased Type and declaration (R5-M171), never Rejected. A part Binding rejected passes through to Layout's Rejected row (RecordOf), a
+// dependent of Binding's record. A refusal no formation owns is the frame's, R7-T1's broken contract: Run throws after the close. TypeOf
+// reads TyCtxt.Apply, the same substitution outside a formation, for code generation and a Type whose cause its site already read (Rest's
+// operand and environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic
+// row's Type argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
 // (CarriesInstance, the instance of the declaration it holds, TyCtxt.EnclosingDeclaration: a nested function's call, DECISIONS R5-M43; a
 // Closure no instance closed, in its own identity: a held instance with an Origin position or a generic container's group static,
-// R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
-// OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
-// gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
+// R5-M157, BU-60), OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the
+// capability table's gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth
+// (DECISIONS R5-M170):
 // a 17th generation of an identity (a body's definition, a DropGlue's declaration) on an admission chain, its height grown
 // at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd, once per key; a type-driven key whose Type is higher than
 // 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
-// Round (PLAN G951; A4's round rule, MirEffects.Solve.cs): a run that replays a body item whose body A2's table does not hold, one a lookup
-// built during the run, misses: it goes on to its end and makes every demand but those of that body's Drop sites, which read A2's facts
-// (DropTargets requests nothing for a body A2 does not hold), so their targets wait for the next run and a chain through them takes
-// another; and it commits nothing: the report holds a run's records until it ends and drops a missed run's (MirReport's round, the one
-// commit A4's rounds share; a record made outside a run is added at once), a missed run makes no end-of-run record (RecordLimits) and its
-// checked set holds no version. Its driver (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it again until
-// a run is clean. A template records nothing, so the templates are kept across a version's runs and extend over the bodies in build
-// order as a replay finds bodies built since (a lookup's during the run); A3b's records, made in each run's root loop, are the run's. A
-// clean run replays only stepped bodies from the same roots in the same FIFO order, so it equals the one run over a program whose bodies
-// were all built before; Work, RunCount and Templated sum the runs of the version of the latest run.
+// Round (PLAN G951, G337 U2; DECISIONS R9-Bx): a version's runs replay its FIFO once. Its first run starts the set: it clears the set and
+// the admission state (counts, refused, glueKeys, declaring), opens the version's round in the report (MirReport.Begin with
+// MirRecordClass.Collection, the one commit A4's rounds share; a record made outside it is added at once), judges A3b in the root loop,
+// adds the roots and lays out the imports. Every run then templates the bodies built since the version's last walk (all of them at its
+// first run; a stopped run's lookups' and the step's) and replays the items from the one the version's last run stopped before, in FIFO order, and stops before a body item
+// whose body A2's table does not hold (one a lookup built since the last step): its set keeps every item admitted and every target made
+// and holds no version (CheckedSet.Version 0, which no reader reads), and the admission state and the round stay open. Its driver
+// (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it again; the run that reaches the FIFO's end flushes the
+// least uses (MirReport.FlushLimits), commits the round and stamps the set with the version. A run replays only stepped bodies, whose
+// facts are the eager build's, so the version's runs equal the one run over a program whose bodies were all built before: its items in
+// their order, targets and records, and its Work (each item, site and declaring step once); Work, RunCount (one more than the stops where no run threw) and
+// Templated sum the runs of the version of the latest run. Every run of a version takes its first run's root range (another is a broken
+// contract). A run that throws leaves nothing to resume: the version's next run drops the round it left open and starts the version
+// again, never resuming over a partially replayed item. A body a lookup built and the collector then refused (no item's) may end
+// unstepped, so the bodies unstepped at the end are neither the eager build's nor a rerun's (R9-Bx: MirProgram.Keeps and hover read it).
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
 // collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
@@ -84,12 +102,17 @@
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
 // plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
 // targets are at its default site, a DropGlue's in DropGlue.Level's order, a ClosureErasure's body before its environment's glue; a repeated
-// run of a version a clean run collected is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS
+// run of a version a run collected to its end is a no-op, the version alone keying the run (the set, its runs' counts, the item a run
+// resumes at, the admission state, the walk's position and the program store), because an instance collects the programs of one builder: Compilation pairs its collector with its builder and
+// analysis, and a test or measurement makes all three, so one collector over two programs of one Binding pass is outside its contract
+// (only the library store is keyed on the program and its segment, PLAN G951 U2-K); a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS
 // R5-M183: the Templates walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a
-// program as large as an earlier one allocates nothing.
-// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, and Holds for its
-// round) or edit their driver; decide acceptance or publish its records (Compilation does); prove anything on an erased value; add an
-// IntrinsicId or BindingFailure (PD21).
+// program as large as an earlier one allocates nothing, a program's size counting the library list it keeps (MirProgram.LibraryBodies):
+// the library store grows once per body that joins the list, bounded by the library's range, once per library segment (PLAN G951 U2-K).
+// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, Holds for its stops
+// and LibraryHolds for a body's template store) or edit their driver; decide acceptance or publish its records (Compilation does); prove
+// anything on an erased value; add an IntrinsicId or BindingFailure (PD21); make a limit use outside its round (MirReport.Limit); replay
+// a body A2's table does not hold.
 
 using Kimi.Compiler.Mir;
 
@@ -98,25 +121,23 @@ namespace Kimi.Compiler.Backend;
 /// <summary>Collects the checked set of a program version (K package 4.3).</summary>
 internal sealed partial class InstanceCollector
 {
+    private const int Faulted = -2; // The next run's position after a run threw: it drops the round left open and starts the version (Round).
     private readonly TyCtxt types;
     private readonly MirCases cases;
     private readonly Layout layout;
-    // The least use of each erased Type over a limit per declaration (Limit), recorded at the run's end (DECISIONS R5-M171).
-    private readonly Dictionary<(BoundType Type, MirDefKey Declaration), SourceRef> limits = new();
-    private readonly List<SourceRef> limitSubjects = new(); // RecordLimits' scratch.
     private readonly HashSet<MonoKey> refused = new(); // The keys refused for growth, each reported once (DECISIONS R5-M170).
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
     private readonly List<DropStep> steps = new(); // DropGlue.Destroyed's and DropGlue.Level's steps.
     private readonly List<MirDropStep> walk = new(); // Their scratch of Mir's steps.
-    private readonly Dictionary<BoundType, MonoKey> glueKeys = new(ReferenceEqualityComparer.Instance); // GlueKey's per handle Type, per run.
+    private readonly Dictionary<BoundType, MonoKey> glueKeys = new(ReferenceEqualityComparer.Instance); // GlueKey's per handle Type, per version.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
     private MirProgram? program; // The program of the latest run, whose bodies Declaration reads and whose report takes the records.
     private int rootModules;
     private ulong version; // The version of the latest run, whose runs Work, RunCount and Templated sum.
-    private bool missed; // Whether the run replayed a body A2's table does not hold (Round).
+    private int next = -1; // The item the version's next run resumes at; -1: that run starts the version; Faulted (Round).
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
     /// <param name="types">The Type context of the programs.</param>
@@ -136,19 +157,22 @@ internal sealed partial class InstanceCollector
     /// items admission reads (at most the window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
-    /// <summary>Gets the runs of the latest run's version, each but a clean last one missed (PLAN G951).</summary>
+    /// <summary>Gets the runs of the latest run's version, each but the last stopped or thrown (Round; PLAN G337 U2): one more than the
+    /// stops where no run threw.</summary>
     internal int RunCount { get; private set; }
 
     /// <summary>Gets the bodies the runs of the latest run's version templated, each once, a body with a finding (an empty template)
-    /// included: every body where they built the library segment's templates, the program segment's where they kept them (PLAN G950's row
-    /// g8).</summary>
+    /// included: every body its store did not hold, so all of them where the library store was cleared and the bodies outside the kept
+    /// library store otherwise (PLAN G950's row g8): in a version that keeps its library segment, the version's bodies and the bodies
+    /// its library step newly holds, which joined the library list (PLAN G951 U2-K, row g8-T).</summary>
     internal int Templated { get; private set; }
 
-    /// <summary>Collects the checked set of a program version unless a clean run already did; a run that missed (Round) leaves a set of
-    /// no version (<see cref="CheckedSet.Version"/> 0) and no record.</summary>
+    /// <summary>Collects the checked set of a program version unless a run already reached its end; a run that stopped (Round) leaves a
+    /// set of no version (<see cref="CheckedSet.Version"/> 0), which the version's next run resumes, and no record of the round.</summary>
     /// <param name="program">The built, validated and stepped program.</param>
     /// <param name="rootModules">The root range: the bodies whose module is below it are roots. Any bound is a range: Compilation passes
-    /// the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the library's bodies.</param>
+    /// the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the library's bodies. Every run of a
+    /// version takes the same.</param>
     /// <returns>The checked set.</returns>
     internal CheckedSet Run(MirProgram program, int rootModules)
     {
@@ -160,23 +184,124 @@ internal sealed partial class InstanceCollector
 
         if (program.Version != this.version)
         {
-            (this.Work, this.RunCount, this.Templated, this.version, this.extent) = (0, 0, 0, program.Version, program.LibraryCount);
+            (this.Work, this.RunCount, this.Templated, this.version, this.extent, this.next) = (0, 0, 0, program.Version, 0, -1);
             this.programTemplates.Clear(); // Kept across the version's runs (Round).
         }
 
         this.RunCount++;
-        set.Clear(program.Version);
+        var (first, frame) = (this.next, this.types.OpenAnswer()); // R7-T1: every substitution the run causes is inside the collector's answer frame.
+        this.next = Faulted; // Round: a run that throws leaves nothing to resume.
+        int stop;
+        bool unowned;
+        try
+        {
+            stop = this.Collect(program, rootModules, set, first);
+        }
+        finally
+        {
+            unowned = this.types.CloseAnswer(frame);
+        }
+
+        this.next = unowned ? throw new InvalidOperationException("The collector's run took a height refusal no formation owned (InternalInvariant; R7-T1).") : stop;
+        return set;
+    }
+
+    /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
+    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its instance under the representative, the
+    /// substitution alone (TyCtxt.Apply; a site reads its cause, In); none for none.</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="type">A Type of its body; none for a local of no Type (a slot Binding failed, PLAN G1073), which a body of a rejected
+    /// program alone has, so code generation, which runs on an accepted one, never meets it.</param>
+    /// <returns>The Type in the instance, or null where the substitution does not form it or it has no Type.</returns>
+    internal BoundType? TypeOf(int item, BoundType? type)
+        => type is not null && this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative).Type : type;
+
+    /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
+    /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="length">A length of its body.</param>
+    /// <returns>The length in the instance, or null where the representative does not complete it.</returns>
+    internal BoundLength? LengthOf(int item, BoundLength length)
+        => this.Set.Items[item].Representative is { } representative ? this.types.InstanceLength(length, representative) : length;
+
+    /// <summary>Gets whether a substitution a site requests formed its instance, the collector's one reading of a cause (TyCtxt.Formation;
+    /// R7-T1; DECISIONS R5-M151, R5-M171), the cause of TyCtxt's answer-frame query (TyCtxt.Answered): Formed makes the instance;
+    /// HeightLimit (a Type past IMPL A.4's height, IMPL 21.3.2's Resource) is TypeHeightLimit_Kd at the site, a use of its forming site over
+    /// a limit in the requesting item's declaration (MirReport.Limit), recorded once at its least use at the version's last run's end; Incomplete is a broken
+    /// contract at the site (Report). The request is refused but for Formed.</summary>
+    /// <param name="cause">The cause.</param>
+    /// <param name="item">The requesting item.</param>
+    /// <param name="forming">The site in its template that forms the instance (its body's syntax, unlocated), the height record's key.</param>
+    /// <param name="subject">The requesting site, located (Subject).</param>
+    /// <returns>Whether the cause is Formed.</returns>
+    internal bool Formed(TyCtxt.Formation cause, int item, SourceRef forming, SourceRef subject)
+    {
+        switch (cause)
+        {
+            case TyCtxt.Formation.Formed:
+                return true;
+            case TyCtxt.Formation.HeightLimit:
+                this.program!.Problems.Limit(DiagnosticCode.TypeHeightLimit_Kd, null, forming, this.Declaration(item), subject);
+                return false;
+            case TyCtxt.Formation.Incomplete:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+                return false;
+            default:
+                throw new InvalidOperationException($"The formation {cause} has no row.");
+        }
+    }
+
+    // One run of a version (Run), inside the collector's answer frame (Round): after a run that threw (Faulted) it drops the round that
+    // run left open; the version's first run (first < 0) starts it; every run templates the bodies built since the version's last walk,
+    // replays from its first item and stops before a body A2's table does not hold. The item it stopped before, or -1 at the FIFO's end.
+    private int Collect(MirProgram program, int rootModules, CheckedSet set, int first)
+    {
+        if (first == Faulted)
+        {
+            program.Problems.Drop();
+        }
+
+        if (first < 0)
+        {
+            this.Start(program, rootModules, set);
+        }
+        else if (rootModules != this.rootModules)
+        {
+            throw new InvalidOperationException("A resumed collector run has another root range (InternalInvariant).");
+        }
+
+        this.Templates(program); // At the first run every body; else the bodies a stopped run's lookups and the step built.
+
+        for (var item = Math.Max(first, 0); item < set.Items.Length; item++)
+        {
+            if (set.Items[item].BodyOrdinal is >= 0 and var body && !program.Drops.Holds(body))
+            {
+                return item; // A body a lookup built since the last step: the next run resumes here, after the driver's step.
+            }
+
+            this.Replay(program, item);
+        }
+
+        program.Problems.FlushLimits(); // DECISIONS R5-M171: each use over a limit's record at its least use, after the round's records.
+        program.Problems.Commit();
+        set.End(program.Version);
+        return -1;
+    }
+
+    // The version's first run's start (Round): the set and the admission state cleared, the round opened, A3b and the roots in the root
+    // loop (neither reads a template), then the imports' layouts.
+    private void Start(MirProgram program, int rootModules, CheckedSet set)
+    {
+        set.Clear();
         this.counts.Clear();
-        this.limits.Clear();
         this.refused.Clear();
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
-        (this.program, this.rootModules, this.missed) = (program, rootModules, false);
+        (this.program, this.rootModules) = (program, rootModules);
         program.Problems.Begin((int)MirRecordClass.Collection);
-        this.Templates(program);
         foreach (var body in program.Bodies)
         {
-            this.CheckStatic(body); // A3b, judged in every run (PLAN G950, G951), in body order: a static's declaration row first.
+            this.CheckStatic(body); // A3b, judged once per version (PLAN G950, G337 U2), in body order: a static's declaration row first.
             if (!body.HasFinding && body.Source.Module < rootModules)
             {
                 this.CheckOperations(body);
@@ -190,80 +315,32 @@ internal sealed partial class InstanceCollector
 
         set.EndRoots();
         this.LayOutImports();
-        for (var item = 0; item < set.Items.Length; item++)
-        {
-            this.Replay(program, item);
-        }
-
-        if (this.missed)
-        {
-            program.Problems.Drop(); // Round: a missed run commits nothing.
-            set.Clear(0);
-            return set;
-        }
-
-        this.RecordLimits();
-        program.Problems.Commit();
-        return set;
     }
 
-    /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
-    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its instance under the representative when its
-    /// storage is Prepared (Instance).</summary>
-    /// <param name="item">The item.</param>
-    /// <param name="type">A Type of its body.</param>
-    /// <returns>The Type in the instance, or null when its storage is not Prepared (a site maps the verdict, In).</returns>
-    internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
-
-    /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
-    /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
-    /// <param name="item">The item.</param>
-    /// <param name="length">A length of its body.</param>
-    /// <returns>The length in the instance, or null where the representative does not complete it.</returns>
-    internal BoundLength? LengthOf(int item, BoundLength length)
-        => this.Set.Items[item].Representative is { } representative ? this.types.InstanceLength(length, representative) : length;
-
-    /// <summary>Gets whether a storage verdict of TyCtxt makes the instance a site requests, the collector's one reading of it (DECISIONS
-    /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected, a broken contract (Report); Limit is the
-    /// storage-nesting gap (PLAN G128) at the site.</summary>
-    /// <param name="storage">The verdict.</param>
-    /// <param name="subject">The requesting site.</param>
-    /// <returns>Whether the verdict is Prepared.</returns>
-    internal bool Made(Binding.StorageOutcome storage, SourceRef subject)
+    // A Type of an item's body in the item's instance read at a site (TyCtxt.Answered, its cause read there, Formed): the Type itself for a
+    // closed item; null where it does not form. SPEC 23.1.2 (rule W, PLAN G1073): a local of no Type (a slot Binding failed, MirLocal) has
+    // no instance and no obligation: none, never substituted; BuildMir collects every validated body at check (SPEC 8.15.3), a rejected
+    // program's included.
+    private BoundType? In(int item, SourceRef subject, BoundType? type)
     {
-        DiagnosticCode? record = storage switch
+        if (type is null || this.Set.Items[item].Representative is not { } representative)
         {
-            Binding.StorageOutcome.Prepared => null,
-            Binding.StorageOutcome.Rejected => DiagnosticCode.InternalInvariant_Kd,
-            Binding.StorageOutcome.Limit => Capability.Code(CapabilityGap.StorageNesting),
-            _ => throw new InvalidOperationException($"The storage verdict {storage} has no row."),
-        };
-
-        if (record is { } code)
-        {
-            this.Report(code, subject);
+            return type;
         }
 
-        return storage == Binding.StorageOutcome.Prepared;
+        var (instance, cause) = this.types.Answered(type, representative);
+        return this.Formed(cause, item, subject, subject) ? instance : null;
     }
 
-    // A Type of an item's body in the item's instance with its storage verdict (TyCtxt.Instance), the one path of TypeOf and In: the Type
-    // itself, Prepared, for a closed item.
-    private (BoundType? Type, Binding.StorageOutcome Storage) Instance(int item, BoundType type)
-        => this.Set.Items[item].Representative is { } representative ? this.types.Instance(type, representative) : (type, Binding.StorageOutcome.Prepared);
-
-    // A Type of an item's body in the item's instance (Instance), its verdict read at the site (Made); null unless Prepared.
-    private BoundType? In(int item, SourceRef subject, BoundType type)
-        => this.Instance(item, type) is var (closed, storage) && this.Made(storage, subject) ? closed : null;
-
-    // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path. A broken contract,
-    // InternalInvariant_Kd, presupposes a complete Binding; in an incomplete compilation it may rest on a part Binding rejected, which the
-    // collector cannot name, so it is that error's dependent, without a record. Every other record is kept.
-    private void Report(DiagnosticCode code, SourceRef subject)
+    // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path, with the record's
+    // facts (a height limit's value, R7-T1). A broken contract, InternalInvariant_Kd, presupposes a complete Binding; in an incomplete
+    // compilation it may rest on a part Binding rejected, which the collector cannot name, so it is that error's dependent, without a record.
+    // Every other record is kept.
+    private void Report(DiagnosticCode code, SourceRef subject, ReadOnlySpan<ProblemFact> facts = default)
     {
         if (code != DiagnosticCode.InternalInvariant_Kd || this.types.BindingComplete)
         {
-            this.program!.Report(subject, code, MirRecordClass.Collection);
+            this.program!.Report(subject, code, MirRecordClass.Collection, facts);
         }
     }
 }

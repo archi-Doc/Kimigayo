@@ -4,8 +4,9 @@ namespace Kimi.Compiler.Mir;
 
 // A5's transfer per statement kind (A3 5, Carrying, with E3): a location's effect planned on the state before it as entries, which the
 // checks replay reads, then committed (MirBorrows.Solve): a storage statement or EndBorrow clears its root, an Assign stores its value,
-// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, a Call's are MirBorrows.Calls' and a Drop's
-// MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
+// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes (a whole store, and a storage start or end, also
+// replaces its local's write slot, MirBorrows.Holders' Rewrite, and a store through a Deref joins the write slots of the holders it
+// reaches, StoredThrough), a Call's are MirBorrows.Calls' and a Drop's MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
 // (MirBorrows.States, DECISIONS R4-M160). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued
 // into a guard candidate H (E7); and Φ_N where it stores into an exposed holder (MirBorrows.Loans' Exposed; PLAN G598), into its own
 // Place or through a reference (a holder a shared Loan alone names is no exposed holder, and E carries Φ_E), since a pointer the body
@@ -20,11 +21,26 @@ internal sealed partial class MirBorrows
     private Entry[] entries = [];
     private int entryCount;
 
+    // E's stores by location (SPEC 7.2.3's stores into storage the body does not own; DIAGNOSTICS' `Store`): what its entries put into
+    // E, their sets that do not rest (Sure) and those that rest on an undecided write (Unsure: Φ_M, Φ_U), from its last plan, gathered
+    // where every entry is added (AddSlot), so a plan pays only its entries at E. A location's last plan in the forward solve is on its
+    // converged state, as the replay's is, so from the solve's end every reached location holds the replay's sets. The transfer is
+    // monotone in what a location stores into E (W's targets and received values grow with the state; Keep's covered-only stores are a
+    // subset of its referents), so an element that entered a head's state from an earlier carry of a predecessor is in that
+    // predecessor's converged stores too. Read by R26-borrow's place (MirBorrows.Defaults' DefaultStores, Sure) and by the Store witness
+    // of what a check found in E (MirBorrows.Witnesses' EStore, both).
+    private (int Sure, int Unsure)[] eStores = [];
+
+    // E's stores with a set added: to Unsure where it rests (MirBorrows.Puns' Resting), else to Sure.
+    private (int Sure, int Unsure) Into((int Sure, int Unsure) stored, int set)
+        => this.Resting(set) ? (stored.Sure, this.sets.Union(stored.Unsure, set)) : (this.sets.Union(stored.Sure, set), stored.Unsure);
+
     // The entries of a location on the state: a statement's storage end, or its rvalue's value stored into its Place after the Moves it
     // makes; a Call's.
-    private void Plan(ulong[] state, int block, int index, bool checks)
+    private void Plan(ulong[] state, int block, int index)
     {
-        (this.entryCount, this.planLocation, this.mustValue, this.mustKept) = (0, this.Location(block, index), 0, 0);
+        (this.entryCount, this.planLocation, this.mustValue, this.mustKept, this.limit) = (0, this.Location(block, index), 0, 0, false);
+        this.eStores[this.planLocation] = (0, 0);
         foreach (var set in this.read)
         {
             this.reads[set] = default;
@@ -36,11 +52,11 @@ internal sealed partial class MirBorrows
         {
             if (data.Terminator.Kind == MirTerminatorKind.Call)
             {
-                this.Call(state, data.Terminator, checks);
+                this.Call(state, data.Terminator);
             }
             else if (data.Terminator.Kind == MirTerminatorKind.Drop)
             {
-                this.Destroyed(state, data.Terminator, block, checks);
+                this.Destroyed(state, data.Terminator, block);
             }
 
             return;
@@ -50,6 +66,10 @@ internal sealed partial class MirBorrows
         if (statement.Kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead or MirStatementKind.EndBorrow)
         {
             this.Add(statement.Place.Root, 0, 0, Cleared, issue: false);
+            if (this.writeCount > 0)
+            {
+                this.Rewrite(state, statement.Place.Root, -1); // Its state cleared, its write slot too.
+            }
         }
         else if (statement.Kind == MirStatementKind.Assign)
         {
@@ -72,6 +92,10 @@ internal sealed partial class MirBorrows
             this.Moves(rvalue.Start, rvalue.Count);
             var issue = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage || this.Reborrowing(statement) != MirRefKind.Raw;
             this.Store(state, statement.Place, value, own, issue);
+            if (this.writeCount > 0 && statement.Place is { Projection: 0, Root: >= 0 and var to })
+            {
+                this.Rewrite(state, to, this.Whole(statement.Rvalue)); // A write slot (MirBorrows.Holders' WriteSlots).
+            }
         }
     }
 
@@ -108,20 +132,22 @@ internal sealed partial class MirBorrows
     {
         MirDataflow.Grow(ref this.entries, this.entryCount + 1);
         this.entries[this.entryCount++] = new(slot, value, own, op, issue);
+        if (slot == Escaped)
+        {
+            this.eStores[this.planLocation] = this.Into(this.Into(this.eStores[this.planLocation], value), own);
+            this.Work++;
+        }
     }
 
     // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k Derefs every holder refs^k names joined (P10; past a
-    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined; Φ_N into each exposed holder it writes.
+    // raw pointer, the holders it addresses, and E where it carries Φ_E; MirBorrows.Reach's WriteTargets, every mode), with its write
+    // slot what the store puts there (MirBorrows.Holders' StoredThrough; R4-M250), into a static E joined; Φ_N into each exposed holder
+    // it writes.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
         this.Storing(place); // The storing rule (MirBorrows.Storing), before the walk buffer is filled.
-        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
-        for (var i = 0; i < count; i++)
-        {
-            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
-        }
-
-        var receiving = this.wCount == 0 ? null : cases.TypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
+        var (count, last, pointer) = this.WriteTargets(state, place); // `pointer`: what its last Deref goes through.
+        var receiving = this.wCount == 0 ? null : cases.KnownTypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
             var slot = place.Root < 0 ? Escaped : this.slots[place.Root];
@@ -136,20 +162,21 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var (layer, parents) = this.Prefix(state, place.Root, last);
-        var pointer = this.PointerOf(place.Root, layer, parents, last); // What its last Deref goes through.
         var through = last == count - 1 ? pointer : 0; // A write of the whole referent (rule W's write-through).
-        this.Refs(pointer);
-        for (var t = 0; t < this.targets.Count; t++)
+        var written = this.writeCount > 0 ? this.StoredThrough(state, last < count - 1) : 0;
+        foreach (var (target, root, _) in this.refs) // Every holder, whatever its mode.
         {
-            var (target, root) = (this.targets[t], this.targetRoots[t]);
             var arrived = this.Arrive(target, receiving, false, through, value);
             arrived = root >= 0 && this.Exposed(root) ? this.sets.Union(arrived, this.unformedSet) : arrived;
             arrived = target == Escaped ? this.Rested(arrived, pointer) : arrived; // An undecided write's E (MirBorrows.Puns).
             this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
+            if (written != 0 && this.slotWrites[target] >= 0)
+            {
+                this.AddSlot(this.slotWrites[target], written, 0, Joined, issue: false); // Its write slot (MirBorrows.Holders' WriteSlots).
+            }
         }
 
-        this.Punning(pointer, place); // The pun rule (MirBorrows.Puns).
+        this.Punning(pointer, place, count, last); // The pun rule (MirBorrows.Puns).
     }
 
     // A Move of a whole root empties it.

@@ -315,17 +315,17 @@ public sealed partial class MirBorrowsTest
     // a second Reborrow the result keeps is decided beside it (keepB), as is the one Loan the result also keeps (keepS); an exclusive Borrow
     // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE), whose
     // record is at the store (SPEC 7.2.3 as clarified by O-254 Q2 A). keepN is invalid by O-254 Q1 D (the let capture's pointee layer is
-    // the Closure's own) and stays accepted until A5's rule W reads that (U3c); its record will then be at the call `c(rz@follow@raw)`,
-    // placed as keepECall's below. Today's records, a known limit (PLAN G599 (b): Φ_U is a set's, not an entry's): a decided store of rz
+    // the Closure's own), which A5's rule W reads from U3c (the store through `other`, a raw layer without an Origin the call writes, reaches
+    // storage the body does not own; SPEC 15.6.4's composition): its record is at the call `c(rz@follow@raw)`, placed as keepECall's below. Today's records, a known limit (PLAN G599 (b): Φ_U is a set's, not an entry's): a decided store of rz
     // beside `other`, which rests on the u16 write, places no record, so restBeside (invalid twice, SPEC 7.2.3 with 23.1.2: the store and
     // the result) has the result's site record alone, and restStoreOnly (invalid at the store) the limit record at the site.
     [Fact]
     public void ATemplateVerdictRestingOnAnUndecidedWriteIsTheLimit()
         => Assert.Equal(
             [
-                "keepU: z Unsupported_Kd", "keepE: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd",
-                "keepS: z DefaultArgumentBorrow_Kd", "keepX: z@follow@uniq DefaultArgumentAccess_Kd", "restBeside: z DefaultArgumentBorrow_Kd",
-                "restStoreOnly: z Unsupported_Kd",
+                "keepU: z Unsupported_Kd", "keepN: c(rz@follow@raw) DefaultArgumentBorrow_Kd", "keepE: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd", "keepS: z DefaultArgumentBorrow_Kd",
+                "keepX: z@follow@uniq DefaultArgumentAccess_Kd", "restBeside: z DefaultArgumentBorrow_Kd", "restStoreOnly: z Unsupported_Kd",
             ],
             AllProblems("""
                 func keepU(z: uniq/i32 during a, y: i32 = label w: do
@@ -427,7 +427,9 @@ public sealed partial class MirBorrowsTest
     // storage the body does not own, by a write or a call that may store it there, is invalid "with the error at that operation"; SPEC
     // 23.1.2): one record at each storing operation, and one at the Loan's site where the result's own value keeps the Loan ("Its result
     // cannot keep a new Borrow or Reborrow of a preceding argument"), both when both hold: the result alone (keptOnly), a store or a call
-    // through a parameter (storedCopy, whose result is a Copy; keepECall: sink's pointee raw/i32 admits v, 5.7 Calls), two stores
+    // through a parameter (storedCopy, whose result is a Copy read through rz, which reaches the storage the store made carry rz's Loan:
+    // its result keeps it too, 15.6's read sentence and the value-flow rule H, a record added under DECISIONS Q13 rule W; keepECall: sink's
+    // pointee raw/i32 admits v, 5.7 Calls), two stores
     // (keepETwice), a store or a call and the result (keepBoth, bothCall, keepBoth2), two Loans (twoLoans: rz stored, rw kept), the result
     // read back from the stored storage, a Tuple holding rz, or a Reborrow through it (readBack, resultTuple, reborrowChain, whose exclusive
     // Borrow is one subject: its record names the Borrow), a result that only addresses that storage (resultAddr: the store alone); an
@@ -439,6 +441,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "keptOnly: z DefaultArgumentBorrow_Kd", "storedCopy: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "storedCopy: z DefaultArgumentBorrow_Kd",
                 "keepECall: sink(p, rz@follow@raw) DefaultArgumentBorrow_Kd",
                 "keepETwice: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepETwice: *s = rz@follow@raw DefaultArgumentBorrow_Kd",
                 "keepBoth: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepBoth: z DefaultArgumentBorrow_Kd",
@@ -551,6 +554,25 @@ public sealed partial class MirBorrowsTest
                     exit to w 0
                 ) => ()
                 """));
+
+    // R26-borrow's place (SPEC 7.2.3; Z18b, a record selection under DECISIONS Q13): a location's records are added in Loan order
+    // (MirBorrows.Flow's eStores), so one call keeping two parameters' slot Loans through two outputs is one record whose Anchor is the
+    // location's first Loan, z's, in both admission orders.
+    [Theory]
+    [InlineData("i64", "i32", "rq@follow@raw, rz@follow@raw")]
+    [InlineData("i32", "i64", "rz@follow@raw, rq@follow@raw")]
+    public void AStoreOfTwoSlotLoansIsAnchoredAtItsFirstLoan(string first, string second, string arguments)
+    {
+        var c = MirBuildTest.Compile(
+            $"func sink2(p: raw/(raw/{first}), s: raw/(raw/{second}), v: raw/{first}, w: raw/{second}) => ()\n" +
+            $"func two(z: uniq/i32 during a, q: uniq/i64 during a, p: raw/(raw/{first}), s: raw/(raw/{second}), y: i32 = label w: do\n" +
+            $"    let rz: ref/i32 = z\n    let rq: ref/i64 = q\n    sink2(p, s, {arguments})\n    exit to w 0\n) => ()\n");
+        var program = Analyze(c);
+        Assert.Equal(
+            [$"sink2(p, s, {arguments}): Anchor uniq/i32 during a"],
+            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => x.x.Code == DiagnosticCode.DefaultArgumentBorrow_Kd && x.x.Subject.Module == 0)
+                .Select(x => $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
+    }
 
     // R26-borrow's place at a destruction (SPEC 7.2.3 as clarified by O-254 Q2 A, "or destruction that may store it there"; 15.6.4: a
     // destruction retains as a call of its drop would): the old x's drop, by the reassignment (keepDA2) or at the block's end (keepDE2,
@@ -925,9 +947,9 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(moved[0].Place, inspection.Rvalue.Place);
     }
 
-    // SPEC 23.1.2 (DECISIONS R4-M127, R4-M139): a default the call's substitution does not instantiate is an Opaque value at the call
-    // (MirBuildTest's ACopyTheCallDoesNotInstantiateIsAnOpaqueValue), and one over storage Binding rejected a copy (its
-    // ACopyOverRejectedStorageIsBuilt), so no validator finding hides the caller's independent records: `v = 2` stays, over storage Binding
+    // SPEC 23.1.2 (DECISIONS R4-M127, R4-M139; PLAN G396 (3)): a default over an instance past Binding's storage bound is a copy
+    // (MirBuildTest's ACopyOverAnInstancePastBindingsBoundIsBuilt; an Opaque value at the call before), and so is one over storage Binding
+    // rejected (its ACopyOverRejectedStorageIsBuilt), so no validator finding hides the caller's independent records: `v = 2` stays, over storage Binding
     // rejected and in a complete program past the storage depth, as in the twins. The depth limit at lim's and lim64's calls (the owner's
     // 「G272: (1)」, R4-M153) is A5's own, their retention past the depth bound (CallRetention.Limit, a genuine limit); a call over storage Binding rejected
     // keeps its other rows instead (DECISIONS BU-36, SPEC 23.1.2). Before, the copies' Type findings left both programs unanalyzed.
@@ -1173,14 +1195,15 @@ public sealed partial class MirBorrowsTest
     // live into the entry) and the failure stays B's. The gather's two other routes: "viaE", B stores k through a raw pointer argument, so
     // the earlier Loan reaches the entry in E; "closure", the caller keeps k in cell and only prev = &cell is live, so it reaches the entry
     // through the closure of prev's direct Loan (the group review's N3). R4-M69 dropped all five as their copies' (fail-before: "loop",
-    // "viaE", "closure"; under R20Own alone those three would be omitted).
+    // "viaE", "closure"; under R20Own alone those three would be omitted). viaE's Store is E's store, the copy's raw-pointer store
+    // `*p = k` (14) on the loop's back edge (Z18b; it was the access, 11).
     [Fact]
     public void ALoopedCopysEarlierLoanIsTheCallers()
     {
         Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Use 13; Evaluated 11]"], HandBuilt("loop"));
         Assert.Empty(HandBuilt("nested"));
         Assert.Empty(HandBuilt("own"));
-        Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Store 11; Evaluated 11]"], HandBuilt("viaE"));
+        Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Store 14; Evaluated 11]"], HandBuilt("viaE"));
         Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Use 20; Evaluated 11]"], HandBuilt("closure"));
     }
 
@@ -1213,7 +1236,7 @@ public sealed partial class MirBorrowsTest
         var outer = form == "nested" ? body.AddScope(0, MirScopeKind.Inlined, new(0, 800)) : 0;
         var copy = body.AddScope(outer, MirScopeKind.Inlined, new(0, 900));
         body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, default));
-        MirPlace Local(BoundType type, MirLocalKind kind = MirLocalKind.Var) => new(body.AddLocal(new(type, kind, default)));
+        MirPlace Local(BoundType? type, MirLocalKind kind = MirLocalKind.Var) => new(body.AddLocal(new(type, kind, default)));
         SourceInfo At(int id, int scope) => new(new(0, id), scope, true);
         int Constant(MirConstKind kind, BoundType type, long value) => body.AddOperand(MirOperand.Const(body.Const(new(kind, type, value))));
         void Assign(int block, MirPlace place, MirRvalue value, int id, int scope) => body.Push(block, MirStatement.Assign(place, value, At(id, scope)));
@@ -1268,7 +1291,7 @@ public sealed partial class MirBorrowsTest
                 }
             }
 
-            var (into, scope) = form == "viaE" ? (body.Project(p, MirProjectionKind.Deref, 0), copy) : (cell, outer);
+            var (into, scope) = form == "viaE" ? (body.Project(c.Types, p, MirProjectionKind.Deref, 0), copy) : (cell, outer);
             Assign(loop, into, MirRvalue.Use(body.AddOperand(MirOperand.Copy(k))), 14, scope);
             if (form == "closure")
             {

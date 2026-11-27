@@ -13,6 +13,8 @@ namespace XunitTest;
 
 public class RangeDiagnosticTest(ITestOutputHelper output)
 {
+    // SPEC 4.6.4, 14.6.2, 23.3 (R7-E3 E3a-3): the record shows the range, its selected entry and the boundary Types, and relates the entry
+    // declaration (role "entry"); the constant Note went by code (M3).
     [Theory]
     [InlineData("for i in 1..^1 => ()", "1..^1", "IntoIterable", "Kimi.Range<i32, Kimi.FromEnd<i32>>")]
     [InlineData("for i in ..3 => ()", "..3", "IntoIterable", "Kimi.Range<Kimi.Start, i32>")]
@@ -28,7 +30,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(text, error.Text);
         Assert.Contains(type, error.Label, StringComparison.Ordinal);
         Assert.Contains(entry, error.Label, StringComparison.Ordinal);
-        Assert.Contains("both boundaries", error.Note, StringComparison.Ordinal);
+        Assert.Equal([("entry", entry)], error.Related!.Select(static x => (x.Role, x.Label)));
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
         Assert.Contains(record.Reason!, x => x.Name == "entry" && x.Value == entry);
@@ -36,7 +38,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     }
 
     // SPEC 4.6.4, 8.2: boundary Types not proven to be one integer Type in a generic context are reported once, at the
-    // Subject, with the requirement and a conditional repair.
+    // Subject, with the requirement and a conditional repair, relating the entry declaration (R7-E3 E3a-3; the Note went by code, M3).
     [Theory]
     [InlineData("func f<A, B>(p: A, q: B)\n    A is PrimitiveInteger\n    B is PrimitiveInteger\n    for x in p..q => ()", "p..q")]
     [InlineData("func f<P>(p: P, q: P)\n    P is Position\n    for x in p..q => ()", "p..q")]
@@ -46,10 +48,11 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         var error = Assert.Single(Errors(c));
         Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
         Assert.Equal(text, error.Text);
-        Assert.Contains("one integer Type", error.Note, StringComparison.Ordinal);
+        Assert.Equal([("entry", "IntoIterable")], error.Related!.Select(static x => (x.Role, x.Label)));
     }
 
     [Theory]
+    [InlineData("func f<A>(p: A, q: A)\n    A is PrimitiveInteger\n    for x in p..q => ()")]
     [InlineData("for i in (1..^1).resolve(5) => ()")]
     [InlineData("for i in (..3).resolve(5) => ()")]
     [InlineData("for i in 1@i64..3@i64 => ()")]
@@ -66,7 +69,11 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     [InlineData("struct End\nlet r = 1..\nlet p: End = r.end", "r.end", "Kimi.End", "End")]
     [InlineData("struct FromEnd<T>\nlet p: FromEnd<i32> = ^1", "^1", "Kimi.FromEnd<i32>", "FromEnd<i32>")]
     [InlineData("let r: Range<i32, i32> = 1..=3", "1..=3", "Kimi.ClosedRange<i32, i32>", "Kimi.Range<i32, i32>")]
-    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = 1..n", "1..n", "Kimi.Range<i32, i64>", "Kimi.Range<i32, i32>")]
+
+    // SPEC 4.6.2 (PLAN G924, K's revision): a boundary that is not literal-only is checked against the E of the range's expected Type,
+    // so the record is the boundary's; the range rests on it and adds none (it was the range's own, `1..n` against
+    // Kimi.Range<i32, i32>, before G924).
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = 1..n", "n", "i64", "i32")]
     public void MismatchKeepsCompleteTypesAndTheValueLocation(string source, string text, string actual, string expected)
     {
         var error = Assert.Single(Errors(Analyze(source)));
@@ -78,6 +85,14 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     [Theory]
     [InlineData("for i in missing..3 => ()", "UnresolvedBinding_Kd")]
     [InlineData("for i in 1..^1 => ()\nlet wrong: i32 = true", "UnsatisfiedConstraint_Kd,TypeMismatch_Kd")]
+
+    // SPEC 4.6.2, 23.1.2 (PLAN G924): each boundary that misfits the expected S or E is its own record; the range adds none.
+    [InlineData("let n: i64 = 3\nlet m: i64 = 4\nlet r: Range<i32, i32> = m..n", "TypeMismatch_Kd,TypeMismatch_Kd")]
+
+    // SPEC 4.6.2, 23.1.2 (PLAN G924): a literal-only boundary takes the S or E of the range's expected Type, so its misfit is its own
+    // record beside the other boundary's, in either order.
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = n..3000000000", "InvalidNumericLiteral_Kd,TypeMismatch_Kd")]
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = 3000000000..n", "InvalidNumericLiteral_Kd,TypeMismatch_Kd")]
     public void PrerequisitesAndIndependentErrorsRemainExplained(string source, string codes)
         => Assert.Equal(codes.Split(',').Order(StringComparer.Ordinal), Errors(Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
@@ -139,7 +154,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(first, Assert.Single(Errors(c)));
         var moved = Assert.Single(Errors(Analyze("\n" + source + "\nlet wrong: i32 = true")), static x => x.Code == nameof(DiagnosticCode.UnsatisfiedConstraint_Kd));
         Assert.Equal(first.Label, moved.Label);
-        Assert.Equal(first.Note, moved.Note);
+        Assert.Equal(first.Related!.Select(static x => (x.Role, x.Label)), moved.Related!.Select(static x => (x.Role, x.Label)));
         Assert.Equal(first.Span.Start + 1, moved.Span.Start);
     }
 

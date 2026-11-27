@@ -3,15 +3,17 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, addresses, its holders' slots (Holders), endings,
-// touches and the copies' entries, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined
-// by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are carried in order, each planned
-// on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then
-// removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and before a Call that moves
-// pending slots their inspection Loans (R-a, MirBorrows.Endings); in the replay, a copy's Entry(B) is gathered before its entry's plan.
+// touches, the copies' entries and the passed fact (MirBorrows.Passes), then holder liveness backward and carrying forward over the dataflow's
+// chains, each holder's set joined by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are
+// carried in order, each planned on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place
+// the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and
+// before a Call that moves pending slots their inspection Loans (R-a, MirBorrows.Endings); in the replay, a copy's Entry(B) is gathered
+// before its entry's plan.
 internal sealed partial class MirBorrows
 {
     private int chainHead = -1; // The checks replay's chain: its head and first block.
     private int chainFirst;
+    private bool replaying; // Whether Carry runs the checks replay.
 
     /// <summary>Checks a body under the selected view; view 0 of a body no view decides checks it for every view.</summary>
     /// <param name="program">The program, whose drop table it reads and whose problems it adds to.</param>
@@ -25,13 +27,15 @@ internal sealed partial class MirBorrows
         }
 
         var all = MirCases.Every(body);
-        (this.program, this.body, this.view, this.views, this.held) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all, false);
+        (this.program, this.body, this.view, this.views) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all);
+        this.mixedKnown = false;
         this.sets.Clear();
         (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));
-        this.escapedSet = this.sets.Add(this.writableSet, Escaped);
+        (this.escapedSet, this.readEscapedSet) = (this.sets.Add(this.writableSet, Escaped), this.sets.Add(0, Escaped));
         this.unformedSet = this.sets.Add(0, Unformed);
         this.offgridSet = this.sets.Add(0, Offgrid);
         (this.maybeSet, this.undecidedSet) = (this.sets.Add(this.escapedSet, Maybe), this.sets.Add(0, Undecided));
+        this.builtSet = this.sets.Add(0, Built);
         this.Loans();
         this.Addresses();
         this.Receivers();
@@ -50,6 +54,11 @@ internal sealed partial class MirBorrows
         this.Endings();
         this.Touches();
         this.Entries();
+        if (!this.Passes(all))
+        {
+            return; // The passed fact's arena over the byte limit (MirBorrows.Passes, R4-M15a).
+        }
+
         var words = (this.holderCount + 63) >> 6;
         var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount), out var arena);
         if (state is null)
@@ -58,6 +67,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
+        MirDataflow.Grow(ref this.eStores, body.Statements.Length + body.Blocks.Length);
         var liveness = new Liveness(this, state);
         flow.Backward(ref liveness);
         liveness.Recording = true;
@@ -72,8 +82,9 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }
 
-    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), which
-    // a call may write (Φ_W; SPEC 15.6.4, R4-M170), so every value read through E carries Φ_E (R4-M120, B1).
+    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), so
+    // every value read through E carries Φ_E (R4-M120, B1). E's content is writable (Φ_W), and an argument is where its Type reaches past
+    // its own storage through no shared layer, the holding walk's Writable (SPEC 15.6.4 item 1, 5.2.1 condition 3; R4-M170).
     private void Initial(ulong[] state)
     {
         state.AsSpan(0, this.holderCount).Clear();
@@ -82,7 +93,8 @@ internal sealed partial class MirBorrows
         {
             if (this.slots[i] >= 0)
             {
-                state[this.slots[i]] = State(this.escapedSet, 0);
+                var writable = this.ReachesWritable(cases.KnownType(this.body.Locals[i].Type));
+                state[this.slots[i]] = State(writable ? this.escapedSet : this.readEscapedSet, 0);
             }
         }
     }
@@ -106,6 +118,7 @@ internal sealed partial class MirBorrows
         for (var i = 0; i <= count; i++)
         {
             var location = this.Location(block, i);
+            var site = this.OpenAt(location);
             this.Work++;
             if (checks && this.copying && this.entering[location])
             {
@@ -117,7 +130,7 @@ internal sealed partial class MirBorrows
                 this.End(state, this.inspected[block]);
             }
 
-            this.Plan(state, block, i, checks);
+            this.Plan(state, block, i);
             if (checks)
             {
                 this.Advance(location);
@@ -126,6 +139,7 @@ internal sealed partial class MirBorrows
 
             this.Commit(state);
             this.End(state, this.ended[location]);
+            types.CloseSite(site);
         }
     }
 

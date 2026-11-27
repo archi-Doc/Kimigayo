@@ -41,7 +41,7 @@ internal sealed partial class MirBuilder
         this.visited.Add(decl, index);
         this.omissions.Add(new(decl, index));
         this.component.Add(index);
-        (this.walker ??= new(this)).Visit(decl.Expression);
+        (this.walker ??= new(this, compilation.Binding)).Visit(decl.Expression);
         for (int i = start, end = this.edges.Count; i < end; i++)
         {
             int low;
@@ -105,10 +105,12 @@ internal sealed partial class MirBuilder
     // SPEC 7.2.3: the omitted defaults of a call, each into a pending slot of its parameter's Type in parameter order, from shared borrows
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
     // (every slot, its arguments), or an Opaque value reading those slots where its template failed (no record), the body budget refuses
-    // the copy (Refuses: the call's Resource record) or the call's substitution does not instantiate it (Instantiates, decided before a
-    // copy is written, a Limit only: the call's Unsupported_Kd, SPEC 23.1.1, through Unsupported; over storage Binding rejected the copy
-    // is built, as a non-generic template over it is, DECISIONS R4-M139). A default that does not complete reaches no later
-    // default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
+    // the copy (Refuses: the call's Resource record) or the call's substitution does not form it (Instantiates, decided before a copy is
+    // written: a height refusal, which the innermost site records (PLAN G651 U2b R1), no record of its own, as a failed template's; Incomplete,
+    // read as the collector reads it (DECISIONS R5-M151; PLAN G651 U2c): a broken contract at the call in a complete compilation
+    // (Invariant: InternalInvariant_Kd), else a dependent of Binding's records (no record); over storage Binding rejected or past its
+    // storage bound the copy is built, as the written call is, DECISIONS R4-M139, PLAN G396 (3)). A default that does not complete
+    // reaches no later default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
     private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
     {
         foreach (ref readonly var omitted in call.DefaultArguments)
@@ -117,25 +119,26 @@ internal sealed partial class MirBuilder
             var slot = this.Hold(omitted.ParameterType, node, MirLocalRole.PendingSlot, omitted.Parameter.Name);
             var template = this.visited.TryGetValue(decl, out var index) ? this.omissions[index] : default;
             var limit = template is { Body: { } copy, Recursive: false } && this.Refuses(copy.Statements.Length, node);
-            var unsupported = !limit && template is { Body: { } made, Recursive: false, Failed: false } && subst is not null &&
-                !this.Instantiates(made, subst);
+            var formation = !limit && template is { Body: { } made, Recursive: false, Failed: false } && subst is not null
+                ? this.Instantiates(made, subst) : TyCtxt.Formation.Formed;
+            var broken = formation == TyCtxt.Formation.Incomplete && compilation.Types.BindingComplete;
             var at = this.arguments.Count;
             var completes = Completes(decl.Expression);
-            if (!template.Recursive && (template.Body is null || template.Failed || limit || unsupported))
+            if (!template.Recursive && (template.Body is null || template.Failed || limit || formation != TyCtxt.Formation.Formed))
             {
-                this.roots.Clear();
+                this.ClearUses();
                 for (var i = 0; i < decl.Index; i++)
                 {
-                    this.Root(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
+                    this.SiteUse(new(this.arguments[start + MirCallee.Position(function, i)].Place.Root));
                 }
 
-                if (unsupported)
+                if (broken)
                 {
-                    this.Unsupported(node, slot, decl.Expression);
+                    this.Invariant(node, slot, completes);
                 }
                 else
                 {
-                    this.Site(node, slot, completes);
+                    this.Derived(node, slot, completes);
                 }
             }
             else
@@ -174,11 +177,11 @@ internal sealed partial class MirBuilder
     // The defaults the calls a default's template builds omit, appended to the edges: none at a node whose call the builder does not build,
     // one the HIR publishes as Syntax (a part replaced, such as the body of a closure Binding failed to define, or covered; its evaluated
     // parts lie below it), Error or Unset (an Opaque value); a closure definition's body is a body of its own (DECISIONS R5-M79).
-    private sealed class Edges(MirBuilder builder) : KotoVisitor
+    private sealed class Edges(MirBuilder builder, Binding binding) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
-            for (var i = 0; HirTables.Op(node) is not (HirOp.Syntax or HirOp.Error or HirOp.Unset) && CallPlan.Of(node, i) is { } call; i++)
+            for (var i = 0; HirTables.Op(node) is not (HirOp.Syntax or HirOp.Error or HirOp.Unset) && CallPlan.Of(binding, node, i) is { } call; i++)
             {
                 foreach (ref readonly var omitted in call.DefaultArguments)
                 {

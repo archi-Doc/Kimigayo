@@ -1,14 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, BoundLength> inferredArrayLengths = new();
-    private readonly Dictionary<Koto, Koto> arrayInferenceShapes = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, ArrayInferenceFailure>? arrayInferenceFailures;
+    private readonly InferredArrayLengthRows inferredArrayLengths;
+    private readonly ArrayInferenceShapeRows arrayInferenceShapes;
 
     private enum ArrayInferenceProblem : byte
     {
@@ -17,8 +17,6 @@ public sealed partial class Binding
         LengthConflict,
         FixedArrayRequired,
     }
-
-    private readonly record struct ArrayInferenceFailure(ArrayInferenceProblem Problem, Koto Related, BoundLength? Expected = null, BoundLength? Actual = null, BoundType? Type = null);
 
     // A negative length exists only in an initializer expectation, never in a completed Type. There is no inference
     // variable or inverse length solver: literal counts and complete result Types supply each written length hole.
@@ -44,6 +42,16 @@ public sealed partial class Binding
                 return syntax;
             }
         }
+    }
+
+    // SPEC 4.3.1: a hole or dimension the initializer leaves undetermined or contradicts, with its closed reason, the syntax that supplies or
+    // requires the evidence (Related) and, for a conflict, the sides it compared: a dimension's two lengths, or the Type found where the
+    // annotation requires a fixed array.
+    private void RecordArrayInference(Koto node, ArrayInferenceProblem reason, Koto related, ReadOnlySpan<ProblemFact> sides)
+    {
+        Span<ProblemFact> facts = [new(ProblemFactKind.Reason, SourceRef.Of(node), (long)reason), new(ProblemFactKind.Related, this.FactSite(related), 0), default, default];
+        sides.CopyTo(facts[2..]);
+        this.Record(node, BindingFailure.ArrayAnnotationInference, facts[..(2 + sides.Length)]);
     }
 
     private Koto? MissingArrayElementCause(ArrayLiteralKoto literal)
@@ -79,9 +87,13 @@ public sealed partial class Binding
             return failed is not null ? this.CompleteDependent(fill, failed) : this.Fail(fill, BindingFailure.InvalidTypeFormation);
         }
 
-        if (this.ProveCopy(element, fill) != ConstraintProof.Proven)
+        if (this.ProveCopy(element, fill) is not ConstraintProof.Proven and var copyProof)
         {
-            this.FailConstraint(fill);
+            if (!this.ProofRestsOnLimit(fill, copyProof))
+            {
+                this.FailConstraint(fill);
+            }
+
             return null;
         }
 
@@ -89,35 +101,65 @@ public sealed partial class Binding
         return Complete(fill, type);
     }
 
-    // As for Tuple literals, retain the acquired element Type until the enclosing
-    // declaration has inferred omitted Origins. Replacing it with the expectation
-    // here would erase the very evidence needed by InferLocalOrigins.
+    // SPEC 4.3.1, 12.3.1: the expected element Type is every element's expected Type, so each element is checked against it by the fit's
+    // structural part on the Type its adaptation gave (BindNode; FitsStructuralPartAt) and a misfit is recorded at that element. The
+    // place's Type is the fitting elements' common Type (PlaceCommonType) with the expected element Type's stated Origins (StatedPlaceType):
+    // its omitted ones keep the elements' meet, the evidence InferLocalOrigins reads, which the expectation itself would erase. After the
+    // whole meet, each fitting element's use-site fit to that Type forms its Origin rows (SPEC 15.3.6: a variable's bounds are checked
+    // against its candidate), so they do not depend on source order (PLAN G1379), at every site, on the Type the element's adaptation gave.
     private BoundType? BindContextualArrayLiteral(ArrayLiteralKoto literal, BindingScope scope, BoundType expected)
     {
         BoundType? element = null;
         var complete = true;
-        for (var i = 0; i < literal.Elements.Count; i++)
+        var adapted = this.RentTypes(literal.Elements.Count);
+        BoundType place;
+        try
         {
-            this.PropagateBound(literal.Elements[i], expected.Components[0]);
-            var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
-            if (actual is null)
+            for (var i = 0; i < literal.Elements.Count; i++)
             {
-                complete = false;
-            }
-            else if (!ReferenceEquals(actual, BoundType.Never))
-            {
-                var failure = default(ComparisonFailure);
-                var common = element is null ? actual : this.CommonOriginType(element, actual, out failure);
-                if (common is null)
+                this.PropagateBound(literal.Elements[i], expected.Components[0]);
+                var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
+                if (actual is null)
                 {
-                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
                     complete = false;
                 }
-                else
+                else if (!this.FitsStructuralPartAt(actual, expected.Components[0], literal.Elements[i]))
                 {
-                    element = common;
+                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, expected.Components[0], ComparisonFailure.Shape);
+                    complete = false;
+                }
+                else if (!ReferenceEquals(actual, BoundType.Never))
+                {
+                    var failure = default(ComparisonFailure);
+                    var common = element is null ? actual : this.PlaceCommonType(element, actual, literal, out failure);
+                    if (common is null)
+                    {
+                        this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
+                        complete = false;
+                    }
+                    else
+                    {
+                        element = common;
+                        adapted[i] = actual;
+                    }
                 }
             }
+
+            place = element is null ? expected.Components[0] : this.StatedPlaceType(element, expected.Components[0]);
+            var owned = element is not null;
+            for (var i = 0; owned && i < literal.Elements.Count; i++)
+            {
+                var part = literal.Elements[i];
+                if (adapted[i] is { } actual && !this.FitsValueAt(actual, place, part, part, out var failure))
+                {
+                    this.FailMismatch(part, part, actual, place, failure);
+                    complete = false;
+                }
+            }
+        }
+        finally
+        {
+            this.typeScratch.Return(adapted, clearArray: true);
         }
 
         if (expected.Kind == BoundTypeKind.FixedArray && (expected.LengthExpression is not null || (expected.Length >= 0 && expected.Length != literal.Elements.Count)))
@@ -125,7 +167,7 @@ public sealed partial class Binding
             return this.Fail(literal, BindingFailure.TypeMismatch);
         }
 
-        return Complete(literal, complete ? this.types.Intern(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
+        return Complete(literal, complete ? this.types.Intern(expected.Kind, expected.Symbol, expected.Semantics, [place], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
     }
 
     private void InferArrayAnnotation(Koto syntax, Koto initializer, BindingScope scope)
@@ -165,7 +207,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.FailExplained(ref this.arrayInferenceFailures, hole, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Element, initializer));
+                    this.RecordArrayInference(hole, ArrayInferenceProblem.Element, initializer, []);
                 }
             }
         }
@@ -180,7 +222,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.FailExplained(ref this.arrayInferenceFailures, array.Length, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Length, initializer));
+                    this.RecordArrayInference(array.Length, ArrayInferenceProblem.Length, initializer, []);
                 }
             }
         }
@@ -219,7 +261,8 @@ public sealed partial class Binding
 
         if (this.inferredArrayLengths.TryGetValue(array.Length, out var previous) && !ReferenceEquals(previous, length))
         {
-            this.FailExplained(ref this.arrayInferenceFailures, source, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.LengthConflict, array.Length, previous, length));
+            var site = SourceRef.Of(source);
+            this.RecordArrayInference(source, ArrayInferenceProblem.LengthConflict, array.Length, [new(ProblemFactKind.Actual, site, this.report.Keep(length)), new(ProblemFactKind.Expected, site, this.report.Keep(previous))]);
             return false;
         }
 
@@ -239,12 +282,41 @@ public sealed partial class Binding
         return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], expected.Length < 0 ? actual.Length : expected.Length, lengthExpression: expected.Length < 0 ? actual.LengthExpression : expected.LengthExpression);
     }
 
-    // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
+    // SPEC 4.3.1, 10.2 (PLAN G1116): whether a list literal without a fixed-array or Array expectation takes its own Type by the place
+    // rule now (BindIndependentArrayLiteral), the position's fit judging that Type as it judges a fill's or a Dictionary literal's.
+    // Two places decide its Type where no implemented rule does, and keep the located Unsupported_Kd (the owner's O-449 (a)): an abstract
+    // expectation (BoundType.IsAbstract: a Type parameter, a projection or a pair term, a pair layer or a pair target, still abstract
+    // after the scope's identity premises are substituted), which has no form for SPEC 4.3.1 to take the literal's from (8.2.3: an
+    // abstract Type takes the form its binding, a completed projection or its admitted set fixes, which the fit does not resolve); and,
+    // for an empty literal, a place decided later (SPEC 4.3.1 Places, 14.9.2 step 3), where only parts publish a literal as waiting
+    // (AwaitsFor), so an empty one would wait with nothing to bind it. PLAN G1123 removes both clauses: its (a) publishes an empty
+    // literal's wait; its (b), with a pair target's identity premises substituted before this dispatch as a Type parameter's are,
+    // leaves abstract only an expectation with no array form, which the place rule and the fit then judge.
+    private bool TypedByPlaceRule(ArrayLiteralKoto literal, BoundType? expected)
+        => expected?.IsAbstract != true && (literal.Elements.Count != 0 || !this.DecidedLater(literal));
+
+    // SPEC 4.3: without a fixed-array or Array expectation (none, or a constructed Type no array literal has, whose fit then fails at
+    // the position; TypedByPlaceRule) an independent literal constructs an Array whose element Type is the
     // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
     // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it. Every
     // element is bound, also after a failed one (SPEC 23.1.2), as a Dictionary literal's parts are (IndependentDictionaryType).
     private BoundType? BindIndependentArrayLiteral(ArrayLiteralKoto literal, BindingScope scope)
     {
+        // SPEC 10.5.1 ¶1-2, 14.9.2 step 3 (PLAN G924 B2): under a call's argument probe the literal waits for its position, its elements
+        // bound on their own: they meet at the call's places (WholeEvidence), never as an independent literal's elements.
+        if (this.UnderArgumentProbe(literal) && this.DecidedLater(literal))
+        {
+            foreach (var part in literal.Elements)
+            {
+                if (!IsUnfittedLiteral(KotoHelper.UnwrapParentheses(part)))
+                {
+                    _ = this.BindNode(part, scope);
+                }
+            }
+
+            return Complete(literal, null);
+        }
+
         BoundType? established = null;
         BoundType? literalDefault = null;
         var collecting = this.collectingElements;
@@ -256,9 +328,10 @@ public sealed partial class Binding
         }
 
         this.collectingElements = collecting;
+        // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's.
         if (collected && established is null && this.DecidedLater(literal))
         {
-            return Complete(literal, null); // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's.
+            return Complete(literal, null);
         }
 
         // Without an established Type, or when an element failed (SPEC 23.1.2: the others are still bound), the waiting parts default.
@@ -274,6 +347,9 @@ public sealed partial class Binding
 
         if ((established ?? literalDefault) is not { } element)
         {
+            // Transitional, R7-E5 (FailUnselected's reason): an empty literal at a place decided later may already hold its located
+            // Unsupported_Kd (TypedByPlaceRule; NeverContinuationTest's failed part), so the miss keeps the slot's Fail; a Record would
+            // publish a dependent miss beside it.
             return this.Fail(literal, BindingFailure.MissingType, true);
         }
 
@@ -310,12 +386,12 @@ public sealed partial class Binding
         if (this.AwaitsPosition(source))
         {
             // SPEC 14.9.2 step 3, 4.3: it takes the established element Type; without one, the awaiting elements' own common Type.
-            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual, out _) ?? literalDefault;
+            literalDefault = literalDefault is null ? actual : this.PlaceCommonType(literalDefault, actual, source, out _) ?? literalDefault;
             return true;
         }
 
         var failure = default(ComparisonFailure);
-        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
+        var common = established is null ? actual : this.PlaceCommonType(established, actual, source, out failure);
         if (common is null)
         {
             this.FailMismatch(source, source, actual, established!, failure);
@@ -394,7 +470,8 @@ public sealed partial class Binding
         {
             if (actual.Kind != BoundTypeKind.FixedArray)
             {
-                this.FailExplained(ref this.arrayInferenceFailures, source, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.FixedArrayRequired, nested, Type: actual));
+                var site = SourceRef.Of(source);
+                this.RecordArrayInference(source, ArrayInferenceProblem.FixedArrayRequired, nested, [new(ProblemFactKind.Actual, site, this.report.Keep(actual)), new(ProblemFactKind.ExpectedForm, site, (long)MismatchForm.FixedArray)]);
                 failed = source;
                 return false;
             }
@@ -415,7 +492,7 @@ public sealed partial class Binding
         }
 
         var failure = default(ComparisonFailure);
-        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
+        var common = established is null ? actual : this.PlaceCommonType(established, actual, source, out failure);
         if (common is null)
         {
             this.FailMismatch(source, source, actual, established!, failure);
@@ -425,5 +502,37 @@ public sealed partial class Binding
 
         established = common;
         return true;
+    }
+
+    /// <summary>The `inferredArrayLengths` family's one accessor (DECISIONS BU-220): a pass family, the length an initializer supplied for
+    /// a written length hole `_` (SPEC 4.3.1), kept in the hole's module's NodeColumns at its SyntaxId (null for none). Its members keep the
+    /// names its readers use.</summary>
+    private readonly struct InferredArrayLengthRows(Binding binding)
+    {
+        internal BoundLength this[Koto hole]
+        {
+            set => HirTables.Of(hole).Families.InferredArrayLengths.Ref(hole.SyntaxId, binding) = value;
+        }
+
+        internal bool ContainsKey(Koto hole) => this.GetValueOrDefault(hole) is not null;
+
+        internal bool TryGetValue(Koto hole, [NotNullWhen(true)] out BoundLength? length) => (length = this.GetValueOrDefault(hole)) is not null;
+
+        internal BoundLength? GetValueOrDefault(Koto hole)
+            => hole.SyntaxOwner is { } table ? table.Hir.Families.InferredArrayLengths.Get(hole.SyntaxId, binding) : null;
+    }
+
+    /// <summary>The `arrayInferenceShapes` family's one accessor (DECISIONS BU-220): a pass family, the written fixed-array shape an empty
+    /// literal or a result-producing target takes its array evidence from (SPEC 4.3.1, 14.9.2), kept in the target's module's NodeColumns
+    /// at its SyntaxId (null for none). Its members keep the names its readers use.</summary>
+    private readonly struct ArrayInferenceShapeRows(Binding binding)
+    {
+        internal Koto this[Koto target]
+        {
+            set => HirTables.Of(target).Families.ArrayInferenceShapes.Ref(target.SyntaxId, binding) = value;
+        }
+
+        internal bool TryGetValue(Koto target, [NotNullWhen(true)] out Koto? shape)
+            => (shape = target.SyntaxOwner is { } table ? table.Hir.Families.ArrayInferenceShapes.Get(target.SyntaxId, binding) : null) is not null;
     }
 }

@@ -46,7 +46,8 @@ embedded and implemented.
   protocol; it has no compiler-recognized name or special startup hook.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.
 - A declaration the compiler implements is written in its container without a Body and carries `#Intrinsic` (or
-  `#Unsupported`; a linked constructor carries `#Lang`): `Console.writeStdout` in `Formatting.kimi`, the object
+  `#Unsupported`; a linked constructor carries `#Lang`, as does `Storage.viewStart`, a function whose calls the compiler
+  writes as a form, never as a call): `Console.writeStdout` in `Formatting.kimi`, the object
   factories and `clone` in `Intrinsics.kimi` (with the four `#Unsupported` Weak operations), Array's two constructors in
   `Array.kimi`, the storage operations in `Storage.kimi`, the raw operations in `Raw.kimi` and `Test.tempDirectory` in
   `Test.kimi`.
@@ -70,6 +71,7 @@ embedded and implemented.
   order of its entries, the internal declarations last); never derive them from source order. Ordinary helper
   declarations need no ID. A catalog entry without its declaration, or a `#Lang` that names no member or names one
   twice, fails library construction.
+- The library declares no parameter default, a lasting rule (DECISIONS R8-M32; `KimiLibraryShapeTest.TheLibraryDeclaresNoParameterDefault`).
 - Preserve reference identity through binding. Call lowering must use the
   recognized symbol (its lang item or its `Definition`), never a user-visible spelling.
 
@@ -121,8 +123,8 @@ such bodies, and the private `Storage.countOverflow`, `allocationSizeExceeded`, 
 primitives (SPEC 22.2). No callback carries the location: a call through an erased or generic Callable value has
 unknown environment effects, which `confined` users of `reserve`/`tryInsert`/`shrinkToFit` exclude, and a captured
 location would need a heap environment.
-Move the remaining operation bodies into Kimigayo over common memory/ownership
-primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
+Every Dictionary operation is a Kimigayo body over common memory/ownership
+primitives (DECISIONS R8-M8, R8-M11, R8-M12); add no Dictionary algorithm as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified
 typed ownership operations remain compiler responsibilities. Keep the original
 operation's Abort location when bridging platform failures. Nonempty literals initialize a live empty handle, acquire
@@ -140,8 +142,11 @@ an unmeasured runtime speed improvement.
 
 ## Text implementation policy
 
-Text and UTF-8 formatting operations currently use compiler-supplied LLVM IR,
-including the [generated Ryu conversion cores](../../third_party/ryu/README.md).
+Text and UTF-8 formatting are Kimigayo bodies. Three operations still use compiler-supplied LLVM IR: float
+conversion (`Storage.formatFloat`, with the [generated Ryu conversion cores](../../third_party/ryu/README.md)), i128
+decimal formatting (`Storage.formatInteger128`, an interim intrinsic, RQ16) and the erased writer's reservation
+(`Storage.erasedReserve`, a call through a code address) (DECISIONS R8-M16, R8-M18, R8-M22, R8-M30, R8-M34, R8-M46,
+R8-M48).
 This is an accepted implementation choice within Kimigayo's LLVM-based backend;
 portability alone does not require a rewrite in Kimigayo. LLVM IR implementation
 is not a language requirement, and retaining it does not imply that it is faster

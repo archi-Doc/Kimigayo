@@ -39,10 +39,10 @@ internal sealed partial class MirBuilder
         if (HirTables.PlanOf(node).Formatting!.Acquisition is null)
         {
             var bytes = this.Values(node);
-            var buffer = this.Hold(CallPlan.Of(node)!.ReturnType, node);
+            var buffer = this.Hold(CallPlan.Of(compilation.Binding, node)!.ReturnType, node);
             this.Heap(node, buffer);
             this.Made(buffer);
-            var writer = this.Hold(CallPlan.Of(node, 1)!.ReturnType, node);
+            var writer = this.Hold(CallPlan.Of(compilation.Binding, node, 1)!.ReturnType, node);
             this.Adapt(node, buffer, writer);
             this.Made(writer);
             this.Writes(node, writer, bytes, start, ref done);
@@ -51,28 +51,28 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            var storage = CallPlan.Of(node, 0)!.ArgumentOperations[0].Source!;
+            var storage = CallPlan.Of(compilation.Binding, node, 0)!.ArgumentOperations[0].Source!;
             var operand = ((InvocationKoto)((MacroKoto)node).Operand).ArgumentNodes[0];
-            var input = CallPlan.Of(HirTables.PlanOf(node).Formatting!.Acquisition!)!.ArgumentOperations[0]; // The writer's, a Reborrow (BU-27).
+            var input = CallPlan.Of(compilation.Binding, HirTables.PlanOf(node).Formatting!.Acquisition!)!.ArgumentOperations[0]; // The writer's, a Reborrow (BU-27).
             var secured = this.Secure(this.Operand(operand, expected: input.AdaptedType ?? input.ParameterType), operand).Place;
             this.located.Add((storage, secured));
-            if (!Binding.WritesText(CallPlan.Of(node, 0)!))
+            if (!Binding.WritesText(CallPlan.Of(compilation.Binding, node, 0)!))
             {
                 // SPEC 22.10.4: an embedded expression is evaluated only after a test that the adapter is healthy, the previous write's Ok
                 // result or, before the first segment, the adapter's status (the plan's last call); a text's write returns the recorded
                 // failure itself (SPEC 22.10.1).
-                this.Tested(CallPlan.Of(node, HirTables.PlanOf(node).Formatting!.Writes.Count)!, this.Done(ref done), node, storage: null, default);
+                this.Tested(CallPlan.Of(compilation.Binding, node, HirTables.PlanOf(node).Formatting!.Writes.Count)!, this.Done(ref done), node, storage: null, default);
             }
 
             var last = 0;
-            for (; CallPlan.Of(node, last + 1) is not null; last++)
+            for (; CallPlan.Of(compilation.Binding, node, last + 1) is not null; last++)
             {
-                this.Tested(CallPlan.Of(node, last)!, this.Done(ref done), node, storage: null, default); // Its writes; the last call, its status, left.
+                this.Tested(CallPlan.Of(compilation.Binding, node, last)!, this.Done(ref done), node, storage: null, default); // Its writes; the last call, its status, left.
             }
 
             this.body.Terminate(this.current, MirTerminator.Goto(this.Done(ref done), this.Info(node)));
             this.current = done;
-            this.Call(destination, CallPlan.Of(node, last)!, node, first: null);
+            this.Call(destination, CallPlan.Of(compilation.Binding, node, last)!, node, first: null);
         }
 
         CollectionsMarshal.SetCount(this.located, mark);
@@ -102,8 +102,8 @@ internal sealed partial class MirBuilder
         var owningArm = !length.IsConstant || length.Value == 0;
         var region = fixedArm ? this.Region(length, text) : default;
         var fixedBuffer = fixedArm ? this.Hold(this.FixedCall(length).Result, text) : default;
-        var buffer = owningArm ? this.Hold(CallPlan.Of(text)!.ReturnType, text) : default;
-        var writer = this.Hold(CallPlan.Of(text, 1)!.ReturnType, text);
+        var buffer = owningArm ? this.Hold(CallPlan.Of(compilation.Binding, text)!.ReturnType, text) : default;
+        var writer = this.Hold(CallPlan.Of(compilation.Binding, text, 1)!.ReturnType, text);
         var test = fixedArm && owningArm ? this.Positive(length, text) : default(MirPlace?);
         if (fixedArm)
         {
@@ -147,7 +147,7 @@ internal sealed partial class MirBuilder
             var scope = this.OpenScope(block: false);
             var line = this.Temp(BoundType.String, text);
             this.Finish(line, writer, buffer, this.Done(ref done), text);
-            this.Call(destination, call, node, first: null, text, this.Borrow(SemanticsKind.Ref, line, text));
+            this.Call(destination, call, node, first: null, (text, this.Borrow(SemanticsKind.Ref, line, text)));
             this.CloseScope(scope);
         }
 
@@ -214,7 +214,7 @@ internal sealed partial class MirBuilder
     {
         var make = compilation.Library.GetSymbol(KimiDeclarationId.TextFixed)!;
         var subst = compilation.Types.Synthesized(make, null, [null], [length]);
-        return (make, subst, TyCtxt.Signature(make, subst, -1, out _)!);
+        return (make, subst, compilation.Types.Signature(make, subst, -1, out _)!);
     }
 
     // A direct line's fixed end (Line), after the writer's last use: text() over a shared borrow of the FixedBuffer, its Ok view to
@@ -227,7 +227,7 @@ internal sealed partial class MirBuilder
         var result = this.Synthesized(KimiDeclarationId.FixedBufferText, this.body.TypeOf(fixedBuffer), at, node);
         this.CaseTest(result, 0, done, node);
         at = this.arguments.Count;
-        this.arguments.Add(MirOperand.Copy(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)));
+        this.arguments.Add(MirOperand.Copy(this.body.Project(compilation.Types, this.body.Project(compilation.Types, result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)));
         var line = compilation.Library.GetSymbol(KimiDeclarationId.WriteLineUtf8)!; // A body since R8-W1c-3.
         this.Invoke(destination, new(MirCalleeKind.Fn, line, compilation.Types.Synthesized(line, null, [], [])), at, node);
         this.CloseScope(scope);
@@ -263,7 +263,7 @@ internal sealed partial class MirBuilder
     private long Values(Koto node)
     {
         var bytes = 0L;
-        for (var i = 2; CallPlan.Of(node, i) is { } write; i++)
+        for (var i = 2; CallPlan.Of(compilation.Binding, node, i) is { } write; i++)
         {
             if (this.Bytes(write) is var count and >= 0)
             {
@@ -282,16 +282,16 @@ internal sealed partial class MirBuilder
     // allocates nothing, and the adapter's first reservation grows it once by its bytes, a deferred literal and its hint (SPEC 22.10.5).
     private void Heap(Koto node, MirPlace buffer)
     {
-        var heap = CallPlan.Of(node)!;
+        var heap = CallPlan.Of(compilation.Binding, node)!;
         var empty = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
-        this.Call(buffer, heap, node, null, heap.ArgumentOperations[0].Source, empty);
+        this.Call(buffer, heap, node, null, (heap.ArgumentOperations[0].Source, empty));
     }
 
     // An owning interpolation's internal adapter (its second call) into the writer over an exclusive borrow of its buffer.
     private void Adapt(Koto node, MirPlace buffer, MirPlace writer)
     {
-        var adapter = CallPlan.Of(node, 1)!;
-        this.Call(writer, adapter, node, null, adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node));
+        var adapter = CallPlan.Of(compilation.Binding, node, 1)!;
+        this.Call(writer, adapter, node, null, (adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node)));
     }
 
     // An owning interpolation's write positions (SPEC 22.10.3), each after the adapter's hint (SPEC 22.10.5; R3-10): Utf8Writer.hint's
@@ -302,10 +302,10 @@ internal sealed partial class MirBuilder
     // written (a constant has no effect, and string's built-in formatting writes its bytes with the same failure).
     private void Writes(Koto node, MirPlace writer, long bytes, int start, ref int done)
     {
-        var storage = CallPlan.Of(node, 2)!.ArgumentOperations[0].Source!;
-        var hint = this.body.Project(writer, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(writer)!, "hint"));
+        var storage = CallPlan.Of(compilation.Binding, node, 2)!.ArgumentOperations[0].Source!;
+        var hint = this.body.Project(compilation.Types, writer, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(writer)!, "hint"));
         var (later, values) = (bytes, start);
-        for (var k = 2; CallPlan.Of(node, k) is { } write; k++)
+        for (var k = 2; CallPlan.Of(compilation.Binding, node, k) is { } write; k++)
         {
             var count = this.Bytes(write);
             (later, values) = count < 0 ? (later, values + 1) : (later - count, values);
@@ -362,7 +362,7 @@ internal sealed partial class MirBuilder
         this.arguments.Add(MirOperand.Move(buffer));
         var result = this.Synthesized(KimiDeclarationId.HeapBufferIntoString, this.body.TypeOf(buffer), at, node);
         this.CaseTest(result, 0, done, node);
-        this.Use(destination, MirOperand.Move(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)), node);
+        this.Use(destination, MirOperand.Move(this.body.Project(compilation.Types, this.body.Project(compilation.Types, result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)), node);
         this.CloseScope(scope);
     }
 
@@ -376,7 +376,7 @@ internal sealed partial class MirBuilder
     {
         var function = compilation.Library.GetSymbol(id)!;
         var subst = compilation.Types.Synthesized(function, declaring, [], []);
-        var result = this.Hold(TyCtxt.Signature(function, subst, -1, out _)!, node);
+        var result = this.Hold(compilation.Types.Signature(function, subst, -1, out _)!, node);
         this.Invoke(result, new(MirCalleeKind.Fn, function, subst), at, node);
         return this.Made(result);
     }
@@ -386,7 +386,7 @@ internal sealed partial class MirBuilder
     private void Tested(CallPlan call, int done, Koto node, Koto? storage, MirPlace adapter)
     {
         var result = this.Hold(call.ReturnType, node);
-        this.Call(result, call, node, null, storage, storage is null ? default : this.Borrow(SemanticsKind.Uniq, adapter, node));
+        this.Call(result, call, node, null, (storage, storage is null ? default : this.Borrow(SemanticsKind.Uniq, adapter, node)));
         this.CaseTest(this.Made(result), 0, done, node);
     }
 }

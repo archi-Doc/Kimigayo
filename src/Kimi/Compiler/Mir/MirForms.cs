@@ -64,7 +64,7 @@ internal readonly record struct MirRvalue(
     // A PairAcquire's Use, with the borrow its exclusive case makes.
     internal static MirRvalue Acquire(int operand, MirRefKind kind) => new(MirRvalueKind.Use, (byte)kind, Start: operand, Count: 1);
 
-    internal static MirRvalue Ref(MirRefKind kind, MirPlace place, BoundType type) => new(MirRvalueKind.Ref, (byte)kind, place, Type: type);
+    internal static MirRvalue Ref(MirRefKind kind, MirPlace place, BoundType? type) => new(MirRvalueKind.Ref, (byte)kind, place, Type: type);
 
     // The two operands from the first.
     internal static MirRvalue Binary(MirBinaryOp op, int operands, bool proven) => new(
@@ -91,8 +91,9 @@ internal readonly record struct MirRvalue(
 
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
-    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, of the raw pointer Type to
-    // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
+    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, or of a raw pointer Place,
+    // whose elements start at its value (SPEC 5.3; Storage.viewStart's form), of the raw pointer Type to its element; its access is a raw
+    // borrow of the Place, as `&raw P[i]`'s is.
     internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
 
     // SPEC 4.8.1, 8.15.3 (G597): a keyed Storage, of a key selection whose key's start is open in the body (MirTypes.StartsAtStorage), which
@@ -101,7 +102,7 @@ internal readonly record struct MirRvalue(
     internal static MirRvalue Storage(MirPlace place, BoundType type, int operands)
         => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, operands, 2, Type: type);
 
-    internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
+    internal static MirRvalue Opaque(BoundType? type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
 
     // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer
     // below the operand's, which an object borrow borrows.
@@ -129,7 +130,8 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
 /// <see cref="Symbol"/> the library declaration of the compiler function it serves, under its Subst, whose parameters its first operands
 /// pass (those the builder adds follow them, MirDescriptors), or null for one without a library declaration, whose result holds no Loan
 /// (A3 E14, DECISIONS R4-M63); a Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken
-/// constant at <see cref="Arg"/> (DECISIONS R4-M41).</summary>
+/// constant at <see cref="Arg"/> (DECISIONS R4-M41; CallPlan.DeclaredSignature: for an abstract callee the signature the call selected
+/// among its Callable premises, whose bounds A4 reads, SPEC 8.11.4).</summary>
 internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Symbol = null, Subst? Subst = null, int Arg = 0, BindingSymbol? Contract = null)
 {
     internal static MirCallee Intrinsic(IntrinsicId id, BindingSymbol? declaration = null, Subst? subst = null)
@@ -158,9 +160,10 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
     }
 }
 
-/// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges) or a SwitchInt's
+/// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges), a SwitchInt's
 /// otherwise, whose value-target pairs are <see cref="Count"/> entries of <see cref="MirBody.Cases"/> from <see cref="Start"/>, as a
-/// Call's arguments are of <see cref="MirBody.Operands"/>. <see cref="Operand"/> is a SwitchInt's operand or a Value callee,
+/// Call's arguments are of <see cref="MirBody.Operands"/>, or a CaseSwitch's shared side, whose one entry is its exclusive side.
+/// <see cref="Operand"/> is a SwitchInt's operand, a CaseSwitch's decider (a TypeToken constant) or a Value callee,
 /// <see cref="Place"/> a Call's destination or the dropped Place, <see cref="CheckTarget"/> the block only the checks reach
 /// (-1: none), and <see cref="Places"/> whether a Call is a construction's insertion, not a call of the program: each operand a Move of
 /// a whole temp it transfers into the construction, the first the construction's exclusive borrow, formed in the Call's block
@@ -183,6 +186,9 @@ internal readonly record struct MirTerminator(
     internal static MirTerminator SwitchInt(MirOperand operand, int start, int count, int otherwise, SourceInfo source) =>
         new(MirTerminatorKind.SwitchInt, source, otherwise, Operand: operand, Start: start, Count: count);
 
+    internal static MirTerminator CaseSwitch(MirOperand decider, int exclusive, int shared, SourceInfo source) =>
+        new(MirTerminatorKind.CaseSwitch, source, shared, Operand: decider, Start: exclusive, Count: 1); // exclusive: its Cases entry.
+
     internal static MirTerminator Call(
         MirCallee callee,
         int start,
@@ -202,9 +208,12 @@ internal readonly record struct MirTerminator(
 /// <summary>A basic block: <see cref="Count"/> statements of <see cref="MirBody.Statements"/> from <see cref="Start"/>, then its terminator.</summary>
 internal record struct MirBlock(int Start, int Count, MirTerminator Terminator);
 
-/// <summary>A local: local 0 is the Return local, the Arg locals follow it (the receiver first), then Var, Temp and DropFlag locals.</summary>
+/// <summary>A local: local 0 is the Return local, the Arg locals follow it (the receiver first), then Var, Temp and DropFlag locals. Its
+/// Type is none (MIR's unknown Type, which agrees with any, MirTypes.Agree) exactly for a slot whose Type Binding failed with a reported
+/// record (its symbol's Type: a result, a parameter, a local, a binding; PLAN G1073) and for a temp holding a value of no Type derived from
+/// one; MirValidator bounds where such a local is accessed, and the analyses find nothing to judge in it (SPEC 23.1.2, rule W).</summary>
 internal readonly record struct MirLocal(
-    BoundType Type,
+    BoundType? Type,
     MirLocalKind Kind,
     SourceInfo Source,
     bool Mutable = false,
@@ -228,20 +237,27 @@ internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int1
 }
 
 /// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,
-/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects
-/// (null when its base does not admit it).
+/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index), the Type it selects
+/// (null when its base does not admit it) and, for an Index of a fixed array, its key's constant index (SPEC 15.1.3, in range or not, as
+/// Binding publishes it; the constant Place comparison reads, SPEC 15.6.2), else -1.
 /// Chains are independent of their roots, so equal prefixes share ids.</summary>
-internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type);
+internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type, int Position);
 
 internal readonly record struct MirSwitchCase(long Value, int Target);
 
-/// <summary>A static the body's Places root at: its symbol and Type, whether it is mutable and whether its value holds a raw pointer, an
-/// rc handle or a Weak of one at any depth (SPEC 8.11.2).</summary>
-internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType Type, bool Mutable, bool RawHolding);
+/// <summary>A static the body's Places root at: its symbol and Type (none where Binding failed it, as a <see cref="MirLocal"/>'s), whether
+/// it is mutable and whether its value holds a raw pointer, an rc handle or a Weak of one at any depth (SPEC 8.11.2).</summary>
+internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType? Type, bool Mutable, bool RawHolding);
 
-/// <summary>The site of an Opaque value: the syntax it replaces and the roots that syntax reads, writes or borrows, <see cref="Count"/>
-/// entries of <see cref="MirBody.OpaqueRoots"/> from <see cref="Start"/> (plan 5.4).</summary>
-internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
+/// <summary>The site of an Opaque value: the syntax it replaces and the uses of that syntax, <see cref="Count"/> Places of
+/// <see cref="MirBody.OpaqueUses"/> from <see cref="Start"/> (plan 5.4), each undecided (DECISIONS Z17): reported with the Opaque row's
+/// access (<see cref="MirDescriptors.IsUndecided"/>), which only A1 judges at the Place and every other reader at its root
+/// (<see cref="MirDescriptors.Judged"/>). The first <see cref="Kept"/> (at most <see cref="Count"/>) are an Error node's kept parts'
+/// Places, which the site takes as the invocation it replaces takes its inputs, so A5 activates the reservations they hold (DECISIONS
+/// Z17c, SPEC 15.6.7); 0 for every other site (a default's, which runs during the reservation, a derived value's, a jump's). The next
+/// <see cref="Enclosing"/> (after the kept ones) are enclosing parts: the replaced form designates a Place strictly within each, so A1
+/// checks its construction, not its value; every reader but A1 reads every use alike.</summary>
+internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count, int Kept, int Enclosing);
 
 /// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
 /// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure

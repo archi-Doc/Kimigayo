@@ -118,11 +118,14 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.10 (DECISIONS R5-M149, the owner's Q1 (a)): a root constructor whose Type has no layout, an unavailable C layout or a size over the
-    // limit, is called by no program that builds, so a Library does not generate it (checked only, no record); its twin is generated.
+    // limit, is called by no program that builds, so a Library does not generate it (checked only, no record); its twin is generated. A
+    // constructorless layer's body (MirBodyKind.Layer), whose `_0` is the Receiver, is checked only though its Type has a layout
+    // (DECISIONS R7-M115, the owner's (a2)).
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S\n    public init() => ()\n", false)]
     [InlineData(BigStruct + "    public init(n: i32)\n        self.a = [300000000 of 0]\n        self.n = n\n", false)]
     [InlineData("struct S\n    public init() => ()\n", true)]
+    [InlineData("struct S\n    public let p: i32\n    public var n: i32 = 1\n", false)]
     public void AConstructorWithoutAReceiverLayoutIsCheckedOnly(string source, bool generated)
     {
         var c = MirBuildTest.Compile(source + "let zz = 1\n");

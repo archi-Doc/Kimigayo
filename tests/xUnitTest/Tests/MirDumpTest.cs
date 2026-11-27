@@ -57,12 +57,13 @@ public sealed class MirDumpTest
     public void AKeyedStorageDumpsItsStartAndKey(string key, string expected)
     {
         var text = new StringBuilder();
-        MirDump.Write(MirValidatorTest.KeyedStorage(key, 2).Body, text, new MirDropTable());
+        MirDump.Write(MirValidatorTest.KeyedStorage("v", key, 2).Body, text, new MirDropTable());
         Assert.Contains(expected, text.ToString(), StringComparison.Ordinal);
     }
 
     // SPEC 14.6.1 (PLAN G427): an iteration body Binding rejected (Op Error; tests/diagnostics/syntax.json `while-header-cut`) is a
-    // statement's value, its derived Opaque value in one temp of its own, ended before the next iteration.
+    // statement's value, its derived Opaque value in one temp of its own, of no Type (the body's Type failed: PLAN G1073's
+    // MirBuilder.Held), ended before the next iteration.
     [Fact]
     public void ARejectedIterationBodyIsOneStatementValue()
     {
@@ -77,7 +78,7 @@ public sealed class MirDumpTest
               _0: () return
               _1: () temp s1
               _2: bool temp s1
-              _3: () temp s1
+              _3: ? temp s1
               s1: lexical in s0
               opaque 0:
               opaque 1:
@@ -91,7 +92,7 @@ public sealed class MirDumpTest
               bb2:
                   StorageDead(_2) s1
                   StorageLive(_3) s1
-                * _3 = opaque 1: () s1
+                * _3 = opaque 1: ? s1
                   StorageDead(_3) s1
                   goto bb1 s1
               bb3:

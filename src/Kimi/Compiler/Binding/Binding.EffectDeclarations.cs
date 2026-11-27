@@ -6,9 +6,9 @@
 //   (PrepareVirtualEffectBounds), with the reads of those tables (DeclaredEffectBound, AvailableEffectBounds).
 // - Inputs: the pass's Contract shapes, bound requirement headers, Constraint facts and validated virtual declarations;
 //   PrepareEffectBounds runs once per pass after them and before conformances are verified.
-// - Outputs: BoundContract.EffectBounds, boundedRequirements, callableEffectClauses, virtualEffectBounds, and one rejection
-//   fact per invalid item (EffectBoundRejection), with a misplaced item's selector's own as its second, published as
-//   InvalidEffectBound_Kd at the item (ReportEffectBound).
+// - Outputs: BoundContract.EffectBounds, boundedRequirements, callableEffectClauses, virtualEffectBounds, one rejection per
+//   invalid item (EffectBoundRejection, which AppliesBound reads), and its problem at the item, with a misplaced item's selector's own
+//   as a second (RecordEffectRejection), published as InvalidEffectBound_Kd (ReportEffectRejection).
 // - Invariants: the position of an item in the tree is decided by Misplaced alone, before its position's own checks (the parser
 //   reports and drops an item that starts a body item outside a leading region, DECISIONS G223); an item AppliesBound
 //   rejects supplies no bound (SPEC 8.11.3); every table is rebuilt per pass in reused storage; a rejection records facts,
@@ -24,25 +24,27 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.3: every bound declared in this pass, for requirement calls whose conforming Type is concrete.
-    private readonly List<BoundEffectBound> boundedRequirements = [];
-
     // The confined bound each original virtual function declares, or null (virtual-dispatch 6).
     private readonly VirtualEffectBoundRows virtualEffectBounds;
 
-    // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
-    private readonly List<BoundContract> contractShapes = [];
+    // SPEC 8.11.1: the cause of each rejected effect item, recorded only when one fails. The store is reused across passes, so a warm rebind allocates nothing.
+    private readonly EffectBoundRejectionRows effectBoundRejections;
+
+    // SPEC 8.11.3: every bound declared in this pass, for requirement calls whose conforming Type is concrete: the running pass's part
+    // (PassPart, EnterPass); a reader outside the pass's own steps reads the composed view.
+    private List<BoundEffectBound> boundedRequirements;
+
+    // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes: the
+    // running pass's part (PassPart, EnterPass).
+    private List<BoundContract> contractShapes;
 
     // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list: the running pass's part (PassPart, EnterPass).
     private List<IsKoto> callableEffectClauses;
 
-    // SPEC 8.11.1: the cause of each rejected effect item, and of a misplaced item's selector judged on its own (keyed by the selector),
-    // recorded only when one fails. The store is reused across passes, so a warm rebind allocates nothing.
-    private Dictionary<Koto, EffectBoundRejection>? effectBoundRejections;
     private EffectSyntaxCompleter? effectSyntax;
 
     // SPEC 8.11.1: why an effect item declares no bound.
-    private enum EffectRejection : byte
+    internal enum EffectRejection : byte
     {
         SpecificationOutsideContract,
         ClauseOutsideRequirement,
@@ -103,10 +105,11 @@ public sealed partial class Binding
     /// <param name="requirement">The Requirement Identity.</param>
     /// <param name="conforming">The conforming Type of the call.</param>
     /// <param name="scope">The scope whose premises hold at the call.</param>
+    /// <param name="site">Where its proofs are asked from (QuerySite; PLAN G651 a1).</param>
     /// <param name="evidence">Optional complete provenance for an editor projection; ordinary proofs allocate none.</param>
     /// <param name="reference">The requirement's exact declaring Contract reference; virtual functions have none.</param>
     /// <returns>Whether confined is available.</returns>
-    internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, List<EffectEvidence>? evidence = null, BindingSymbol? reference = null)
+    internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, QuerySite site, List<EffectEvidence>? evidence = null, BindingSymbol? reference = null)
     {
         if (requirement.IsVirtual)
         {
@@ -120,9 +123,10 @@ public sealed partial class Binding
         }
 
         var bounded = false;
-        for (var i = 0; !bounded && i < this.boundedRequirements.Count; i++)
+        var bounds = this.boundedRequirementsView; // Every pass's bounds: the requirement may be another pass's (a library Contract's).
+        for (var i = 0; !bounded && i < bounds.Count; i++)
         {
-            bounded = ReferenceEquals(this.boundedRequirements[i].Requirement.Declaration, requirement);
+            bounded = ReferenceEquals(bounds[i].Requirement.Declaration, requirement);
         }
 
         if (!bounded || conforming is null)
@@ -170,10 +174,10 @@ public sealed partial class Binding
             for (var i = 0; i < conformances.Count; i++)
             {
                 var conformance = conformances[i];
-                for (var p = 0; p < conformance.Paths.Count; p++)
+                for (var p = 0; p < this.impls.PathsOf(conformance).Count; p++)
                 {
-                    var path = conformance.Paths[p];
-                    if (path.IsVerified && this.ProveConformanceConditions(path, conforming, scope) == ConstraintProof.Proven)
+                    var path = this.impls.PathsOf(conformance)[p];
+                    if (path.IsVerified && this.ProveConformanceConditions(path, conforming, scope, site) == ConstraintProof.Proven)
                     {
                         Add(this.SubstituteRequirementContract(conformance.Contract, conforming).Contract!, type.Declaration, null, path.Declaration);
                     }
@@ -218,7 +222,7 @@ public sealed partial class Binding
     /// <param name="at">The call.</param>
     /// <returns>Whether confined is available.</returns>
     internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, Koto at)
-        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: (at as InvocationKoto)?.BoundCall?.RequirementContract);
+        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), at, reference: at is InvocationKoto invocation ? this.CallOf(invocation)?.RequirementContract : null);
 
     private static EffectBoundKoto? OwnEffectBound(BoundContract shape, BoundRequirement requirement)
     {
@@ -245,18 +249,21 @@ public sealed partial class Binding
         _ => EffectRejection.OutsideContract,
     };
 
+    // SPEC 23.1.2: a selector Parsing rejected (F.6.2's ContractSelector, or the ContractReference in its group) is judged there; every
+    // reader of the selector's reference (an applying item's target, a misplaced item's own judgment) rests on that record.
+    private static bool SelectorRestsOnParsing(Koto selector)
+        => IsRecovery(selector, out _) || (selector is ParenthesizedTypeKoto { Type: { } written } && IsRecovery(written, out _));
+
     // SPEC 8.11.1: the bounds of every Contract, checked once per pass after the requirement headers are bound and before
     // conformances are verified against them.
     private void PrepareEffectBounds()
     {
-        this.effectBoundRejections?.Clear();
         this.boundedRequirements.Clear();
         for (var i = 0; i < this.contractShapes.Count; i++)
         {
             this.EnsureEffectBounds(this.contractShapes[i]);
         }
 
-        this.callablePremiseFailures.Clear();
         this.PrepareCallableEffects();
         this.PrepareVirtualEffectBounds();
     }
@@ -450,6 +457,11 @@ public sealed partial class Binding
     private BoundRequirement? EffectTarget(BoundContract shape, EffectBoundKoto effect, BindingScope scope)
     {
         var selector = effect.Selector!;
+        if (SelectorRestsOnParsing(selector))
+        {
+            return null;
+        }
+
         if (this.SelectorReference(selector, scope, out var named, out var reference) is { } fault)
         {
             this.RejectEffectBound(effect, fault);
@@ -462,7 +474,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
             var candidate = shape.Ancestors[i];
-            if (ReferenceEquals(candidate, reference) || (IsBoundContractReference(candidate) && IsBoundContractReference(reference) && this.SameConformanceType(candidate.Type, reference.Type, scope)))
+            if (ReferenceEquals(candidate, reference) || (IsBoundContractReference(candidate) && IsBoundContractReference(reference) && this.SameConformanceType(candidate.Type, reference.Type, scope, effect)))
             {
                 ancestor = candidate;
                 matches++;
@@ -472,12 +484,31 @@ public sealed partial class Binding
         if (ancestor is null || matches > 1)
         {
             var kind = matches > 1 ? EffectRejection.AmbiguousAncestor : ReferenceEquals(declaration, shape.Symbol.Declaration) ? EffectRejection.OwnContract : EffectRejection.NotAncestor;
-            this.RejectEffectBound(effect, new(kind, Symbol: matches > 1 ? named : shape.Symbol, Count: matches));
+            // The Contract the cause names (none for OwnContract, whose cause is the selector itself).
+            this.RejectEffectBound(effect, new(kind, Symbol: kind == EffectRejection.OwnContract ? null : matches > 1 ? named : shape.Symbol, Count: matches));
             return null;
         }
 
         CompleteQualifier(selector, named, ancestor);
-        var name = effect.Name is IdentifierNameKoto identifier ? identifier.IdentifierName : null;
+        // The requirement Name: either leaf of one Name (the group reader's or the Type reader's, as IsAssociatedTypeName reads it), or the
+        // Error of a path that failed in Parsing (its record is reported). Parsing builds no other form.
+        string? name;
+        switch (effect.Name)
+        {
+            case IdentifierNameKoto identifier:
+                name = identifier.IdentifierName;
+                break;
+            case TypeSemanticsKoto { Type: null } leaf:
+                name = leaf.Identifier;
+                break;
+            case ErrorKoto:
+                name = null;
+                break;
+            default:
+                this.Fail(effect, BindingFailure.Internal);
+                return null;
+        }
+
         BoundRequirement? target = null;
         var found = 0;
         var requirements = ancestor.Contract!.Requirements;
@@ -501,31 +532,28 @@ public sealed partial class Binding
     }
 
     private void RejectEffectBound(Koto subject, EffectBoundRejection rejection)
-        => (this.effectBoundRejections ??= new(ReferenceEqualityComparer.Instance))[subject] = rejection;
+        => this.effectBoundRejections[subject] = rejection;
 
     // SPEC 8.11.3: whether an effect item supplies its bound. A misplaced item, one a declaration check rejected and a recovery,
     // whose checks rest on its syntax Error, supply none; every reader of an item asks this first.
     private bool AppliesBound(EffectBoundKoto bound)
-        => Misplaced(bound) is null && this.effectBoundRejections?.ContainsKey(bound) != true && !IsRecovery(bound, out _);
+        => Misplaced(bound) is null && !this.effectBoundRejections.ContainsKey(bound) && !IsRecovery(bound, out _);
 
     private BoundType? BindEffectBound(EffectBoundKoto effect)
     {
         var recovery = effect.CodeContext.RecoveryCause(effect) is not null;
+        EffectBoundRejection? own = null;
         if (!recovery && Misplaced(effect) is { } position)
         {
-            // SPEC 23.1.2: the selector's reference reads no position, so a misplaced item's selector is judged on its own, its own record.
+            // SPEC 23.1.2: the selector's reference reads no position, so a misplaced item's selector is judged on its own, its own problem.
             // No verdict of the item reads that judgment, so it runs with no frame open (SuspendConsultation), as an applying item's and a
             // Callable list's do: nothing it reads (a syntax Error among its Type arguments) becomes the item's prerequisite.
             this.RejectEffectBound(effect, new(position));
-            if (effect.Selector is { } written)
+            if (effect.Selector is { } written && !SelectorRestsOnParsing(written))
             {
                 var frame = this.SuspendConsultation();
-                var fault = this.SelectorReference(written, this.ConstraintScope(effect), out _, out _);
+                own = this.SelectorReference(written, this.ConstraintScope(effect), out _, out _);
                 this.ResumeConsultation(frame);
-                if (fault is { } own)
-                {
-                    this.RejectEffectBound(written, own);
-                }
             }
         }
 
@@ -542,35 +570,87 @@ public sealed partial class Binding
             return Complete(effect, null);
         }
 
-        return this.effectBoundRejections?.ContainsKey(effect) == true ? this.Fail(effect, BindingFailure.InvalidEffectBound) : Complete(effect, BoundType.Unit);
-    }
-
-    // An item's record, and its selector's own (judged on its own, BindEffectBound) as its second record (DIAGNOSTICS 4.3, several
-    // problems of one node).
-    private void ReportEffectBound(EffectBoundKoto effect, DiagnosticRequirement requirement)
-    {
-        if (this.effectBoundRejections?.TryGetValue(effect, out var rejection) != true)
+        if (!this.effectBoundRejections.TryGetValue(effect, out var rejection))
         {
-            effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd);
-            return;
+            return Complete(effect, BoundType.Unit);
         }
 
-        this.ReportEffectRejection(effect, requirement, rejection, 0);
-        if (effect.Selector is { } selector && this.effectBoundRejections.TryGetValue(selector, out var own))
+        // DIAGNOSTICS 4.3 (several problems of one node): the item's rejection, and a misplaced item's selector's own as its second.
+        this.RecordEffectRejection(effect, rejection, 0);
+        if (own is { } fault)
         {
-            this.ReportEffectRejection(effect, requirement, own, 1);
+            this.RecordEffectRejection(effect, fault, 1);
         }
+
+        return null;
     }
 
-    // SPEC 8.11.1: the Reason names the cause, the Note its path and the related locations the bounded declaration (a function
-    // requirement, an original virtual slot or the Constraint of a Callable effect list) and an earlier bound. The text is formed
-    // here, only for published records.
-    private void ReportEffectRejection(EffectBoundKoto effect, DiagnosticRequirement requirement, in EffectBoundRejection rejection, ushort condition)
+    // SPEC 8.11.1: a rejection's problem at the item: its kind (Reason), the bounded declaration (Related, role 0: a function requirement,
+    // an original virtual slot or a Callable effect list's Constraint), an earlier bound (role 1), the Contract the rejection names (role 2,
+    // its declaration) and the count it states (Count).
+    private void RecordEffectRejection(EffectBoundKoto effect, in EffectBoundRejection rejection, ushort condition)
     {
+        Span<ProblemFact> facts = stackalloc ProblemFact[5];
+        var count = 0;
+        facts[count++] = new(ProblemFactKind.Reason, SourceRef.Of(effect), (long)rejection.Kind);
+        if (rejection.Target is { } target)
+        {
+            facts[count++] = new(ProblemFactKind.Related, this.FactSite(target), 0);
+        }
+
+        if (rejection.Earlier is { } earlier)
+        {
+            facts[count++] = new(ProblemFactKind.Related, this.FactSite(earlier), 1);
+        }
+
+        if (rejection.Symbol?.Declaration is { } contract)
+        {
+            facts[count++] = new(ProblemFactKind.Related, this.FactSite(contract), 2);
+        }
+
+        if (rejection.Count != 0)
+        {
+            facts[count++] = new(ProblemFactKind.Count, SourceRef.Of(effect), rejection.Count);
+        }
+
+        this.Record(effect, BindingFailure.InvalidEffectBound, facts[..count], condition);
+    }
+
+    // SPEC 8.11.1: a rejection's record from its problem's facts: the Reason names the cause, the Note its path and the related locations
+    // the bounded declaration, an earlier bound and the Contract the cause names. The text is formed here, only for published records.
+    private void ReportEffectRejection(EffectBoundKoto effect, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        Koto? target = null, earlier = null, contract = null;
+        var found = 0;
+        foreach (ref readonly var fact in this.report.Facts(index))
+        {
+            if (fact.Kind == ProblemFactKind.Related)
+            {
+                var at = this.compilation.SyntaxOf(fact.Site);
+                if (fact.Value == 0)
+                {
+                    target = at;
+                }
+                else if (fact.Value == 1)
+                {
+                    earlier = at;
+                }
+                else
+                {
+                    contract = at;
+                }
+            }
+            else if (fact.Kind == ProblemFactKind.Count)
+            {
+                found = (int)fact.Value;
+            }
+        }
+
+        var kind = (EffectRejection)this.FactOf(index, ProblemFactKind.Reason)!.Value.Value;
         var selector = effect.Selector?.ToString();
-        var name = (rejection.Target as FunctionKoto)?.Name ?? effect.Name?.ToString();
+        var name = (target as FunctionKoto)?.Name ?? effect.Name?.ToString();
         var spelling = Constants.ConfinedKeyword;
-        var (cause, note) = rejection.Kind switch
+        var (cause, note) = kind switch
         {
             EffectRejection.SpecificationOutsideContract => ("an effect specification outside a Contract's items",
                 "An effect specification is a Contract item and bounds a requirement the Contract inherits"),
@@ -579,27 +659,28 @@ public sealed partial class Binding
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
             EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions"),
             EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector"),
-            EffectRejection.NotReference => ($"{selector} is not a reference to {rejection.Symbol!.Name}", $"This does not form a reference to {rejection.Symbol!.Name}: every generic Contract or Container on its path is named with its Type arguments (SPEC 8.5.1, 9.7.1)"),
+            EffectRejection.NotReference => ($"{selector} is not a reference to {Named()}", $"This does not form a reference to {Named()}: every generic Contract or Container on its path is named with its Type arguments (SPEC 8.5.1, 9.7.1)"),
             EffectRejection.OwnContract => ($"{selector} is this Contract", "A Contract bounds its own requirement with an effect clause in that requirement's Constraint region"),
-            EffectRejection.NotAncestor => ($"{selector} is not an ancestor of {rejection.Symbol!.Name}", "An effect specification bounds a requirement that the Contract inherits"),
-            EffectRejection.AmbiguousAncestor => ($"{selector} names {rejection.Count} ancestors", $"The Contract refines {rejection.Count} references of {rejection.Symbol!.Name}"),
-            EffectRejection.NoRequirement => ($"{rejection.Symbol!.Name} has no function requirement {name}", null),
-            EffectRejection.OverloadedRequirement => ($"{name} names {rejection.Count} function requirements of {rejection.Symbol!.Name}", "An effect specification bounds exactly one function requirement"),
-            EffectRejection.Duplicate => rejection.Target switch
+            EffectRejection.NotAncestor => ($"{selector} is not an ancestor of {Named()}", "An effect specification bounds a requirement that the Contract inherits"),
+            EffectRejection.AmbiguousAncestor => ($"{selector} names {found} ancestors", $"The Contract refines {found} references of {Named()}"),
+            EffectRejection.NoRequirement => ($"{Named()} has no function requirement {name}", null),
+            EffectRejection.OverloadedRequirement => ($"{name} names {found} function requirements of {Named()}", "An effect specification bounds exactly one function requirement"),
+            EffectRejection.Duplicate => target switch
             {
                 IsKoto => ($"the Callable Constraint already declares {spelling}", $"A Callable Constraint declares {spelling} at most once"),
                 FunctionKoto { IsVirtual: true } => ($"{name} already has {spelling}",
                     $"An original virtual function declares {spelling} for its slot at most once"),
-                _ => ($"{name} already has {spelling}", $"{DeclaringContract(rejection.Earlier!)?.BoundSymbol?.Name} already declares {spelling} for {name}; " +
+                _ => ($"{name} already has {spelling}", $"{DeclaringContract((EffectBoundKoto)earlier!)?.BoundSymbol?.Name} already declares {spelling} for {name}; " +
                     "each declaration supplies a bound once, though a Contract may restate a bound of an ancestor"),
             },
             _ => throw new UnreachableException(),
         };
 
-        var related = rejection.Target is null && rejection.Earlier is null ? null : new (string Role, Koto At, string? Label)[(rejection.Target is null ? 0 : 1) + (rejection.Earlier is null ? 0 : 1)];
-        if (rejection.Target is { } target)
+        var related = new (string Role, Koto At, string? Label)[(target is null ? 0 : 1) + (earlier is null ? 0 : 1) + (contract is null ? 0 : 1)];
+        var r = 0;
+        if (target is not null)
         {
-            related![0] = target switch
+            related[r++] = target switch
             {
                 IsKoto => ("constraint", target, "the Constraint of the effect list"),
                 FunctionKoto { IsVirtual: true } => ("declaration", target, "the original virtual slot"),
@@ -607,12 +688,20 @@ public sealed partial class Binding
             };
         }
 
-        if (rejection.Earlier is { } earlier)
+        if (earlier is not null)
         {
-            related![^1] = ("bound", earlier, "the bound declared earlier");
+            related[r++] = ("bound", earlier, "the bound declared earlier");
         }
 
-        effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd, note: note, evidence: [cause], related: related, condition: condition);
+        if (contract is not null)
+        {
+            related[r] = ("contract", contract, $"the Contract {Named()}");
+        }
+
+        effect.ReportIn(store, problem.Requirement, problem.Code, note: note, evidence: [cause], related: related.Length == 0 ? null : related, condition: problem.Condition);
+
+        // The kinds that name a Contract hold its declaration (RecordEffectRejection's role 2): a missing one is a broken contract.
+        string Named() => (contract as DeclarationContainerKoto)?.Name ?? throw new InvalidOperationException("An effect rejection that names a Contract holds no Contract (InternalInvariant).");
 
         static string EffectOwner(EffectBoundKoto effect)
             => effect.Parent switch
@@ -638,8 +727,9 @@ public sealed partial class Binding
         }
     }
 
-    // Target: the declaration the item bounds (a function requirement, an original virtual function or a Callable Constraint).
-    private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Target = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0);
+    // Target: the declaration the item bounds (a function requirement, an original virtual function or a Callable Constraint); Symbol: the
+    // Contract the cause names (NotReference, NotAncestor, AmbiguousAncestor, NoRequirement, OverloadedRequirement), a related location.
+    internal readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Target = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0);
 
     /// <summary>The `virtualEffectBounds` family's one accessor (DECISIONS BU-220): a pass family, a virtual function's confining effect bound,
     /// kept in its module's NodeColumns at its SyntaxId; no bound (null) and no row are the same to every reader, so null is the column's
@@ -655,6 +745,28 @@ public sealed partial class Binding
             => function.SyntaxOwner is { } table ? table.Hir.Families.VirtualEffectBounds.Get(function.SyntaxId, binding) : null;
 
         internal bool TryGetValue(FunctionKoto function, [NotNullWhen(true)] out EffectBoundKoto? bound) => (bound = this.GetValueOrDefault(function)) is not null;
+    }
+
+    /// <summary>The `effectBoundRejections` family's one accessor (DECISIONS BU-220): a pass family, the cause of a rejected effect item, stored with the item's failure by the recorder (RecordedFact); a present row is
+    /// Rejected, since a rejection's default is a kind. Its members keep the names its readers use.</summary>
+    private readonly struct EffectBoundRejectionRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(bool Rejected, EffectBoundRejection Rejection), PassCounter> Family(ref NodeColumns columns) => ref columns.EffectBoundRejections;
+
+        internal EffectBoundRejection this[Koto subject]
+        {
+            set => binding.SetRecordedFact(subject, Family, (true, value));
+        }
+
+        internal bool ContainsKey(Koto subject) => this.TryGetValue(subject, out _);
+
+        internal bool TryGetValue(Koto subject, out EffectBoundRejection rejection)
+        {
+            var row = binding.RecordedFact(subject, Family);
+            rejection = row.Rejection;
+            return row.Rejected;
+        }
     }
 }
 

@@ -8,8 +8,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The construction qualifiers that leave their own slots open (ConstructionTargetType), for the pass.
-    private readonly HashSet<Koto> inferredConstructionTargets = new(ReferenceEqualityComparer.Instance);
+    private readonly InferredConstructionTargetRows inferredConstructionTargets;
 
     // A container keeps its own slots first, followed by its parent's effective slots.
     // Slot symbols retain their original binder and ordinal; spelling is not identity.
@@ -129,6 +128,19 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 9.7, F.5: the path a container reference is written by: below transparent wrappers, a root name's operand and a Constructed
+    // Type's head, the node whose qualifier (a MemberAccess's Left) gives the environment.
+    private static Koto ContainerPath(Koto syntax)
+    {
+        var path = UnwrapTypeSyntax(syntax);
+        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
+        {
+            path = UnwrapTypeSyntax(root.Operands[0]);
+        }
+
+        return path is GenericsKoto generic ? UnwrapTypeSyntax(generic.Identifier!) : path;
+    }
+
     // SPEC 15.4.4, 9.7.2: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no clause
     // of its declaration relates, is inferred from the call. Binding has no inference variables in bodies yet, so such a call is one
     // Unsupported at the qualifier, never a failed selection or a missing Origin. A written part of the qualifier that failed
@@ -160,21 +172,21 @@ public sealed partial class Binding
 
     // SPEC 15.3.1: a binding set introduces a new set name and never applies an existing Origin or set. The later set is the location
     // and the first declaration of the name is related.
-    private void ReportDuplicateBindingSet(TypeSemanticsKoto annotation, string name, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportDuplicateBindingSet(TypeSemanticsKoto annotation, DiagnosticCollection? store, string name, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var earlier = this.EarlierBindingName(annotation, name);
         var note = $"A binding set introduces a new set name and never applies an existing Origin or set (SPEC 15.3.1); {name} is already declared in this scope";
         if (earlier is not { } declaration)
         {
-            annotation.Report(requirement, code, note: note, evidence: [name]);
+            annotation.ReportIn(store, requirement, code, note: note, evidence: [name]);
         }
         else if (declaration.Span is { } span)
         {
-            annotation.Report(requirement, code, note: note, evidence: [name], relatedSpans: [("declaration", declaration.At, span, "Origin slot")]);
+            annotation.ReportIn(store, requirement, code, note: note, evidence: [name], relatedSpans: [("declaration", declaration.At, span, "Origin slot")]);
         }
         else
         {
-            annotation.Report(requirement, code, note: note, evidence: [name], related: [("declaration", declaration.At, "first declaration")]);
+            annotation.ReportIn(store, requirement, code, note: note, evidence: [name], related: [("declaration", declaration.At, "first declaration")]);
         }
     }
 
@@ -256,13 +268,18 @@ public sealed partial class Binding
 
     // SPEC 9.7, 9.7.1, 10.8.1: a construction qualifier whose own Type-argument list is omitted: its environment from the path, its own
     // arguments those of `supplied`, else its own parameters, open, and the qualifier an inferred construction target, which the
-    // construction completes with its solved Type.
+    // construction completes with its solved Type. With no own parameters the path forms the whole Type, and the qualifier is its
+    // formation site (FormedTypeRows, PLAN G1278).
     private BoundType? ConstructionTargetType(Koto syntax, BindingSymbol symbol, BindingScope scope, BoundType? supplied)
     {
         var own = ((DeclarationContainerKoto)symbol.Declaration).GenericParameterNodes.Count;
         var arguments = own == 0 ? default : ((BoundType[])(supplied ?? this.SelfType(symbol)).Components).AsSpan(0, own);
         var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), arguments);
-        if (type is not null && own != 0 && supplied is null)
+        if (type is not null && own == 0)
+        {
+            FormedTypeRows.Add(syntax, this.formingBody);
+        }
+        else if (type is not null && supplied is null)
         {
             this.inferredConstructionTargets.Add(syntax);
         }
@@ -277,7 +294,7 @@ public sealed partial class Binding
         var inherited = parent?.BoundSymbol?.Schema;
         if (own.Length != declaration.GenericParameterNodes.Count)
         {
-            return this.FailExplained(ref this.arityFailures, syntax, BindingFailure.InvalidTypeFormation, (symbol, declaration.GenericParameterNodes.Count, own.Length, false));
+            return this.RecordArity(syntax, symbol, declaration.GenericParameterNodes.Count, own.Length);
         }
 
         BoundType? environment = this.ImportedEnvironment(syntax);
@@ -286,18 +303,7 @@ public sealed partial class Binding
             return environment;
         }
 
-        var path = UnwrapTypeSyntax(syntax);
-        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
-        {
-            path = UnwrapTypeSyntax(root.Operands[0]);
-        }
-
-        if (path is GenericsKoto generic)
-        {
-            path = UnwrapTypeSyntax(generic.Identifier!);
-        }
-
-        if (path is MemberAccessKoto member)
+        if (ContainerPath(syntax) is MemberAccessKoto member)
         {
             var qualifier = this.TypeName(member.Left, scope);
             if (qualifier?.Declaration is DeclarationContainerKoto container && !container.IsRoot)
@@ -305,25 +311,27 @@ public sealed partial class Binding
                 environment = this.BindContainerQualifier(member.Left, qualifier, scope, context);
                 if (environment is null)
                 {
-                    return null;
+                    return this.CompleteDependent(syntax, member.Left); // SPEC 23.1.2 (rule W): the qualifier's formation record.
                 }
 
                 if (IsCore(qualifier) && symbol.Kind == BindingSymbolKind.Type && this.AlsoAssociated(environment, symbol.Name, member, scope))
                 {
-                    return this.Fail(member, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
+                    return this.Record(member, BindingFailure.Ambiguous, [], unresolved: true); // SPEC 9.7.3: it resolves both ways (a flag).
                 }
 
-                if (!ReferenceEquals(container, parent))
-                {
-                    var selected = this.LookupTypeMember(environment, symbol.Name, scope, typeRole: true);
-                    environment = ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
-                }
+                environment = this.QualifierEnvironment(environment, symbol, container, parent, scope, syntax);
+            }
+            else if (qualifier is null && HirTables.LookupOf(UseNode(member.Left)) == PathEnd.Projection && UseNode(member.Left).BoundType is { Symbol: { } formed } projected)
+            {
+                // SPEC 9.6, 8.5.2 (PLAN G724 (b)): after a projection the qualifier is its formed normal form (BindAssociatedProjection).
+                var selected = ReferenceEquals(formed.Declaration, parent) ? default : this.LookupMember(projected, symbol.Name, scope, LookupRole.Qualifier);
+                environment = ReferenceEquals(formed.Declaration, parent) ? projected : ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
             }
         }
 
         if (inherited is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 })
         {
-            return this.types.Intern(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
+            return this.FormReference(symbol, own, default, default);
         }
 
         if (environment is null)
@@ -340,27 +348,34 @@ public sealed partial class Binding
 
         if (environment is null || environment.Components.Count != inherited.GenericSlots.Count)
         {
-            return this.FailExplained(ref this.arityFailures, syntax, BindingFailure.InvalidTypeFormation, (parent!.BoundSymbol!, inherited.GenericSlots.Count, environment?.Components.Count ?? 0, true));
+            return this.RecordArity(syntax, parent!.BoundSymbol!, inherited.GenericSlots.Count, environment?.Components.Count ?? 0);
         }
 
-        var count = own.Length + environment.Components.Count;
+        return this.FormReference(symbol, own, (BoundType[])environment.Components, (BoundOrigin[])environment.OriginArguments);
+    }
+
+    // SPEC 9.7, 9.7.1: a container reference's Type from its own arguments and its environment's components and Origin arguments, the
+    // one formation of it: the own arguments, then the environment's; the declaration's own Origin slots empty, then the environment's
+    // Origins. Pure: it interns, and writes no node, record or table. With no environment it is the declaration's Type at `own`.
+    private BoundType FormReference(BindingSymbol symbol, ReadOnlySpan<BoundType> own, ReadOnlySpan<BoundType> environment, ReadOnlySpan<BoundOrigin> environmentOrigins)
+    {
+        if (environment.IsEmpty && environmentOrigins.IsEmpty)
+        {
+            return this.types.Intern(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
+        }
+
+        var declaration = (DeclarationContainerKoto)symbol.Declaration;
+        var slots = declaration.OriginNames.Count + ((DeclarationContainerKoto)declaration.Parent!).BoundSymbol!.Schema!.Origins.Count;
+        var count = own.Length + environment.Length;
         var types = this.RentTypes(count);
-        var origins = this.originScratch.Rent(declaration.OriginNames.Count + inherited.Origins.Count);
+        var origins = this.originScratch.Rent(slots);
         try
         {
             own.CopyTo(types);
-            for (var i = 0; i < environment.Components.Count; i++)
-            {
-                types[own.Length + i] = environment.Components[i];
-            }
-
-            var originCount = environment.OriginArguments.Count == 0 ? 0 : declaration.OriginNames.Count + inherited.Origins.Count;
+            environment.CopyTo(types.AsSpan(own.Length));
+            var originCount = environmentOrigins.IsEmpty ? 0 : slots;
             Array.Clear(origins, 0, originCount);
-            for (var i = 0; i < environment.OriginArguments.Count; i++)
-            {
-                origins[declaration.OriginNames.Count + i] = environment.OriginArguments[i];
-            }
-
+            environmentOrigins.CopyTo(origins.AsSpan(declaration.OriginNames.Count));
             return this.types.Intern(count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, count), originArguments: origins.AsSpan(0, originCount));
         }
         finally
@@ -368,6 +383,20 @@ public sealed partial class Binding
             this.typeScratch.Return(types, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
+    }
+
+    // SPEC 6.1.3, 9.6: a qualified nested Type's environment from its qualifier's Type: the qualifier when it declares the nested Type, else
+    // the declaring Type (a base layer's, substituted) of the member the qualifier's lookup selects in the row the use's path selected it in,
+    // or none.
+    private BoundType? QualifierEnvironment(BoundType qualifier, BindingSymbol symbol, DeclarationContainerKoto container, DeclarationContainerKoto? parent, BindingScope scope, Koto use)
+    {
+        if (ReferenceEquals(container, parent))
+        {
+            return qualifier;
+        }
+
+        var selected = this.LookupMember(qualifier, symbol.Name, scope, UseRow(UseNode(use)));
+        return ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
     }
 
     private BoundType? BindContainerQualifier(Koto syntax, BindingSymbol symbol, BindingScope scope, TypeBindingContext context)
@@ -379,7 +408,7 @@ public sealed partial class Binding
 
         if (syntax is ParenthesizedTypeKoto grouped)
         {
-            return Complete(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
+            return this.PublishType(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
         }
 
         if (symbol.Declaration is GroupKoto)
@@ -389,7 +418,14 @@ public sealed partial class Binding
 
             // The qualifier names its group, as BindType names a struct qualifier, so no consumer takes the group's Type as a value.
             syntax.BoundSymbol = symbol;
-            return result is null ? null : Complete(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
+            return result is null ? null : this.PublishType(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
+        }
+
+        if (symbol.Declaration is ContractKoto)
+        {
+            // SPEC 8.4, 18.2.1: a Contract reference has no Type role either; the bound Contract reference is formed where every other is,
+            // and the qualifier completes with it, as a group's does (a Contract without arguments forms no Type there).
+            return this.BindContractReference(syntax, symbol, scope) is { } contract ? this.PublishType(syntax, contract.Type) : null;
         }
 
         return this.BindType(syntax, scope, context with { SuppressOuter = true });
@@ -412,5 +448,16 @@ public sealed partial class Binding
 
             syntax = next;
         }
+    }
+
+    /// <summary>The `inferredConstructionTargets` family's one accessor (DECISIONS BU-220): a working-state family, the construction
+    /// qualifiers that leave their own slots open (ConstructionTargetType), which the construction completes with its solved Type; a
+    /// `bool` row in the qualifier's module's NodeColumns at its SyntaxId. A row of an earlier pass reads none, and the library's rows
+    /// are released at its freeze (NodeColumns.Freeze). Its members keep the names its readers use.</summary>
+    private readonly struct InferredConstructionTargetRows(Binding binding)
+    {
+        internal void Add(Koto syntax) => HirTables.Of(syntax).Families.InferredConstructionTargets.Ref(syntax.SyntaxId, binding) = true;
+
+        internal bool Contains(Koto syntax) => syntax.SyntaxOwner is { } table && table.Hir.Families.InferredConstructionTargets.Get(syntax.SyntaxId, binding);
     }
 }

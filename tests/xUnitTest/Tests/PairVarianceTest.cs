@@ -37,7 +37,7 @@ public sealed class PairVarianceTest
     public void AnExclusiveAdmittingLayerRequiresEqualTargets(string premise)
     {
         var generic = Relations(DiagnosticCorpus.Check(Generic.Replace("{0}", premise, StringComparison.Ordinal)));
-        Assert.Contains(("==", "a", "b"), generic);
+        Assert.Contains(("outlives", "b", "a"), generic); // A5 names the failing direction of the `==` row (R7-O1 H; F-H-11's rule).
         Assert.Contains(("outlives", "longer", "b"), generic);
         Assert.Equal(Relations(DiagnosticCorpus.Check(Concrete)), generic);
     }
@@ -100,6 +100,9 @@ public sealed class PairVarianceTest
         true)]
     [InlineData("struct V<s/T> {a, c}\n    s is owner\n" + UniqTargetV, true)]
     [InlineData("struct V<s/T> {a, c}\n    s is owner or uniq\n" + UniqTargetV, true)]
+    // A slot Phantom in every case that a stored Function Type's signature reaches takes its variance from storage, contravariant in
+    // its input, so its lengthening holds (SPEC 15.3.5; PLAN G1456).
+    [InlineData("struct V<s/T> {a}\n    s is owner\n    public let call: (s/T during a) -> i32\nfunc lengthen(x: V<i32> during b, y: ref/i32 during a) -> V<i32> during a\n    origin a outlives b\n    return x@move", false)]
     public void AVariancePositionCountsInEveryCase(string declarations, bool unproven)
         => Assert.Equal(
             unproven ? [nameof(DiagnosticCode.UnprovenOriginRelation_Kd)] : [],

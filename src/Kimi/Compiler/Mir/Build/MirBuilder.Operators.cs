@@ -53,21 +53,29 @@ internal sealed partial class MirBuilder
                     !negate || type.IsFloatingPoint || type.IsWrappingInteger),
                     node);
                 break;
-            default:
-                this.Unsupported(node, destination);
+            default: // Binding resolves a PrimitiveOp only as one of these (KindOp, HasFacts).
+                this.Invariant(node, destination);
                 break;
         }
     }
 
     // A built-in binary operator's operands, pushed in order; where the first is pushed. The left operand is pending while the right one is
-    // evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3), and secured where the right one builds code
-    // (SPEC 12.2).
+    // evaluated, so a transfer there ends a comparison's inspection Loan, on its check edge too (SPEC 13.4, 14.10.3: a comparison's left
+    // operand is an inspection while the right one is evaluated), and secured where the right one builds code (SPEC 12.2). A `$expect`
+    // comparison's operands (Recorded) are pushed here too, so its inspection is registered as an operator's is.
     private int Operands(BinaryKoto binary)
     {
         var start = this.arguments.Count;
         var left = this.Operand(binary.Left, expected: null);
-        this.arguments.Add(Builds(binary.Right) ? this.Secure(left, binary.Left) : left);
+        this.arguments.Add(Builds(binary.Right, HirTables.AdjustOf(binary.Right)) ? this.Secure(left, binary.Left) : left);
+        var open = this.inspections.Count;
+        if (BinaryOp(binary.Akind) >= MirBinaryOp.Eq)
+        {
+            this.inspections.Add(start);
+        }
+
         this.arguments.Add(this.Operand(binary.Right, expected: null));
+        this.inspections.RemoveRange(open, this.inspections.Count - open);
         return start;
     }
 
@@ -92,7 +100,7 @@ internal sealed partial class MirBuilder
         var form = Binding.FormOf(member);
         if (form == BuiltinForm.None)
         {
-            this.Unsupported(member, destination);
+            this.Invariant(member, destination); // HasFacts' PrimitiveOp row: a member access is published with its BuiltinForm.
             return;
         }
 
@@ -111,7 +119,7 @@ internal sealed partial class MirBuilder
 
         if (AdtDef.IsStruct(this.body.TypeOf(sequence)))
         {
-            sequence = this.body.Project(sequence, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(sequence)!, "value"));
+            sequence = this.body.Project(compilation.Types, sequence, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(sequence)!, "value"));
         }
 
         var length = form == BuiltinForm.Length ? destination : this.Temp(BoundType.ISize, member);
@@ -128,24 +136,71 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.4: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into a bool, then the
     // branch on it to the right operand into the destination or, where the left decides the result (false for `and`, true for `or`), to the
-    // left's value into it, so that each path writes the destination once (a let binding is initialized once).
+    // left's value into it, so that each path writes the destination once (a let binding is initialized once). SPEC 14.10.3: where the
+    // destination's consumer takes its value-less paths apart (Wanted), so does the operation: the paths on which the left has no value
+    // get a test of their own, whose undecided side goes on to the right operand with the paths that hold the left's value (the
+    // operation's value there is the right's) and whose decided side has no value of the operation; those and the right operand's
+    // value-less paths are the operation's, handed to its consumer (Hand), and where neither operand has a value on any path, the
+    // operation has none.
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
+        var wanted = this.Wanted(destination);
         var left = this.Hold(BoundType.Boolean, logical.Left);
-        this.Assign(left, logical.Left);
+        var none = (Block: -1, Valueless: false); // The left operand's value-less paths (SPEC 14.10.3), which get a test of their own.
+        if (wanted)
+        {
+            none = this.AssignApart(left, logical.Left);
+        }
+        else
+        {
+            this.Assign(left, logical.Left);
+        }
+
         this.Made(left);
         var right = this.body.AddBlock();
-        var decided = this.body.AddBlock();
+        var decided = none.Valueless ? -1 : this.body.AddBlock();
         var join = this.body.AddBlock();
         var and = logical.Akind == KotoKind.And;
-        this.Branch(left, logical.Left, and ? decided : right, and ? right : decided);
-        this.current = decided;
-        this.Use(destination, MirOperand.Copy(left), logical);
-        this.body.Terminate(decided, MirTerminator.Goto(join, this.Info(logical)));
+        if (decided < 0)
+        {
+            none.Block = this.current; // The left's whole continuation has no value.
+        }
+        else
+        {
+            this.Branch(left, logical.Left, and ? decided : right, and ? right : decided);
+            this.current = decided;
+            this.Use(destination, MirOperand.Copy(left), logical);
+            this.body.Terminate(decided, MirTerminator.Goto(join, this.Info(logical)));
+        }
+
+        var aside = -1; // The operation's value-less paths, which its consumer takes on.
+        if (none.Block >= 0)
+        {
+            // SPEC 13.4, 14.10.3: a left without a value is tested on its own paths; the side it would decide gives the operation none.
+            (this.current, aside) = (none.Block, this.body.AddBlock());
+            this.Branch(left, logical.Left, and ? aside : right, and ? right : aside);
+        }
+
         this.current = right;
         this.Assign(destination, logical.Right);
-        this.Join(join, logical.Right);
-        this.current = join;
+        var rest = this.TakeLeft(logical.Right); // The right operand's value-less paths.
+        var valueless = wanted && rest.Valueless; // SPEC 14.10.3: a right operand without a value gives the operation none on that path.
+        if (valueless)
+        {
+            rest.Block = this.body.AddBlock();
+            this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(logical.Right), rest.Block));
+        }
+        else
+        {
+            this.Join(join, logical.Right);
+        }
+
+        if (rest.Block >= 0 && aside >= 0)
+        {
+            this.body.Terminate(rest.Block, MirTerminator.Goto(aside, this.Info(logical.Right)));
+        }
+
+        this.Hand(join, aside >= 0 ? aside : rest.Block, decided >= 0 || !valueless, this.Info(logical));
     }
 
     // SPEC 13.5.4, 13.6.1, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks
@@ -159,7 +214,7 @@ internal sealed partial class MirBuilder
         if (row.Folded is { } wrapped && binding == ConversionBinding.Wrap && type.Width == 0)
         {
             // DECISIONS R7-M14 (G658): a folded wrap to a Type whose instance decides its width holds the exact value modulo 2^128
-            // (Binding, ScalarTypes.Normalize); MIR states the wrap as a Wrap Cast of that i128 constant, which takes each instance's low
+            // (Binding, TyCtxt.Normalize); MIR states the wrap as a Wrap Cast of that i128 constant, which takes each instance's low
             // bits, so a widthless Integer constant stays a generic literal, 0 through 127.
             var wide = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.Primitives["i128"], wrapped))));
             this.Set(destination, MirRvalue.Cast(MirCastKind.Wrap, wide, type) with { Proven = true }, conversion);
@@ -199,7 +254,7 @@ internal sealed partial class MirBuilder
                 { Acquire: HirAcquire.Reborrow, Adaptation: HirAdaptation.None } && TypeOf(conversion.Left).Components is [var payload]
                 ? compilation.Types.Reference(type.Semantics, payload, type.Origin) : null;
             var operand = this.Operand(conversion.Left, borrowed);
-            var source = this.TypeOf(operand) ?? type;
+            var source = this.TypeOf(operand) ?? type; // An unknown operand (derived, PLAN G1073) as the conversion's own: it agrees with any.
             var kind = binding switch
             {
                 ConversionBinding.Wrap => MirCastKind.Wrap,
@@ -253,7 +308,7 @@ internal sealed partial class MirBuilder
             ? this.body.Consts[right.Arg].Bits : (Int128?)null;
         return op switch
         {
-            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
+            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.IsPointer,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
                 op == MirBinaryOp.Rem || !type.IsInteger || !type.IsSigned)),
             MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < type.Width,

@@ -1,15 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the indexed storage of one MIR body and its projection chains.
-// Input: the forms the builder appends (MirForms.cs) to a body it began (Reset), or a built body stored (Store). Output: reusable arrays
+// Input: the forms the builder appends (MirForms.cs) to a body it began (Reset), or a built body stored (Store); a projection's
+// reader's TyCtxt, which a part's Type reads (Project, Selects), never kept. Output: reusable arrays
 // of locals, blocks, statements and associated records, a stored body's grown only to exactly the rows stored in it; the validator's
 // verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and whether a
 // construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
-// References use body-local indices; projection chains are interned while a body is built and ProjectedType owns their Type rule.
+// References use body-local indices; projection chains are interned while a body is built and Selects owns their rule.
 // Must not resolve syntax or introduce a parallel representation for the same body; a stored body is read, never appended to.
 
 using System.Runtime.InteropServices;
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
@@ -33,7 +33,7 @@ internal sealed class MirBody
     private MirScope[] scopes = [];
     private MirStatic[] statics = [];
     private MirOpaque[] opaques = [];
-    private int[] opaqueRoots = [];
+    private MirPlace[] opaqueUses = [];
     private MirMustNotComplete[] ends = [];
     private SourceRef[] guessedSites = [];
     private int localCount;
@@ -46,7 +46,7 @@ internal sealed class MirBody
     private int scopeCount;
     private int staticCount;
     private int opaqueCount;
-    private int opaqueRootCount;
+    private int opaqueUseCount;
     private int endCount;
     private int guessedSiteCount;
 
@@ -71,6 +71,10 @@ internal sealed class MirBody
 
     internal ReadOnlySpan<MirSwitchCase> Cases => this.cases.AsSpan(0, this.caseCount);
 
+    /// <summary>Gets the number of the body's CaseSwitch terminators, which <see cref="Terminate"/>, their one writer, counts: a body
+    /// without one has the same blocks in every view.</summary>
+    internal int CaseSwitches { get; private set; }
+
     internal ReadOnlySpan<MirConst> Consts => this.consts.AsSpan(0, this.constCount);
 
     internal ReadOnlySpan<MirProjection> Projections => this.projections.AsSpan(0, this.projectionCount);
@@ -81,7 +85,7 @@ internal sealed class MirBody
 
     internal ReadOnlySpan<MirOpaque> OpaqueSites => this.opaques.AsSpan(0, this.opaqueCount);
 
-    internal ReadOnlySpan<int> OpaqueRoots => this.opaqueRoots.AsSpan(0, this.opaqueRootCount);
+    internal ReadOnlySpan<MirPlace> OpaqueUses => this.opaqueUses.AsSpan(0, this.opaqueUseCount);
 
     /// <summary>Gets the failure bodies of the requires built in this body, each added where its require is finished, so one inside
     /// another's failure body precedes it; a default copy has none, A3 judges its template (SPEC 7.2.3).</summary>
@@ -103,38 +107,45 @@ internal sealed class MirBody
     /// record) marks none.</summary>
     internal bool HasConstructionRecord { get; set; }
 
-    /// <summary>Gets the Type a move-path step selects from a value of a Type, the arms of <see cref="ProjectedType"/> that read no fact
-    /// of a body: a Field, a base, a fixed array's element at a constant position and a Case's payload (the direct parts a level of
-    /// <see cref="MirDropTable"/>'s walk names).</summary>
+    /// <summary>Gets whether a move-path step selects a part of a value of a Type, and the part's Type: the arms of <see cref="Selects"/>
+    /// that read no fact of a body: a Field, a base, a fixed array's element at a constant position and a Case's payload (the direct parts
+    /// a level of <see cref="MirDropTable"/>'s walk names).</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type of the value.</param>
     /// <param name="kind">The step.</param>
     /// <param name="arg">Its argument.</param>
-    /// <returns>The part's Type, or null when the Type does not have the part.</returns>
-    internal static BoundType? PartType(BoundType? type, MirProjectionKind kind, int arg)
+    /// <param name="part">The part's Type: null when the Type does not have the part, or for a stored Field whose own slot failed (Binding's
+    /// failed slot, BU-234: <see cref="AdtDef.FieldSlotFailed"/>), a part it has, of no Type. A struct part past IMPL A.4's height or
+    /// one that does not substitute (<see cref="AdtDef.FieldType"/> null, its slot typed) is no part.</param>
+    /// <returns>Whether the Type has the part.</returns>
+    internal static bool SelectsPart(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg, out BoundType? part)
     {
+        part = null;
         switch (kind)
         {
-            case MirProjectionKind.Field:
-                if (type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
-                {
-                    return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
-                }
-
-                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
+            case MirProjectionKind.Field when type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure:
+                part = (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
+                break;
+            case MirProjectionKind.Field when AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!):
+                part = AdtDef.FieldType(types, type!, arg);
+                return part is not null || AdtDef.FieldSlotFailed(type!, arg);
             case MirProjectionKind.Base:
                 for (var depth = arg; depth > 0 && type is not null; depth--)
                 {
-                    type = AdtDef.Base(type);
+                    type = AdtDef.Base(types, type);
                 }
 
-                return arg > 0 ? type : null;
+                part = arg > 0 ? type : null;
+                break;
             case MirProjectionKind.ConstIndex:
-                return type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
+                part = type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
+                break;
             case MirProjectionKind.Downcast:
-                return type is not null && AdtDef.CaseTypes(type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
-            default:
-                return null;
+                part = type is not null && AdtDef.CaseTypes(types, type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
+                break;
         }
+
+        return part is not null;
     }
 
     /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
@@ -215,7 +226,7 @@ internal sealed class MirBody
 
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
-    /// <returns>The Type, or null when a projection is not admitted.</returns>
+    /// <returns>The Type, or null when a projection is not admitted or its root is of no Type (Binding's failed slot, <see cref="MirLocal"/>).</returns>
     internal BoundType? TypeOf(MirPlace place)
     {
         if (place.Projection != 0)
@@ -226,13 +237,16 @@ internal sealed class MirBody
         return place.Root >= 0 ? this.locals[place.Root].Type : this.statics[~place.Root].Type;
     }
 
-    /// <summary>Gets the Type a projection selects from a Place of a Type (plan 5.4), the one rule the builder interns projections by and the
-    /// validator checks them against.</summary>
+    /// <summary>Gets whether a Place of a Type admits a projection, and the Type it selects (plan 5.4): the one projection rule, which the
+    /// builder interns projections by (<see cref="Project"/>, through <see cref="ProjectedType"/>) and the validator checks them against.</summary>
+    /// <param name="types">The reader's Type context, whose instances' stored Types a part's Type reads.</param>
     /// <param name="type">The Type of the Place projected.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
-    /// <returns>The selected Type, or null when the Type does not admit the projection.</returns>
-    internal BoundType? ProjectedType(BoundType? type, MirProjectionKind kind, int arg)
+    /// <param name="part">The selected Type: null when the Type does not admit the projection, or for a stored Field whose own slot failed
+    /// (<see cref="SelectsPart"/>), a step it admits, of no Type.</param>
+    /// <returns>Whether the Type admits the projection.</returns>
+    internal bool Selects(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg, out BoundType? part)
     {
         switch (kind)
         {
@@ -242,22 +256,34 @@ internal sealed class MirBody
                 var layer = TyCtxt.Layer(type, out var below, out _);
                 if (kind == MirProjectionKind.PairLayer)
                 {
-                    return layer == HirPlaceKind.PairLayer && this.Binds(arg, TyCtxt.PairBinder(type)) ? below : null;
+                    part = layer == HirPlaceKind.PairLayer && this.Binds(arg, TyCtxt.PairBinder(type)) ? below : null;
                 }
-
-                if (layer == HirPlaceKind.Deref)
+                else
                 {
-                    return below;
+                    part = layer == HirPlaceKind.Deref ? below : type is { IsPointer: true, Components: [var pointee] } ? pointee : null;
                 }
 
-                return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
+                break;
             case MirProjectionKind.Index:
-                return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
+                part = type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;
+                break;
             default:
-                return PartType(type, kind, arg);
+                return SelectsPart(types, type, kind, arg, out part);
         }
+
+        return part is not null;
     }
+
+    /// <summary>Gets the Type a projection selects from a Place of a Type, <see cref="Selects"/>' answer for a reader that takes none as
+    /// no part (no part to drop, a Type that agrees with any).</summary>
+    /// <param name="types">The reader's Type context, whose instances' stored Types a part's Type reads.</param>
+    /// <param name="type">The Type of the Place projected.</param>
+    /// <param name="kind">The projection.</param>
+    /// <param name="arg">Its argument.</param>
+    /// <returns>The selected Type, or null when the Type does not admit the projection or selects a part of no Type.</returns>
+    internal BoundType? ProjectedType(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg)
+        => this.Selects(types, type, kind, arg, out var part) ? part : null;
 
     /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.PairBinder"/>).</summary>
     /// <param name="binder">The index in <see cref="Binders"/>.</param>
@@ -272,9 +298,9 @@ internal sealed class MirBody
     /// <param name="source">The body's syntax.</param>
     internal void Reset(MirDefKey key, SourceRef source)
     {
-        (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord) = (key, source, false, false);
+        (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord, this.CaseSwitches) = (key, source, false, false, 0);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
-        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
+        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueUseCount = this.endCount = this.guessedSiteCount = 0;
         this.projectionIds?.Clear();
         this.constIds?.Clear();
         this.Binders.Clear();
@@ -287,8 +313,8 @@ internal sealed class MirBody
     /// <param name="built">The body built.</param>
     internal void Store(MirBody built)
     {
-        (this.Key, this.Source, this.Ordinal, this.HasFinding, this.HasConstructionRecord) =
-            (built.Key, built.Source, built.Ordinal, built.HasFinding, built.HasConstructionRecord);
+        (this.Key, this.Source, this.Ordinal, this.HasFinding, this.HasConstructionRecord, this.CaseSwitches) =
+            (built.Key, built.Source, built.Ordinal, built.HasFinding, built.HasConstructionRecord, built.CaseSwitches);
         this.Binders.Clear();
         this.Binders.AddRange(built.Binders);
         this.localCount = Store(ref this.locals, built.Locals);
@@ -301,7 +327,7 @@ internal sealed class MirBody
         this.scopeCount = Store(ref this.scopes, built.Scopes);
         this.staticCount = Store(ref this.statics, built.Statics);
         this.opaqueCount = Store(ref this.opaques, built.OpaqueSites);
-        this.opaqueRootCount = Store(ref this.opaqueRoots, built.OpaqueRoots);
+        this.opaqueUseCount = Store(ref this.opaqueUses, built.OpaqueUses);
         this.endCount = Store(ref this.ends, built.MustNotComplete);
         this.guessedSiteCount = Store(ref this.guessedSites, built.GuessedSites);
     }
@@ -329,7 +355,12 @@ internal sealed class MirBody
         target.Count++;
     }
 
-    internal void Terminate(int block, in MirTerminator terminator) => this.blocks[block].Terminator = terminator;
+    internal void Terminate(int block, in MirTerminator terminator)
+    {
+        this.CaseSwitches += (terminator.Kind == MirTerminatorKind.CaseSwitch ? 1 : 0) -
+            (this.blocks[block].Terminator.Kind == MirTerminatorKind.CaseSwitch ? 1 : 0);
+        this.blocks[block].Terminator = terminator;
+    }
 
     internal int AddOperand(in MirOperand operand) => Add(ref this.operands, ref this.operandCount, operand);
 
@@ -352,14 +383,16 @@ internal sealed class MirBody
     }
 
     /// <summary>Gets a Place extended by one projection, interning the chain with the Type <see cref="ProjectedType"/> gives it.</summary>
+    /// <param name="types">The reader's Type context, whose instances' stored Types a part's Type reads.</param>
     /// <param name="place">The Place.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
+    /// <param name="position">An Index's constant index (<see cref="MirProjection.Position"/>), else -1.</param>
     /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports (MirValidator.Tables):
     /// a later step in the projection table, a first step at each Place a location names, a diverging Call's destination included.</returns>
-    internal MirPlace Project(MirPlace place, MirProjectionKind kind, int arg)
+    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg, int position = -1)
     {
-        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(this.TypeOf(place), kind, arg));
+        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg), position);
         ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds ??= new(), row, out var exists);
         if (!exists)
         {
@@ -385,18 +418,26 @@ internal sealed class MirBody
 
     /// <summary>Adds the site of an Opaque value.</summary>
     /// <param name="source">The syntax it replaces.</param>
-    /// <param name="roots">The roots that syntax reads, writes or borrows: locals, or complements of static indexes.</param>
+    /// <param name="uses">The uses of that syntax: Places of locals or statics, each undecided.</param>
+    /// <param name="kept">The count of the leading uses that are its kept parts' (<see cref="MirOpaque.Kept"/>).</param>
+    /// <param name="enclosing">The count of the uses after those that are its enclosing parts' (<see cref="MirOpaque.Enclosing"/>).</param>
     /// <returns>The site.</returns>
-    internal int AddOpaque(SourceRef source, ReadOnlySpan<int> roots)
+    internal int AddOpaque(SourceRef source, ReadOnlySpan<MirPlace> uses, int kept, int enclosing)
     {
-        var start = this.opaqueRootCount;
-        foreach (var root in roots)
+        var start = this.opaqueUseCount;
+        foreach (var use in uses)
         {
-            Add(ref this.opaqueRoots, ref this.opaqueRootCount, root);
+            Add(ref this.opaqueUses, ref this.opaqueUseCount, use);
         }
 
-        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, roots.Length));
+        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, uses.Length, kept, enclosing));
     }
+
+    /// <summary>Gets the Opaque site a statement assigns, the one lookup its readers share (A1's enclosing uses, A5's activations).</summary>
+    /// <param name="statement">The statement.</param>
+    /// <returns>The site of an Assign of an Opaque rvalue; else a site of no uses.</returns>
+    internal MirOpaque SiteOf(in MirStatement statement)
+        => statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } ? this.opaques[statement.Rvalue.Arg] : default;
 
     internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);
 

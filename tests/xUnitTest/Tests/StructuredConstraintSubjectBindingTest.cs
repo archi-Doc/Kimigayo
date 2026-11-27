@@ -9,6 +9,13 @@ namespace XunitTest;
 
 public class StructuredConstraintSubjectBindingTest
 {
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 8.1, F.6): a closed clause's projection subject over a Function Type argument is formed without the
+    // nested signature, whose input is its premise (dev: InvalidConstraint_Kd at the subject and UnprovenConstraint_Kd at H); its control.
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\ncontract HasItem\n    associate Item\nstruct W<Z>\n    Self is HasItem\n    associate Item is i32\nstruct H {q}\n    W<(Option<T during q>) -> i32>.Item is Copy\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n", "clean")] // c1cs
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\ncontract HasItem\n    associate Item\nstruct W<Z>\n    Self is HasItem\n    associate Item is i32\nstruct H {q}\n    W<i32>.Item is Copy\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n", "clean")] // c1csd
+    public void ANestedSignatureInAProjectionSubjectIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     // The owner's O-42 (a), SPEC F.6's ConstraintSubject: a constructed Type is no subject. One syntax record at the subject, on which the
     // clause rests, so the declaration reports nothing else.
     [Theory]
@@ -36,7 +43,6 @@ public class StructuredConstraintSubjectBindingTest
     [InlineData("((i32) -> bool) is not Copy")]
     [InlineData("[2 of (i32) -> bool] is not Copy")]
     [InlineData("Box<i32>.Item<i32> is Copy")]
-    [InlineData("Box<i32>.(Copy) is Copy")]
     [InlineData("::i32 is Copy")]
     [InlineData("::string is Copy")]
     [InlineData("::Box<i32> is Copy")]
@@ -46,6 +52,18 @@ public class StructuredConstraintSubjectBindingTest
         var record = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
         Assert.Equal(clause[..clause.LastIndexOf(" is ", StringComparison.Ordinal)], record.Text);
+    }
+
+    // SPEC F.5 PathSuffix (PB3, F's ruling 16): a grouped Contract after "." carries its ". Name", so a subject ending in a lone `.(C)` is
+    // one record at the group (ContractMember); the subject rule reads that failed path and adds none (base's record over the subject).
+    [Fact]
+    public void ASubjectEndingInALoneGroupedContractIsOneRecordAtTheGroup()
+    {
+        var c = MinimalEmissionTest.Analyze(Source("Box<i32>.(Copy) is Copy"));
+        var record = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains("Expected grouped Contract followed by its member Name", record.Message, StringComparison.Ordinal);
+        Assert.Equal("(Copy)", record.Text);
     }
 
     // SPEC F.5, F.6: an AssociatedTypeReference is a subject with or without a leading `::`, whose qualifier may be a constructed Type, in a

@@ -176,17 +176,19 @@ public sealed class HoverImprovementsTest
         }
     }
 
-    // SPEC 15.1.6, 3.5.2, 23.1.2 (DECISIONS BU-110): a for or match item whose Copy proof is Error writes no failure on its binding, which
-    // keeps its hover; an edit that makes the item Copy, then a rebind, binds it Copy with its hover and no failure left from the edited
-    // pass. Fail-before (792ee508d): the for loop's binding had no hover in either compilation and kept InvalidConstraint after the edit.
+    // SPEC 15.1.6, 3.5.2, 23.1.2 (F's C8 rulings 24 and 27): a for or match item of a moved Subject is transferred, so it asks no Copy and
+    // writes no failure on its binding (the "Copy proof is Error" premise of BU-110 no longer arises for it, ruling 27), and the binding
+    // keeps its hover; an edit that makes the item's Type Copy, then a rebind, binds it Moved with its hover and no failure left from the
+    // edited pass. Fail-before (792ee508d): the for loop's binding had no hover in either compilation and kept InvalidConstraint after the
+    // edit.
     [Theory]
     [InlineData("func g(xs: Array<Bad>)\n    for x in xs@move\n        let y = x@move\n", "x in")]
     [InlineData("func g(o: Option<Bad>)\n    match o@move\n        .Some(let x) => take(x@move)\n        .None => ()\nfunc take(b: Bad) => ()\n", "x)")]
-    public void AnItemWhoseCopyProofIsErrorKeepsItsBindingAcrossAnEdit(string body, string binding)
+    public void AnItemOfAMovedSubjectKeepsItsBindingAcrossAnEdit(string body, string binding)
     {
         var source = "struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\n" + body;
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.CollectHover = true;
         c.Kotonoha.AddSource(new("main.kimi", source));
         Assert.False(c.Bind().IsComplete);
@@ -200,7 +202,7 @@ public sealed class HoverImprovementsTest
         HirTables.Publish(c);
         var rows = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() is "x" or "let x" && HirTables.Op(x) == HirOp.Syntax)
             .Select(static x => $"{HirTables.AdjustOf(x).Acquire} {HirTables.Failure(x)}");
-        Assert.Contains("Copy None", rows);
+        Assert.Contains("Move None", rows);
         Assert.DoesNotContain(rows, static x => !x.EndsWith(" None", StringComparison.Ordinal));
         Assert.NotNull(At(Hover(c), source.IndexOf(binding, StringComparison.Ordinal)).Info.Variable);
     }
@@ -259,7 +261,7 @@ public sealed class HoverImprovementsTest
     public void SplitDeclarationsAndCommentlessSourcesKeepEveryKnownFileWithoutDuplicates()
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.CollectDocumentation = true;
         compilation.Kotonoha.AddSource(new("z/second.kimi", "/// Second part.\nstruct Split\n"));
@@ -333,7 +335,7 @@ public sealed class HoverImprovementsTest
     public void AMovedDeclarationKeepsItsDocumentsName()
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.Project.Directory = Path.GetFullPath("moved-root");
         var library = Path.GetFullPath("moved-library");
@@ -357,7 +359,7 @@ public sealed class HoverImprovementsTest
     public void AHoverSnapshotLeavesOutADocumentNoClientCanName()
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         var named = Path.Combine(Directory.GetCurrentDirectory(), "Named.kimi");
         compilation.Kotonoha.AddSource(new(Path.Combine(Directory.GetCurrentDirectory(), "a\0b.kimi"), "struct Value\n"));
@@ -394,6 +396,21 @@ public sealed class HoverImprovementsTest
         Assert.False(new HoverAgreement().Equal(new(default, info), new(default, changed)));
     }
 
+    // SPEC 15.4.3 rule 3, 15.4.4 (R7-O2 O2-F, design §10.7's C1): a Closure header's result default judged under Finality is `static`;
+    // Hover prints the complete Type, so a local holding the literal (h3v over a `let` r, f4v over a `var` r) names `static` in its
+    // signature's result, never the slot's provisional atom; a local bound from its call (f7v's b) names its own region.
+    [Theory]
+    [InlineData("    let r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    return 0\n", "c = func", ") -> Box{a = static}")]
+    [InlineData("    var r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    r = p\n    return 0\n", "c = func", ") -> Box{a = static}")]
+    [InlineData("    var r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    r = p\n    let b = c(.None)\n    return 0\n", "b = c", "b: Box{a = <inference origin at 10:5>}")]
+    public void AClosuresDeferredHeaderDefaultIsHoveredAsItsCompletion(string body, string local, string ending)
+    {
+        var source = "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let n: i32 = 1\n" + body;
+        var header = At(Project(source), source.IndexOf(local, StringComparison.Ordinal)).Info.Variable!.Declaration.Header;
+        Assert.DoesNotContain("unbound origin", header);
+        Assert.EndsWith(ending, header);
+    }
+
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void RepeatedVariableAndOperationRequestsReuseCurrentAndHistoricalAnswers()
@@ -427,7 +444,7 @@ public sealed class HoverImprovementsTest
     private static HoverDocument Project(string source, bool accepted = true)
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.CollectHover = true;
         compilation.CollectDocumentation = true;
         compilation.Kotonoha.AddSource(new("main.kimi", source));

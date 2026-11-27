@@ -98,7 +98,44 @@ public class ArrayBindingTest
     [InlineData("let a = [missing, missing2]\n", "UnresolvedBinding_Kd missing; UnresolvedBinding_Kd missing2")]
     [InlineData("var k: i32 = 1\nlet a = [k, true, false]\n", "TypeMismatch_Kd true; TypeMismatch_Kd false")]
     public void AnIndependentLiteralBindsEveryElementAfterAFailedOne(string source, string records)
-        => Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
+        => Assert.Equal(records, Records(source));
+
+    // SPEC 4.1, 4.3.1, 10.2, 12.4 (PLAN G1116): without a fixed-array or Array expectation, at a constructed Type or none, a list literal
+    // takes its own Type by the place rule, as a fill and a Dictionary literal do, and the position's fit reports the mismatch; an empty
+    // one has no element Type. An expected ref/U still reaches the literal through U. At an abstract expectation (SPEC 8.2.3: a Type
+    // parameter, a projection, a pair layer or a pair target, still abstract after the identity premises), which has no form to take the
+    // literal's from, and, empty, at a place decided later (SPEC 4.3.1 Places, 14.9.2), no implemented rule types it yet: the located
+    // limit stays, for valid and invalid programs alike (the owner's O-449 (a); PLAN G1123).
+    [Theory]
+    [InlineData("let s: Slice<i32> = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("let n: i32 = [1]\n", "TypeMismatch_Kd [1]")]
+    [InlineData("let t: (i32, i32) = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("let u: uniq/[2 of i32] = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("func h<T>()\n    let x: T = [1]\nlet done = 0\n", "Unsupported_Kd [1]")]
+    [InlineData("func r() -> i32\n    return [1]\nlet done = 0\n", "TypeMismatch_Kd [1]")]
+    [InlineData("let nested: Array<i32> = [[1]]\n", "TypeMismatch_Kd [1]")]
+    [InlineData("let n: i32 = []\n", "UnresolvedBinding_Kd []")]
+    [InlineData("let unknown = []\n", "UnresolvedBinding_Kd []")]
+    [InlineData("let r: ref/[2 of i32] = [1, 2]\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is ref\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is uniq\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: s/i32 = [1]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1]")]
+    // R7-C3 (F's C2 ruling 307 (1); SPEC 8.2.3, 4.1, 4.3.1): an identity premise makes T the fixed array or Array, so the expectation is
+    // not abstract and the literal takes its form: valid, newly accepted (PLAN G1123 narrowed). Their invalid twins keep a Language
+    // record (three elements at [2 of i32]; a bool element at Array<i32>), and T with no identity premise keeps the located limit.
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [1]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = []\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2, 3]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd [1, 2, 3]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [true]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd true")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("let w = [[1], []]\n", "Unsupported_Kd []")]
+    [InlineData("let ready = true\nlet x = if ready => [1] else => []\n", "Unsupported_Kd []")]
+    [InlineData("let x = [[]]\n", "Unsupported_Kd []")]
+    public void ALiteralWithoutAnArrayExpectationTakesItsOwnType(string source, string records)
+        => Assert.Equal(records, Records(source));
 
     // Each inferred inner Array owns its own buffer, destroyed recursively with the outer Array.
     [Fact]
@@ -239,13 +276,14 @@ public class ArrayBindingTest
     public void TruncateDestroysTheTail(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout);
 
-    // SPEC 4.9.1, 4.9.3: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
+    // SPEC 4.9.1, 4.9.3, 22.5.1 (PLAN G71): an invalid position Aborts in resolution, before the collection changes, at the start of the
+    // invoking user expression.
     [Theory]
-    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(-1")]
-    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "self.removeAt(position)")]
-    [InlineData("SwapEqualBeyond", "var values: Array<i32> = [1, 2]\nvalues@uniq.swap(5, 5)\nConsole.writeLine(\"after\")", "", "self.swapAt(first: PositionSyntax")]
-    public void PositionOperationsAbortInResolution(string name, string source, string stdout, string anchor)
-        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "Hello.kimi:4:1")]
+    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "Hello.kimi:2:15")]
+    [InlineData("SwapEqualBeyond", "var values: Array<i32> = [1, 2]\nvalues@uniq.swap(5, 5)\nConsole.writeLine(\"after\")", "", "Hello.kimi:2:1")]
+    public void PositionOperationsAbortInResolution(string name, string source, string stdout, string location)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, location + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     // SPEC 4.9.5: a negative reserve amount Aborts before the collection changes.
     [Theory]
@@ -272,7 +310,8 @@ public class ArrayBindingTest
     }
 
     [Theory]
-    [InlineData("values@ref.append(1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    // SPEC 7.3.3, 15.6.2 (R7-E4 E4a-3): a receiver through a shared layer records its written twin's failure.
+    [InlineData("values@ref.append(1)", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("let index = 1.5\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
@@ -323,4 +362,8 @@ public class ArrayBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
+
+    // Each public record's code and the source text it locates, in report order.
+    private static string Records(string source)
+        => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }

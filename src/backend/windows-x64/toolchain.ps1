@@ -1,18 +1,32 @@
-# Shared by the native builders; loading this file never executes LLVM.
+# Shared by the native builders; loading this file never executes LLVM. It reads no other script's function (kernel32.ps1 reads it).
 function Resolve-KimiToolchainRoot([string] $ToolchainRoot = '') {
-    if (-not $ToolchainRoot) { $ToolchainRoot = [Environment]::GetEnvironmentVariable('KIMI_TOOLCHAIN_ROOT') }
+    # A removed input (Tatara B6b4): a shell that still sets it must not have setup write the checkout's toolchain (a worktree's
+    # junction to the shared root), so it fails while it is set.
+    if ($null -ne [Environment]::GetEnvironmentVariable('KIMI_TOOLCHAIN_ROOT')) { throw 'KIMI_TOOLCHAIN_ROOT was removed: unset it (the scripts take -ToolchainRoot <directory>).' }
     if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $PSScriptRoot '../../../toolchain' }
     if ([string]::IsNullOrWhiteSpace($ToolchainRoot) -or $ToolchainRoot -match '[\x00\r\n"]' -or $ToolchainRoot.StartsWith('-')) { throw 'Invalid toolchain root' }
     return [IO.Path]::GetFullPath($ToolchainRoot, (Get-Location).ProviderPath)
 }
 
-function Resolve-KimiBackendLibrary($Entry, [string] $ToolchainRoot, [string] $ManifestDirectory) {
-    if ($Entry.PSObject.Properties['resolution']) {
-        if ($Entry.resolution -cne 'toolchain' -or $Entry.PSObject.Properties['input']) { throw 'Invalid backend toolchain resolution: an input path is not permitted.' }
-        return Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
+# Whether a destination already holds the source's bytes (SHA-256). Setup never writes such a destination, so an unchanged rerun
+# writes nothing a running process holds.
+function Test-KimiSameFile([string] $Source, [string] $Destination) {
+    return (Test-Path -LiteralPath $Destination -PathType Leaf) -and (Get-KimiSha256 $Destination) -ceq (Get-KimiSha256 $Source)
+}
+
+# Replaces a destination by a file with one move (MoveFileEx: the destination is never absent). Windows briefly holds a just-written
+# file (on-access scanning, indexing), so a denial or sharing violation is retried with a doubling wait below one second in total, as
+# ArtifactFiles.Replace does; any other failure, or one that outlasts the retries, is thrown.
+function Move-KimiFile([string] $Source, [string] $Destination) {
+    for ($delay = 1; ; $delay *= 2) {
+        try { [IO.File]::Move($Source, $Destination, $true); return }
+        catch {
+            $failure = $_.Exception.GetBaseException()
+            $transient = $failure -is [UnauthorizedAccessException] -or ($failure -is [IO.IOException] -and ($failure.HResult -band 0xFFFF) -in 32, 33)
+            if ($delay -gt 512 -or -not $transient -or (Test-Path -LiteralPath $Destination -PathType Container)) { throw }
+            Start-Sleep -Milliseconds $delay
+        }
     }
-    if ([string]::IsNullOrWhiteSpace($Entry.input) -or $Entry.input -match '[\x00\r\n"]' -or $Entry.input.StartsWith('-')) { throw 'Invalid backend input path' }
-    return [IO.Path]::GetFullPath($Entry.input, $ManifestDirectory)
 }
 
 function Read-KimiWindowsProfile {
@@ -26,6 +40,10 @@ function Read-KimiWindowsProfile {
     }
     return $profile
 }
+
+# The adopted backend archive, committed beside the catalog (profile.json's artifactSha256) and carried by the compiler: the one place
+# naming its file, which every script linking the backend reads (build.ps1 names its candidate after it).
+function Get-KimiBackendArchive { return Join-Path $PSScriptRoot 'kimi_backend_windows_x64_v1.lib' }
 
 function Invoke-KimiLlvmVersion([string] $ToolPath) {
     $output = & $ToolPath --version 2>&1 | Out-String
@@ -59,5 +77,35 @@ function Get-KimiLlvmToolIdentity {
         if (-not $AllowUnpinnedToolchain) { throw "$message Use -AllowUnpinnedToolchain only for exploratory builds." }
         Write-Warning "$message Continuing with an unverified toolchain; this result does not validate the pinned profile."
     }
-    return @{ path = $resolved; version = $report.output; actualVersion = $actual; expectedVersion = $ExpectedVersion; versionMatched = $matched; sha256 = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant() }
+    return @{ path = $resolved; version = $report.output; actualVersion = $actual; expectedVersion = $ExpectedVersion; versionMatched = $matched; sha256 = Get-KimiSha256 $resolved }
+}
+
+# llvm-dlltool prints no version banner: its identity is profile.json's pinned SHA-256 (kernel32.dlltoolSha256).
+function Get-KimiDlltoolIdentity {
+    [CmdletBinding()]
+    param([string] $ToolPath, [switch] $AllowUnpinnedToolchain)
+    if (-not (Test-Path -LiteralPath $ToolPath -PathType Leaf)) { throw 'llvm-dlltool not found' }
+    $resolved = (Resolve-Path -LiteralPath $ToolPath).Path
+    $hash = Get-KimiSha256 $resolved
+    $expected = (Read-KimiWindowsProfile).kernel32.dlltoolSha256
+    $matched = $hash -ceq $expected
+    if (-not $matched) {
+        if (-not $AllowUnpinnedToolchain) { throw 'llvm-dlltool SHA-256 mismatch. Use -AllowUnpinnedToolchain only for exploratory builds.' }
+        Write-Warning 'llvm-dlltool SHA-256 mismatch; continuing with an unverified toolchain.'
+    }
+    return @{ path = $resolved; sha256 = $hash; expectedSha256 = $expected; hashMatched = $matched }
+}
+
+function Get-KimiSha256([string] $Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+
+# The development toolchain's tools, which setup.ps1 installs and check-toolchain.ps1 checks, in that order.
+function Get-KimiToolchainToolNames { return @('clang', 'opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj', 'llvm-objdump', 'llvm-lib', 'llvm-dlltool') }
+
+# A development toolchain tool's identity check, setup's and check-toolchain.ps1's: the version banner of the seven that print one,
+# llvm-dlltool's pinned SHA-256 (Get-KimiDlltoolIdentity), llvm-lib's SHA-256 alone. A failed check throws its cause; the result is
+# the tool's SHA-256.
+function Get-KimiToolchainToolSha256([string] $Name, [string] $Path) {
+    if ($Name -ceq 'llvm-dlltool') { return (Get-KimiDlltoolIdentity $Path).sha256 }
+    if ($Name -ceq 'llvm-lib') { return Get-KimiSha256 $Path }
+    return (Get-KimiLlvmToolIdentity $Path (Read-KimiWindowsProfile).llvmVersion).sha256
 }

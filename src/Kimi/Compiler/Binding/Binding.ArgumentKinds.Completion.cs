@@ -9,9 +9,9 @@ namespace Kimi.Compiler;
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
 // CompleteValueCallPart completes a value call's part at its one candidate's parameter Type, a waiting one (WaitsForValueCallSolve) at
-// the instantiated parameter; CompleteUnselected binds on its own each
-// part of a call that completes none, outside its consultation. The selection, its defaults and their re-check (SolveSelected,
-// CheckDefaulted) stay in Binding.ArgumentKinds.cs.
+// the instantiated parameter, and a resting part of a call on the split at the canonical case's open formed parameter (DECISIONS BU-240,
+// Binding.OpenForm); CompleteUnselected binds on its own each part of a call that completes none, outside its consultation. The
+// selection, its defaults and their re-check (SolveSelected, CheckDefaulted) stay in Binding.ArgumentKinds.cs.
 public sealed partial class Binding
 {
     // SPEC 10.5, 10.5.4: takes each argument first (TakeArgument, CallRelation.Taken), then completes the selected candidate's waiting
@@ -24,7 +24,7 @@ public sealed partial class Binding
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, winner, selected, evaluation.Evaluated[winner].DeclaringType);
-        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var operations = evaluation.OperationsOf(winner);
         var contract = this.activeRequirementContract;
         this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
         var completed = true;
@@ -33,7 +33,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var argument = call.ArgumentNodes[i];
-                var pattern = selected.Parameters[evaluation.Mapping[i]].Type.BoundType!;
+                var pattern = selected.Parameters[solution.Mapping[i]].Type.BoundType!;
                 this.TakeArgument(argument); // SPEC 10.5.1: the call has selected; no conflict in the argument waits for it since.
                 if (this.IsWaiting(argument))
                 {
@@ -88,6 +88,14 @@ public sealed partial class Binding
             var argument = call.ArgumentNodes[i];
             if (this.PropagateBound(argument, operations[i].ParameterType) is null)
             {
+                if (this.FormsBorrows && !this.synthesizedCalls.ContainsKey(call))
+                {
+                    // Selection wrote the call's operations (the receiver's last), and this argument's header may state their Borrows'
+                    // atoms: formed before it binds (Binding.RawOrigins.Borrows). A synthesized call's plan is its consumer's to commit
+                    // (it may replace it: a requirement's witness, BindSelectedRequirement), so its consumer's node forms it.
+                    this.CallBorrows(this.borrows, operations[call.ArgumentNodes.Count], operations[..call.ArgumentNodes.Count]);
+                }
+
                 // The argument is an expression of the caller's context, not of the selected requirement.
                 var selectedContract = this.activeRequirementContract;
                 this.activeRequirementContract = null;
@@ -99,7 +107,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                operations[i] = operations[i] with { SourceType = argument.BoundType };
+                operations[i] = operations[i] with { SourceType = this.ArgumentTypeAt(argument) };
             }
             else if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType &&
                 operations[i].ParameterType is { Kind: BoundTypeKind.Function } erasedType && operations[i].Adaptation == ArgumentAdaptation.Erasure)
@@ -114,11 +122,20 @@ public sealed partial class Binding
 
     // SPEC 7.7.4, 10.5: a Closure or Function Item part completed at a common Function Type is converted to it; its signature, Shared
     // receiver and Owned environment are judged here, after selection, and a failure is the part's own record, an environment that is
-    // not Owned the Constraint record and a receiver that is not Shared a Type mismatch with its Note (SPEC 23.1.2).
+    // not Owned the Constraint record and a receiver that is not Shared a Type mismatch (SPEC 23.1.2).
     private bool ErasePart(Koto part, BoundType actual, BoundType erased)
     {
         if (!this.ErasesToFunction(part, actual, erased))
         {
+            // Transitional, R7-E5 (D-924; B's E3a-2 ruling): the erasure recorded its failed Origin condition, Owned part or limit at the
+            // part (ErasesToFunction), so a mismatch here is that conversion's second record; the part keeps its first failure, as a Fail
+            // does, until R7-E5's per-problem inputs (CallableOriginForwardingTest's erasure rows; probes g1-g3).
+            if (this.RecordedFailure(part) != BindingFailure.None)
+            {
+                this.Fail(part, BindingFailure.TypeMismatch);
+                return false;
+            }
+
             this.RecordMismatch(part, part, actual, erased, default);
             return false;
         }
@@ -146,10 +163,9 @@ public sealed partial class Binding
     // when it fails.
     private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
     {
-        var literal = IsUnfittedLiteral(part);
         if (this.KindOf(part) != PartKind.Typed || part.BoundType is not { } typed)
         {
-            return this.BindNode(part, scope, literal ? LiteralInputType(parameter) : parameter);
+            return this.BindNode(part, scope, this.Materialization(part, parameter, scope) ?? parameter);
         }
 
         // SPEC 7.7.4, 10.5, 10.7 (PLAN G494, DECISIONS BU-107): a Closure or Function Item completed at a Function Type is converted to
@@ -175,7 +191,7 @@ public sealed partial class Binding
     // unbound (PLAN R1e); no candidate is selected again (SPEC 10.1); a deferred call is completed by its outer call.
     private BoundType? CompleteUnselected(InvocationKoto call, BindingScope scope, BoundType? type)
     {
-        if (type is not null || this.IsWaitingPart(call))
+        if (type is not null || this.IsCheckedCall(call))
         {
             return type;
         }
@@ -194,6 +210,24 @@ public sealed partial class Binding
         }
 
         return type;
+    }
+
+    // SPEC 23.1.2, 10.5.1, 8.15.2 (DECISIONS BU-240 with rule W; G812 rulings 124, 126, 128, 132; ArgFlow rulings 153, 164): an argument
+    // of a call on the split that fails in every case of the bindings it reads, always at the same part awaiting its call (a named Call
+    // or a contextual Case), is completed whole at the parameter the canonical case formed for it (each binding at its first admitted
+    // Semantics), as the closed path completes an argument (CompleteValueCallPart), outside the probes and outside the call's
+    // consultation: the waiting part fails as that run found, and each part failing there is its own record, the canonical case's (a
+    // part failing only in another case gets none: BU-240's canonical completion, PLAN G886). The call rests on the waiting part unless
+    // it fails by itself (BindValueCallOnSplit). Every other deferred call stays completed by its outer call (CompleteUnselectedPart):
+    // what only the missing expectation causes is dependent.
+    private void CompleteFailedPart(Koto argument, BoundType parameter, BindingScope scope)
+    {
+        var consultation = this.SuspendConsultation();
+        var probes = (this.argumentProbe, this.nestedOperandProbe);
+        (this.argumentProbe, this.nestedOperandProbe) = (null, null);
+        _ = this.CompleteValueCallPart(argument, parameter, scope);
+        (this.argumentProbe, this.nestedOperandProbe) = probes;
+        this.ResumeConsultation(consultation);
     }
 
     private void CompleteUnselectedPart(Koto part, BindingScope scope)

@@ -162,14 +162,14 @@ public sealed partial class Binding
         }
     }
 
-    // S >= X by the position judge at row r's use under a condition; true when it recorded.
+    // S >= X by the position judge at row r's use under a condition, an outlives pair whatever the row's Equality; true when it recorded.
     private bool JudgeChainPair(int r, int longer, int shorter, ulong condition)
     {
         var obligation = this.unboundRows[r].Obligation;
         var from = this.chainNodes[longer];
         var to = this.chainNodes[shorter];
         var records = this.callRelationScratch.Count;
-        this.JudgeCallPosition(obligation.Use, from, to, equality: false, null, null, wellFormed: obligation.WellFormed, condition: condition);
+        this.JudgeDeclarationPosition(obligation with { Equality = false }, from, to, condition);
         return this.callRelationScratch.Count != records;
     }
 

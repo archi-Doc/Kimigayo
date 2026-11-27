@@ -128,7 +128,7 @@ public class QualificationRequiredTest
         => Assert.NotEmpty(DiagnosticCorpus.Check("struct S: S.N\n    open struct N: S\npublic func main() => ()").Diagnostics);
 
     // Since the MIR decides acceptance (R6-check H5), the constructor whose write Binding rejects also has A1's UninitializedPlace_Kd,
-    // since the rejected write initializes nothing (PLAN G105): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
+    // since the rejected write initializes nothing (PLAN G1184): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
     [Fact]
     public void AnOwnStoredFieldCanBeQualifiedInAConstructorBody()
     {
@@ -175,5 +175,178 @@ public class QualificationRequiredTest
         var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.QualificationRequired_Kd);
+    }
+
+    // SPEC 9.5, 18.2.1 (PLAN G632; R7-N1 c2): an unqualified Name never selects an enum Case or a member that needs a receiver, at the
+    // scope stages and at the import stages 5 (document aliases) and 6 (default aliases) alike, so the stop is the use's one record, at
+    // the Name, with the found member's cause. Before, the forbidden selection was made and its consumer's verdict recorded instead
+    // (PrerequisiteUnavailable_Kd, NotCallable_Kd, NoApplicableOverload_Kd, InvalidAssignment_Kd, Unsupported_Kd or InternalInvariant_Kd).
+    [Theory]
+    [InlineData("enum Message\n    Quit\n    Write(string)\n    func bad() -> Message => Quit", "", "Quit", "Case")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\n    func f() -> i32\n        let n = Quit\n        let Quit = 1\n        return Quit", "", "Quit", "Case")]
+    [InlineData("enum Box<T>\n    Empty\n    Full(T)\n    func wrap(x: T) -> Box<T> => Full(x@move)", "", "Full", "Case")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Quit", "", "Quit", "Case")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Write(\"a\")", "", "Write", "Case")]
+    [InlineData("alias Kimi.Option<i32>\nfunc pick() -> Option<i32>\n    return Some(1)", "", "Some", "Case")]
+    [InlineData("alias S\nstruct S\n    public var count: i32 = 0\n    public init() => ()\n    public func make() -> i32 => 1\n    public func read(self) -> i32 => 2\nfunc f() -> i32 => read()", "", "read", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    public var count: i32 = 0\n    public func zero() -> i32 => 0\nfunc g() -> i32 => count", "", "count", "Receiver")]
+    [InlineData("alias P\ncontract P\n    func m(self: ref/Self, x: i32) -> i32\nfunc g() -> i32 => m(1)", "", "m", "Receiver")]
+    [InlineData("alias Counter\nalias Meter\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\nstruct Meter\n    public var value: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.value\nfunc f() -> i32 => read()", "", "read", "Receiver")]
+    [InlineData("alias Message\nalias Tools\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    private func Quit() -> i32 => 1\nfunc f() -> Message => Quit", "", "Quit", "Case")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Quit() -> i32 => 1\nfunc f() -> i32 => Quit()", "Alias=\n  \"Tools\"", "Quit", "Case")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Quit", "Alias=\n  \"Message\"", "Quit", "Case")]
+    [InlineData("struct Counter\n    public var count: i32 = 0\nfunc g() -> i32 => count", "Alias=\n  \"Counter\"", "count", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Nope", "", "Message", "Receiver")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nstruct Counter\n    var Message: i32 = 0\n    func f() -> Message => Message.Nope", "", "Message", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    var stored: i32 = 0\n    public init() => ()\n    public computed total: i32\n        get(self: ref/Self) -> i32 => self.stored\nfunc g() -> i32 => total", "", "total", "Receiver")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nfunc g() -> Message => Write(\"a\")", "Alias=\n  \"Message\"", "Write", "Case")]
+    [InlineData("alias Counter\nstruct Counter\n    public var count: i32 = 0\n    public init() => ()\n    public func read(self: ref/Self) -> i32 => self.count\nfunc g() -> i32\n    let f = read\n    return 0", "", "read", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    public var count: i32 = 0\n    public init() => ()\nfunc g() -> i32\n    count = 1\n    return 0", "", "count", "Receiver")]
+    [InlineData("alias P\ncontract P\n    property value: i32 has get\nfunc g() -> i32 => value", "", "value", "Receiver")]
+    [InlineData("alias Message\nenum Message\n    Quit\nfunc g() -> i32\n    let n = Quit\n    let Quit = 1\n    return Quit", "", "Quit", "Case")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var item: i32 = 0\n    public init() => ()\nfunc g() -> i32 => item", "", "item", "Receiver")]
+    public void AnUnqualifiedNameNeverSelectsACaseOrAReceiverMember(string source, string settings, string name, string cause)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
+        Assert.Equal("QualificationRequired_Kd", record.Code);
+        Assert.Equal(name, source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
+        Assert.Equal(cause, record.Reason![3].Value);
+    }
+
+    // SPEC 9.6 (R7-N1 c-b; F's N1c rulings 37, 38, 41): a Type path's static or instance use. An instance member a Type path reaches has
+    // no receiver, so the path fails and the access records QualificationRequired_Kd with its own cause, TypePath (the member and the
+    // Type as its facts, no Label and no repair: the use is written qualified, so the 9.5 stop's qualifying text does not apply), whether the Type path is the sole one (`T.n`) or the value path fails beside it (`T: ref/H`, H has no `n`).
+    // The programs are invalid. Fail-before: Binding accepted the access and `kimi check`'s MIR builder met a Type as a Field's
+    // receiver: InternalInvariant_Kd at `T` (rb30i on Q-584's head too). R7-D1's p8 (the Middle's C-359 r3 N2, G812 ruling 170): `static`
+    // is no modifier (SPEC 6.1: MisplacedSyntax_Kd at it), so `b` is an instance Field and `T.b` in a Field's initializer is the same
+    // static use (fail-before: InternalInvariant_Kd at `T.b` on dev a585b50a5 and the joint head). PLAN G1156 (F's ruling G1156-3 P1): a
+    // Property requirement a Type parameter's path reaches is the same instance use (SPEC 11.9), beside a value `T` with no `size`
+    // (`T: ref/Plain`) or through two identities (`T is Reader`, `T is Sized`); fail-before: CheckFaulted_Kd on the first,
+    // UnresolvedBinding_Kd on the second (the sole path: PropertyWitnessEmissionTest.ARequirementPropertyIsNoTypeMember).
+    [Theory]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f() -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct H\n    public init() => ()\nstruct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f(T: ref/H) -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc a() -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc b(T: ref/H) -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct T\n    var a = T.b\n    static var b = 1\n", "MisplacedSyntax_Kd static; QualificationRequired_Kd T.b")]
+    [InlineData(ContainerNestingTest.ReaderPlain + "func f<T>(T: ref/Plain) -> i32\n    T is Reader\n    return T.size\n", "QualificationRequired_Kd T.size")]
+    [InlineData(ContainerNestingTest.ReaderPlain + "func f<T>() -> i32\n    T is Reader\n    T is Sized\n    return T.size\n", "QualificationRequired_Kd T.size")]
+    public void AnInstanceMemberReachedByATypePathRequiresAReceiver(string source, string records)
+    {
+        var diagnostics = DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics;
+        Assert.Equal(records, string.Join("; ", diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}").Order(StringComparer.Ordinal)));
+        var record = Assert.Single(diagnostics, static x => x.Code == "QualificationRequired_Kd");
+        Assert.Equal("TypePath", Assert.Single(record.Reason!, static x => x.Name == "cause").Value);
+        Assert.Empty(record.Repairs ?? []);
+    }
+
+    // SPEC 6.1, 9.6: a Type function (no receiver) through the same Type paths is a static use: valid and accepted, as the sole path and
+    // beside a value path that fails (`T: ref/H`, H has no `zero`).
+    [Theory]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc c() -> i32 => T.zero()\n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc d(T: ref/H) -> i32 => T.zero()\n")]
+    public void ATypeFunctionReachedByATypePathIsAStaticUse(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics);
+
+    // SPEC 9.6, 9.5, 23.1.2 (R7-N1 c-b, Q2 (b)): when no reading of a member access's left succeeds, a reading that failed at its own
+    // stage keeps its record and the other's failure is not reported: an ambiguous import stage (k18i, rb42i, rb52i; rb42v its valid
+    // twin) and a stopped value path (rb09i, rb11i, rb43i, rb51i: the value reading's failure published through its lookup, B3).
+    [Theory]
+    [InlineData("alias A\nalias B\ngroup A\n    public let X: i32 = 1\ngroup B\n    public let X: i32 = 2\nstruct X\n    public func k() -> i32 => 1\nfunc f() -> i32 => X.m()\n", "AmbiguousBinding_Kd X")]
+    [InlineData("alias A\nalias C\ngroup A\n    public let B: i32 = 1\ngroup C\n    public let B: i32 = 2\nstruct B<T>\n    public func k() -> i32 => 1\nfunc f() -> i32 => B<i32>.m()\n", "AmbiguousBinding_Kd B")]
+    [InlineData("alias A\nalias C\ngroup A\n    public let B: i32 = 1\ngroup C\n    public let B: i32 = 2\nfunc f() -> i32 => B<i32>.m()\n", "AmbiguousBinding_Kd B")]
+    [InlineData("alias A\nalias C\ngroup A\n    public let B: i32 = 1\ngroup C\n    public let B: i32 = 2\nstruct B<T>\n    public func k() -> i32 => 1\nfunc f() -> i32 => B<i32>.k()\n", "")]
+    [InlineData("struct T\n    public func m() -> i32 => 1\nstruct S\n    public let T: i32\n    public init() => self.T = 1\n    public func g() -> i32 => T.zz()\n", "QualificationRequired_Kd T.zz")]
+    [InlineData("struct H\n    public init() => ()\n    public func k(self) -> i32 => 2\nopen struct Base\n    public init() => ()\n    public struct T\n        public init() => ()\n        public func k() -> i32 => 1\nstruct D : Base\n    public init() : base() => ()\n    public func g(T: ref/H) -> i32 => T.zz()\n", "QualificationRequired_Kd T.zz")]
+    [InlineData("struct B<T>\n    public func k() -> i32 => 1\nstruct S\n    public let B: i32\n    public init() => self.B = 1\n    public func g() -> i32 => B<i32>.m()\n", "QualificationRequired_Kd B<i32>.m")]
+    [InlineData("struct T\n    public group G\n        public let n: i32 = 1\nstruct S\n    public let T: i32\n    public init() => self.T = 1\n    public func g() -> i32 => T.G.m\n", "QualificationRequired_Kd T.G.m")]
+    // PLAN G1156's t7 (F's ruling G1156-4; fail-before: CheckFaulted_Kd): the selected reading is the value path's 9.5 stop at Box's
+    // instance Field `T`, whose record is QualificationRequired_Kd at `T.size`. The row pins head's Unsupported_Kd, the open issue:
+    // MissingFailure (Binding.Diagnostics.cs) reads the requirementGroups row the Type reading's evaluation filled, which the
+    // selected reading did not gather. Its fix moves the row to QualificationRequired_Kd T.size, a counted class 4 move (Q13).
+    [InlineData(ContainerNestingTest.ReaderPlain + "struct Box\n    public let T: i32\n    public init() => self.T = 1\n    public func g<T>(self) -> i32\n        T is Reader\n        return T.size\n", "Unsupported_Kd T.size")]
+    public void AFailedLeftKeepsItsOwnStagesRecord(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.5, 9.5.1, 18.2.2 (R7-N1 c2): an import stage's same-name declarations are checked for a conflict before 9.5's stop, Cases
+    // and receiver members among them (9.2's Value role admits them), so a stage mixing them with a function or another value, or two
+    // sources' Cases, is the ordinary same-name ambiguity at the Name.
+    [Theory]
+    [InlineData("alias Message\nalias Tools\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Quit() -> i32 => 1\nfunc f() -> i32 => Quit()", "", "Quit")]
+    [InlineData("alias Message\nalias Tools\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Write(s: string) -> i32 => 1\nfunc f() -> i32 => Write(\"a\")", "", "Write")]
+    [InlineData("alias Counter\nalias Config\nstruct Counter\n    public var count: i32 = 0\ngroup Config\n    public var count: i32 = 3\nfunc f() -> i32 => count", "", "count")]
+    [InlineData("alias A\nalias B\nenum A\n    Quit\nenum B\n    Quit\nfunc f() -> A => Quit", "", "Quit")]
+    [InlineData("alias Message\nalias Counter\nenum Message\n    Quit\n    Write(string)\nstruct Counter\n    public var count: i32 = 0\n    public func Quit(self: ref/Self) -> i32 => 1\nfunc f() -> i32 => Quit()", "", "Quit")]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\ngroup Tools\n    public func count() -> i32 => 1\nfunc f() -> i32 => count()", "", "count")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Quit() -> i32 => 1\nfunc f() -> i32 => Quit()", "Alias=\n  \"Message\"\n  \"Tools\"", "Quit")]
+    public void AnImportStageChecksItsConflictBeforeTheStop(string source, string settings, string name)
+    {
+        var records = DiagnosticCorpus.Check(source, "Library", settings).Diagnostics;
+        Assert.Contains(records, x => x.Code == "AmbiguousBinding_Kd" && source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == name);
+        Assert.DoesNotContain(records, static x => x.Code == "QualificationRequired_Kd");
+    }
+
+    // SPEC 9.5, 7.4, 18.2.1 (R7-N1 c2): a stage with a selectable candidate selects; its members needing a receiver are never selected
+    // (one group's, or another opened source's beside a free function), and an opened or default-aliased Type function is selectable.
+    [Theory]
+    [InlineData("struct S\n    func f(self: ref/Self) -> i32 => 1\n    func f(x: i32) -> i32 => x\n    func g() -> i32 => f(2)", "")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    public func make() -> Message => .Quit\nfunc f() -> Message => make()", "")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\n    public func make() -> Message => .Quit\nfunc f() -> Message => make()", "Alias=\n  \"Message\"")]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\ngroup Tools\n    public func read() -> i32 => 1\nfunc g() -> i32 => read()", "")]
+    public void AStageWithASelectableCandidateSelectsIt(string source, string settings)
+        => Assert.Empty(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
+
+    // SPEC 9.5, 7.4, 10 (R7-N1 c2): at a stage with a selectable candidate the receiver members of another opened source join the group
+    // but are never selected, so a call no selectable candidate fits has no applicable overload; never 9.5's stop.
+    [Theory]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\ngroup Tools\n    public func read(x: i32) -> i32 => x\nfunc g() -> i32 => read()", "read()")]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\ngroup Tools\n    public func read() -> i32 => 1\nfunc g(c: ref/Counter) -> i32 => read(c)", "read(c)")]
+    public void AStageWithASelectableCandidateNeverSelectsItsReceiverMembers(string source, string call)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source, "Library").Diagnostics);
+        Assert.Equal("NoApplicableOverload_Kd", record.Code);
+        Assert.Equal(call, source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
+    }
+
+    // SPEC 9.6, 9.5 (R7-N1 c2): a stop under 9.5 fails the value path of `X.m`, so the Type path is the sole success, at an import stage
+    // as at a scope stage, wherever the Type path finds `X` (stage 6's default alias in the last row). Before, the value path selected the
+    // opened member or Case and BU-117's found-both interim rejected the access with Unsupported_Kd; the invalid twin (neither path finds
+    // `Nope`) keeps the stop's record at `Message`, as at stage 2.
+    [Theory]
+    [InlineData("alias Counter\nstruct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "")]
+    [InlineData("alias Kinds\nenum Kinds\n    Message\n    Other\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "")]
+    [InlineData("struct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "Alias=\n  \"Counter\"")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nstruct Counter\n    var Message: i32 = 0\n    func f() -> Message => Message.Quit", "")]
+    [InlineData("alias Counter\nstruct Counter\n    public var Tools: i32 = 0\n    public init() => ()\ngroup Tools\n    public func make() -> i32 => 1\nfunc g() -> i32 => Tools.make()", "")]
+    [InlineData("alias Counter\nstruct Counter\n    public var Tools: i32 = 0\n    public init() => ()\ngroup Lib\n    public group Tools\n        public func make() -> i32 => 1\nfunc g() -> i32 => Tools.make()", "Alias=\n  \"Lib\"")]
+    public void AValuePathStoppedAtAnImportStageLeavesTheTypePath(string source, string settings)
+        => Assert.Empty(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
+
+    // SPEC 9.5, 9.6, 9.7, 6.5.2 (R7-E2 E2-0, the Front's B1 on Q-545): a stop fails only its own path. When the Type path selects the
+    // enum and its Case, the sole success, a later failure of the construction is the construction's own record, at the construction.
+    // Before E2-0 the recorder applied the discarded Value path's stop to it: QualificationRequired_Kd at `Opt` with a `self.` repair after
+    // which `self.Opt.None` (the i32 field has no member `None`) still fails.
+    [Theory]
+    [InlineData("enum Opt<T>\n    Some(T)\n    None\nstruct Holder\n    var Opt: i32 = 0\n    func make(self) -> i32\n        let x = Opt.None\n        return 0")] // INVALID: 9.5 stops the Value path at the field `Opt`, so it fails; the Type path selects `Opt<T>` (9.7) and `None` (9.6); no expected Type or payload leaves T unbound (6.5.2 step 2).
+    [InlineData("enum Opt<T>\n    Some(T)\n    None\nstruct Holder\n    var Other: i32 = 0\n    func make(self) -> i32\n        let x = Opt.None\n        return 0")] // INVALID, the twin with no stop: the same unbound T at `Opt.None`.
+    public void AStoppedValuePathLeavesTheTypePathItsConstructionsRecord(string declarations)
+    {
+        var source = declarations + "\npublic func main() => ()";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("UnresolvedBinding_Kd", "Opt.None"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+    }
+
+    // SPEC 9.5, 8.6.4 (PLAN G656): an opened Type-function requirement needs no receiver and is no Case, so 9.5 does not stop it; its
+    // call is rejected after selection, by the requirement call's record (G656's unit).
+    [Fact]
+    public void AnOpenedTypeFunctionRequirementIsNoQualificationStop()
+    {
+        var records = DiagnosticCorpus.Check("alias P\ncontract P\n    func make() -> i32\nfunc g() -> i32 => make()", "Library", string.Empty).Diagnostics;
+        Assert.NotEmpty(records);
+        Assert.DoesNotContain(records, static x => x.Code == "QualificationRequired_Kd");
     }
 }

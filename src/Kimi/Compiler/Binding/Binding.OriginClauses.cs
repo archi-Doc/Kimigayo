@@ -4,17 +4,18 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Binding's own judgment of declared Origin relations (SPEC 15.3.3, 15.3.6, 15.6.1, 15.6.5; DECISIONS BU-26, R4-M101, R4-M108): once
+// Binding's own judgment of declared Origin relations (SPEC 15.3.3, 15.3.6, 15.6.1, 15.6.5; DECISIONS BU-26, R4-M101, R7-M66): once
 // per pass, after the bodies, the clauses of each completed declaration that proof alone does not establish, then the declaration rows.
 // - Responsibility: ValidateOriginRelations judges a clause by its owner's part, a local's (JudgeLocalClause) or a Field's, Case's,
-//   alias's or associated formation's (JudgeDeclaredRelation), both over FailedDeclaredRelation; JudgeDeclarationRows is the one judge
-//   of the Origin rows Binding formed with no executable body (DeclarationAtom, UnboundAtom), through R4-M118's chain rule for a row with
-//   an Unbound end (Binding.OriginClauses.Chains.cs; DECISIONS BU-62).
-// - Inputs: the completed Origin declarations, the pass's obligations, and the proof and relation judge (Binding.OriginProof.cs,
-//   JudgeCallPosition).
-// - Outputs: Origin relation records (originRelations; a declaration row's and a chain's through PublishCallRelations), the derived
+//   alias's or associated formation's (JudgeDeclaredRelation), both over FailedDeclaredRelation, and forms the own clauses' rows of each
+//   written Type formed in a declaration frame at its root (DeclarationTypeRoot, AddTypeClauseObligations); JudgeDeclarationRows is the
+//   one judge of the Origin rows Binding formed with no executable body (DeclarationAtom, UnboundAtom), through R4-M118's chain rule for
+//   a row with an Unbound end (Binding.OriginClauses.Chains.cs; DECISIONS BU-62).
+// - Inputs: the completed Origin declarations, the pass's obligations, the pass's nodes with their FormedTypes rows' frames, and the proof
+//   and relation judge (Binding.OriginProof.cs, JudgeDeclarationPosition).
+// - Outputs: Origin relation records (RecordOrigin; a declaration row's and a chain's through PublishCallRelations), the derived
 //   Unsupported failure of a row with an Unbound end (UnboundCause), obligations for the clauses the judge leaves to region inference,
-//   and a local clause's row and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
+//   and a local clause's row (JudgeLocalClause; a body relation, which A5 judges, DECISIONS R7-M66).
 // - Invariants: a clause is judged by its owner's part only, and FailedDeclaredRelation takes no steering flag; a clause's rows are its
 //   owner's body's (a local's, or none for a declaration's); the declaration judge judges in its own frame (ExecutableBody.Declarations,
 //   DECISIONS BU-89), a judged declaration row leaves the obligations, and a row whose ends are not declaration atoms stays for the
@@ -63,6 +64,13 @@ public sealed partial class Binding
         return null;
     }
 
+    // A root of the declaration judge's walk, a written Type formed in a declaration frame (SPEC 15.3.3): a Function Type's written
+    // result, of any owner (R4-M162), or an outermost Type (its parent no Type) outside a signature, whose Types are premises; the root's
+    // walk forms the Types below it (AddTypeClauseObligations), so each written Type is one root's.
+    private static bool DeclarationTypeRoot(Koto node)
+        => FormedTypeRows.Frame(node) == FormationFrame.Declaration && (node.Parent is FunctionTypeKoto function ? ReferenceEquals(function.ReturnType, node) :
+            node.Parent is not TypeKoto && (node.Parent is null || !FormedTypeRows.Contains(node.Parent)) && OriginOwner(node) is not (FunctionKoto or PropertyAccessorKoto));
+
     // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
     // their owner's part: a local's (a FieldKoto, the parser's local declaration) by the local part, JudgeLocalClause, and any other
     // owner's, a Field's, Case's, alias's or associated formation's, by the declaration part, JudgeDeclaredRelation: a declaration's
@@ -88,15 +96,88 @@ public sealed partial class Binding
             }
         }
 
+        // DECISIONS R4-M162, BU-26: each written Type formed in a declaration frame is the declaration judge's after Completion: its own
+        // clauses' rows at each root, in the judge's frame (FormedTypeRows' frame, the one its producer published).
+        var frame = this.EnterBody(ExecutableBody.Declarations);
+        try
+        {
+            for (var i = 0; i < this.nodes.Count; i++)
+            {
+                if (this.nodes[i] is { BoundType: { } type } node && DeclarationTypeRoot(node))
+                {
+                    this.AddTypeClauseObligations(type, node);
+                }
+            }
+        }
+        finally
+        {
+            this.formingBody = frame;
+        }
+
         this.JudgeDeclarationRows();
+    }
+
+    // SPEC 15.3.3, 15.6.5 (OJ1): the declaration judge's position for `row`, `longer outlives shorter` (`==` when the row's Equality) at
+    // the row's use in the declaration frame: a meet at the longer end decomposes, each failing operand its own record (SPEC 15.3.6); a
+    // premise-proven relation holds; a body chain is an obligation; a Refuted or Unknown one is the Origin relation record
+    // PublishCallRelations publishes, a clause row's (a Type's own clause substituted at an occurrence, AddTypeClauseObligations) with
+    // the source `declared` and its clause related (SPEC 23.1); an Unrepresentable one is an obligation. The row gives the position's
+    // facts (Use, Equality, WellFormed, Clause); the ends and the condition are the operands judged, a meet's or a chain pair's. Body
+    // relations are never judged here (FormBodyRelation, R7-O1).
+    private void JudgeDeclarationPosition(in BindingObligation row, BoundOrigin longer, BoundOrigin shorter, ulong condition)
+    {
+        if (ReferenceEquals(longer, shorter))
+        {
+            return;
+        }
+
+        var at = row.Use;
+        if (!row.Equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
+        {
+            for (var i = 0; i < longer.Operands.Count; i++)
+            {
+                this.JudgeDeclarationPosition(row, longer.Operands[i], shorter, condition);
+            }
+
+            return;
+        }
+
+        var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
+        var backwardProven = !row.Equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
+        if (ConstrainsRegions(longer, shorter, this.formingBody))
+        {
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, Equality: row.Equality, WellFormed: row.WellFormed, Condition: condition));
+            return;
+        }
+
+        var forward = forwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at, this.formingBody, condition);
+        var backward = backwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at, this.formingBody, condition);
+        if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
+        {
+            var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
+            var fact = new OriginRelationFact(at, longer, this.SuppliedAtUse(longer, at), shorter, row.Equality, null, refuted, row.Clause, WellFormed: row.WellFormed);
+            this.callRelationScratch.Add((at, fact));
+            return;
+        }
+
+        if (forward == OriginJudgment.Unrepresentable)
+        {
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, WellFormed: row.WellFormed, Condition: condition));
+        }
+
+        if (backward == OriginJudgment.Unrepresentable)
+        {
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, shorter, longer, WellFormed: row.WellFormed, Condition: condition));
+        }
     }
 
     // SPEC 15.3.2, 15.3.4, 15.6.1, 15.6.5 (DECISIONS BU-26, BU-62): the one judge of a declaration's rows, the Origin relations Binding
     // formed with no executable body (a Field's, payload's or base's declared Type, a signature's well-formedness, a clause's unrepresentable
-    // end), which consumes each in every pass. A row each call discharges (CallBorrows) is left to the calls, and one the published
+    // end, a nested signature's per-call relation formed in a body, SPEC 15.3.4, R7-O3 U-O3), which consumes each in every pass. A row
+    // each call discharges (CallBorrows) is left to the calls, and one the published
     // premises at its use entail is its declaration's premise, not an obligation (CollectDeclarationRows). Every other row goes to R4-M118's
-    // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (each failing operand of a meet its own
-    // record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its
+    // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (JudgeDeclarationPosition; each failing
+    // operand of a meet its own record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its
     // Unbound atom rests on (UnboundCause). The rule judges from the premises at the use, a failed clause's declaration's included (its
     // bound clauses; H11b-0 B1). It judges in its own frame (ExecutableBody.Declarations; DECISIONS BU-89), where an enclosing body's
     // Origin a declaration names is fixed (SPEC 15.3.4); a judgment made while a header is bound keeps the forming body's classes and
@@ -111,7 +192,7 @@ public sealed partial class Binding
         {
             foreach (var (row, longer, shorter) in this.fixedRows)
             {
-                this.JudgeCallPosition(row.Use, longer, shorter, row.Equality, null, null, wellFormed: row.WellFormed, condition: row.Condition);
+                this.JudgeDeclarationPosition(row, longer, shorter, row.Condition);
             }
 
             this.JudgeChains();
@@ -135,42 +216,65 @@ public sealed partial class Binding
     // Consumes the pass's declaration rows. One whose relation the published premises at its use entail (a signature's well-formed input,
     // BU-26 E3) is Binding's direct proof and forms no edge, as a relation Binding proves forms no row for A5 (2a0-D D1); region inference
     // and the rejected clauses never decide a row. A fixed-fixed row waits to be judged at once, one with an Unbound end for JudgeChains.
+    // A fixed-fixed HeldResult row its premises do not entail is the located limit at its use, the written borrow layer (F's ruling
+    // O3-24), so no program is accepted on the part of a result premise no call carries; one with an Unbound end is the limit there too,
+    // resting on its atom's cause (JudgeDeclarationRows).
     private void CollectDeclarationRows()
     {
         var remaining = 0;
-        for (var i = 0; i < this.obligations.Count; i++)
+        var session = this.OpenPremiseSession(); // PLAN G778: the rows at one anchor share its premise environment.
+        try
         {
-            var obligation = this.obligations[i];
-            if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Body.IsBody: false, Longer: { } longer, Shorter: { } shorter } ||
-                !DeclarationAtom(longer = this.OriginAtUse(longer, obligation.Use)) || !DeclarationAtom(shorter = this.OriginAtUse(shorter, obligation.Use)))
+            for (var i = 0; i < this.obligations.Count; i++)
             {
-                this.obligations[remaining++] = obligation;
-                continue;
-            }
+                var obligation = this.obligations[i];
+                if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Body.IsBody: false, Longer: { } longer, Shorter: { } shorter } ||
+                    !DeclarationAtom(longer = this.OriginAtUse(longer, obligation.Use)) ||
+                    !DeclarationAtom(shorter = this.OriginAtUse(shorter, obligation.Use)))
+                {
+                    this.obligations[remaining++] = obligation;
+                    continue;
+                }
 
-            this.obligationSet.Remove(obligation);
-            if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
-            {
-                continue;
-            }
+                this.obligationSet.Remove(new(obligation));
+                if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
+                {
+                    continue;
+                }
 
-            if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: not null } unbound)
-            {
-                this.unboundRows.Add((obligation, longer, shorter, unbound));
+                if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: not null } unbound)
+                {
+                    this.unboundRows.Add((obligation, longer, shorter, unbound));
+                }
+                else if (obligation.Discharge == OriginDischarge.HeldResult)
+                {
+                    this.Fail(obligation.Use, BindingFailure.Unsupported);
+                }
+                else
+                {
+                    this.fixedRows.Add((obligation, longer, shorter));
+                }
             }
-            else
-            {
-                this.fixedRows.Add((obligation, longer, shorter));
-            }
+        }
+        finally
+        {
+            session?.Close();
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
     }
 
-    // Whether the published premises at the row's use entail its relation, both ways for an equality.
+    // Whether the published premises at the row's use entail its relation, both ways for an equality. A HeldResult row's exclude the held
+    // Function Type parts of a result premise (OriginPremiseRule.HeldResult), the one part no call carries (WellFormedPremises.EnterStored):
+    // a relation the other premises prove, another component's stored Origins and the result Type's clauses included, is the calls' too,
+    // as each call proves those premises for its instantiation (SPEC 15.6.1, 15.6.4 step 3; DECISIONS BU-73's amendment, F's rulings
+    // O3-24, O3-27).
     private bool PublishedPremise(BindingObligation row, BoundOrigin longer, BoundOrigin shorter)
-        => this.ProvesOriginOutlives(longer, shorter, row.Use, row.Condition) &&
-            (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, row.Condition));
+    {
+        var excluded = row.Discharge == OriginDischarge.HeldResult ? OriginPremiseRule.HeldResult : OriginPremiseRule.Target;
+        return this.ProvesOriginOutlives(longer, shorter, row.Use, default(CallableInstance), row.Condition, excluded) &&
+            (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, default(CallableInstance), row.Condition, excluded));
+    }
 
     // The clauses of one completed declaration that proof alone does not establish, judged by their owner's part.
     private void ValidateOriginRelations(OriginDeclaration declaration)
@@ -202,7 +306,7 @@ public sealed partial class Binding
         obligation = obligation with { Body = this.formingBody }; // Judged in the body that forms it (SPEC 15.6.5; DECISIONS BU-28).
         var resolvedLonger = this.OriginAtUse(relation.Longer, use);
         var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
-        if (RegionChain(resolvedLonger, resolvedShorter, relation.Equality, this.formingBody) || !FixedIn(resolvedShorter, this.formingBody))
+        if (RegionChain(resolvedLonger, resolvedShorter, this.formingBody) || !FixedIn(resolvedShorter, this.formingBody))
         {
             this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
             return null;
@@ -233,34 +337,22 @@ public sealed partial class Binding
     {
         if (this.FailedDeclaredRelation(relation) is { } failed)
         {
-            this.FailExplained(ref this.originRelations, relation.Syntax, BindingFailure.OriginRelation, failed);
+            this.RecordOrigin(relation.Syntax, new(failed, null));
         }
     }
 
-    // The local part (SPEC 15.3.6): a local's clause is judged as declared, and a relation is located at the initializer when the
-    // initializer supplies one of its ends, an Origin the local's Type omits, as the value that does not fit. An omitted contravariant
-    // slot with no principal lower bound is a local region (SolveLocalBounds), so its clause is a row, judged through the region's
-    // sources, never a record here (DECISIONS R4-M112).
+    // The local part (SPEC 15.3.6, 15.6.5; R7-O1): a local's clause in a body is a relation of the body, a row A5 judges, never Binding's
+    // record. The caller found it unproven by the premises, the proof a clause takes (SPEC 15.3.3: it assumes no new facts, so it bounds
+    // no open initializer as a fit's answer does, FormBodyRelation's step 2), so the row forms directly. Its record is at the clause, or
+    // at the initializer when that supplies one of its ends, an Origin the local's Type omits, as the value that does not fit (H11b D5).
+    // Its ends are the clause's as written, which the view resolves at the clause (its Supplier, R4-M133, is the written longer end).
     private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
     {
-        if (this.FailedDeclaredRelation(relation) is not { } failed)
-        {
-            return;
-        }
-
         var use = relation.Syntax;
         var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
-        var record = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? failed with { At = initializer } : failed;
-        this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, record);
-
-        // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, for A5, and
-        // the clause is a twin (R4-M111).
-        if (BodyChain(failed.Longer, failed.Shorter, failed.Equality, this.formingBody))
-        {
-            (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(use);
-            var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, failed.Longer, failed.Shorter);
-            this.AddObligation(row with { Equality = failed.Equality, Clause = use });
-        }
+        var site = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
+        var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Site: site);
+        this.AddObligation(row with { Equality = relation.Equality, Clause = use });
 
         // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
         OriginVariance? InferredEnd(BoundOrigin end)

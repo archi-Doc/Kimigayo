@@ -51,7 +51,7 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        if (!MirTypes.MayNeedDrop(type, this.seen))
+        if (!MirTypes.MayNeedDrop(this.typeContext, type, this.seen))
         {
             return true;
         }

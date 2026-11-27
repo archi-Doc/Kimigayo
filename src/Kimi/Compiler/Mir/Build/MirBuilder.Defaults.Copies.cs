@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -16,38 +17,48 @@ internal sealed partial class MirBuilder
     private readonly Dictionary<BoundType, BoundType> instances = []; // Each Type a copy folds, in the call's instance (Instantiates).
     private readonly Dictionary<Subst, Subst> compositions = []; // Each callee substitution a copy holds, composed (Instantiates).
 
-    // SPEC 23.1.1 (DECISIONS R4-M127, R4-M139): whether the call's substitution instantiates a copy of the template, decided before any of
-    // it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's), each Length
-    // constant's term (TyCtxt.InstanceLength) and each
-    // callee's substitution, in the call's instance as every reader of an instance reads it (TyCtxt.ReadableInstance, a composition by
-    // Readable over its deciding part: Prepared or Rejected, whose rejected parts hold nothing, never a Limit), each kept for Inline, which
-    // folds by them.
-    private bool Instantiates(MirBody template, Subst subst)
+    // SPEC 7.2.3, 23.1.1 (DECISIONS R4-M127; PLAN G396 (3)): whether the call's substitution forms a copy of the template, decided before
+    // any of it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's), each
+    // Length constant's term (TyCtxt.InstanceLength) and each callee's substitution, in the call's instance as the written call forms it
+    // (the collector's formation, R7-M54: TyCtxt.Apply's Type, TyCtxt.Compose's Subst, whatever the instance's storage verdict, Rejected or
+    // past Binding's storage bound), each kept for Inline, which folds by them. A Type's and a callee substitution's formation is
+    // TyCtxt.Answered's (PLAN G651 U2b R1, K1): after Binding's run a Type past IMPL A.4's height is the formation's HeightLimit, which the
+    // innermost site records (AnswerSite) and Defaults rests on; a Length constant's term is a bare TyCtxt.InstanceLength read, whose null
+    // is the copy's Incomplete. The first failing read gives the cause, in this order: locals, each constant's Type then its term,
+    // rvalues, callee substitutions; locals come before constants since the terms' dominance (TyCtxt.InterpolationHint) needs the write's
+    // borrow formed before its term (PLAN G651 U2c). Incomplete is BU-36's contract substitution or a length that does not complete (no
+    // reproducer), which Defaults reads as the collector does (R5-M151).
+    private TyCtxt.Formation Instantiates(MirBody template, Subst subst)
     {
         this.instances.Clear();
         this.compositions.Clear();
         foreach (ref readonly var local in template.Locals)
         {
-            if (local.Kind is not (MirLocalKind.Return or MirLocalKind.Arg) && !this.Instance(local.Type, subst))
+            if (local.Kind is not (MirLocalKind.Return or MirLocalKind.Arg) && this.Instance(local.Type, subst) is var cause && cause != TyCtxt.Formation.Formed)
             {
-                return false;
+                return cause;
             }
         }
 
         foreach (ref readonly var constant in template.Consts)
         {
-            if (!this.Instance(constant.Type, subst) ||
-                (constant is { Kind: MirConstKind.Length, Value: BoundLength length } && compilation.Types.InstanceLength(length, subst) is null))
+            if (this.Instance(constant.Type, subst) is var cause && cause != TyCtxt.Formation.Formed)
             {
-                return false;
+                return cause;
+            }
+
+            if (constant is { Kind: MirConstKind.Length, Value: BoundLength length } && compilation.Types.InstanceLength(length, subst) is null)
+            {
+                return TyCtxt.Formation.Incomplete;
             }
         }
 
         foreach (ref readonly var statement in template.Statements)
         {
-            if (statement.Kind == MirStatementKind.Assign && statement.Rvalue.Type is { } type && !this.Instance(type, subst))
+            if (statement.Kind == MirStatementKind.Assign && statement.Rvalue.Type is { } type && this.Instance(type, subst) is var cause &&
+                cause != TyCtxt.Formation.Formed)
             {
-                return false;
+                return cause;
             }
         }
 
@@ -55,22 +66,22 @@ internal sealed partial class MirBuilder
         {
             if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
             {
-                // A composition's verdict is its parts' (TyCtxt.Compose); the guard reads the part deciding it, none when Prepared.
-                if (compilation.Types.Compose(inner, subst) is not ({ } composed, var storage, var part) ||
-                    (part is not null && !compilation.Types.Readable(part, storage)))
+                var (composed, cause) = compilation.Types.Answered(inner, subst);
+                if (composed is null)
                 {
-                    return false;
+                    return cause;
                 }
 
                 this.compositions.Add(inner, composed);
             }
         }
 
-        return true;
+        return TyCtxt.Formation.Formed;
     }
 
-    // A copy's keyed view (SPEC 8.15.3; PLAN G597): its key, in the call's instance, decides its form again (First), so a closed one is
-    // unkeyed; the displaced form's temp is the copy's, at the view's location and live for its two statements.
+    // A copy's keyed view (SPEC 8.15.3; PLAN G597), or Storage.viewStart's (Form): its key, in the call's instance, decides its form
+    // again (First), so a closed one is unkeyed; the displaced form's temp is the copy's, at the view's location and live for its two
+    // statements.
     private void Refirst(in MirStatement view, in MirOperand start, BoundType key)
     {
         var starts = MirTypes.StartsAtStorage(key);
@@ -86,28 +97,31 @@ internal sealed partial class MirBuilder
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageDead, through, view.Source with { StatementStart = false }));
     }
 
-    // A Type of a copy in the call's instance (Instantiates), each once.
-    private bool Instance(BoundType type, Subst subst)
+    // A Type of a copy in the call's instance (Instantiates), each once; a local of no Type (a slot Binding failed, PLAN G1073) has none
+    // and folds to itself (FoldType).
+    private TyCtxt.Formation Instance(BoundType? type, Subst subst)
     {
-        if (this.instances.ContainsKey(type))
+        if (type is null || this.instances.ContainsKey(type))
         {
-            return true;
+            return TyCtxt.Formation.Formed;
         }
 
-        if (compilation.Types.ReadableInstance(type, subst) is not { } instance)
+        var (instance, cause) = compilation.Types.Answered(type, subst);
+        if (instance is null)
         {
-            return false;
+            return cause;
         }
 
         this.instances.Add(type, instance);
-        return true;
+        return TyCtxt.Formation.Formed;
     }
 
     // A copy's location, in the copy's scope (Frame).
     private SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = this.folded[info.Scope] };
 
-    // A copy's Type in the call's instance (Instantiates); a copy without a substitution keeps its template's.
-    private BoundType FoldType(BoundType type, Subst? subst) => subst is null ? type : this.instances[type];
+    // A copy's Type in the call's instance (Instantiates); a copy without a substitution keeps its template's, and none stays none.
+    [return: NotNullIfNotNull(nameof(type))]
+    private BoundType? FoldType(BoundType? type, Subst? subst) => subst is null || type is null ? type : this.instances[type];
 
     // Plan 5.6.2: a copy's frame, where each scope, local and block of its template is in this body (folded, in that order, each in its
     // template's order: Inline reads a local at the scope count, a block after the locals): its scopes in a scope Inlined at the call,
@@ -195,8 +209,8 @@ internal sealed partial class MirBuilder
 
             var terminator = block.Terminator;
             var call = terminator.Kind == MirTerminatorKind.Call;
-            var operand = terminator.Kind == MirTerminatorKind.SwitchInt || terminator.Callee.Kind == MirCalleeKind.Value
-                ? FoldOperand(terminator.Operand) : default;
+            var switches = terminator.Kind is MirTerminatorKind.SwitchInt or MirTerminatorKind.CaseSwitch; // A CaseSwitch's decider folds as a constant.
+            var operand = switches || terminator.Callee.Kind == MirCalleeKind.Value ? FoldOperand(terminator.Operand) : default;
             for (var i = 0; call && i < terminator.Count; i++)
             {
                 var argument = template.Operands[terminator.Start + i]; // staticEnsure's operand is a static's index in its body.
@@ -211,7 +225,7 @@ internal sealed partial class MirBuilder
             }
 
             var first = call ? this.Flush(start) : this.body.Cases.Length;
-            for (var i = 0; terminator.Kind == MirTerminatorKind.SwitchInt && i < terminator.Count; i++)
+            for (var i = 0; switches && i < terminator.Count; i++)
             {
                 this.body.AddCase(template.Cases[terminator.Start + i].Value, Target(template.Cases[terminator.Start + i].Target));
             }
@@ -232,7 +246,7 @@ internal sealed partial class MirBuilder
                 Operand = operand, Start = first, Place = place, Callee = callee,
             };
             // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
-            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place), this.walked);
+            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(compilation.Types, this.body.TypeOf(place), this.walked);
             var continuation = copied;
             if (terminator.Kind == MirTerminatorKind.Return)
             {
@@ -264,8 +278,8 @@ internal sealed partial class MirBuilder
             {
                 MirProjectionKind.PairLayer => TyCtxt.Layer(this.body.TypeOf(prefix), out _, out _) is var kind and not HirPlaceKind.Value
                     ? this.Layer(prefix, kind) : prefix,
-                MirProjectionKind.Index => this.body.Project(prefix, row.Kind, map[locals + row.Arg]),
-                _ => this.body.Project(prefix, row.Kind, row.Arg),
+                MirProjectionKind.Index => this.body.Project(compilation.Types, prefix, row.Kind, map[locals + row.Arg], row.Position),
+                _ => this.body.Project(compilation.Types, prefix, row.Kind, row.Arg),
             };
         }
 
@@ -294,7 +308,7 @@ internal sealed partial class MirBuilder
         MirRvalue Reacquired(in MirRvalue acquire)
         {
             var place = FoldPlace(template.Operands[acquire.Start].Place);
-            return this.ByCase(place, this.body.TypeOf(place) ?? BoundType.Unit, acquire.Op == (byte)MirRefKind.TwoPhaseUniq)
+            return this.ByCase(place, this.body.TypeOf(place), acquire.Op == (byte)MirRefKind.TwoPhaseUniq)
                 ?? MirRvalue.Use(this.body.AddOperand(MirOperand.Copy(place)));
         }
     }

@@ -70,9 +70,10 @@ public class InferredPropertyAccessBindingTest
         """;
 
     // PLAN G375: an inferred Property's initializer demands a signature in the header loop. An Unknown there is not kept, and no Proven is kept before
-    // the first ValidateConformances: a failure before the bodies (S's inline layout) turns it, so a body's read computes.
+    // the first ValidateConformances: a failure before the bodies (S's inline layout) turns it, so a body's read computes. PLAN G1278
+    // (G1278-A, Q13): the declarations and names that carry the written `Box<S>` restate nothing (6 -> 4 UnsatisfiedConstraint_Kd).
     [Theory]
-    [InlineData(EarlyUnknown, "1*DeclarationOrderWarning_Kd 2*NoApplicableOverload_Kd 7*UnsatisfiedConstraint_Kd")] // DECISIONS: G572 U2a (Q13): Refuted at Final
+    [InlineData(EarlyUnknown, "1*DeclarationOrderWarning_Kd 2*NoApplicableOverload_Kd 4*UnsatisfiedConstraint_Kd")] // DECISIONS: G572 U2a (Q13): Refuted at Final
     [InlineData(EarlyInline, "1*DeclarationOrderWarning_Kd 2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd 1*PrerequisiteUnavailable_Kd")]
     [InlineData(NoEarlyInline, "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(EarlyReference, "1*DeclarationOrderWarning_Kd 2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd 1*PrerequisiteUnavailable_Kd")]
@@ -102,7 +103,7 @@ public class InferredPropertyAccessBindingTest
         var c = Check("enum Hidden\n    A\ncontract C\n    associate Element\nstruct Source\n    Self is C\n    associate C.Element is Hidden\npublic group Api\n    " + access + " let item = " + expression + "\n    private func make() -> Source.(C).Element => Hidden.A\n    private func makeArray() -> [2 of Hidden] => [Hidden.A, Hidden.A]", valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var tree = restored.Kotonoha;
         Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
         Assert.NotNull(tree);

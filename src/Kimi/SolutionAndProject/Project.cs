@@ -3,7 +3,6 @@
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Build;
 using Kimi.Checking;
@@ -14,7 +13,10 @@ using Kimi.Diagnostics;
 /// <summary>
 /// Represents an application or library build unit, configured by a project file or a single-source input.
 /// </summary>
-/// <remarks>A project is the Kimigayo equivalent of a C# project.</remarks>
+/// <remarks>A project is the Kimigayo equivalent of a C# project. Its input (IMPL 20.3.1), the selected file every build record names, is
+/// stored once and derived: the project file of a <c>.kimiproj</c> input, the one source file of a <c>.kimi</c> input's implicit project
+/// (no project file), its full path as resolution gives it; none for a project without a project file and with another number of source
+/// files (one made in memory).</remarks>
 public partial class Project
 {
     /// <summary>Gets the default settings for programmatically constructed projects.</summary>
@@ -23,7 +25,7 @@ public partial class Project
     static Project()
     {
         var projectFile = new ProjectFile();
-        projectFile.Targets = ["x86_64-pc-windows-msvc"];
+        projectFile.Targets = [TargetProfile.Windows.Target];
 
         DefaultProjectFile = projectFile;
     }
@@ -53,27 +55,27 @@ public partial class Project
         [MaybeNullWhen(false)] out Project project,
         out IReadOnlyList<string> failures)
     {
+        // SPEC 23.2.3 (PLAN G1010): only the load's own calls are classified, each where it reads: the path's naming, the file's read and
+        // the source listing (CheckInputSource.IsReadFailure), and the configuration text's parse and rules (ProjectFile.Load:
+        // TinyhandException, ProjectConfigurationException; the deserializer's span also runs compiler code, a recorded limit). Any other
+        // exception is the compiler's and ends the caller's result as Faulted (the check entry's CheckService.Load).
         project = default;
-        failures = [];
+        string fullPath;
+        byte[] bytes;
         try
         {
-            var fullPath = Path.GetFullPath(path);
-            var file = ProjectFile.Load(inputs.ReadAllBytes(fullPath));
-            if (file is null)
-            {
-                failures = [$"Empty project configuration '{path}'."];
-                logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
-                return false;
-            }
+            fullPath = Path.GetFullPath(path);
+            bytes = inputs.ReadAllBytes(fullPath);
+        }
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+        {
+            return Failed([$"The project '{path}' could not be loaded: {ex.Message}"], out failures);
+        }
 
-            project = new(kimigayo, file);
-            project.FilePath = fullPath;
-            project.Directory = Path.GetDirectoryName(fullPath)!;
-            project.Name = Path.GetFileNameWithoutExtension(path);
-            foreach (var source in inputs.GetFiles(project.Directory, "*.kimi"))
-            {
-                project.AddKimiFile(source);
-            }
+        ProjectFile? file;
+        try
+        {
+            file = ProjectFile.Load(bytes);
         }
         catch (Exception ex) when (ex is TinyhandException or ProjectConfigurationException)
         {
@@ -82,22 +84,48 @@ public partial class Project
             for (var i = 0; i < reasons.Length; i++)
             {
                 reasons[i] = $"Invalid project configuration '{path}': {notes[i]}";
-                kimigayo.WriteLine(DiagnosticSeverity.Error, reasons[i]);
             }
 
-            failures = reasons;
-            project = default;
-            return false;
-        }
-        catch (Exception ex) when (ex is not PendingInputException)
-        {
-            failures = [$"The project '{path}' could not be loaded: {ex.Message}"];
-            logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
-            project = default;
-            return false;
+            return Failed(reasons, out failures);
         }
 
+        if (file is null)
+        {
+            return Failed([$"Empty project configuration '{path}'."], out failures);
+        }
+
+        var loaded = new Project(kimigayo, file) { FilePath = fullPath, Directory = Path.GetDirectoryName(fullPath)!, Name = Path.GetFileNameWithoutExtension(path) };
+        string[] sources;
+        try
+        {
+            sources = inputs.GetFiles(loaded.Directory, "*.kimi");
+        }
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+        {
+            return Failed([$"The project '{path}' could not be loaded: {ex.Message}"], out failures);
+        }
+
+        foreach (var source in sources)
+        {
+            loaded.AddKimiFile(source);
+        }
+
+        project = loaded;
+        failures = [];
         return true;
+
+        // Each reason once through the service (a silent one writes nothing), and the load's log line.
+        bool Failed(string[] reasons, out IReadOnlyList<string> result)
+        {
+            foreach (var reason in reasons)
+            {
+                kimigayo.WriteLine(DiagnosticSeverity.Error, reason);
+            }
+
+            logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
+            result = reasons;
+            return false;
+        }
     }
 
     /// <summary>Creates an in-memory Application for exactly one source file without reading its contents.</summary>
@@ -110,12 +138,8 @@ public partial class Project
         var target = options.Target;
         if (string.IsNullOrEmpty(target))
         {
-            if (!OperatingSystem.IsWindows() || RuntimeInformation.OSArchitecture != Architecture.X64)
-            {
-                throw new PlatformNotSupportedException("Implicit projects currently support only the Windows x64 host target. Specify --Target explicitly for emission to a supported target.");
-            }
-
-            target = WindowsProfile.Target;
+            target = TargetProfile.Host?.Target ?? throw new PlatformNotSupportedException(
+                $"An implicit project takes the host's target, and this host ({TargetProfile.HostName}) has none. Specify --Target explicitly for emission to a supported target.");
         }
 
         var fullPath = Path.GetFullPath(path);
@@ -157,6 +181,10 @@ public partial class Project
     public ProjectFile ProjectFile { get; private set; }
 
     internal string? FilePath { get; private set; }
+
+    // The project's input, derived as the summary states: publication writes it into the link manifest, every native build of the pair
+    // names it in its record, and run --no-build runs a build only of this input (PLAN G1256).
+    internal string? Input => this.FilePath ?? (this.kimiFiles.Count == 1 ? this.kimiFiles.First() : null);
 
     /// <summary>Gets the discovered source files.</summary>
     internal IReadOnlyCollection<string> KimiFiles => this.kimiFiles;
@@ -214,35 +242,74 @@ public partial class Project
     public Task<bool> Check(CancellationToken cancellationToken)
         => this.BuildCore(false, cancellationToken);
 
-    /// <summary>Checks product sources and records a Library build or links an Application.</summary>
-    /// <param name="cancellationToken">Cancels checking, generation and native tool processes.</param>
+    /// <summary>Checks product sources and records a Library build or links an Application. The toolchain boundary (R9-B2): the
+    /// toolchain's classification (<see cref="NativeToolchain.IsToolchainFailure"/>) applies only around the toolchain's calls (the
+    /// artifact paths and the build's beginning, which takes the output's lock and invalidates the record; the native build or the
+    /// Library record), and such a failure fails the build with its message (IMPL 20.3; SPEC 23.2.2). The compiler's steps run between
+    /// them, outside both catches, each result with its own fault path; any other exception under the build (the compiler's read of the
+    /// checked metadata, the rendering of a toolchain failure, or one the toolchain leaves) ends the build's own result as Faulted
+    /// (DIAGNOSTICS rule 9). The output's lock is held from the beginning until the native build or the Library record returns, on every
+    /// outcome. The artifact target is selected first: without one the check sequence reports why (its gate), with no lock taken and no
+    /// record written.</summary>
+    /// <param name="cancellationToken">Cancels the wait for the output's lock, checking, generation and native tool processes.</param>
     /// <returns>Whether this OutputKind's checks and artifacts succeeded.</returns>
     public async Task<bool> Build(CancellationToken cancellationToken = default)
     {
         try
         {
-            var paths = ArtifactPaths.Create(this);
-            NativeToolchain.Invalidate(paths);
-            var application = this.ProjectFile.OutputKind == OutputKind.Application;
-            if (!await this.BuildCore(application, cancellationToken, paths).ConfigureAwait(false))
+            if (this.ArtifactTarget(out _) is not { } row)
             {
+                await this.BuildCore(true, cancellationToken).ConfigureAwait(false);
                 return false;
             }
 
-            if (application)
+            Action<DiagnosticSeverity, string> report = (severity, message) => this.kimigayo.WriteLine(severity, message);
+            ArtifactPaths paths;
+            FileStream output;
+            try
             {
-                await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+                paths = ArtifactPaths.Create(this, row);
+                output = await NativeToolchain.Begin(paths.Record, report, cancellationToken).ConfigureAwait(false);
             }
-            else
+            catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
             {
-                NativeToolchain.RecordLibrary(this, paths, cancellationToken);
+                return this.ToolchainFailed(ex);
             }
 
-            return true;
+            using (output)
+            {
+                var application = this.ProjectFile.OutputKind == OutputKind.Application;
+                if (!await this.BuildCore(application, cancellationToken, paths).ConfigureAwait(false))
+                {
+                    return false;
+                }
+
+                // A Library's record restates the front end's metadata of its one checked target (BuildTargets).
+                var metadata = application ? null : this.buildMetadata.Single();
+                try
+                {
+                    if (application)
+                    {
+                        await NativeToolchain.Build(this, paths, report, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        NativeToolchain.RecordLibrary(this, metadata!, paths, cancellationToken);
+                    }
+                }
+                catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+                {
+                    return this.ToolchainFailed(ex);
+                }
+
+                return true;
+            }
         }
-        catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+        catch (Exception ex) when (this.Faults(ex, null))
         {
-            this.kimigayo.WriteLine(DiagnosticSeverity.Error, ex.Message);
+            // The build's own result, after the results finalized at their own points: an empty owner with the fault, finalized over the
+            // Emission partition, the last a build's compiler steps reach (a Library's build has none; an empty owner orders no record).
+            this.Publish(new DiagnosticOwner(), DiagnosticPartition.Emission, DiagnosticPartition.Emission, null, fault: ex);
             return false;
         }
     }
@@ -250,8 +317,19 @@ public partial class Project
     /// <summary>Executes the last successfully built Application without rebuilding.</summary>
     /// <param name="cancellationToken">Cancels the child process.</param>
     /// <returns>The application's exit code.</returns>
-    public Task<int> Run(CancellationToken cancellationToken = default)
-        => NativeToolchain.RunProject(this, cancellationToken);
+    public async Task<int> Run(CancellationToken cancellationToken = default)
+    {
+        // The toolchain's classification around its call only (PLAN G984): a failure before launch fails the run with its message (IMPL 20.3).
+        try
+        {
+            return await NativeToolchain.RunProject(this, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+        {
+            this.ToolchainFailed(ex);
+            return 1;
+        }
+    }
 
     /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
@@ -264,7 +342,73 @@ public partial class Project
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
     /// <returns>Whether every selected target passes front-end checks.</returns>
     internal bool Check(CheckContext context, CancellationToken cancellationToken)
-        => this.BuildTargetsAndPublish(false, cancellationToken, null, context);
+        => this.OwnResult((cancellationToken, context), context, static (project, s, diagnostics) => project.BuildTargets(false, s.cancellationToken, null, s.context, diagnostics));
+
+    /// <summary>Gets the targets the project's unit selects (IMPL 20.3), the configured ones or the one --Target names; none, with the
+    /// failure, when none is configured or the selected one is not. The one selection rule: SelectTargets records it, and the artifact
+    /// target (<see cref="ArtifactTarget"/>) and the host rule read it.</summary>
+    /// <returns>The selected targets, and the failure when there are none.</returns>
+    internal (string[] Targets, string? Failure) SelectedTargets()
+    {
+        var targets = this.ProjectFile.Targets;
+        var selected = this.KimiOptions.Target;
+        return targets.Length == 0 ? ([], "At least one compilation target must be configured.") :
+            string.IsNullOrEmpty(selected) ? (targets, null) :
+            targets.Contains(selected, StringComparer.Ordinal) ? ([selected], null) :
+            ([], "The selected target is not configured in this project.");
+    }
+
+    /// <summary>Why a project has no artifact target (<see cref="ArtifactTarget"/>): its selection failed (<see cref="SelectedTargets"/>'s
+    /// failure), it selects several targets, or its one selected target has no row in the target table, whose artifacts are Unsupported
+    /// (SPEC 22 ¶1).</summary>
+    internal enum NoArtifactTarget : byte
+    {
+        /// <summary>The selection failed.</summary>
+        Selection,
+
+        /// <summary>Several targets are selected.</summary>
+        Several,
+
+        /// <summary>The one selected target has no row, or a staged row (TargetProfile.Staged, until the Tatara plan's B9g).</summary>
+        NoRow,
+    }
+
+    /// <summary>Gets the artifact target (IMPL 20.3, SPEC 22 ¶1), published once: the row of the one selected target, or none with why.
+    /// Its readers keep their own texts: the gate's records (BuildTargets) and Build, which selects it before the output's paths; run's
+    /// selection (Solution.PrepareRun) and run (NativeToolchain.RunProject, the row its build used); the test target (PrepareTests).</summary>
+    /// <param name="reason">Why there is none, when there is none.</param>
+    /// <returns>The artifact target's row, or null.</returns>
+    internal TargetProfile? ArtifactTarget(out NoArtifactTarget reason)
+    {
+        var (targets, failure) = this.SelectedTargets();
+        reason = failure is not null ? NoArtifactTarget.Selection : targets.Length > 1 ? NoArtifactTarget.Several : NoArtifactTarget.NoRow;
+
+        // A staged row is not selectable: the membership test is the temporary of TargetProfile.Staged, which B9g deletes with it.
+        return reason == NoArtifactTarget.NoRow && TargetProfile.Find(targets[0]) is { } row && Array.IndexOf(TargetProfile.Rows, row) >= 0 ? row : null;
+    }
+
+    /// <summary>The host rule of run and test (IMPL 20.3, 20.6.1; SPEC 22 ¶1: running or testing a program for a target whose executables
+    /// this host does not run is Unsupported), before any build, generation or record write: the selected targets are the host's row's
+    /// (TargetProfile.Host). Otherwise the project's own result (Input partition) records the selection's failure or the location-only
+    /// Unsupported_Kd at the project. Run's several selected targets are its command's input error first (Solution.PrepareRun); a test
+    /// project's selection is one target (PrepareTests).</summary>
+    /// <returns>Whether the project's program may run on this host.</returns>
+    internal bool RunsOnHost()
+        => this.OwnResult(0, null, static (project, _, diagnostics) =>
+        {
+            if (project.SelectTargets(diagnostics) is not { } targets)
+            {
+                return false;
+            }
+
+            if (Array.TrueForAll(targets, static x => x == TargetProfile.Host?.Target))
+            {
+                return true;
+            }
+
+            project.Unsupported(diagnostics);
+            return false;
+        });
 
     /// <summary>Publishes the IR and manifest of an accepted compilation through the generation entry, or renders the Emission result:
     /// the generation records, the publication failure, or, for an exception publication does not classify (a broken contract code
@@ -274,15 +418,13 @@ public partial class Project
     /// <param name="compilation">The accepted compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="context">The check context, or null for a command.</param>
-    /// <param name="irPath">The published IR path on success.</param>
     /// <returns>Whether the artifacts were published.</returns>
-    internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context, out string? irPath)
+    internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
     {
-        irPath = null;
         Exception? fault = null;
         try
         {
-            if (EmissionArtifacts.Publish(compilation, paths, out irPath))
+            if (EmissionArtifacts.Publish(compilation, paths))
             {
                 return true;
             }
@@ -320,19 +462,29 @@ public partial class Project
     // is synchronous; do not build another async state machine around every compilation.
     // paths requests build artifacts, including a Library's record even when emit is false.
     private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
-        => this.BuildTargetsAndPublish(emit, cancellationToken, paths, null);
+        => this.OwnResult((emit, cancellationToken, paths), null, static (project, s, diagnostics) => project.BuildTargets(s.emit, s.cancellationToken, s.paths, null, diagnostics));
 
-    private bool BuildTargetsAndPublish(bool emit, CancellationToken cancellationToken, ArtifactPaths? paths, CheckContext? context)
+    // The project's own result, the product's (its configuration, lock and target-selection records) or the test unit's (PrepareTests:
+    // its configuration, TestSources, test-setting, test-identity, test-target and lock records), which body reports to its owner: a check
+    // request's caller finalizes its own diagnostics; a command renders it here, with the fault of an exception that ends it, and returns
+    // default (DIAGNOSTICS rule 9; R9-B2): the project's own checks', a target's report after its results (Emit), or a target's
+    // preparation before its front end (BuildTarget's, whose own records are then not rendered: a known limit).
+    private TResult? OwnResult<TState, TResult>(TState state, CheckContext? context, Func<Project, TState, DiagnosticOwner, TResult> body)
     {
-        // A check request's caller finalizes its own diagnostics; a command renders the preparation result here.
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
+        Exception? fault = null;
         try
         {
-            return this.BuildTargets(emit, cancellationToken, paths, context, diagnostics);
+            return body(this, state, diagnostics);
+        }
+        catch (Exception ex) when (this.Faults(ex, context))
+        {
+            fault = ex;
+            return default;
         }
         finally
         {
-            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
+            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context, fault: fault);
         }
     }
 
@@ -361,27 +513,24 @@ public partial class Project
             valid = !this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs));
         }
 
-        var targets = this.ProjectFile.Targets;
-        if (targets.Length == 0)
+        if (this.SelectTargets(diagnostics) is not { } targets)
         {
-            this.Fail(diagnostics, "At least one compilation target must be configured.");
             return false;
         }
 
-        if (!string.IsNullOrEmpty(this.KimiOptions.Target))
+        // Artifact production's gate: the artifact target (several selected: their record; one without a row: Unsupported). The
+        // selection's own failure ended the sequence above.
+        if ((emit || paths is not null) && this.ArtifactTarget(out var reason) is null)
         {
-            if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
+            if (reason == NoArtifactTarget.NoRow)
             {
-                this.Fail(diagnostics, "The selected target is not configured in this project.");
-                return false;
+                this.Unsupported(diagnostics);
+            }
+            else
+            {
+                this.Fail(diagnostics, "Artifact production requires one selected target; select one with --Target.");
             }
 
-            targets = [this.KimiOptions.Target];
-        }
-
-        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
-        {
-            this.Fail(diagnostics, "Artifact production currently requires exactly one configured Windows x64 target.");
             valid = false;
         }
 
@@ -596,12 +745,14 @@ public partial class Project
 
     private bool Emit(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
     {
-        if (!this.PublishArtifacts(compilation, paths, context, out var pathIr))
+        if (!this.PublishArtifacts(compilation, paths, context))
         {
             return false;
         }
 
-        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; native build has not yet been performed.");
+        // The compilation's row, which publication has just found (EmissionArtifacts.Publish).
+        paths ??= ArtifactPaths.Create(this, TargetProfile.Find(compilation.TargetTriple.Value)!);
+        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {paths.Ir} and {paths.Manifest}; native build has not yet been performed.");
         return true;
     }
 
@@ -629,8 +780,26 @@ public partial class Project
         return reads;
     }
 
+    // The selection's record: null after it when the selection fails, which leaves no target to prepare.
+    private string[]? SelectTargets(DiagnosticOwner diagnostics)
+    {
+        var (targets, failure) = this.SelectedTargets();
+        if (failure is not null)
+        {
+            this.Fail(diagnostics, failure);
+            return null;
+        }
+
+        return targets;
+    }
+
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
+
+    // SPEC 22 ¶1, DIAGNOSTICS rule 3: a valid project whose target this implementation does not build, run or test: the location-only
+    // Unsupported_Kd at the project.
+    private void Unsupported(DiagnosticOwner diagnostics)
+        => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.Unsupported_Kd, this.FilePath);
 
     // SPEC 23.1.2: each failure is its own record; true when there is one.
     private bool Reported(DiagnosticOwner diagnostics, IReadOnlyList<string> failures)
@@ -662,10 +831,18 @@ public partial class Project
         return false;
     }
 
-    // SPEC 23.2.2, DIAGNOSTICS rule 9: a command renders an exception that ends a result (the front end's or the Emission result) as that
-    // result's fault, CheckFaulted_Kd, and then fails; a check request's caller (CheckService) handles its own, and cancellation propagates.
+    // SPEC 23.2.2, DIAGNOSTICS rule 9: a command renders an exception that ends a result (the project's own checks', the front end's, the
+    // Emission result or the build's) as that result's fault, CheckFaulted_Kd, and then fails; a check request's caller (CheckService)
+    // handles its own, and cancellation propagates.
     private bool Faults(Exception exception, CheckContext? context)
         => context is null && this.kimigayo.RendersDiagnostics && exception is not OperationCanceledException;
+
+    // IMPL 20.3, SPEC 23.2.2: a toolchain, output or configuration failure fails the build with the toolchain's message.
+    private bool ToolchainFailed(Exception exception)
+    {
+        this.kimigayo.WriteLine(DiagnosticSeverity.Error, exception.Message);
+        return false;
+    }
 
     // SPEC 23.3: a command renders each result once it is finalized; a check request's caller finalizes its own.
     private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false, Exception? fault = null)
@@ -676,14 +853,14 @@ public partial class Project
             try
             {
                 // SPEC 23.2.2: an exception keeps the valid records and adds the fault; a violated contract discards them.
-                result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract.Message, this.FilePath) :
-                    fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault.Message, this.FilePath, diagnostics.Finalize(first, last)) :
+                result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract, this.FilePath) :
+                    fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault, this.FilePath, diagnostics.Finalize(first, last)) :
                     diagnostics.Finalize(first, last, rejected);
             }
             catch (DiagnosticContractException ex)
             {
                 // SPEC 23.2.2: a violated contract discards every partial record and reports the fault.
-                result = DiagnosticFaults.Create(ex.Fault, ex.Message, this.FilePath);
+                result = DiagnosticFaults.Create(ex.Fault, ex, this.FilePath);
             }
 
             this.kimigayo.Render(result, this.Directory);

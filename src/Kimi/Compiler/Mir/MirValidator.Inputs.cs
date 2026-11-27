@@ -2,11 +2,11 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A Call's input temps (G136, DECISIONS R5-M72): A5 reads the Place a Ref lends into a local flow-insensitively (MirBorrows.lent) where a
+// A Call's input temps (G136, DECISIONS R5-M72): A5 reads the Place a Ref lends into a local flow-insensitively (MirBorrows.LentInto) where a
 // Call takes the local as an input, at an in-place target and its destroying reservations, so the builder writes once an input that
 // reserves (MirCases.Reserves, the predicate MirBuilder.Operand decides by: an exclusive reference or a pair layer): each body of an if, a
 // match or try and a do gives its value through a temp of its own (MirBuilder.Result), as an exit gives its secured temp. An Opaque
-// site's roots are derived and left out.
+// site's uses are derived and left out.
 internal sealed partial class MirValidator
 {
     private const byte Written = 4; // A local's writes for G136, beside G131's: a whole write MirUses reports, a second one, a Ref's or an
@@ -50,17 +50,15 @@ internal sealed partial class MirValidator
         }
 
         // An input Temp that reserves and that a Ref or an Adapt writes has no other write, unless an Opaque site names it; a finding at the
-        // Temp.
+        // Temp. A part a site takes but does not name (read by its FakeRead, or a Temporary's value; DECISIONS Z17) needs none: its Place
+        // is never a reserving temp a Call takes whole as an input, since the part's consumer is the replaced form.
         private void Lent()
         {
-            foreach (var site in body.OpaqueSites)
+            foreach (var use in body.OpaqueUses)
             {
-                foreach (var root in body.OpaqueRoots.Slice(site.Start, site.Count))
+                if (use.Root >= 0)
                 {
-                    if (root >= 0)
-                    {
-                        writes[root] &= unchecked((byte)~Lending); // A local's; a static's is no local.
-                    }
+                    writes[use.Root] &= unchecked((byte)~Lending); // A local's; a static's is no local.
                 }
             }
 

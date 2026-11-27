@@ -39,14 +39,16 @@ public class BorrowedDefaultTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // Binding's record and A5's twin at the same span: A5's records at Binding's twin rows stay until R7 (R6-check H0b §5.4,
-    // DECISIONS R4-M108; H3b T50, class 4).
+    // SPEC 7.2.3, 15.6.5, 23.1.2: one failure at `x@ref`, the result keeping a new Borrow of a preceding parameter whose fit
+    // `ref/i32 during a` is Refuted (one edit repairs both requirements), so the relation is its one record and the default's
+    // DefaultArgumentBorrow_Kd is derived from it (Z19, the owner's O-496 (a); it was published beside the relation since R7-O1 H, the
+    // Middle's class (iii) of 11-19).
     [Fact]
     public void APreparedSlotsBorrowCannotFitAnExternalOrigin()
     {
         const string Source = "func f(x: i32, y: ref/i32 during a = x@ref) => ()\npublic func main() => ()";
         Assert.Equal(
-            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref")],
+            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref")],
             DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 

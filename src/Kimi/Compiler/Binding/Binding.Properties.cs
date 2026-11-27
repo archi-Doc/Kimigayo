@@ -51,14 +51,17 @@ public sealed partial class Binding
     private static bool AccessorReceiverShapeMismatch(BoundAccessor accessor)
         => accessor.Receiver is { } receiver && receiver.Semantics != (accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq);
 
+    // The Type an accessor's use takes: a `get` result or a stored `set` input; none for a computed `set`.
+    private static BoundType? UsedType(BoundAccessor accessor)
+        => accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null;
+
     // SPEC 11.3, 11.4: the Type an accessor's use takes, a `get` result or a stored `set` input, is its Property's Type. A mismatch is
     // judged between formed Types only (one whose formation fails judges nothing), once per pass, so the declaration check that reports
     // it (ValidateAccessor) and the uses that take the Property's Type instead (BindPropertyCall) agree.
     private bool AccessorTypeMismatch(BoundAccessor accessor)
-        => accessor.TypeMismatch ??= accessor.Declaration is { } syntax &&
-            (accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Property.IsStored ? accessor.Input : null) is { } used &&
-            accessor.Property.Type is { } type && !SameType(used, type) &&
-            this.CheckTypeConstraints(used, this.scopes[syntax]) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax]) == ConstraintProof.Proven;
+        => accessor.TypeMismatch ??= accessor.Declaration is { } syntax && UsedType(accessor) is { } used &&
+            accessor.Property.Type is { } type && !ReferenceEquals(used, type) &&
+            this.CheckTypeConstraints(used, this.scopes[syntax], syntax) == ConstraintProof.Proven && this.CheckTypeConstraints(type, this.scopes[syntax], syntax) == ConstraintProof.Proven;
 
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
     {
@@ -112,6 +115,7 @@ public sealed partial class Binding
         var getterScope = property.Getter.Declaration is { } get ? this.scopes[get] : scope;
         property.Symbol.Type = syntax.TypeKoto is { } type ? this.BindType(type, property.IsStored ? scope : getterScope) : null;
         property.Refusal = null;
+        property.LeftBodies?.Clear();
         // Only an initializer can infer storage. Accessor bodies never supply its Type.
         if (property.IsStored && property.Type is null && syntax.TypeKoto is null && syntax.InitializerKoto is { } initializer)
         {
@@ -137,7 +141,7 @@ public sealed partial class Binding
     // keeps its Type. The owner accepted the support reduction (2026-10-31). Removal: imaging a container's atoms (PLAN, after R6-check).
     private FunctionKoto? UnimagedClosure(BoundProperty property)
     {
-        if (property.Type is not { ContainsClosure: true } inferred)
+        if (property.Type is not { ContainsNested: true } inferred)
         {
             return null;
         }
@@ -298,12 +302,12 @@ public sealed partial class Binding
             }
 
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : declaration!.BoundSymbol!;
-            if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, domain) is { } inaccessible)
             {
-                this.Fail(declaration!, BindingFailure.Access);
+                this.RecordAccess(declaration!, inaccessible, use.Use);
             }
 
-            this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
+            this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use), declaration!), mode);
         }
 
         for (var i = 0; i < this.nodes.Count; i++)
@@ -316,14 +320,21 @@ public sealed partial class Binding
             // The header/storage Type belongs to the Property domain even when
             // every accessor has narrower access. Requirements inherit the Contract domain.
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : property.Symbol;
-            if (property.Type is { } type && !this.TypeAccessCovers(type, domain, domain))
+            if (property.Type is { } type && this.InaccessibleType(type, domain, domain) is { } inaccessible)
             {
-                this.Fail(syntax, BindingFailure.Access);
+                this.RecordAccess(syntax, inaccessible, syntax.TypeKoto); // An inferred Type is checked as a written one, at the Property.
+            }
+
+            // SPEC 23.1.2 (E3e Revision 2): a Property whose written Type holds a failed occurrence rests on it at its certificate.
+            var failedType = syntax.BindingFailure == BindingFailure.None ? this.FailedWrittenType(syntax) : null;
+            if (failedType is not null)
+            {
+                this.CompleteDependent(syntax, failedType);
             }
 
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
-            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingFailure == BindingFailure.None && !this.InvalidDeclarationContext(syntax);
+            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingFailure == BindingFailure.None && failedType is null && !this.InvalidDeclarationContext(syntax);
 
             // SPEC 23.1.2: an accessor's own declaration Error explains the Property's failed verification; a second record at
             // the Property would restate it. Every other failure is the Property's own problem.
@@ -369,7 +380,9 @@ public sealed partial class Binding
         // Property's. One node holds one failure, so a mismatch beside another of them goes unreported.
         if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
         {
-            this.Fail(syntax, BindingFailure.Access);
+            // SPEC 11.3.2: a word broader than its Property's: no declaration's accessibility fails to cover a use, so no fact (the
+            // Property bounds the word, not RecordAccess' role 0).
+            this.RecordNumbered(syntax, BindingFailure.Access, []);
             return ConstraintProof.Error;
         }
 
@@ -388,13 +401,13 @@ public sealed partial class Binding
             // declaration error adds no body errors; a use that only the written shape rejects rests on it (ReceiverRestsOnAccessorShape).
             if (owner is StructKoto or ContractKoto && AccessorReceiverShapeMismatch(accessor))
             {
-                this.Fail(syntax!, BindingFailure.AccessorReceiverShape);
+                this.Record(syntax!, BindingFailure.AccessorReceiverShape, []);
                 return ConstraintProof.Error;
             }
 
             if (this.AccessorTypeMismatch(accessor))
             {
-                this.Fail(syntax!, BindingFailure.TypeMismatch);
+                this.RecordTypeMismatch(syntax!, syntax!, UsedType(accessor)!, accessor.Property.Type!);
                 return ConstraintProof.Error;
             }
         }
@@ -413,15 +426,16 @@ public sealed partial class Binding
         // A resolved signature can still contain a constructed Type whose input
         // constraints fail. Validate before publishing a Property certificate.
         var scope = syntax is null ? this.DeclarationScope(property.Symbol) : this.scopes[syntax];
-        var formation = CombineProof(this.CheckTypeConstraints(property.Type, scope), this.CheckTypeConstraints(accessor.Result, scope), true);
+        var site = (Koto?)syntax ?? property.Declaration; // The accessor's declaration judges its Types (QuerySite).
+        var formation = CombineProof(this.CheckTypeConstraints(property.Type, scope, site), this.CheckTypeConstraints(accessor.Result, scope, site), true);
         if (accessor.Input is { } inputType)
         {
-            formation = CombineProof(formation, this.CheckTypeConstraints(inputType, scope), true);
+            formation = CombineProof(formation, this.CheckTypeConstraints(inputType, scope, site), true);
         }
 
         if (accessor.Receiver is { } receiverSignature)
         {
-            formation = CombineProof(formation, this.CheckTypeConstraints(receiverSignature, scope), true);
+            formation = CombineProof(formation, this.CheckTypeConstraints(receiverSignature, scope, site), true);
         }
 
         if (formation != ConstraintProof.Proven)
@@ -440,18 +454,35 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (accessor.Kind == PropertyAccessorKind.Set && !SameType(accessor.Result, BoundType.Unit))
+        if (accessor.Kind == PropertyAccessorKind.Set && !ReferenceEquals(accessor.Result, BoundType.Unit))
         {
-            this.Fail(syntax!, BindingFailure.TypeMismatch);
+            this.RecordTypeMismatch(syntax!, syntax!, accessor.Result!, BoundType.Unit);
             return ConstraintProof.Error;
         }
 
         var domain = property.Declaration.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : accessor.SignatureSymbol!;
-        if (!this.TypeAccessCovers(accessor.Result, domain, domain) ||
-            (accessor.Input is { } input && !this.TypeAccessCovers(input, domain, domain)) ||
-            (accessor.Receiver is { } receiverType && !this.TypeAccessCovers(receiverType, domain, domain)))
+        // SPEC 9.4.4: each accessor component is its own part (one problem each).
+        var exposed = false;
+        if (this.InaccessibleType(accessor.Result, domain, domain) is { } result)
         {
-            this.Fail(syntax!, BindingFailure.Access);
+            this.RecordAccess(syntax!, result, syntax!.ReturnType);
+            exposed = true;
+        }
+
+        if (accessor.Input is { } input && this.InaccessibleType(input, domain, domain) is { } value)
+        {
+            this.RecordAccess(syntax!, value, syntax!.ValueType);
+            exposed = true;
+        }
+
+        if (accessor.Receiver is { } receiverType && this.InaccessibleType(receiverType, domain, domain) is { } receiver)
+        {
+            this.RecordAccess(syntax!, receiver, syntax!.ReceiverType);
+            exposed = true;
+        }
+
+        if (exposed)
+        {
             return ConstraintProof.Error;
         }
 
@@ -464,17 +495,17 @@ public sealed partial class Binding
         this.BindHeader(accessor.Property.Symbol);
         if (syntax.Body is { } body)
         {
-            var saved = this.EnterBody(new(accessor.SignatureSymbol)); // The accessor's own body (DECISIONS R4-M101 E1).
+            var saved = this.EnterBody(AccessorBody(syntax)); // The accessor's own body (DECISIONS R4-M101 E1).
             try
             {
                 var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
                 var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
                 var structural = this.ResultStructure();
+                // SPEC 15.3.4, 15.6.5 (R7-O3 O3-A): the result fit is at the value, inside the accessor's body, as a function's (BindFunctionParts).
                 if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
-                    actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, syntax, body, out var failure))
+                    actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, body, body, out var failure))
                 {
-                    _ = failure.Kind == ComparisonFailureKind.Shape ? this.Fail(body, BindingFailure.TypeMismatch)
-                        : this.RecordMismatch(body, body, actual, result, failure);
+                    this.FailMismatch(body, body, actual, result, failure);
                 }
             }
             finally

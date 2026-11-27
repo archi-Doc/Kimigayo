@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Verification;
 using Xunit;
 
@@ -53,6 +54,84 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void EachAxisScalesWithinItsBound(string axis, double factor)
         => WorkScales(output, Sizes(axis), factor);
 
+    // Z5-F and Z5-R1 (Z5-F's review N3, Z5-R1's design section 7): A5's work and Loan-set bytes on a chain of n Copies of a borrow of a
+    // layer's enclosing Place, each read through right after it is made, at n = 64, 128, 256, every read placed by its exact lent position
+    // (MirBorrows.Addresses' Place, one Lent per listed row; a whole local's lender kept per view): linear.
+    [Fact]
+    public void PlacedReadsAreLinearInACopyChain()
+        => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.LentChain)], 2);
+
+    // Z5-R2 (its design section 6): A5's work and Loan-set bytes on a chain of n Copies of a layer's enclosing Place through no
+    // dereference, each used right after it is made, at n = 64, 128, 256, each Copy carrying its owner's one own-step entry
+    // (MirBorrows.Addresses' Layer, one row per Place a location uses): the work has a dense term, so it keeps the factor 5 of the dense
+    // rows (measured: 8,870, 16,488, 32,108, about 116 n + n²/64; on dev, a located Unsupported_Kd at each Copy, 7,484, 13,884, 26,684);
+    // the bytes are linear.
+    [Fact]
+    public void EnclosingCopiesScaleWithTheDenseTerm()
+        => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.EnclosingCopyChain)], 5);
+
+    // Z5-R2 (its design section 6): A5's work and Loan-set bytes on a Field enclosing a layer k Tuples deep, read whole and used through
+    // its k steps, at k = 16, 32, 64: within the per-prefix Owned walk's O(k²) (each prefix's walk and Encloses descent are bounded by the
+    // Type's depth), the base's order.
+    [Fact]
+    public void ADeepEnclosingReadIsWithinItsWalk()
+        => WorkScales(output, [.. new[] { 16, 32, 64 }.Select(MirBorrowsTest.DeepEnclosingRead)], 4);
+
+    // RP8 (PLAN G492-a (iii); J1, the owner's O-264 Q5 (a), O-286 (a)): a comparison's proof reads the recorded bounds of each region it
+    // names, each node and bound once (O(N + B) per request), so k chained `var` locals, each with a later store, and m comparisons over
+    // the last one bind with premise work linear in m * k: (8, 8), (64, 8), (8, 64), (64, 64), within 1.5 times linear.
+    [Fact]
+    public void ComparisonsOverChainedRegionsScaleLinearly()
+    {
+        long[] work = [.. new[] { (8, 8), (64, 8), (8, 64), (64, 64) }.Select(static x => PremiseWork(ChainedComparisons(x.Item1, x.Item2)))];
+        output.WriteLine($"premise work {string.Join(", ", work)}");
+        Assert.True(work[1] <= 12 * work[0] && work[2] <= 12 * work[0] && work[3] <= 96 * work[0], $"premise work {string.Join(", ", work)}");
+    }
+
+    // PLAN G1082 (R7-O1 e; SPEC 15.3.7, 15.6.1): an anonymous function compared with a required signature of n inputs `ref/U` proves
+    // each input well formed from that signature's own well-formedness; the comparison's requests share one premise environment of its
+    // use and comparison, built once, so the premise work done (edges written, closure insertions and activations) grows linearly in n
+    // at n = 32, 64, 128 (within 2.25x per doubling) with one environment, where each request rebuilt all 2n premises (4,224, 16,640,
+    // 66,048). OriginProofMetrics' Nodes and Edges sum each closure's whole graph, so they are not this measure.
+    [Fact]
+    public void ALiteralsComparisonOverManyInputsScales()
+    {
+        var measured = new[] { 32, 64, 128 }.Select(static n =>
+        {
+            var inputs = string.Join(", ", Enumerable.Repeat("ref/U", n));
+            var named = string.Join(", ", Enumerable.Range(1, n).Select(static i => $"y{i}: ref/U"));
+            var metrics = Metrics("struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n" +
+                $"    let c: ({inputs}) -> i32 = func [] ({named}) -> i32 => 0\n    return 0\npublic func main() => ()\n");
+            return (Work: metrics.WrittenEdges + metrics.Insertions + metrics.Activations, metrics.Environments);
+        }).ToArray();
+        output.WriteLine($"premise work {string.Join(", ", measured)}");
+        Assert.True(measured[1].Work <= 2.25 * measured[0].Work && measured[2].Work <= 2.25 * measured[1].Work, $"premise work {string.Join(", ", measured)}");
+        Assert.All(measured, x => Assert.Equal(measured[0].Environments, x.Environments));
+    }
+
+    // PLAN G1082 (C-519 IC1; SPEC 15.3.7): an input of Function Type is compared in a nested comparison, whose requests also assume the
+    // enclosing required signature's well-formedness; nested comparisons at one use with the same required signature and the same
+    // enclosing ones level by level share one environment, so on n inputs alternating `ref/U` and a Function Type (nested once, or twice)
+    // the premise work grows linearly at n = 8, 16, 32 (within 2.25x per doubling) with the environments built constant, where each
+    // nested comparison rebuilt the enclosing signature's n/2 premises.
+    [Theory]
+    [InlineData("(ref/(ref/i64 during p) during z) -> i32")]
+    [InlineData("((ref/(ref/i64 during p) during z) -> i32) -> i32")]
+    public void NestedComparisonsOverManyInputsScale(string function)
+    {
+        var measured = new[] { 8, 16, 32 }.Select(n =>
+        {
+            var inputs = string.Join(", ", Enumerable.Repeat($"ref/U, {function}", n / 2));
+            var named = string.Join(", ", Enumerable.Range(1, n / 2).Select(i => $"y{i}: ref/U, f{i}: {function}"));
+            var metrics = Metrics("struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\n" +
+                $"func k(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let c: ({inputs}) -> i32 = func [] ({named}) -> i32 => 0\n    return 0\npublic func main() => ()\n");
+            return (Work: metrics.WrittenEdges + metrics.Insertions + metrics.Activations, metrics.Environments);
+        }).ToArray();
+        output.WriteLine($"premise work {string.Join(", ", measured)}");
+        Assert.True(measured[1].Work <= 2.25 * measured[0].Work && measured[2].Work <= 2.25 * measured[1].Work, $"premise work {string.Join(", ", measured)}");
+        Assert.All(measured, x => Assert.Equal(measured[0].Environments, x.Environments));
+    }
+
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
     internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)
@@ -80,7 +159,34 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         Assert.True(allocated[2] - allocated[1] <= factor * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
     }
 
+    // The valid workload: `var x1 = p`, `x1 = q`, `var x2 = x1`, `x2 = q`, ..., then m comparisons `(ref/i64 during xk) -> ref/i64 during p`
+    // of a Function Item, each the body's rows (SPEC 15.6.1, 15.6.5), under `origin q outlives p`.
+    internal static string ChainedComparisons(int k, int m)
+        => "func idf(w: ref/i64 during a) -> ref/i64 during a => w\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin q outlives p\n    var x1 = p\n    x1 = q\n" +
+            string.Concat(Enumerable.Range(2, k - 1).Select(static i => $"    var x{i} = x{i - 1}\n    x{i} = q\n")) +
+            string.Concat(Enumerable.Range(1, m).Select(i => $"    let f{i}: (ref/i64 during x{k}) -> ref/i64 during p = idf\n")) + "    return 0\npublic func main() => ()\n";
+
     private static string[] Sizes(string axis) => [.. new[] { 16, 32, 64 }.Select(n => VerificationWorkloads.CallableRegions(axis, n))];
+
+    // The premise closures' nodes, edges and worklist insertions of one binding of a valid source.
+    private static long PremiseWork(string source)
+    {
+        var metrics = Metrics(source);
+        return metrics.Nodes + metrics.Edges + metrics.Insertions;
+    }
+
+    // The Origin proof counters of one binding of a valid source.
+    private static OriginProofMetrics Metrics(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        c.Bind();
+        Assert.Empty(c.Binding.Issues);
+        return metrics;
+    }
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
@@ -104,6 +210,17 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         [Fact]
         public void TheColdAnalysisOfABorrowChainAllocatesLinearly()
             => ColdAnalysisScales(output, [.. new[] { 128, 256, 512 }.Select(BorrowChain)], 3);
+
+        // RP8 (PLAN G492-a (iii)): a warm rebind of comparisons over chained regions allocates nothing (the row sink is one reused list).
+        [Fact]
+        public void WarmComparisonsOverChainedRegionsAllocateNothing()
+        {
+            var c = MinimalEmissionTest.Analyze(ChainedComparisons(8, 8));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+            var valid = true;
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+            Assert.True(valid, MinimalEmissionTest.Describe(c));
+        }
 
         // A body of N chained borrows, each a reference to the one before: a_k is ref^k/i32 (SPEC 10.2's explicit acquisition of a
         // reference slot).

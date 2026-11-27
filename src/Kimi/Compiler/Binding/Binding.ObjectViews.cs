@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<VariableKoto> objectErasureAliases = new();
-    private Dictionary<Koto, (BoundType Source, BoundType Target)>? objectErasureFailures;
 
     internal readonly record struct ObjectErasureEvidence(BoundType Source, BoundType Target, FunctionKoto? Entry);
 
@@ -17,13 +16,16 @@ public sealed partial class Binding
     internal bool TryGetObjectErasure(Koto use, out ObjectErasureEvidence evidence)
     {
         evidence = default;
-        return HirTables.HasCurrentBinding(use) && this.objectErasures.TryGetValue(use, out evidence);
+        return this.IsCurrent(use) && this.objectErasures.TryGetValue(use, out evidence);
     }
 
     // SPEC 3.4.3: a field access lends the handle's payload in the access mode already checked by Binding.
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
+    // SPEC 15.8.1: erasing a payload behind a view needs its complete data Type Owned. An Owned proof that read a region with no answer yet
+    // (ValueIn's deferral fact, while a body is bound) is the erasure's obligation (BindingObligationKind.Owned), judged once the body is
+    // bound (JudgeErasedOwned, the one deferral path; the owner's O-481 (b), R7-O2 A1+A2's D2): the view's evidence stands until then.
     private bool RequireObjectErasure(Koto use, Koto operand, BoundType source, BoundType target)
     {
         if (ReferenceEquals(source, target))
@@ -38,15 +40,24 @@ public sealed partial class Binding
             return false;
         }
 
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
         var proof = inherited ? ConstraintProof.Proven : this.ProveOwned(source, use);
-        if (proof == ConstraintProof.Proven)
+        var deferred = proof == ConstraintProof.Unknown && this.readsUnboundedRegion && this.formingBody.IsBody;
+        this.readsUnboundedRegion = held;
+        if (proof == ConstraintProof.Proven || deferred)
         {
             this.objectErasures[use] = new(source, target, entry);
+            if (deferred)
+            {
+                this.AddObligation(new(BindingObligationKind.Owned, use, BindingDeadline.BodyOrigins, source));
+            }
+
             return true;
         }
 
-        (this.objectErasureFailures ??= new(ReferenceEqualityComparer.Instance))[use] = (source, target);
-        this.RequireConstraint(use, proof, this.capabilityMode);
+        // SPEC 15.2.3: the record keeps the proposition `source is Owned` (its Constraint fact), whose subject and Contract it shows.
+        this.RequireConstraint(use, proof, this.capabilityMode, proposition: this.InternConstraint(new(ConstraintKind.Contract, source, contract: this.Library.Owned)));
         return false;
     }
 
@@ -175,7 +186,7 @@ public sealed partial class Binding
     private bool ObjectUpcastFits(ConversionKoto conversion, BoundType actual, BoundType target)
     {
         var core = actual.Components[0];
-        for (var parent = core; parent is not null; parent = AdtDef.Base(parent))
+        for (var parent = core; parent is not null; parent = AdtDef.Base(this.types, parent))
         {
             if (parent.Symbol?.Declaration.BindingState == BindingState.Invalid)
             {
@@ -189,7 +200,7 @@ public sealed partial class Binding
             }
         }
 
-        this.Fail(conversion, BindingFailure.TypeMismatch);
+        this.RecordTypeMismatch(conversion, conversion, actual, target);
         return false;
     }
 
@@ -206,12 +217,12 @@ public sealed partial class Binding
 
             if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
             {
-                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
-            if (IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(actual, this.ConstraintScope(conversion)))
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
             {
-                return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+                return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
 
             result = target;
@@ -220,7 +231,7 @@ public sealed partial class Binding
         {
             if (!this.AdaptObjectBorrow(conversion.Left, target, actual, scope, true, out var borrowed, out _, out _))
             {
-                return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, target.Semantics == SemanticsKind.ObjUniq));
+                return this.RecordWrite(conversion, this.BorrowFailure(conversion.Left, scope, target.Semantics == SemanticsKind.ObjUniq), conversion.Left);
             }
 
             result = this.types.Intern(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);
@@ -229,7 +240,7 @@ public sealed partial class Binding
                 if (!this.CheckTypeUse(result, target, conversion, out var failure))
                 {
                     return failure.IsCondition ? this.RecordMismatch(conversion, conversion, result, target, failure)
-                        : this.Fail(conversion, BindingFailure.InvalidAssignment);
+                        : this.Record(conversion, BindingFailure.InvalidAssignment, []);
                 }
 
                 result = target;

@@ -7,16 +7,21 @@ namespace Kimi.Compiler;
 
 // Binding's recorder (R7-E1; DIAGNOSTICS 4.1): a check records its failure as a problem with typed facts in BindingReport.
 // - Responsibility: Record, a check's problem; ClearFailure, how a failure leaves a node inside a pass; the one table from a failure to its
-//   code (CodeOf); the summary's walk of a node's problems beyond its slot's issue (CollectProblems); the adapter's reads of a problem's
-//   facts (ReportProblem, Mismatch, LocatedPart, FactOf).
+//   code (CodeOf); the summary's walk of a failed node's problems, each direct or derived by its own requirement (CollectProblem,
+//   CollectProblems); the adapter's reads of a problem's facts (ReportProblem, Mismatch, LocatedPart, FactOf).
 // - Inputs: a node, its failure and the facts its check read.
 // - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure; a node's further
-//   issues, each by its own code and condition. Record is a check's way in; RecordFurtherOriginRecord and a report's defect add a problem
-//   that sets no slot.
+//   issues, each by its own code and condition. Record is a check's way in, and an Origin record's are RecordOrigin and
+//   RecordResolvedOrigin (Binding.CallRelations.Records.cs); a problem that sets no slot is an Origin record beside its node's slot or
+//   at a Resolved node, a selected input's located limit beside its node (RecordLocatedLimit, PLAN G254c) or a report's Defect.
 // - Invariants: one way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one way in control:
-//   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem: a pass's
-//   reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves its chain; HirTables.Reset
-//   of a try's arms comes before anything binds them (SemanticsIndexed).
+//   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem but one
+//   that sets no slot: a pass's reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves
+//   its chain; HirTables.Reset of a try's arms comes before anything binds them (SemanticsIndexed). A located limit is recorded only at an
+//   input whose operation is final (JudgeSelectedInput: judged once per pass, never adapted again at another Type; a candidate trial records
+//   nothing), so it leaves only with the pass's reset or a trial's snapshot, never through ClearFailure. The Final summary publishes a
+//   node's problems that set no slot, those outside Binding.Issues aside (OutsideIssues: ReportOutsideIssues'), and counts the node as
+//   limited (Binding.Check).
 // - Prohibitions: no failure is decided and no message rendered here.
 public sealed partial class Binding
 {
@@ -30,9 +35,13 @@ public sealed partial class Binding
     /// <param name="node">The node.</param>
     internal void ClearFailure(Koto node)
     {
-        node.BindingFailure = BindingFailure.None;
+        this.SetRecordedFailure(node, BindingFailure.None);
         this.UnlinkProblems(node);
     }
+
+    // A located limit's one fact: the part's span, packed (start above, length below), read back by LocatedPart.
+    private static ProblemFact LocatedFact(Koto node, SourceSpan part)
+        => new(ProblemFactKind.Span, SourceRef.Of(node), ((long)part.Start << 32) | (uint)part.Length);
 
     // The code of a failure at a node: the one table, with the rows that read the node until their checks record their own (E3, E4).
     private DiagnosticCode CodeOf(Koto node, BindingFailure failure)
@@ -63,6 +72,8 @@ public sealed partial class Binding
             BindingFailure.Cycle => DiagnosticCode.CyclicBinding_Kd,
             BindingFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
             BindingFailure.TypeHeightLimit => DiagnosticCode.TypeHeightLimit_Kd,
+            BindingFailure.AnalysisLimit => DiagnosticCode.AnalysisLimit_Kd,
+            BindingFailure.ResolutionWorkLimit => DiagnosticCode.ResolutionWorkLimit_Kd,
             BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
             BindingFailure.InvalidLiteral => DiagnosticCode.InvalidNumericLiteral_Kd,
             BindingFailure.Access => DiagnosticCode.InaccessibleBinding_Kd,
@@ -95,7 +106,8 @@ public sealed partial class Binding
             BindingFailure.UnprovenAcquisitionCorrelation => DiagnosticCode.UnprovenAcquisitionCorrelation_Kd,
             BindingFailure.ConstructorSelectionChanged => DiagnosticCode.ConstructorSelectionChanged_Kd,
             BindingFailure.BoundMethodValue => DiagnosticCode.BoundMethodValue_Kd,
-            BindingFailure.OriginRelation => this.OriginRelationCode(node),
+            BindingFailure.OriginRelation => this.SlotProblem(node) is >= 0 and var slot ? this.report.Problem(slot).Code
+                : throw new InvalidOperationException("An Origin relation slot has its problem (InternalInvariant; R7-E4 E4d)."),
             BindingFailure.OriginContract => DiagnosticCode.UnprovenOriginContract_Kd,
             BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
             BindingFailure.ArrayAnnotationInference => DiagnosticCode.ArrayAnnotationInference_Kd,
@@ -131,7 +143,7 @@ public sealed partial class Binding
         {
             code = DiagnosticCode.InvalidTry_Kd;
         }
-        else if (failure == BindingFailure.TransferRequired && this.PreparedMove(node))
+        else if (failure == BindingFailure.TransferRequired && PreparedRoot(node))
         {
             code = DiagnosticCode.DefaultArgumentMove_Kd; // SPEC 7.2.3 (Q8-4, Q8-8): a default never moves a preceding argument.
         }
@@ -148,22 +160,22 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them. Until E3 records the family's conditions, a node keeps its
-    // first failure, as a Fail does.
+    // A problem its check may find again at the node with other facts (one requirement failing twice): numbered by the report's one rule
+    // (BindingReport.Condition), so a further problem takes its own key and an equal one its first's.
+    private BoundType? RecordNumbered(Koto node, BindingFailure failure, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
+        => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
+
+    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them; a node's further mismatch with other sides takes its own
+    // key (RecordNumbered).
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
-        if (node.BindingFailure != BindingFailure.None)
+        if (this.IdentityPremiseErrorRead(this.ConstraintScope(node), actual.Type, expected.Type) is { } premise)
         {
-            return this.Fail(node, BindingFailure.TypeMismatch);
-        }
-
-        if (this.IdentityPremiseErrorRead(node, actual.Type, expected.Type) is { } premise)
-        {
-            this.AddPrerequisite(node, premise); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
+            this.AddPrerequisite(node, premise.Use); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
         }
 
         var site = this.FactSite(at);
-        return this.Record(
+        return this.RecordNumbered(
             node,
             BindingFailure.TypeMismatch,
             [
@@ -176,23 +188,19 @@ public sealed partial class Binding
     private ProblemFact SideFact(ProblemFactKind type, ProblemFactKind form, SourceRef site, in MismatchSide side)
         => side.Type is { } bound ? new(type, site, this.report.Keep(bound)) : new(form, site, (long)side.Form | ((long)(side.Count + 1) << 8));
 
-    // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee.
-    [Transitional("R7", Reason = "Records only at a node whose slot takes the failure (its first), for snapshot 0, until E2's located batch.")]
-    private void FailUnsupportedAt(Koto node, SourceSpan part, bool unresolved = false)
-    {
-        if (node.BindingFailure != BindingFailure.None)
-        {
-            this.Fail(node, BindingFailure.Unsupported, unresolved);
-            return;
-        }
-
-        this.RecordLocated(node, part, unresolved);
-    }
-
+    // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee; its own record
+    // beside any other failure of its node (SPEC 23.1.2).
     private void RecordLocated(Koto node, SourceSpan part, bool unresolved = false)
+        => this.Record(node, BindingFailure.Unsupported, [LocatedFact(node, part)], unresolved: unresolved);
+
+    // SPEC 23.1.1, 23.1.2 (PLAN G254c): a located limit beside its node, which keeps its state, Type and rows: a problem that sets no slot,
+    // so no consumer reads the node as a failed input, published by its subject (CollectIssue). At condition 1 at least, so the node's own
+    // first failure, set later at 0, keeps its key; an equal record keeps its first's (DIAGNOSTICS 4.3).
+    private void RecordLocatedLimit(Koto node, SourceSpan part)
     {
-        long value = ((long)part.Start << 32) | (uint)part.Length;
-        this.Record(node, BindingFailure.Unsupported, [new(ProblemFactKind.Span, SourceRef.Of(node), value)], unresolved: unresolved);
+        ReadOnlySpan<ProblemFact> facts = [LocatedFact(node, part)];
+        BindingProblem problem = new(this.CodeOf(node, BindingFailure.Unsupported), DiagnosticRequirement.Binding(BindingFailure.Unsupported), SourceRef.Of(node), 1);
+        this.report.Add(problem with { Condition = this.report.Condition(problem, facts) }, facts);
     }
 
     // A fact's site is a node the check read, so normally numbered. One that is not takes its module's next id here, as a semantic write would,
@@ -204,23 +212,28 @@ public sealed partial class Binding
         return SourceRef.Of(at);
     }
 
+    // A failed node's problem, the slot's (index -1 for a slot without one) or a further one: derived when its own requirement rests on the
+    // node's recorded inputs (IsDerived, rule W), else direct (SPEC 23.1.2).
+    private void CollectProblem(Koto node, BindingFailure failure, DiagnosticCode code, int problem)
+        => (this.IsDerived(node, failure, code) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
+
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
-    // its own, however the slot's failure stands. An Origin record beyond the first is published with the node's first record, since
-    // Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
+    // its own, direct or derived by its own requirement (CollectProblem), except an Origin record outside Binding.Issues (OutsideIssues).
     private void CollectProblems(Koto node)
     {
-        if (this.report.Count == 0)
+        var first = this.report.Count == 0 ? -1 : this.report.First(SourceRef.Written(node));
+        if (first < 0)
         {
             return;
         }
 
         var slot = this.SlotProblem(node);
-        for (var i = this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
+        for (var i = first; i >= 0; i = this.report.Next(i))
         {
-            if (i != slot && this.FactOf(i, ProblemFactKind.OriginRecord) is null)
+            if (i != slot && !this.OutsideIssues(node, i))
             {
                 var problem = this.report.Problem(i);
-                this.issues.Add(new(node, problem.Code) { Failure = (BindingFailure)problem.Requirement.Kind, Problem = i });
+                this.CollectProblem(node, (BindingFailure)problem.Requirement.Kind, problem.Code, i);
             }
         }
     }
@@ -240,7 +253,17 @@ public sealed partial class Binding
     // The problem of the node's slot, the issue's bridge to its facts; -1 without one.
     [Transitional("R7", Reason = "Finds the slot's issue among a node's problems until the slot's reads and Binding.Issues go (R7-E5).")]
     private int SlotProblem(Koto node)
-        => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(node.BindingFailure), 0);
+        => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), 0);
+
+    // DECISIONS BU-126: an Origin record that is not its node's slot problem stays out of Binding.Issues and is published by its own key
+    // (ReportOutsideIssues).
+    [Transitional("R7", Reason = "Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).")]
+    private bool OutsideIssues(Koto node, int problem)
+        => (BindingFailure)this.report.Problem(problem).Requirement.Kind is BindingFailure.OriginRelation or BindingFailure.OriginContract &&
+            problem != this.SlotProblem(node);
+
+    // A problem's condition, the last part of the key its record is published at; 0 for no problem (a slot without one).
+    private ushort ConditionOf(int problem) => problem >= 0 ? this.report.Problem(problem).Condition : (ushort)0;
 
     // The part of a located problem (its Span fact), or null for no problem.
     private SourceSpan? LocatedPart(int problem)
@@ -260,22 +283,185 @@ public sealed partial class Binding
         return null;
     }
 
-    // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it; false for a
-    // mismatch or a located part, whose ReportIssue arms read their facts.
-    private bool ReportProblem(Koto node, int index)
+    // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it: a requirement's
+    // row that renders its facts and its subject's syntax, the operator row, then the fact-less row; false for a mismatch or a located part,
+    // whose ReportIssue arms read their facts.
+    private bool ReportProblem(Koto node, DiagnosticCollection? store, int index)
     {
         var problem = this.report.Problem(index);
-        if (this.FactOf(index, ProblemFactKind.Operand) is not null)
+        switch ((BindingFailure)problem.Requirement.Kind)
         {
-            this.ReportOperatorOperand(node, index, problem);
-        }
-        else if (this.report.Facts(index).IsEmpty)
-        {
-            node.Report(problem.Requirement, problem.Code, condition: problem.Condition);
-        }
-        else
-        {
-            return false;
+            case BindingFailure.NoInit when this.FactOf(index, ProblemFactKind.Reason) is { } reason:
+                ReportNoInit(node, store, problem, (NoInitProblem)reason.Value);
+                break;
+            case BindingFailure.ArrayAnnotationInference:
+                this.ReportArrayInference(node, store, index, problem);
+                break;
+            case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
+                ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
+                break;
+            case BindingFailure.NonExhaustiveMatch when this.FactOf(index, ProblemFactKind.Reason) is { } coverage:
+                ReportMatchCoverage(node, store, problem, coverage.Value);
+                break;
+            case BindingFailure.BaseCall when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
+                ReportBaseCallFailure(node, store, problem, (BaseCallCause)cause.Value);
+                break;
+            case BindingFailure.InvalidConstraint when this.report.Facts(index) is [] or [{ Kind: ProblemFactKind.Cause }]: // An Error outcome's record (RecordConstraint)
+                this.ReportConstraint(node, store, problem.Requirement, problem.Code, problem.Condition, this.report.Facts(index) is [var named] ? this.compilation.SyntaxOf(named.Site) : null);
+                break;
+            case BindingFailure.InvalidTypeFormation when this.FactOf(index, ProblemFactKind.Count) is not null:
+                this.ReportArity(node, store, index, problem);
+                break;
+            case BindingFailure.Capture or BindingFailure.TransferRequired or BindingFailure.InvalidAssignment or BindingFailure.Duplicate
+                when this.FactOf(index, ProblemFactKind.Span) is not null && this.FactOf(index, ProblemFactKind.Reason) is not null:
+                // A capture record (RecordCapture), ahead of these requirements' other rows: no other recorder of the four records a Span,
+                // so they scope the discriminator, which another requirement's record shares (an override's, VirtualOverrides).
+                this.ReportCapture(node, store, index, problem);
+                break;
+            case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Related) is { } first:
+                ReportDuplicate(node, store, problem, this.compilation.SyntaxOf(first.Site));
+                break;
+            case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Cause) is { } later:
+                node.ReportDerivedIn(store, problem.Requirement, [this.compilation.SyntaxOf(later.Site).KeyIn(this.compilation.StoreOf(this.compilation.SyntaxOf(later.Site)), problem.Requirement)], problem.Condition);
+                break;
+            case BindingFailure.ParameterShapeMismatch when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the conflicting parameter, then its parties.
+                this.ReportParameterShapes(node, store, index, problem);
+                break;
+            case BindingFailure.InvalidEffectBound when node is EffectBoundKoto effect && this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportEffectRejection(effect, store, index, problem);
+                break;
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: an associated Type declaration, with its Instance.
+                this.ReportAssociatedAmbiguity(node, store, index, problem);
+                break;
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 8 }: // Role 8: a conformance an index key's selection weighed, with its Instance.
+                this.ReportKeyAmbiguity(node, store, index, problem);
+                break;
+            case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 3 }:
+                // Role 3, "candidate": a declaration a selection considered and rejected or could not order (CandidateFacts).
+                this.ReportCandidates(node, store, index, problem);
+                break;
+            case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous or BindingFailure.ReceiverShapeMismatch or BindingFailure.ParameterShapeMismatch
+                when this.FactOf(index, ProblemFactKind.Related) is { Value: 5 }:
+                // Role 5, "premise candidate": a Callable premise a value call considered (FailCallableCandidates).
+                this.ReportCallableCandidates(node, store, index, problem);
+                break;
+            case BindingFailure.UnboundTypeArgument when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: the unbound slot's Type parameter, 1: the waiting argument.
+                this.ReportUnboundTypeArgument(node, store, index, problem);
+                break;
+            case BindingFailure.ConstructorSelectionChanged or BindingFailure.UnprovenAcquisitionCorrelation when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                // Role 0: the tentative selection or group contract, 1: the constructor the check found or the corresponding declaration.
+                this.ReportConstructionCheck(node, store, index, problem);
+                break;
+            case BindingFailure.InvalidAssociatedType or BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Instance) is not null:
+                this.ReportDisagreement(node, store, index, problem);
+                break;
+            case BindingFailure.IncompatibleImplementation when this.FactOf(index, ProblemFactKind.Related) is not null:
+                this.ReportCallablePremise(node, store, index, problem);
+                break;
+            case BindingFailure.AssociatedInference when this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportAssociatedInference(node, store, index, problem);
+                break;
+            case BindingFailure.AnalysisLimit when this.FactOf(index, ProblemFactKind.Reason) is { } bound:
+                var (limitValue, limitText) = AnalysisLimitOf((AnalysisBound)bound.Value);
+                node.ReportIn(store, problem.Requirement, problem.Code, limitValue, limitText, condition: problem.Condition);
+                break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Constraint }, { Kind: ProblemFactKind.Reason }, ..]:
+                this.ReportOwnedConversion(node, store, index, problem); // `S is Owned`, then its member row (RecordOwned).
+                break;
+            case BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Related, Value: 0 }, { Kind: ProblemFactKind.Constraint }, { Kind: ProblemFactKind.OriginRecord }]:
+                this.ReportCallableConstraint(node, store, index, problem); // A clause's record with its trial's contract (RecordCallableConstraint).
+                break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { } entry && entry.Value == 2:
+                // Role 2, "entry": a range iteration's selected entry declaration (IntoIterable, Iterable or UniqIterable, SPEC 14.6.2),
+                // which the range does not satisfy or is not proven to; ordinal 2 keeps the clause record's roles 0 and 1 apart.
+                this.ReportRangeIteration(node, store, index, problem);
+                break;
+            case BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { Value: 6 }:
+                // Role 6, "argument": the argument a pending judgment found no slot evidence in, then role 7, "declaration": the slot's
+                // Type parameter (FailPendingJudgment).
+                this.ReportPendingJudgment(node, store, index, problem);
+                break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is not null && this.FactOf(index, ProblemFactKind.Constraint) is not null:
+                this.ReportClauseConstraint(node, store, index, problem); // No clause record carries an Instance, and no absence a Constraint.
+                break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Constraint }]:
+                this.ReportProposition(node, store, index, problem); // A caller's proposition alone (RequireConstraint's, the erasure's).
+                break;
+            case BindingFailure.MissingName or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Instance) is not null:
+                this.ReportConstructorAbsence(node, store, index, problem);
+                break;
+            case BindingFailure.MissingOverrideTarget or BindingFailure.AmbiguousOverrideTarget or BindingFailure.OverrideContractMismatch or BindingFailure.DuplicateOverride or BindingFailure.UnprovenOverrideCondition
+                when node is FunctionKoto function && this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportOverrideFailure(function, store, index, problem);
+                break;
+            case BindingFailure.BoundMethodValue when this.FactOf(index, ProblemFactKind.Related) is { } valueMethod && this.compilation.SyntaxOf(valueMethod.Site) is FunctionKoto method:
+                // Role 0, "declaration": the method the value names, whose receiver it would need (SPEC 7.3.4).
+                node.ReportIn(store, problem.Requirement, problem.Code, evidence: [method.Name], related: [("declaration", method, null)], condition: problem.Condition);
+                break;
+            case BindingFailure.NotObjectPayload when this.FactOf(index, ProblemFactKind.Related) is { } renouncing: // Role 0: the declaration that opts out, its own or an inherited base's.
+                ReportObjectPayload(node, store, problem, this.compilation.SyntaxOf(renouncing.Site));
+                break;
+            case BindingFailure.ArithmeticSelection when this.FactOf(index, ProblemFactKind.Constraint) is not null: // Role 0: a candidate conformance, each with its Instance.
+                this.ReportArithmeticSelection(node, store, index, problem);
+                break;
+            case BindingFailure.ArithmeticDirection when this.FactOf(index, ProblemFactKind.Related) is not null: // Role 0: the ordinary premise, 1: the reverse one, each with its Instance.
+                this.ReportArithmeticDirection(node, store, index, problem);
+                break;
+            case BindingFailure.ArithmeticConformance when this.FactOf(index, ProblemFactKind.Reason) is not null: // Role 0: the arithmetic Contract, with its Instance for a counterpart.
+                this.ReportArithmeticConformance(node, store, index, problem);
+                break;
+            case BindingFailure.ProtectedPlacement:
+                ReportProtectedPlacement(node, store, problem.Requirement);
+                break;
+            case BindingFailure.InvalidAssignment or BindingFailure.SharedPathAccess or BindingFailure.SharedBindingAssignment or BindingFailure.ExclusiveBindingAssignment
+                when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 } target:
+                // Role 0, "target" (RecordWrite): the Place or binding that denies the access: a write's target, an object handle the
+                // authority denies, a written Borrow's Place, or the reference binding an update or assignment names (SPEC 15.1.6).
+                this.ReportWrite(node, store, this.compilation.SyntaxOf(target.Site), problem.Requirement, problem.Code, problem.Condition);
+                break;
+            case BindingFailure.ExclusivePathTake or BindingFailure.SharedPathAccess or BindingFailure.InvalidAssignment when this.FactOf(index, ProblemFactKind.Reason) is { } layers:
+                // A denied Take (FailTake): its Reason the cases of the layers its path passes; no role-0 target, rendered at the node.
+                this.ReportTake(node, store, (SemanticsMask)layers.Value, problem.Requirement, problem.Code, problem.Condition);
+                break;
+            case BindingFailure.TransferRequired or BindingFailure.ExclusiveBorrowRequired when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                // Role 0, "place": the bare Place whose acquisition needs spelling (FailAcquisition), then its Reasons by position.
+                this.ReportAcquisition(node, store, index, problem);
+                break;
+            case BindingFailure.Access when this.FactOf(index, ProblemFactKind.Related) is not null:
+                this.ReportInaccessible(node, store, index, problem);
+                break;
+            case BindingFailure.AccessorReceiverShape when node is PropertyAccessorKoto { ReceiverType: { } written } accessor:
+                this.ReportAccessorReceiverShape(accessor, store, written, problem.Requirement);
+                break;
+            case BindingFailure.InvalidOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                this.ReportOriginSlotCase(node, store, index, problem); // Role 0, "Origin slot": the declaration of the schema listing the slot.
+                break;
+            case BindingFailure.InvalidOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 1 } typeDeclaration:
+                ReportAbsentSlot(node, store, problem, this.compilation.SyntaxOf(typeDeclaration.Site)); // Role 1: the Type that declares no such slot.
+                break;
+            case BindingFailure.MissingOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                this.ReportPerCallSlot(node, store, index, problem); // Role 0: the declaration whose Type parameter S's per-call Origins would satisfy.
+                break;
+            case BindingFailure.MissingOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 1 }:
+                this.ReportPerCallOrigin(node, store, index, problem); // Role 1: the argument whose own per-call Origin would satisfy the slot.
+                break;
+            case BindingFailure.MissingOrigin or BindingFailure.InvalidOrigin when this.FactOf(index, ProblemFactKind.Related) is null && this.FactOf(index, ProblemFactKind.Reason) is { } formation:
+                ReportFormationCause(node, store, problem, formation.Value); // SPEC 8.1.2: FailTypeRole's Language cause, at the occurrence.
+                break;
+            case BindingFailure.MissingOrigin when node is IdentifierNameKoto name && StorageType(node) is { } storage && this.report.Facts(index).IsEmpty:
+                ReportUndeclaredStorageOrigin(name, storage, store, problem); // SPEC 15.3.2: BindOriginName's record of an undeclared storage name.
+                break;
+            case BindingFailure.OriginRelation or BindingFailure.OriginContract:
+                this.ReportOriginRecord(node, store, index, problem); // RecordOrigin's and RecordResolvedOrigin's, by their own keys (B-4).
+                break;
+            case var _ when this.FactOf(index, ProblemFactKind.Operand) is not null:
+                this.ReportOperatorOperand(node, store, index, problem);
+                break;
+            case var _ when this.report.Facts(index).IsEmpty:
+                node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
+                break;
+            default:
+                return false;
         }
 
         return true;

@@ -4,9 +4,11 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("check")]
-public sealed class CheckCommand : ISimpleCommand<KimiOptions>
+[SimpleCommand(CheckCommand.Name)]
+public sealed class CheckCommand : ISimpleCommand
 {
+    public const string Name = "check";
+
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
     private readonly Solution solution;
@@ -18,24 +20,16 @@ public sealed class CheckCommand : ISimpleCommand<KimiOptions>
         this.solution = solution;
     }
 
-    public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(string[] arguments, CancellationToken cancellationToken)
     {
-        if (string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase))
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, Name, arguments, async (options, args) =>
         {
-            // SPEC 23.3: one check unit through the shared check entry, written as one JSON document.
-            Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, () => Task.FromResult(CheckJsonOutput.Run(options, args, cancellationToken)));
-            return;
-        }
+            if (options.Format == "json")
+            {
+                // SPEC 23.3: one check unit through the shared check entry, written as one JSON document.
+                return CheckJsonOutput.Run(options, args, cancellationToken);
+            }
 
-        if (!string.Equals(options.Format, "text", StringComparison.OrdinalIgnoreCase))
-        {
-            this.kimigayo.WriteLine(Diagnostics.DiagnosticSeverity.Error, $"Unknown --Format '{options.Format}'; the forms are text and json.");
-            Environment.ExitCode = 1;
-            return;
-        }
-
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
-        {
             this.solution.LoadForBuild(this.logger, options, args);
             this.solution.PrepareProject(this.logger);
             return await this.solution.Check(cancellationToken) ? 0 : 1;

@@ -23,14 +23,23 @@ internal enum OriginPremiseRule : byte
     /// <summary>R2: input well-formedness: a Type's own relations and its stored Origins outliving an outer borrow.</summary>
     Input,
 
-    /// <summary>R3: result well-formedness of the enclosing named function.</summary>
+    /// <summary>R3: result well-formedness of the enclosing named function: its Types' own relations and its stored Origins outliving an outer borrow.</summary>
     Result,
+
+    /// <summary>R3's part inside a held Function Type: the fixed Origins it stores outliving the outer borrow (SPEC 15.2.3, 15.6.1), the one
+    /// part of R3 no call carries yet (WellFormedPremises.EnterStored), so a HeldResult row's proof excludes it (OriginDischarge.HeldResult).
+    /// It goes with OriginDischarge.HeldResult (PLAN's O3-B2 issue).</summary>
+    HeldResult,
 
     /// <summary>R4: associated formation and requirement relations.</summary>
     Associated,
 
     /// <summary>R5: the stored Origins of a borrowed complete local Place outlive that Place, in the body that declares the local.</summary>
     LocalPlace,
+
+    /// <summary>SPEC 15.3.6, 15.6.5: a local region equals its value in a body's oracle that reads it so, its own or one carrying it
+    /// (Binding.UniversalRelations; R7-O2 A1).</summary>
+    Value,
 }
 
 /// <summary>
@@ -41,7 +50,8 @@ internal enum OriginPremiseRule : byte
 /// are reached. Each node is inserted once, each edge activated once and each operand incidence decremented once per closure, so a
 /// closure is linear in nodes, edges and meet incidences. Storage is reused across environments and allocates nothing when warm.
 /// An edge may carry a Semantics-case condition (SPEC 15.6.5): the pair binders that must all be borrows for it to hold; a closure
-/// follows only the edges whose condition the request's condition contains.
+/// follows only the edges whose condition the request's condition contains, and none of the rule the request excludes (Target, which no
+/// edge carries, excludes none).
 /// </summary>
 internal sealed class OriginPremiseClosure
 {
@@ -58,12 +68,15 @@ internal sealed class OriginPremiseClosure
     private int[] reachedBy = new int[32];
     private int[] reachedFrom = new int[32];
     private int[] queue = new int[32];
+    private bool[] places = new bool[32];
     private int[] edgeLonger = new int[64];
     private int[] edgeNext = new int[64];
+    private int[] edgeShorter = new int[64];
     private OriginPremiseRule[] edgeRule = new OriginPremiseRule[64];
     private ulong[] edgeCondition = new ulong[64];
     private int[] meetLink = new int[64];
     private int[] meetNext = new int[64];
+    private int[] meetOperand = new int[64];
     private int[] topNodes = new int[8];
     private int nodeCount;
     private int edgeCount;
@@ -121,6 +134,42 @@ internal sealed class OriginPremiseClosure
         this.topCount = 0;
     }
 
+    /// <summary>Gets the current graph's size: its nodes, edges, meet incidences, meet operands and top-like nodes (PLAN G1082).</summary>
+    internal (int Nodes, int Edges, int Links, int Operands, int Tops) Mark => (this.nodeCount, this.edgeCount, this.meetLinkCount, this.operandNodeCount, this.topCount);
+
+    /// <summary>Restores the graph to <paramref name="mark"/>: the nodes, edges and meet incidences added since are removed, newest
+    /// first, so each is its list's head when unlinked, and the local-place marks of <paramref name="places"/> are cleared (PLAN G1082).</summary>
+    /// <param name="mark">A mark of this graph.</param>
+    /// <param name="places">The local-place start set added since the mark.</param>
+    internal void Truncate((int Nodes, int Edges, int Links, int Operands, int Tops) mark, List<int> places)
+    {
+        for (var edge = this.edgeCount - 1; edge >= mark.Edges; edge--)
+        {
+            this.firstIncoming[this.edgeShorter[edge]] = this.edgeNext[edge];
+        }
+
+        for (var link = this.meetLinkCount - 1; link >= mark.Links; link--)
+        {
+            this.firstMeet[this.meetOperand[link]] = this.meetNext[link];
+        }
+
+        for (var i = 0; i < places.Count; i++)
+        {
+            this.places[places[i]] = false;
+        }
+
+        for (var node = mark.Nodes; node < this.nodeCount; node++)
+        {
+            if (this.nodes[node] is { } origin)
+            {
+                this.index.Remove(origin);
+                this.nodes[node] = null;
+            }
+        }
+
+        (this.nodeCount, this.edgeCount, this.meetLinkCount, this.operandNodeCount, this.topCount) = mark;
+    }
+
     /// <summary>Gets an expression's node, interning it with its meet operands; <paramref name="added"/> tells a new node.</summary>
     /// <param name="origin">The expression.</param>
     /// <param name="added">Whether the node is new.</param>
@@ -155,7 +204,9 @@ internal sealed class OriginPremiseClosure
                 this.operandNodes[start + i] = operand;
                 Grow(ref this.meetLink, this.meetLinkCount + 1);
                 Grow(ref this.meetNext, this.meetLinkCount + 1);
+                Grow(ref this.meetOperand, this.meetLinkCount + 1);
                 this.meetLink[this.meetLinkCount] = node;
+                this.meetOperand[this.meetLinkCount] = operand;
                 this.meetNext[this.meetLinkCount] = this.firstMeet[operand];
                 this.firstMeet[operand] = this.meetLinkCount++;
             }
@@ -191,13 +242,32 @@ internal sealed class OriginPremiseClosure
         Grow(ref this.reachedBy, this.nodeCount);
         Grow(ref this.reachedFrom, this.nodeCount);
         Grow(ref this.queue, this.nodeCount);
+        Grow(ref this.places, this.nodeCount);
         this.firstIncoming[node] = -1;
         this.firstMeet[node] = -1;
         this.operandCount[node] = 0;
         this.reachedStamp[node] = 0;
         this.unmetStamp[node] = 0;
+        this.places[node] = false;
         return node;
     }
+
+    /// <summary>Adds a node to the local-place start set (R5's Places, SPEC 15.6.1; PLAN G491) once, by the node's own mark.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="nodes">The start set's nodes in the order added.</param>
+    internal void AddPlace(int node, List<int> nodes)
+    {
+        if (!this.places[node])
+        {
+            this.places[node] = true;
+            nodes.Add(node);
+        }
+    }
+
+    /// <summary>Whether a node is in the local-place start set (AddPlace).</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>Whether it was added.</returns>
+    internal bool IsPlace(int node) => this.places[node];
 
     /// <summary>Gets the expression of a node.</summary>
     /// <param name="node">The node.</param>
@@ -220,25 +290,27 @@ internal sealed class OriginPremiseClosure
         Grow(ref this.edgeNext, this.edgeCount + 1);
         Grow(ref this.edgeRule, this.edgeCount + 1);
         Grow(ref this.edgeCondition, this.edgeCount + 1);
+        Grow(ref this.edgeShorter, this.edgeCount + 1);
         this.edgeLonger[this.edgeCount] = longer;
+        this.edgeShorter[this.edgeCount] = shorter;
         this.edgeRule[this.edgeCount] = rule;
         this.edgeCondition[this.edgeCount] = condition;
         this.edgeNext[this.edgeCount] = this.firstIncoming[shorter];
         this.firstIncoming[shorter] = this.edgeCount++;
     }
 
-    /// <summary>Adds to <paramref name="nodes"/> each longer end of an edge of <paramref name="rule"/> into <paramref name="shorter"/>
-    /// that it does not hold yet.</summary>
+    /// <summary>Adds to the local-place start set (AddPlace) each longer end of an edge of <paramref name="rule"/> into
+    /// <paramref name="shorter"/>.</summary>
     /// <param name="shorter">The shorter node.</param>
     /// <param name="rule">The catalog rule.</param>
-    /// <param name="nodes">The nodes collected so far.</param>
+    /// <param name="nodes">The start set's nodes.</param>
     internal void AddLongerEnds(int shorter, OriginPremiseRule rule, List<int> nodes)
     {
         for (var edge = this.firstIncoming[shorter]; edge >= 0; edge = this.edgeNext[edge])
         {
-            if (this.edgeRule[edge] == rule && !nodes.Contains(this.edgeLonger[edge]))
+            if (this.edgeRule[edge] == rule)
             {
-                nodes.Add(this.edgeLonger[edge]);
+                this.AddPlace(this.edgeLonger[edge], nodes);
             }
         }
     }
@@ -266,16 +338,19 @@ internal sealed class OriginPremiseClosure
     /// <param name="longer">The longer node.</param>
     /// <param name="shorter">The target node.</param>
     /// <param name="condition">The pair binders that are borrows in every case the relation is required in, as bits.</param>
+    /// <param name="excluded">The rule whose edges the relation may not rest on.</param>
     /// <returns>Whether the relation is entailed.</returns>
-    internal bool Entails(int longer, int shorter, ulong condition = 0) => this.Close(shorter, longer, condition) || this.reachedStamp[longer] == this.stamp;
+    internal bool Entails(int longer, int shorter, ulong condition = 0, OriginPremiseRule excluded = OriginPremiseRule.Target)
+        => this.Close(shorter, longer, condition, excluded) || this.reachedStamp[longer] == this.stamp;
 
     /// <summary>The closure from <paramref name="shorter"/>, stopped once it reaches <paramref name="longer"/> (-1: never): each node
     /// it reaches is entailed to outlive the target.</summary>
     /// <param name="shorter">The target node.</param>
     /// <param name="longer">The node that stops the closure, or -1.</param>
     /// <param name="condition">The pair binders that are borrows in every case the relation is required in, as bits.</param>
+    /// <param name="excluded">The rule whose edges the closure does not follow.</param>
     /// <returns>Whether <paramref name="longer"/> was reached.</returns>
-    internal bool Close(int shorter, int longer, ulong condition)
+    internal bool Close(int shorter, int longer, ulong condition, OriginPremiseRule excluded = OriginPremiseRule.Target)
     {
         if (++this.stamp == int.MaxValue)
         {
@@ -306,9 +381,9 @@ internal sealed class OriginPremiseClosure
 
             for (var edge = this.firstIncoming[node]; edge >= 0; edge = this.edgeNext[edge])
             {
-                if ((this.edgeCondition[edge] & ~condition) != 0)
+                if ((this.edgeCondition[edge] & ~condition) != 0 || this.edgeRule[edge] == excluded)
                 {
-                    continue; // A premise of a case the relation is not required in.
+                    continue; // A premise of a case the relation is not required in, or one it may not rest on.
                 }
 
                 activations++;

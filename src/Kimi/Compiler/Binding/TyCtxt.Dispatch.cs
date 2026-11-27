@@ -11,18 +11,22 @@
 // reference (TyCtxt.SubstOf); or, for a compiler function's call of a user witness (K package 4.5 rows 2 and 6, a comparison's leaf) and a
 // requirement's function item (rows 5, 12 and 13, Witness(item)), the requirement, the Contract reference and its call on a Self
 // (Synthesized); OwnRequirement names a library Contract's requirement for such a call.
-// Output: RequirementTarget(Kind, Target, Subst, Access), one per (requirement, contract, subst), kept across passes with no edit and
+// Output: RequirementTarget(Kind, Target, Subst, Access, Cause), one per (requirement, contract, subst), kept across passes with no edit and
 // discarded at an edit (ResetViews). Body: a function with a MIR body under its instance: a conformance witness (inherited ones included)
 // under its declaring instance with the call's Types, lengths and its Origins in the call's terms (Binding.WitnessOrigin), an accessor-call
 // witness's executing accessor under its implementing Type's instance, a library group's function under its own slots.
 // Builtin: a compiler function under the call's substitution, whose bound reference instantiates the requirement's signature. Storage: a
 // standard property witness's implementing Field under the call's substitution, Access its operation (Copy, Borrow or Set; AccessorCall for
-// every other kind). Refused: OCC-X. Limit: the conforming Self's storage nests past its bound (PrepareTypeStorage's Limit); a Self whose
-// storage rests on a part Binding rejected passes through, since what the call runs does not depend on that part (DECISIONS BU-38), and
-// the instance its target needs is its reader's to admit. None: no answer, also for an abstract Self, which for a closed accepted Self is
-// a broken contract that its reader records as InternalInvariant_Kd.
-// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance
-// (InstanceCollectorTest's K 4.5 rows, TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
+// every other kind). Refused: OCC-X. None: no answer, also for an abstract Self, which for a closed accepted Self is a broken contract that
+// its reader records as InternalInvariant_Kd. What a call runs does not depend on its Self's storage, so Witness reads no storage verdict:
+// a Self whose storage rests on a part Binding rejected or nests past Binding's bound has its witness's target, and the instance the
+// target needs is its reader's to admit (DECISIONS BU-38, R7-M54 c4).
+// Cause: the resolution's formation (TyCtxt.Formation), Formed but for a resolution that formed a Type past IMPL A.4's height inside the
+// collector's answer frame (another conformance's formal, SPEC 8.6.1, or a conditional conformance's premise, 8.8.2): HeightLimit with no
+// target, which the caller records at its requesting site (InstanceCollector.Formed).
+// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance, but for a
+// resolution refused in the collector's frame, which the materializer, outside it, records itself (InstanceCollectorTest's K 4.5 rows,
+// TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
 // since a base subobject is a layout prefix (Layout.Of, X1).
 // Must not: forward an abstract Self (the materializer's SPEC 8.15 rule), create a bridge or a CallPlan, write a diagnostic, HIR or pass
 // state, or prove on an erased value.
@@ -39,12 +43,14 @@ internal enum RequirementTargetKind : byte
     Builtin,
     Storage,
     Refused,
-    Limit,
 }
 
 /// <summary>What a requirement call runs: <see cref="Target"/> under <see cref="Subst"/>, the target's instance for Body and the call's own
-/// substitution, which binds the conforming Self, for Builtin and Storage; <see cref="Access"/> a Storage witness's operation.</summary>
-internal readonly record struct RequirementTarget(RequirementTargetKind Kind, BindingSymbol? Target, Subst? Subst, PropertyWitnessKind Access);
+/// substitution, which binds the conforming Self, for Builtin and Storage; <see cref="Access"/> a Storage witness's operation;
+/// <see cref="Cause"/> the resolution's formation (TyCtxt.Formation): HeightLimit, with no target, where the resolution formed a Type past
+/// IMPL A.4's height in the collector's answer frame (Witness).</summary>
+internal readonly record struct RequirementTarget(
+    RequirementTargetKind Kind, BindingSymbol? Target, Subst? Subst, PropertyWitnessKind Access, TyCtxt.Formation Cause = TyCtxt.Formation.Formed);
 
 internal sealed partial class TyCtxt
 {
@@ -60,9 +66,9 @@ internal sealed partial class TyCtxt
         ? contract : throw new InvalidOperationException($"{requirement.Name} is not a requirement.");
 
     // SPEC 8.6.1: a shim's Contract (Binding.PrepareBuiltinTargets) by its lang item, which names what the shim runs: Equatable's or
-    // Comparable's comparison, or an arithmetic Contract's operation (ArithmeticContracts.IsArithmetic); null for a function of another
-    // disposition. Its readers are Binding's comparison plans (Binding.RequirementInstances' Witnesses) and the Backend's shim targets
-    // (InstanceCollector.Witnesses' Shim), capability gaps (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
+    // Comparable's comparison, or an arithmetic Contract's operation (KimiLibraryCatalog.IsArithmeticContract); null for a function of
+    // another disposition. Its readers are Binding's comparison plans (Binding.RequirementInstances' Witnesses) and the Backend's shim
+    // targets (InstanceCollector.Witnesses' Shim), capability gaps (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
     internal static KimiDeclarationId? ShimContract(BindingSymbol function)
         => function.Definition.Kind == DispositionKind.Shim ? Contract(function).LibraryDeclaration : null;
 
@@ -72,8 +78,24 @@ internal sealed partial class TyCtxt
     {
         if (!this.witnesses.TryGetValue((requirement, contract, subst), out var target))
         {
+            // R7-T1 c4: the resolution is a formation in the collector's answer frame (Binding.OpenFormation): it forms the conformances
+            // of Self's Type to the Contract in declaration order up to the one naming the reference (SPEC 8.6.1; the only one by 8.9.1)
+            // and the premises of the conformance it selects (8.8.2), so it can form a Type no site formed (another conformance's formal
+            // or a conditional conformance's premise), whose refusal is the call's HeightLimit, recorded by its reader at the requesting
+            // site; outside the frame it owns nothing.
+            var formation = binding.OpenFormation();
             target = this.Resolve(requirement, contract, subst);
+            if (binding.CloseAnswer(formation))
+            {
+                target = new(RequirementTargetKind.None, null, null, default, Formation.HeightLimit);
+            }
+
             this.witnesses.Add((requirement, contract, subst), target);
+        }
+
+        if (target.Cause == Formation.HeightLimit)
+        {
+            binding.AnswerSite(null); // PLAN G651 U2b R3.3: fresh or memoized; its callers all run after Binding's run (R13.1 P2).
         }
 
         return target;
@@ -96,8 +118,11 @@ internal sealed partial class TyCtxt
     // SPEC 17.4: the compiler-only $abort (KimiLibrary.Abort), which is no library declaration, so no MIR callee names it as one (MirValidator).
     internal BindingSymbol Abort => library.Abort;
 
-    // A library declaration's own Type, each of its parameters standing for itself (Layout: a sequence handle's component, IMPL 21.1.3).
-    internal BoundType SelfType(KimiDeclarationId id) => binding.SelfType(library.GetSymbol(id)!);
+    // A declaration's own Type, each of its parameters standing for itself (Binding.SelfType): a struct's object Type, a layer body's _0
+    // (MirValidator), or a library declaration's by its catalog identity (Layout: a sequence handle's component, IMPL 21.1.3).
+    internal BoundType SelfType(BindingSymbol symbol) => binding.SelfType(symbol);
+
+    internal BoundType SelfType(KimiDeclarationId id) => this.SelfType(library.GetSymbol(id)!);
 
     // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness), the instance of the view's Body and of
     // A4's target (Binding.Witnesses), under the given Origins; null where the function's slots do not resolve.
@@ -135,13 +160,8 @@ internal sealed partial class TyCtxt
             return default;
         }
 
-        if (binding.PrepareTypeStorage(self) == Binding.StorageOutcome.Limit)
-        {
-            return new(RequirementTargetKind.Limit, null, null, default);
-        }
-
-        var instance = binding.InstanceContract(contract, self, subst.Declaring);
-        var witness = binding.ResolveRequirementWitness(requirement, self, instance, binding.EffectPremises(null));
+        var instance = binding.InstanceContract(contract, self, subst.Declaring, Binding.QuerySite.AfterPass);
+        var witness = binding.ResolveRequirementWitness(requirement, self, instance, binding.EffectPremises(null), Binding.QuerySite.AfterPass);
         return witness.Kind switch
         {
             Binding.RequirementWitnessKind.Builtin => new(RequirementTargetKind.Builtin, witness.Target, subst, default),

@@ -46,9 +46,16 @@ public partial class ImplicitBaseCallTest
     // PLAN G375 (Q13, rule W): RevalidateImplicitConstructors reads a kept Proven, so S's failure after the bodies is seen through its own
     // InaccessibleBinding_Kd records, and the base clause adds no record resting on them.
     [Theory]
-    [InlineData(LateFailureBehindABaseClause, "2*InaccessibleBinding_Kd 1*InvalidConstraint_Kd")]
+    [InlineData(LateFailureBehindABaseClause, "2*InaccessibleBinding_Kd")] // PLAN G1278 (G1278-A, Q13): the default `.None` carries the parameter's Type, so its InvalidConstraint_Kd goes
     [InlineData(LateFailureBehindABaseClauseValid, "clean")]
     public void ARejudgeAfterTheBodiesReadsAKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 6.3.6): a base clause's Type argument holding a Function Type is formed without the nested
+    // signature, so the implicit constructor is synthesized (dev: InvalidTypeFormation_Kd at D and UnprovenConstraint_Kd at the base).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nopen struct B<U>\n    public init() => ()\nstruct D {q}: B<(Option<T during q>) -> i32>\nfunc make(s: ref/i32) -> i32\n    let d: D during s = D.init()\n    return 0\n", "clean")] // c1ic
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nopen struct B<U>\n    public init() => ()\nstruct D {q}: B<i32>\nfunc make(s: ref/i32) -> i32\n    let d: D during s = D.init()\n    return 0\n", "clean")] // c1icd
+    public void ANestedSignatureInABaseTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Fact]
     public void OmittedBaseCallUsesOrdinaryDefaultsBeforeOwnInitializers()
@@ -179,7 +186,7 @@ public partial class ImplicitBaseCallTest
     public void TheBaseClauseMayBeInAnotherFragment(bool reversed)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         var first = new SourceDocument("leaf.kimi", "struct Leaf\n    public let extra: i32 = 2\nlet leaf = Leaf.init()\nrequire leaf.extra == 2 else => $abort(\"extra\")");
         var second = new SourceDocument("base.kimi", "open struct Base\n    protected init() => ()\nstruct Leaf: Base");
         c.Kotonoha.AddSource(reversed ? second : first);
@@ -208,7 +215,8 @@ public partial class ImplicitBaseCallTest
     }
 
     // SPEC 6.3.6: the omitted base query, which publishes nothing, decides as the bound base call does: the same selected
-    // constructor or the same class of failed selection. It leaves the obligations and diagnostics of the pass unchanged.
+    // constructor or the same class of failed selection. It leaves the obligations and diagnostics of the pass unchanged, and the
+    // implicit twin of each row decides it alike at the declaration pass (AssertOmittedBaseAgreement).
     [Theory]
     [InlineData("open struct Base\n    public init() => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
     [InlineData("open struct Base\n    protected init() => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
@@ -233,13 +241,13 @@ public partial class ImplicitBaseCallTest
     [InlineData(LimitedBumps + "struct GLeaf<U>: Base0\n    var item: U\nopen struct Holder<T>\n    protected init()\n        T is Bumps and Owned\n        ()\nstruct Derived<U>: Holder<GLeaf<U>>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))]
     [InlineData(LimitedBumps + "open struct Holder<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Bumps\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))] // Selected before R1f (STATUS).
     public void OmittedBaseQueryAgreesWithTheBoundCall(string source, string outcome)
-        => AssertOmittedBaseAgreement(CompilationTestHelper.ParseSuccess(source), outcome);
+        => AssertOmittedBaseAgreement(source, outcome, static x => CompilationTestHelper.ParseSuccess(x));
 
     [Theory]
     [InlineData("internal", nameof(OmittedBaseOutcome.NoneApplicable))]
     [InlineData("protected internal", nameof(OmittedBaseOutcome.Selected))]
     public void OmittedBaseQueryUsesTheDerivedModulesAccess(string access, string outcome)
-        => AssertOmittedBaseAgreement(ModuleBindingTest.Create("alias Lib.Api\nstruct Leaf: Base\n    public init() => ()\n()", "public group Api\n    public open struct Base\n        " + access + " init() => ()"), outcome);
+        => AssertOmittedBaseAgreement("alias Lib.Api\nstruct Leaf: Base\n    public init() => ()\n()", outcome, x => ModuleBindingTest.Create(x, "public group Api\n    public open struct Base\n        " + access + " init() => ()"));
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -320,13 +328,21 @@ public partial class ImplicitBaseCallTest
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
-    private static void AssertOmittedBaseAgreement(Compilation c, string expected)
+    // The query of the bound pass's explicit constructor, then its implicit twin: the derived structure without that constructor,
+    // whose synthesized constructor the declaration pass decides by the same query (CompleteImplicitConstructor) and the pass judges
+    // again after the bodies, failing closed at the base clause on a disagreement (RevalidateImplicitConstructors). The twin's decision
+    // is seen at its use: a Selected one is the synthesized constructor and its bound base call, a Dependent one a use resting on its
+    // cause, any other the construction's failure.
+    private static void AssertOmittedBaseAgreement(string source, string expected, Func<string, Compilation> create)
     {
-        c.Binding.CaptureOmittedBaseQueries = true;
+        const string Explicit = "\n    public init() => ()";
+        var outcome = Enum.Parse<OmittedBaseOutcome>(expected);
+        var c = create(source);
         c.Bind();
         var constructor = c.SourceModules.SelectMany(static x => KotoTree.Walk(x.RootKoto)).OfType<FunctionKoto>().Single(static x => x.HasOmittedBaseInitializer);
-        var query = c.Binding.OmittedBaseQueries![constructor];
         var call = constructor.BaseInitializer!;
+        var (issues, obligations, state) = (c.Binding.Issues.Count, c.Binding.Obligations.Count, (call.StateOf(), call.FailureOf(), call.TypeOf()));
+        var query = c.Binding.SelectOmittedBaseConstructor(constructor);
         (OmittedBaseOutcome Outcome, FunctionKoto? Winner) bound = call.CallOf() is { } selected ? (OmittedBaseOutcome.Selected, (FunctionKoto?)selected.Target.Declaration)
             : call.Method.FailureOf() == BindingFailure.MissingName ? (OmittedBaseOutcome.NoBaseConstructor, null)
             : (call.FailureOf() switch
@@ -337,13 +353,36 @@ public partial class ImplicitBaseCallTest
                 BindingFailure.None => OmittedBaseOutcome.Dependent,
                 var failure => throw new InvalidOperationException($"The bound base call failed with {failure}."),
             }, null);
-        Assert.Equal((Enum.Parse<OmittedBaseOutcome>(expected), bound.Outcome, bound.Winner), (query.Outcome, query.Outcome, query.Winner));
+        Assert.Equal((outcome, bound.Outcome, bound.Winner), (query.Outcome, query.Outcome, query.Winner));
 
         // A query inside the finished pass changes nothing the pass published.
-        var issues = c.Binding.Issues.Count;
-        var obligations = c.Binding.Obligations.Count;
-        var state = (call.StateOf(), call.FailureOf(), call.TypeOf());
-        Assert.Equal(query, c.Binding.SelectOmittedBaseConstructor(constructor));
         Assert.Equal((issues, obligations, state), (c.Binding.Issues.Count, c.Binding.Obligations.Count, (call.StateOf(), call.FailureOf(), call.TypeOf())));
+
+        var structure = (StructKoto)constructor.Parent!;
+        var arguments = structure.GenericParameterNodes.Count == 0 ? string.Empty : "<" + string.Join(", ", Enumerable.Repeat("i32", structure.GenericParameterNodes.Count)) + ">";
+        var twin = create(source.Remove(source.LastIndexOf(Explicit, StringComparison.Ordinal), Explicit.Length) + (outcome == OmittedBaseOutcome.Selected ? string.Empty : $"\nlet twin = {structure.Name}{arguments}.init()"));
+        twin.Bind();
+        var derived = twin.SourceModules.SelectMany(static x => KotoTree.Walk(x.RootKoto)).OfType<StructKoto>().Single(x => x.Name == structure.Name);
+        Assert.Equal(BindingFailure.None, derived.BaseClause!.FailureOf());
+        if (outcome == OmittedBaseOutcome.Selected)
+        {
+            var synthesized = derived.ImplicitConstructor!;
+            var decision = twin.Binding.SelectOmittedBaseConstructor(synthesized);
+            Assert.Equal((outcome, query.Winner!.Span), (decision.Outcome, decision.Winner!.Span));
+            Assert.Same(decision.Winner, synthesized.BaseInitializer!.CallOf()!.Target.Declaration);
+            return;
+        }
+
+        var use = KotoTree.Walk(derived.Parent!).OfType<InvocationKoto>().Last();
+        Assert.Null(derived.ImplicitConstructor);
+        Assert.Null(use.CallOf());
+        if (outcome == OmittedBaseOutcome.Dependent)
+        {
+            // The use rests on the decision's cause and adds no record of its own: the twin's records are the row's.
+            Assert.Equal(c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())), twin.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+            return;
+        }
+
+        Assert.Equal(outcome == OmittedBaseOutcome.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.MissingName, use.Method.FailureOf());
     }
 }

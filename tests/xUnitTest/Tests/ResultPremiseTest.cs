@@ -124,6 +124,36 @@ public partial class ResultPremiseTest
         "    let pair = g(s)\n    return pair.1\n\nfunc mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n\n" +
         "func caller(s: ref/i32 during static) -> ref/i32 during static\n    return use(mk, s)\n\n";
 
+    // A result holding a Function Type that writes a fixed Origin, b, below a borrow layer during q: OwnedOrigins of the Function Type is
+    // {b} (SPEC 15.2.3), so the result's well-formedness is b outlives q.
+    private const string HeldFixed = "func mk(b: ref/i32, q: ref/i32) -> Option<ref/((ref/i32 during b) -> i32) during q>\n";
+
+    // HeldFixed's control: the same well-formedness without a Function Type.
+    private const string StoredFixed = "func mk(b: ref/i32, q: ref/i32) -> Option<ref/(ref/i32 during b) during q>\n";
+
+    // The located limit at HeldFixed's result layer (F's ruling O3-24).
+    private const string HeldLimit = nameof(DiagnosticCode.Unsupported_Kd) + "|ref/((ref/i32 during b) -> i32) during q|";
+
+    private const string Loan = nameof(DiagnosticCode.ComparisonLoanConflict_Kd) + "|";
+
+    // leak_mk: mk stores b in the caller's array as `during q` on its result premise; leak_use calls it with a local borrow.
+    private const string HeldLeak = "func mk(b: ref/i32, q: ref/i32, slot: uniq/Array<ref/i32 during q>) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    slot@follow.append(b)\n    return .None\n\n";
+
+    private const string StoredLeak = "func mk(b: ref/i32, q: ref/i32, slot: uniq/Array<ref/i32 during q>) -> Option<ref/(ref/i32 during b) during q>\n    slot@follow.append(b)\n    return .None\n\n";
+
+    private const string LeakUse = "func use(x: ref/i32) -> i32\n    var arr: Array<ref/i32 during x> = []\n    arr.append(x)\n    if true\n        let local: i32 = 41\n" +
+        "        let o: Option<ref/((ref/i32 during x) -> i32) during x> = mk(local@ref, x, arr@uniq)\n    let old: i32 = arr[1]@follow\n    return old\n\n";
+
+    private const string StoredLeakUse = "func use(x: ref/i32) -> i32\n    var arr: Array<ref/i32 during x> = []\n    arr.append(x)\n    if true\n        let local: i32 = 41\n" +
+        "        let o: Option<ref/(ref/i32 during x) during x> = mk(local@ref, x, arr@uniq)\n    let old: i32 = arr[1]@follow\n    return old\n\n";
+
+    // ret_mk: mk returns b as `during q` on its result premise; ret_use calls it with a local borrow.
+    private const string HeldPair = "func mk(b: ref/i32, q: ref/i32) -> (Option<ref/((ref/i32 during b) -> i32) during q>, ref/i32 during q)\n    return (.None, b)\n\n";
+
+    private const string StoredPair = "func mk(b: ref/i32, q: ref/i32) -> (Option<ref/(ref/i32 during b) during q>, ref/i32 during q)\n    return (.None, b)\n\n";
+
+    private const string PairUse = "func use(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 41\n    let t = mk(local@ref, x)\n    return t.1\n\n";
+
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd) + "|";
 
     private const string Constraint = nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|";
@@ -131,8 +161,6 @@ public partial class ResultPremiseTest
     private const string Mismatch = nameof(DiagnosticCode.TypeMismatch_Kd) + "|";
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedConstraint_Kd) + "|";
-
-    private const string Unsupported = nameof(DiagnosticCode.Unsupported_Kd) + "|";
 
     // SPEC 15.6.5: pickRelated is valid and runs; the call's result keeps the Loans of both borrows, so writing either referent while
     // it lives is a Loan conflict.
@@ -219,6 +247,21 @@ public partial class ResultPremiseTest
         Assert.True(DiagnosticCorpus.Check(source.Replace("    origin h.a outlives x\n", "    origin h.a outlives x\n    origin x outlives s\n", StringComparison.Ordinal)).Accepted);
     }
 
+    // SPEC 15.3.7 (PLAN G778): a recursive call's result premises are proven without the definition's own (resultPremiseExcluded), each
+    // a request at the definition; each one the definition does not prove becomes an obligation of the call, which changes the Origin
+    // state, so the next request rebuilds the definition's premise environment in place. Three nested layers give three such premises:
+    // the call passing its inputs in order is valid, and its twin passing q for p needs q outlives p, which is unproven.
+    [Theory]
+    [InlineData("p, q, r", true)]
+    [InlineData("q, p, r", false)]
+    public void ARecursiveCallsResultPremisesRebuildItsEnvironment(string arguments, bool valid)
+    {
+        var output = DiagnosticCorpus.Check(
+            "func leak(p: ref/i32, q: ref/i32, r: ref/i32, n: i32) -> (Option<ref/(ref/(ref/i32 during r) during q) during p>, ref/i32 during p)\n" +
+            $"    if n == 0\n        return (.None, p)\n    return leak({arguments}, n - 1)\n" + Main);
+        Assert.Equal(valid ? [] : [nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], output.Diagnostics.Select(static x => x.Code).Distinct());
+    }
+
     // SPEC 15.6.4 step 3, 15.3.7: a call through a Function Item, or through a reference to one, solves the named callee's fresh Origins
     // under its result premises and declared relations, as a direct call does. The valid uses run; a result part that would outlive the
     // local borrow is the fit record at the return, related at that borrow (these calls were accepted and read a dead stack slot).
@@ -235,16 +278,12 @@ public partial class ResultPremiseTest
         var written = direct.Replace("    return (.None, q)", "    origin q outlives p\n    return (.None, q)", StringComparison.Ordinal);
         foreach (var source in new[] { direct, throughReference, written })
         {
-            // H5 (H3b T50): A5 publishes its twin of the Binding record at the return statement beside the value, until R7 (R4-M108).
-            AssertTwinAtTheReturn(source);
+            // R7-O1 H: A5's one record at the value (H5's twin at the return statement went with Binding's record, R4-M108).
+            AssertOneRecordAtTheValue(source);
             var errors = DiagnosticCorpus.Check(source).Diagnostics;
             var error = Assert.Single(errors, x => Text(source, x.Span) == "pair.1");
             Assert.Equal(["outlives", "local@ref", "x", "fit", "ref/i32 during x"], error.Reason!.Select(static x => x.Value));
-            var related = Assert.Single(error.Related!);
-            Assert.Equal(("origin", "local@ref"), (related.Role, Text(source, related.Span)));
-            var twin = Assert.Single(errors, x => Text(source, x.Span) == "return pair.1");
-            Assert.Equal(["outlives", "local", "x", "fit", "ref/i32 during x"], twin.Reason!.Select(static x => x.Value));
-            Assert.Equal([("borrow", "local@ref"), ("origin", "return pair.1")], twin.Related!.Select(x => (x.Role, Text(source, x.Span))));
+            Assert.Equal([("borrow", "local@ref"), ("origin", "local@ref")], error.Related!.Select(x => (x.Role, Text(source, x.Span))));
         }
 
         // A premise over static is refuted at the call that pins it with a local borrow, as at a direct call. H3b F-b (R4's ruling: class 4,
@@ -306,14 +345,11 @@ public partial class ResultPremiseTest
             "func use() -> i32\n    let g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static) = f\n    return 0\n" + Main;
         // The owner's (a) (2026-10-27): the conversion assumes the target's own well-formedness and adds no record (it was
         // UnprovenOriginContract_Kd at f); the target relates its per-call Origin to static beyond its input, which is the annotation's
-        // record where it is written (SPEC 15.3.4, DECISIONS R4-M162). F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN
-        // G216 (b)): Binding records nothing, so A5's located Unsupported_Kd there keeps the program rejected where dev's
-        // UnprovenOriginRelation_Kd was ("requires the omitted Origin of ref/i32 outlives static"); U-O3 (BU's R7-O3) moves it to Binding.
+        // record where it is written (SPEC 15.3.4, DECISIONS R4-M162): Binding's, the nested signature's declaration row (R7-O3 U-O3; A5's
+        // located Unsupported_Kd there until then, F-a of H5's (e) list).
         var result = Assert.Single(DiagnosticCorpus.Check(premise).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), DiagnosticCategory.Unsupported, "ref/(ref/i32) during static"), (result.Code, result.Category, Text(premise, result.Span)));
-        Assert.Null(result.Label);
-        Assert.Null(result.Reason);
-        Assert.Null(result.Related);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), DiagnosticCategory.Proof, "ref/(ref/i32) during static"), (result.Code, result.Category, Text(premise, result.Span)));
+        Assert.Equal("requires the omitted Origin of ref/i32 outlives static, which is not proven", result.Label);
         Assert.True(DiagnosticCorpus.Check(premise.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
 
         // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove fails the Callable proof in its
@@ -364,8 +400,8 @@ public partial class ResultPremiseTest
         var written = local.Replace("    return (.None, p.item)", "    origin p.a outlives q\n    return (.None, p.item)", StringComparison.Ordinal);
         foreach (var program in new[] { local, written })
         {
-            var record = Assert.Single(DiagnosticCorpus.Check(program).Diagnostics); // At the declaration since H5 (H3b T45).
-            Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let k: ref/i32 during x = pair.1"), (record.Code, Text(program, record.Span)));
+            var record = Assert.Single(DiagnosticCorpus.Check(program).Diagnostics); // At the initializer (H11b D5, R7-O1 H; H5 had the declaration).
+            Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "pair.1"), (record.Code, Text(program, record.Span)));
             Assert.Equal("requires h.a outlives x, which is not proven", record.Label);
             Assert.Equal(["outlives", "h.a", "x", "fit", "ref/i32 during x"], record.Reason!.Select(static x => x.Value));
             Assert.True(DiagnosticCorpus.Check(program.Replace("    let pair = f(h, x)", "    origin h.a outlives x\n    let pair = f(h, x)", StringComparison.Ordinal)).Accepted);
@@ -389,11 +425,13 @@ public partial class ResultPremiseTest
     {
         var text = program + Main;
         var output = DiagnosticCorpus.Check(text);
-        var start = text.LastIndexOf(at, StringComparison.Ordinal);
+        // A local annotation's fit is recorded at its initializer (H11b D5, R7-O1 H), inside the declaration `at` names.
+        var initializer = source == "fit" ? at.IndexOf(" = ", StringComparison.Ordinal) + 3 : 0;
+        var start = text.LastIndexOf(at, StringComparison.Ordinal) + initializer;
         Assert.Equal(relations.Select(static x => $"requires {x}, which is not proven"), output.Diagnostics.Select(static x => x.Label));
         foreach (var error in output.Diagnostics)
         {
-            Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at, start, source), (error.Code, Text(text, error.Span), error.Span!.Value.Start, error.Reason![3].Value));
+            Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at[initializer..], start, source), (error.Code, Text(text, error.Span), error.Span!.Value.Start, error.Reason![3].Value));
             var label = error.Label!;
             var relation = label["requires ".Length..label.IndexOf(',', StringComparison.Ordinal)];
         }
@@ -410,18 +448,19 @@ public partial class ResultPremiseTest
         Assert.True(DiagnosticCorpus.Check(repaired).Accepted, string.Join("\n", DiagnosticCorpus.Check(repaired).Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
-    // A Refuted chain and an Unknown one at one location are two records, each with its own code and label, the Borrow related. Since
-    // H5 the MIR records them at the declaration (H3b T45); its label names the borrowed local, and the Borrow is the `borrow` role.
+    // A Refuted chain and an Unknown one at one location are two records, each with its own code and label, the Borrow related. A5
+    // records them at the initializer (H11b D5, R7-O1 H; H5 had the declaration); its label names the Borrow that supplied the end
+    // (R4-M133, F-H1-3), which is the `borrow` and the `origin` role.
     [Fact]
     public void ARefutedAndAnUnknownOperandAtOneLocationAreTwoRecords()
     {
         var source = ClauseCallee + "func g(x: ref/i32, b: ref/i32) -> i32\n    let local: i32 = 3\n    let t = f(local@ref, x, b)\n    let k: ref/i32 during x = t.0\n    return k@follow\n" + Main;
         var output = DiagnosticCorpus.Check(source).Diagnostics;
-        var at = source.IndexOf("let k: ref/i32 during x = t.0", StringComparison.Ordinal);
+        var at = source.IndexOf("let k: ref/i32 during x = t.0", StringComparison.Ordinal) + "let k: ref/i32 during x = ".Length;
         Assert.Equal(
-            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at, "requires b outlives x, which is not proven"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at, "requires the borrow local outlives x, which is false")],
+            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at, "requires b outlives x, which is not proven"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at, "requires the borrow local@ref outlives x, which is false")],
             output.Select(static x => (x.Code, x.Span!.Value.Start, x.Label)));
-        Assert.Equal([("borrow", "local@ref"), ("origin", "let k: ref/i32 during x = t.0")], output[1].Related!.Select(x => (x.Role, Text(source, x.Span))));
+        Assert.Equal([("borrow", "local@ref"), ("origin", "local@ref")], output[1].Related!.Select(x => (x.Role, Text(source, x.Span))));
     }
 
     // SPEC 15.6.5: a Binding fit's own record names the failing operand that decides the judgment, and each other failing operand is a
@@ -446,26 +485,25 @@ public partial class ResultPremiseTest
         Assert.Equal((at, statement + 7), (Text(source, error.Span), error.Span!.Value.Start));
         Assert.Equal("requires the borrow local@ref outlives x, which is false", error.Label);
         Assert.Equal(["outlives", "local@ref", "x", "fit", "ref/i32 during x"], error.Reason!.Select(static x => x.Value));
-        var related = Assert.Single(error.Related!);
-        Assert.Equal(("origin", borrow), (related.Role, related.Span!.Value.Start));
+        Assert.Equal([("borrow", borrow), ("origin", borrow)], error.Related!.Select(static x => (x.Role, x.Span!.Value.Start)));
 
-        // H5 (H3b T50): A5 publishes its twin of each Binding record at the return statement beside the value, until R7 (R4-M108).
-        var twin = Assert.Single(errors, x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) && x.Span!.Value.Start == statement);
-        Assert.Equal(("return " + at, "requires the borrow local outlives x, which is false"), (Text(source, twin.Span), twin.Label));
-        Assert.Equal(["outlives", "local", "x", "fit", "ref/i32 during x"], twin.Reason!.Select(static x => x.Value));
-        Assert.Equal([("borrow", borrow), ("origin", statement)], twin.Related!.Select(static x => (x.Role, x.Span!.Value.Start)));
+        // R7-O1 H: no twin at the return statement (H5's, R4-M108): A5's record at the value is the one. The Tuple `t` keeps `local`'s
+        // Loan past its end: A5's ComparisonLoanConflict_Kd at its declaration (F-H1-1's aggregate class, SPEC 15.6.5 rule W).
+        Assert.DoesNotContain(errors, x => x.Span!.Value.Start == statement);
+        var conflict = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd));
+        Assert.Equal("let local: i32 = 3", Text(source, conflict.Span));
 
         // SPEC 15.6.1: every failed chain is reported, so an Unknown `b` that no premise proves is its own record at that value (U3-B).
         if (body.Contains("origin b", StringComparison.Ordinal))
         {
-            Assert.Equal([twin, error], errors);
+            Assert.Equal([conflict, error], errors);
         }
         else
         {
             Assert.Equal(
-                [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), twin.Span, "requires b outlives x, which is not proven"), (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires b outlives x, which is not proven")],
-                errors.Where(static x => x.Code != nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)).Select(static x => (x.Code, x.Span, x.Label)));
-            Assert.Equal(4, errors.Length);
+                [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires b outlives x, which is not proven")],
+                errors.Where(static x => x.Code is not (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) or nameof(DiagnosticCode.ComparisonLoanConflict_Kd))).Select(static x => (x.Code, x.Span, x.Label)));
+            Assert.Equal(3, errors.Length);
         }
 
         var valid = source.Replace("local@ref", "x", StringComparison.Ordinal);
@@ -481,8 +519,9 @@ public partial class ResultPremiseTest
     }
 
     // SPEC 15.3.4, 15.3.7: a nested Function Type's per-call Origins cannot leave their binder, so the result premise stops at it. The
-    // well-formedness inside it stays the definition's obligation at its Type occurrence, as before the premise existed, never a call
-    // obligation no caller can prove or a bound that leaks the per-call Origin into the caller's Types.
+    // nested signature's own result row stays the definition's obligation at its Type occurrence, as before the premise existed, never a
+    // call obligation no caller can prove or a bound that leaks the per-call Origin into the caller's Types. A borrow layer holding a
+    // Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1), so `pick`'s result is well formed.
     [Fact]
     public void ANestedFunctionTypeKeepsItsWellFormednessAtTheDefinition()
     {
@@ -498,21 +537,16 @@ public partial class ResultPremiseTest
         Assert.Equal("origin", input.Role);
         Assert.Equal(getter.IndexOf("-> (ref/i32) ->", StringComparison.Ordinal) + 4, input.Span!.Value.Start);
 
-        // Two signatures with the same Function Type part each keep their own record; the forwarding call adds none.
+        // valid: two signatures with the same Function Type part under a borrow layer, and the forwarding call (SPEC 15.2.3: the per-call
+        // Origins of `(ref/i32) -> ref/i32` are no part of its OwnedOrigins).
         var forward = ActionBox + "func forward(bx: ref/Box) -> ref/((ref/i32) -> ref/i32) during bx\n    return pick(bx)\n\n" +
             "func run() -> i32\n    let box = Box.init(action: ident)\n    let f = forward(box@ref)\n    return 0\n" + Main;
-        Assert.Equal(
-            [("ref/((ref/i32) -> ref/i32) during b", "requires the omitted Origin of ref/i32 outlives b, which is not proven"), ("ref/((ref/i32) -> ref/i32) during bx", "requires the omitted Origin of ref/i32 outlives bx, which is not proven")],
-            DiagnosticCorpus.Check(forward).Diagnostics.Select(x => (Text(forward, x.Span), x.Label)));
+        Assert.Empty(DiagnosticCorpus.Check(forward).Diagnostics);
 
-        // A caller's annotation of the call result is judged by its own Type occurrence; no meet with the per-call Origin reaches it. Binding
-        // records pick's signature (DECISIONS BU-26), so the old analysis stopped before the annotation in use (PLAN G56's recorded limit,
-        // accepted by the owner's answer Q2 to BU-26). Since H5 the MIR publishes its record on this Binding-rejected program directly
-        // (R5-M184, H3b T51): the located Unsupported_Kd at the annotation, so G56's limit now lacks only its UnprovenOriginRelation_Kd.
+        // valid: a caller's annotation of the call result is judged by its own Type occurrence; no meet with the per-call Origin reaches it
+        // (PLAN G56's recorded limit until R7-O3: pick's record and the annotation's located Unsupported_Kd).
         var annotated = ActionBox + "func use(bx: ref/Box) -> i32\n    let f = pick(bx)\n    let g: ref/((ref/i32) -> ref/i32) during bx = f\n    return 0\n" + Main;
-        Assert.Equal(
-            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/((ref/i32) -> ref/i32) during b", "wellFormed"), (nameof(DiagnosticCode.Unsupported_Kd), "ref/((ref/i32) -> ref/i32) during bx", null)],
-            DiagnosticCorpus.Check(annotated).Diagnostics.Select(x => (x.Code, Text(annotated, x.Span), x.Reason?[3].Value)));
+        Assert.Empty(DiagnosticCorpus.Check(annotated).Diagnostics);
 
         // A Function Item converted to a nested Function Type assumes that Type's own well-formedness (the owner's (a)), so leak's
         // premise adds no conversion record; mk's result Type relates a per-call input to `b`, which is mk's record where it is written
@@ -533,8 +567,8 @@ public partial class ResultPremiseTest
     [InlineData("func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> i32\n    return 1\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // z1n
     [InlineData("func k(q: ref/i32, r: ref/i32, f: () -> Option<ref/(ref/i32 during q) during r>) -> i32\n    return 0\n\nfunc mover() -> i32\n    var s = [1, 2]\n    let t = s@move\n    let u = s@move\n    return 0\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven", nameof(DiagnosticCode.MovedPlace_Kd) + "|s|")] // z1nmv: dev's MovedPlace_Kd at the second `s@move`, lost beside this Binding-level record until H5, is the MIR's record published directly (R5-M184, H3b T51; DECISIONS R4-M162, BU-45)
     [InlineData("func g(q: ref/i32, cb: (ref/i32) -> Option<ref/(ref/i32 during q)>) -> i32 => 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives the omitted Origin of ref/i32, which is not proven")] // r3
-    [InlineData("func host(q: ref/i32) -> i32\n    let g = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    return 0\n\n", Unsupported + "ref/(ref/i32 during q)|")] // G216 (b), a Closure's written result; F-a (the owner's O-2, 「一覧に加える」): Binding records nothing and A5's located Unsupported_Kd keeps it rejected; U-O3 / R7-O3 restores dev's UnprovenOriginRelation_Kd here ("requires q outlives p")
-    [InlineData("func host(q: ref/i32) -> i32\n    var f: (ref/i32) -> Option<ref/(ref/i32 during q)> = func [] (p: ref/i32) => Option.None\n    return 0\n\n", Unsupported + "ref/(ref/i32 during q)|")] // G216 (b), a local annotation; F-a (the owner's O-2, 「一覧に加える」): Binding records nothing and A5's located Unsupported_Kd keeps it rejected; U-O3 / R7-O3 restores dev's UnprovenOriginRelation_Kd here
+    [InlineData("func host(q: ref/i32) -> i32\n    let g = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    return 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives p, which is not proven")] // G216 (b), a Closure's written result: the nested signature's declaration row (R7-O3 U-O3; A5's located Unsupported_Kd before, F-a)
+    [InlineData("func host(q: ref/i32) -> i32\n    var f: (ref/i32) -> Option<ref/(ref/i32 during q)> = func [] (p: ref/i32) => Option.None\n    return 0\n\n", Unproven + "ref/(ref/i32 during q)|requires q outlives the omitted Origin of ref/i32, which is not proven")] // G216 (b), a local annotation: the nested signature's declaration row (R7-O3 U-O3; A5's located Unsupported_Kd before, F-a)
     [InlineData("func use(g: (ref/i32) -> (Option<ref/(ref/i32) during static>, ref/i32 during static), s: ref/i32 during static) -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\n\n", Unproven + "ref/(ref/i32) during static|requires the omitted Origin of ref/i32 outlives static, which is not proven")] // lpok
     [InlineData("func k(q: ref/i32, r: ref/i32, fs: Array<() -> Option<ref/(ref/i32 during q) during r>>) -> i32\n    return 0\n\n", Unproven + "ref/(ref/i32 during q) during r|requires q outlives r, which is not proven")] // arr
     [InlineData(ClauseType + ClauseResult, Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7
@@ -542,38 +576,83 @@ public partial class ResultPremiseTest
     [InlineData(ClauseType + ClauseResult + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", nameof(DiagnosticCode.UnprovenOriginContract_Kd) + "|func [] () => 5|the result's well-formedness requires the borrow a outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1a: a call keeps judging its Closure argument, recording at it (the owner's D-1, 「記録は引数に」)
     [InlineData(ClauseType + ClauseResult + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1s: and adds no call record
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => true)\n\n", Mismatch + "true|expected i32, found bool")] // b2in: an input's clause is that signature's premise (R4-M137), so the callee's declaration walk does not enter it and the Closure keeps its own TypeMismatch_Kd (G374, closed by G375's structural core, DECISIONS R4-M163)
-    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "(Box<Array<i32>>)|", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "k(func [] (b) => 0)|", Unsatisfied + "b|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes, and the selected call's instantiated input and the Closure's parameter fail where they occur (DECISIONS R4-M163, Q13)
+    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "Box<Array<i32>>|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes (DECISIONS R4-M163, Q13); the Closure's parameter `b` carries the expected input's Type, so its restating record goes (G1278-A, Q13; F's G1278-3); the selected call no longer forms its instantiated input, whose record restated the declaration's (PLAN G464, SPEC 15.6.4 step 3; Q13, dependent); the parenthesized input `(Box<Array<i32>>)` is the written Type it holds, one occurrence and one record (R7-V1c, SPEC 8.3.1, Q13)
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => 0)\n\n")] // b2valid: b2in's valid twin is accepted at the call (dev: UnprovenConstraint_Kd at the call; an acceptance move, DECISIONS R4-M163)
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    let g = k\n    _ = g\n    return 0\n\n")] // refvalid: and at a function reference (dev: UnprovenConstraint_Kd at `k`; an acceptance move, R4-M163)
     [InlineData("public struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\n\npublic contract C\n    func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32\n\npublic struct S\n    Self is C\n    public func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32 => 0\n\n")] // ctrvalid: and in contract matching (dev: UnprovenConstraint_Kd at the conformance; an acceptance move, R4-M163)
     [InlineData(ClauseType + "func k(q: ref/i32) -> i32\n    let c = func [] (f: () -> Option<T during q>) -> i32 => 0\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a Closure parameter
     [InlineData(ClauseType + "func k(q: ref/i32, h: () -> Option<T during static>) -> i32\n    let g: () -> Option<T during q> = h@move\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a local annotation
     [InlineData(SelfReturning, Unproven + "Option<R during q>|requires q outlives static, which is not proven")] // a Type whose Field returns itself
-    [InlineData(Nested + Clause + "    return q\n\n" + NestedShort, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|return k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false")] // z1d: and A5's twin at the return statement until R7 (H3b T50, R4-M108)
+    [InlineData(Nested + Clause + "    return q\n\n" + NestedShort, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false")] // z1d: A5's one record (R7-O1 H; its twin at the return statement, H3b T50, R4-M108, went with Binding's)
     [InlineData(Nested + Clause + "    return q\n\n" + NestedLong)] // z1t
     [InlineData(Nested + Clause + "    let c = func [f@move] () -> i32 => 0\n    return q\n\n")] // cap
     [InlineData("func g(q: ref/i32, cb: (ref/(ref/i32 during q)) -> ref/(ref/i32 during q)) -> i32 => 0\n\n")] // inwf
     [InlineData(FixedInput)] // lpfix
     [InlineData(ClauseType + "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n    origin q outlives static\n    return 0\n\n")] // t7 with the clause
     [InlineData(ClauseType + "struct H {q}\n    origin q outlives static\n    public let f: () -> Option<T during q>\n\n")] // a Field with the clause
+    [InlineData(ClauseType + "struct H {q}\n    public let f: (Option<T during q>) -> i32\n    public init(f: (Option<T during q>) -> i32) => self.f = f@move\n\n")] // c1f: a Field's nested input is that signature's premise (SPEC 15.3.2, 15.6.1; PLAN G464: dev's UnprovenConstraint_Kd at the Field, an acceptance move)
+    [InlineData(ClauseType + "struct H {q}\n    public let g: (Option<T during q>) -> Option<T during q>\n    public init(g: (Option<T during q>) -> Option<T during q>) => self.g = g@move\n\n")] // c1fr: and its nested result is judged under it (SPEC 15.3.4; PLAN G464, an acceptance move)
+    [InlineData(ClauseType + "struct H {q}\n    public let g: () -> Option<T during q>\n    public init(g: () -> Option<T during q>) => self.g = g@move\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven")] // c1fi: each written nested result keeps its record, the Field's and the init parameter's; the Field's UnprovenConstraint_Kd, which restated the first, goes (PLAN G464; DECISIONS Q13, rule W); the Field's names H's Origin as written there (the Hold, H19; Q13 Text)
     [InlineData("struct S {q}\n    origin q outlives static\n    public let f: () -> Option<S during q>\n\n    public init(f: () -> Option<S during q>) => self.f = f@move\n\n")] // a Field returning its own Type
+    [InlineData("func f(u0: ref/((ref/i32) -> i32)) -> ref/((ref/i32) -> i32) during u0\n    return u0\n\n")] // f_sig_res_ok: a borrow layer holding a Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1; none here)
+    [InlineData("struct S {a}\n    public let call: ref/((ref/i32) -> i32) during a\n\n")] // f_fld_ok: as f_sig_res_ok in a Field
     public void ANestedSignaturesResultIsJudgedWhereItIsWritten(string program, params string[] records)
     {
         var text = program + Main;
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
     }
 
+    // SPEC 15.6.1, 15.2.3, 15.6.4 step 3 (DECISIONS BU-73's amendment, R7-O3 O3-B2, F's rulings O3-24, O3-27): a definition's result premise
+    // holds a held Function Type's fixed Origins, but no call carries that part yet (WellFormedPremises.EnterStored, PLAN's O3-B2 issue), so
+    // a row they form at the result Type that the definition's premises without that part do not prove is the located Unsupported_Kd at the
+    // written borrow layer (HeldResult; dev: UnprovenOriginRelation_Kd there, a Language record on a valid definition), and no program is
+    // accepted on that part: sres_fix, sres_use, leak_mk, ret_mk (valid) the limit only; call_ok (valid) and call_bad, leak_use, ret_use
+    // (invalid, SPEC 15.6.4 step 3) rejected by mk's limit, beside A5's Loan record where the borrow is retained; sres_bad keeps its own
+    // record at `g`. Every other part of the result premise, which the calls carry, proves such a row: tw_pair's second component stores b
+    // below q (valid, accepted), and so does tw_a1's element, the same part met inside and outside the held Function Type in one walk (F's
+    // ruling O3-29 C1). The controls without a Function Type, and the input premise (in_prem, in_prem_bad), are unchanged. A row the limit
+    // could hide stays a Judgment row and keeps its record beside the limit (F's ruling O3-30, the Middle's C-571 twins): h_nres_fixed_bad's
+    // nested result is judged where it occurs (SPEC 15.3.4), and s_local_hide's local Type is not assumed (SPEC 15.3.3, 15.6.1).
+    [Theory]
+    [InlineData(HeldFixed + "    return .None\n\n", HeldLimit)] // sres_fix
+    [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n", HeldLimit)] // sres_use: the premise decides the initializer
+    [InlineData(StoredFixed + "    return .None\n\n")] // sres_fix_ctl
+    [InlineData(StoredFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use_ctl
+    [InlineData("func mk(b: ref/i32, q: ref/i32) -> (Option<ref/((ref/i32 during b) -> i32) during q>, Option<ref/(ref/i32 during b) during q>)\n    return (.None, .None)\n\n")] // tw_pair
+    [InlineData("func mk(b: ref/i32, q: ref/i32) -> Option<ref/(((ref/i32 during b) -> i32), ref/i32 during b) during q>\n    return .None\n\n")] // tw_a1
+    [InlineData("func mk(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32)) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    return .Some(g)\n\n", HeldLimit, Unproven + "g|requires g outlives q, which is not proven")] // sres_bad
+    [InlineData("func mk(b: ref/i32, c: ref/i32, q: ref/i32) -> Option<ref/(() -> ref/(ref/i32 during b) during c) during q>\n    return .None\n\n", nameof(DiagnosticCode.Unsupported_Kd) + "|ref/(() -> ref/(ref/i32 during b) during c) during q|", Unproven + "ref/(ref/i32 during b) during c|requires b outlives c, which is not proven")] // h_nres_fixed_bad
+    [InlineData("func mk(b: ref/i32, q: ref/i32, x: ref/i32) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    let g: Option<ref/((ref/i32 during x) -> i32) during q> = .None\n    return .None\n\n", HeldLimit, Unproven + "ref/((ref/i32 during x) -> i32) during q|requires x outlives q, which is not proven")] // s_local_hide
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem: the input's premise b outlives q
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/(ref/i32 during b) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem_ctl
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32) -> i32) during q) -> ref/i32 during q\n    return b\n\n", Unproven + "b|requires b outlives q, which is not proven")] // in_prem_bad: per-call Origins relate nothing
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n", HeldLimit)] // call_ok: mk's limit
+    [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok_ctl
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", HeldLimit)] // call_bad: mk's limit
+    [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/(ref/i32 during x) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad_ctl: the return's fit itself
+    [InlineData(HeldLeak, HeldLimit)] // leak_mk: the premise decides the store
+    [InlineData(HeldLeak + LeakUse, HeldLimit, Loan + "let local: i32 = 41|")] // leak_use
+    [InlineData(StoredLeak + StoredLeakUse, Loan + "let local: i32 = 41|", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x, arr@uniq)|requires the borrow local@ref outlives x, which is false")] // leak_use_ctl
+    [InlineData(HeldPair, HeldLimit)] // ret_mk: the premise decides the return
+    [InlineData(HeldPair + PairUse, HeldLimit, Loan + "let local: i32 = 41|")] // ret_use
+    [InlineData(StoredPair + PairUse, Loan + "let local: i32 = 41|", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|t.1|requires the borrow local@ref outlives x, which is false")] // ret_use_ctl
+    public void AHeldFunctionTypeInADefinitionsResultIsTheLocatedLimit(string program, params string[] records)
+    {
+        var text = program + Main;
+        Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
+    }
+
     // The local annotations that dev already judged at their occurrence keep their records (ann2, loc), and a Field's Function Type result
-    // keeps the Field's formation record beside its own (the formation check also enters Function Types; a dependent record, DECISIONS Q13).
-    // F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN G216 (b)): on ann2 Binding records nothing, so A5's located
-    // Unsupported_Kd at each written nested relation keeps it rejected where dev's UnprovenOriginRelation_Kd was ("requires the omitted
-    // Origin of ref/i32 outlives static", "requires x outlives static"); U-O3 (BU's R7-O3) moves the Language records to Binding there.
+    // keeps its own record where it is written; the Field's formation enters no Function Type (SPEC 15.6.1, 15.3.4; PLAN G464), so its
+    // UnprovenConstraint_Kd, which restated that record, goes (DECISIONS Q13, rule W).
+    // ann2's two per-call relations are their nested signatures' declaration rows, Binding's records (R7-O3 U-O3; A5's located
+    // Unsupported_Kd at each until then, F-a of H5's (e) list).
     [Fact]
     public void WrittenFunctionTypeResultsKeepTheirOtherRecords()
     {
         var ann2 = "func k() -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during static> = func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None\n    return 0\n\n" + Main;
         Assert.Equal(
-            [Unsupported + "ref/(ref/i32) during static|", Unsupported + "ref/(ref/i32 during x) during static|"],
+            [Unproven + "ref/(ref/i32) during static|requires the omitted Origin of ref/i32 outlives static, which is not proven", Unproven + "ref/(ref/i32 during x) during static|requires x outlives static, which is not proven"],
             DiagnosticCorpus.Check(ann2).Diagnostics.Select(x => $"{x.Code}|{Text(ann2, x.Span)}|{x.Label}"));
         var loc = "func k(q: ref/i32, r: ref/i32) -> i32\n    let g: () -> Option<ref/(ref/i32 during q) during r> = func [] () -> Option<ref/(ref/i32 during q) during r> => .None\n    return 0\n\n" + Main;
         Assert.Equal(
@@ -581,7 +660,7 @@ public partial class ResultPremiseTest
             DiagnosticCorpus.Check(loc).Diagnostics.Select(x => $"{x.Code}|{Text(loc, x.Span)}|{x.Label}"));
         var field = ClauseType + "struct H {q}\n    public let f: () -> Option<T during q>\n\n" + Main;
         Assert.Equal(
-            [nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|let f: () -> Option<T during q>|", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven"],
+            [Unproven + "Option<T during q>|requires q outlives static, which is not proven"],
             DiagnosticCorpus.Check(field).Diagnostics.Select(x => $"{x.Code}|{Text(field, x.Span)}|{x.Label}"));
     }
 
@@ -605,7 +684,7 @@ public partial class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseGenericItem", GenericItems, "36\n");
         var escape = "func leakg<T>(p: ref/T, q: ref/T) -> (Option<ref/(ref/T during q) during p>, ref/T during p)\n    return (.None, q)\n\n" +
             "func escape(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 99\n    let fr = leakg<i32>\n    let pair = fr(x, local@ref)\n    return pair.1\n" + Main;
-        AssertTwinAtTheReturn(escape);
+        AssertOneRecordAtTheValue(escape);
     }
 
     // SPEC 15.3.6, 15.6.4: a premise over a result-only signature Origin bounds it at the call, as the written clause does, so the call
@@ -621,7 +700,7 @@ public partial class ResultPremiseTest
         var conflict = Assert.Single(DiagnosticCorpus.Check(write).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "local = 5"), (conflict.Code, Text(write, conflict.Span)));
 
-        AssertTwinAtTheReturn(ResultOnly + "func run(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 99\n    let pair = f(local@ref)\n    return pair.1\n" + Main);
+        AssertOneRecordAtTheValue(ResultOnly + "func run(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 99\n    let pair = f(local@ref)\n    return pair.1\n" + Main);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -648,10 +727,12 @@ public partial class ResultPremiseTest
         }));
     }
 
-    // H5 (H3b T50): Binding's fit record at `pair.1` and A5's twin at its return statement, until R7 (R4-M108).
-    private static void AssertTwinAtTheReturn(string escape)
+    // R7-O1 H: A5's one record at `pair.1`, showing the Borrow that supplied its end (it was Binding's fit record there beside A5's twin
+    // at the return statement, H5, H3b T50, R4-M108), and the Loan conflict at `local`'s end that the Tuple `pair` keeps (F-H1-1's
+    // aggregate class, SPEC 15.6.5 rule W).
+    private static void AssertOneRecordAtTheValue(string escape)
         => Assert.Equal(
-            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "return pair.1", "requires the borrow local outlives x, which is false"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "pair.1", "requires the borrow local@ref outlives x, which is false")],
+            [(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let local: i32 = 99", null), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "pair.1", "requires the borrow local@ref outlives x, which is false")],
             DiagnosticCorpus.Check(escape).Diagnostics.Select(x => (x.Code, Text(escape, x.Span), x.Label)));
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

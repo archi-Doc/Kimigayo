@@ -4,12 +4,37 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
 #pragma warning disable CS1591 // Compiler-owned library identities.
 
-/// <summary>Owns compilation-local Kimi identities over embedded library sources.</summary>
+// KimiLibrary (PLAN G949 Stage 2; DECISIONS R8-M53): the Kimi library of a compilation and, frozen, of the process.
+// - Responsibility: the library's identities (the catalog's symbols, its scope and module) over its parsed embedded sources; the
+//   process's frozen library per target (Of, the one store, KimiLibrary.Process.cs), made by the freeze (Unfrozen, Freeze: a compilation
+//   over an empty program whose Binding binds the library by the one driver), and its refusal (LibraryLayer.Refusal, which Binding's
+//   FreezeLibrary decides); and the detachment (KimiLibrary.Process.cs, Detach): the frozen library names no compilation.
+// - Inputs: the embedded sources; the compilation the library is parsed in (its target's Conditions, windows-x64's without a target:
+//   Compilation.TryResolveValue, the Tatara plan's F1 (a); its documentation flags); for the freeze, the target and the preparation (a
+//   Kimigayo and its Project).
+// - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal and the interners' frozen
+//   levels); Frozen, whether the layer's interner levels are sealed (PLAN G949 Stage 2 U4): the library table's freeze, the seal; the
+//   frozen library's DocumentationFailures, HoverAnchors and SyntaxRecords (data its freeze compilation recorded).
+// - Invariants: one library per target per process, a frozen library or a refused one, cached by the store; only a compiler defect is
+//   cached as an exception (ExecutionAndPublication: one freeze per target; the build constant reproduces it). After Freeze no step
+//   writes a frozen object (S1-1's refusals; the eager steps run in the library pass); every stamp a frozen object holds is Frozen; the
+//   layer's interner levels are sealed at the library's freeze, after which no insert reaches them (U4). After Freeze no frozen object
+//   names a compilation: a read of a detached module's or code context's compilation or collection is the internal-invariant form; the
+//   module's syntax list moves with the frozen library (SyntaxRecords) and its freeze compilation's owner no longer holds it. A refused
+//   library exposes only its refusal; a compilation given one (U3) runs no program pass and publishes the refusal. Each library record
+//   has one owner: a Binding-side one the refusal (published as InternalInvariant_Kd at its library location), a syntax one the library
+//   module's syntax list (moved with the frozen library as SyntaxRecords; from U3 the reading compilation's DiagnosticOwner registers it
+//   read-only and publishes it under its own code); the refusal refers to that list, never copies it.
+// - Prohibitions: no second constructor or freeze path; no mode or flag deciding the library pass; no second check of the library's
+//   records beside FreezeLibrary's.
+
+/// <summary>Owns the Kimi library's identities over its embedded sources, per compilation and, frozen, per process (<see cref="Of"/>).</summary>
 public sealed partial class KimiLibrary
 {
     private static readonly WitnessMembers[] WitnessGroups = Enum.GetValues<WitnessMembers>();
@@ -19,6 +44,7 @@ public sealed partial class KimiLibrary
 
     internal KimiLibrary(Compilation compilation)
     {
+        this.Target = compilation.TargetTriple;
         this.Kotonoha = Kotonoha.ForKimiLibrary(compilation, "compiler://Kimi/" + Compilation.CurrentLanguageVersion);
         this.Scope = new(this.Kotonoha.RootKoto);
         this.Module = new("Kimi", BindingSymbolKind.Container, this.Kotonoha.RootKoto, this.Scope);
@@ -31,6 +57,13 @@ public sealed partial class KimiLibrary
         this.symbols = new BindingSymbol?[entries.Length];
         this.registeredSymbols = new(entries.Length + unnamed.Count); // The catalog's symbols in catalog order, then the unnamed ones.
         this.RegisterCatalog(declarations, unnamed);
+
+        // The library's table, once per library (PLAN G949 Stage 2 U3-2; Binding's constructor wrote it until U3): each registered symbol
+        // in its declaration's slot.
+        foreach (var symbol in this.registeredSymbols)
+        {
+            Binding.DeclaredSymbols.Add(symbol.Declaration, symbol);
+        }
 
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
@@ -64,6 +97,7 @@ public sealed partial class KimiLibrary
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
         this.Abort = this.CreateAbort();
+        this.DefaultAliases = Array.ConvertAll(Compilation.RequiredAliases, path => new Compilation.DefaultAlias(path, Compilation.ParseConfiguredPath(this.Kotonoha, "compiler://configuration", path)!));
         this.Restore();
     }
 
@@ -156,6 +190,14 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the library's base stores (PLAN G949, DECISIONS BU-220): what the library leaves outside its SyntaxTable.</summary>
     internal LibraryLayer Layer { get; } = new();
+
+    /// <summary>Gets the target the library was made for (PLAN G949 Stage 2 U3): its compilation's when it was parsed, the key
+    /// <see cref="Of"/> stores it under; a Binding is made only over a library of its compilation's target.</summary>
+    internal TargetTriple Target { get; }
+
+    /// <summary>Gets a value indicating whether the library's layer is sealed (PLAN G949 Stage 2 U4): its table frozen by its
+    /// compilation's freeze (Binding.FreezeLibrary), after which no insert reaches the layer's interner levels.</summary>
+    internal bool Frozen => this.Kotonoha.Syntax.Frozen;
 
     /// <summary>Gets the ordinal of Option's Some Case, its first (SPEC 22.1 declares <c>Some(T)</c>, then <c>None</c>; AdtDef numbers
     /// Cases in declaration order), or -1 before Binding prepared the library's Cases: the one statement of where Some is
@@ -270,6 +312,11 @@ public sealed partial class KimiLibrary
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
 
+    // The required default aliases' rows (Compilation.RequiredAliases, the required "Kimi", SPEC 18.2.3), one per path, made with the
+    // library, so each is evaluated inside the library's pass before its table freezes (F's ruling N1-7 (5)) and no later Compilation
+    // parses or writes in the shared library. Every module reads them for its required paths (Compilation.DefaultAliases; O-511 (a)).
+    internal Compilation.DefaultAlias[] DefaultAliases { get; }
+
     internal ReadOnlySpan<BindingSymbol> RegisteredSymbols => CollectionsMarshal.AsSpan(this.registeredSymbols);
 
     public BindingSymbol? GetSymbol(KimiDeclarationId id)
@@ -360,12 +407,18 @@ public sealed partial class KimiLibrary
         }
     }
 
-    // IMPL 21.3.4: how a call of a library declaration is served, its `#Intrinsic` read from the syntax by the Attribute's Kind:
-    // `#Intrinsic("Name")` the IntrinsicId member of that Name, `#Intrinsic("Fail", "Code")` Fail with its SPEC 22.5.2 code; Body without
-    // one. Another argument list or a Name that is no IntrinsicId member is a defect of the compiler build, whose embedded library
+    // IMPL 21.3.4: how a call of a library declaration is served: a lang item whose catalog entry is a Form row by the MIR form the
+    // builder writes (DispositionKind.Form; its declaration is bodyless), else its `#Intrinsic` read from the syntax by the Attribute's
+    // Kind: `#Intrinsic("Name")` the IntrinsicId member of that Name, `#Intrinsic("Fail", "Code")` Fail with its SPEC 22.5.2 code; Body
+    // without one. Another argument list or a Name that is no IntrinsicId member is a defect of the compiler build, whose embedded library
     // KimiLibraryShapeTest checks.
-    private static IntrinsicDisposition DefinitionOf(Koto declaration)
+    private static IntrinsicDisposition DefinitionOf(Koto declaration, KimiDeclarationId? item)
     {
+        if (item is { } lang && KimiLibraryCatalog.Index(lang) is >= 0 and var index && KimiLibraryCatalog.Entries[index].Form)
+        {
+            return new(DispositionKind.Form);
+        }
+
         if (declaration.FindAttribute(AttributeKind.Intrinsic) is not { } attribute)
         {
             return default;
@@ -426,7 +479,7 @@ public sealed partial class KimiLibrary
     // SPEC 22.1: the catalog's symbols in catalog order, each bound to the declaration its `#Lang` marks, then a symbol of each unnamed
     // declaration (FindImplementations) in source order, in the scope of the container that declares it: the root's, else one scope per
     // container whose parent is its declaring container's (indexing later gives a member's symbol its container's ordinary member scope).
-    // A symbol carries its declaration's `#CallerLocation` and `#Intrinsic` (DefinitionOf).
+    // A symbol carries its declaration's `#CallerLocation` and its disposition (DefinitionOf).
     private void RegisterCatalog(Koto?[] declarations, List<Koto> unnamed)
     {
         var entries = KimiLibraryCatalog.Entries;
@@ -477,7 +530,7 @@ public sealed partial class KimiLibrary
                 Intrinsic = intrinsic,
                 LibraryDeclaration = id,
                 CallerLocation = declaration.FindAttribute(AttributeKind.CallerLocation) is not null,
-                Definition = DefinitionOf(declaration),
+                Definition = DefinitionOf(declaration, id),
             };
             declaration.BoundSymbol = symbol;
             declaration.BindingState = BindingState.Resolved;
@@ -489,7 +542,7 @@ public sealed partial class KimiLibrary
         {
             if (!scopes.TryGetValue(container, out var scope))
             {
-                scope = new(container) { Parent = ScopeOf(DeclaringContainer(container)) };
+                scope = new(container, container) { Parent = ScopeOf(DeclaringContainer(container)) };
                 scopes.Add(container, scope);
             }
 
@@ -505,6 +558,7 @@ public sealed partial class KimiLibrary
         // Build ordinary declaration syntax once. Its implementation identity, not a fake
         // executable body or a spelling check at calls, supplies the later lowering hook.
         var source = new SourceDocument("compiler://builtins/abort", "string");
+        _ = this.Kotonoha.LogicalName(source); // D-C1 (PLAN G949 Stage 2 U2b), as LoadSources forms each source's.
         var context = new CodeContext(this.Kotonoha, sourceDocument: source);
         var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
         try

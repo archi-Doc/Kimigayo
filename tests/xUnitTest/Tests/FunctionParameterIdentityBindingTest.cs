@@ -45,9 +45,9 @@ public class FunctionParameterIdentityBindingTest
         var function = signatures.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single();
         var a = function.Parameters[0].Type.TypeOf()!;
         var b = function.Parameters[1].Type.TypeOf()!;
-        Assert.Equal(same, Binding.SameType(a, b));
-        Assert.Equal(same, Binding.FitsType(a, b));
-        Assert.Equal(same, Binding.FitsType(b, a));
+        Assert.Equal(same, ReferenceEquals(a, b));
+        Assert.Equal(same, c.Binding.FitsType(a, b));
+        Assert.Equal(same, c.Binding.FitsType(b, a));
     }
 
     [Theory]

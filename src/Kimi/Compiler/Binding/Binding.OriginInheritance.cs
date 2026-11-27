@@ -95,6 +95,9 @@ public sealed partial class Binding
         var binders = this.originScratch.Rent(definitionOrigins.Count);
         Array.Clear(inputs, 0, count);
         Array.Clear(binders, 0, definitionOrigins.Count);
+        // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the slot's Types form in a site frame at the implementation (an override, a specialization)
+        // where none is open, so a Type past the limit formed there is refused at it.
+        var site = this.OpenQuerySite(function);
         try
         {
             for (var i = 0; i < definition.Parameters.Count; i++)
@@ -250,8 +253,11 @@ public sealed partial class Binding
                 Reset(syntax);
                 var actual = this.BindType(syntax, scope);
                 this.ParameterSymbol(function, i).Type = actual;
-                // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one.
-                var fits = ReferenceEquals(pattern, actual) || (actual is not null && SameExceptRawOrigins(pattern, actual) && IsSubtype(pattern, actual));
+                // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one. R7-C3 (design §3, J3; C-f2's third
+                // comparison): the two are compared in the implementation's view, each in its form there (8.2.3); the parameter keeps
+                // its Type as bound and a record names the Types as written.
+                var (required, bound) = (this.ClassForm(pattern, scope, out _), actual is null ? null : this.ClassForm(actual, scope, out _));
+                var fits = ReferenceEquals(required, bound) || (bound is not null && SameExceptRawOrigins(required, bound) && this.IsSubtype(required, bound));
                 valid &= fits;
                 if (actual is not null && !fits)
                 {
@@ -273,8 +279,9 @@ public sealed partial class Binding
             }
 
             function.BoundSymbol!.Type = actualResult;
-            var resultFits = ReferenceEquals(result, actualResult) ||
-                (actualResult is not null && SameExceptRawOrigins(result, actualResult) && IsSubtype(actualResult, result));
+            var (requiredResult, boundResult) = (this.ClassForm(result, scope, out _), actualResult is null ? null : this.ClassForm(actualResult, scope, out _));
+            var resultFits = ReferenceEquals(requiredResult, boundResult) ||
+                (boundResult is not null && SameExceptRawOrigins(requiredResult, boundResult) && this.IsSubtype(boundResult, requiredResult));
             if (actualResult is not null && !resultFits)
             {
                 incompatible ??= ImplementationOriginMismatch(function.ReturnType ?? function, definition, result, actualResult, "the result");
@@ -310,6 +317,7 @@ public sealed partial class Binding
         {
             this.originScratch.Return(binders, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
+            this.CloseQuerySite(site);
         }
 
         // The definition's Type slots, Origins and inputs in one pass (PLAN G457), then the declaring Type's slots.
@@ -389,7 +397,7 @@ public sealed partial class Binding
                 {
                     if (ReferenceEquals(use, syntax))
                     {
-                        this.obligationSet.Remove(this.obligations[i]);
+                        this.obligationSet.Remove(new(this.obligations[i]));
                         this.obligations.RemoveAt(i);
                         break;
                     }

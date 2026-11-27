@@ -12,7 +12,13 @@ public sealed partial class Binding
 {
     private readonly record struct OperatorApplicability(
         Koto? ExpectedOperand, BoundType? Counterpart, BindingFailure Failure, BoundConstraint? Requirement,
-        ConstraintProof? Proof, BoundType? Operand, BoundType? Terminal);
+        ConstraintProof? Proof, BoundType? Operand, BoundType? Terminal)
+    {
+        // The cause an Error proof left (TakeFailedCause), taken raw at the decision (OperatorRequirement); read only by FailOperator, whose
+        // RestOnCause rests the operation's record on it when it is a failed node other than the operation. None for a composite
+        // comparison's proof (ComparisonProof).
+        internal Koto? Cause { get; init; }
+    }
 
     private static KotoKind OperatorKind(Koto operation)
         => operation.Akind is >= KotoKind.PlusEquals and <= KotoKind.GreaterThanGreaterThanEquals
@@ -34,12 +40,12 @@ public sealed partial class Binding
     private static OperatorApplicability ArithmeticPairApplicability(
         BoundType? left, BoundType? leftCore, BoundType? right, BoundType? rightCore)
     {
-        if (ReferenceTypes.EndsInString(leftCore))
+        if (ReferenceEquals(ComparisonReferent(leftCore), BoundType.String))
         {
             return new(null, null, BindingFailure.NonNumericOperand, null, null, left, leftCore);
         }
 
-        return ReferenceTypes.EndsInString(rightCore)
+        return ReferenceEquals(ComparisonReferent(rightCore), BoundType.String)
             ? new(null, null, BindingFailure.NonNumericOperand, null, null, right, rightCore) : default;
     }
 
@@ -79,7 +85,7 @@ public sealed partial class Binding
             }
 
             // SPEC 13.3.4, 5.3: the raw-pointer row takes the operand's own Type; a raw pointer reached through a layer has no provider.
-            if (kind is KotoKind.Plus or KotoKind.Minus && ReferenceTypes.IsPointer(leftCore) && !ReferenceEquals(leftCore, operand))
+            if (kind is KotoKind.Plus or KotoKind.Minus && leftCore is { IsPointer: true } && !ReferenceEquals(leftCore, operand))
             {
                 return new(null, null, BindingFailure.OperatorNotDefined, null, null, operand, leftCore);
             }
@@ -98,7 +104,7 @@ public sealed partial class Binding
             left = this.OperandTerminal(source, left);
         }
 
-        var decision = this.LeftOperatorApplicability(left, kind, scope);
+        var decision = this.LeftOperatorApplicability(left, kind, scope, operation);
         if (decision.Failure != BindingFailure.None)
         {
             return decision with { Operand = operand };
@@ -109,10 +115,12 @@ public sealed partial class Binding
             return decision;
         }
 
-        // SPEC 13.3.4: the counterpart is judged at its terminal Type, as the left operand is, and keeps its own Type.
-        if (left.IsNumeric && rightCore is not null)
+        // SPEC 13.3.4: the counterpart of a left the table admitted (numeric or a proven integer parameter) is judged at its terminal
+        // Type, as the left operand is, and keeps its own Type; a Never counterpart fits the admitted left (3.1.3), and a raw pointer's
+        // counterpart is its own row's (isize).
+        if (!left.IsPointer && rightCore is not null && !ReferenceEquals(rightCore, BoundType.Never))
         {
-            var counterpart = this.NumericApplicability(rightCore, scope);
+            var counterpart = this.NumericApplicability(rightCore, scope, operation);
             if (counterpart.Failure != BindingFailure.None)
             {
                 return counterpart with { Operand = right };
@@ -132,7 +140,7 @@ public sealed partial class Binding
                 expected = null;
             }
         }
-        else if (ReferenceTypes.IsPointer(left) && kind is KotoKind.Plus or KotoKind.Minus)
+        else if (left.IsPointer && kind is KotoKind.Plus or KotoKind.Minus)
         {
             expected = BoundType.ISize;
         }
@@ -167,7 +175,7 @@ public sealed partial class Binding
             right = this.OperandTerminal(binary.Right, right);
         }
 
-        var decision = this.LeftOperatorApplicability(right, kind, scope);
+        var decision = this.LeftOperatorApplicability(right, kind, scope, binary);
         if (arithmetic && !right.IsNumeric && !right.HasIntegerArithmetic && decision.Proof != ConstraintProof.Proven)
         {
             return default;
@@ -181,29 +189,29 @@ public sealed partial class Binding
         return decision with { ExpectedOperand = binary.Left, Counterpart = right };
     }
 
-    private OperatorApplicability LeftOperatorApplicability(BoundType type, KotoKind kind, BindingScope scope)
+    private OperatorApplicability LeftOperatorApplicability(BoundType type, KotoKind kind, BindingScope scope, QuerySite site)
     {
         var terminal = type;
         OperatorApplicability decision;
         if (ComparisonOperator(kind))
         {
             terminal = ComparisonReferent(type);
-            decision = this.ComparisonApplicability(terminal, kind, scope);
+            decision = this.ComparisonApplicability(terminal, kind, scope, site);
         }
         else
         {
             decision = kind switch
             {
                 KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret
-                    => this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand),
+                    => this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand),
                 KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan
-                    => this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand),
+                    => this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand),
                 KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement
-                    => this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand),
-                KotoKind.PrefixMinus => this.NegationApplicability(type, scope),
-                KotoKind.PrefixPlus => type.IsNumeric ? default : this.IntegerApplicability(type, scope, BindingFailure.OperatorNotDefined),
-                KotoKind.Plus or KotoKind.Minus when ReferenceTypes.IsPointer(type) => default,
-                KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash => this.NumericApplicability(type, scope),
+                    => this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand),
+                KotoKind.PrefixMinus => this.NegationApplicability(type, scope, site),
+                KotoKind.Plus or KotoKind.Minus when type.IsPointer => default,
+                KotoKind.PrefixPlus or KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash
+                    => this.NumericApplicability(type, scope, site),
                 _ => default,
             };
         }
@@ -211,7 +219,7 @@ public sealed partial class Binding
         return decision.Failure == BindingFailure.None ? decision : decision with { Operand = type, Terminal = terminal };
     }
 
-    private OperatorApplicability IntegerApplicability(BoundType type, BindingScope scope, BindingFailure failure)
+    private OperatorApplicability IntegerApplicability(BoundType type, BindingScope scope, QuerySite site, BindingFailure failure)
     {
         if (type.HasIntegerArithmetic)
         {
@@ -222,13 +230,13 @@ public sealed partial class Binding
             type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping ? type.Components[0] : type;
         if (subject.IsProofDecided)
         {
-            return this.OperatorRequirement(subject, this.Library.PrimitiveInteger, scope, failure);
+            return this.OperatorRequirement(subject, this.Library.PrimitiveInteger, scope, site, failure);
         }
 
         return new(null, null, NonNumericOperand(type) ? BindingFailure.NonNumericOperand : failure, null, null, type, type);
     }
 
-    private OperatorApplicability ShiftCountApplicability(BoundType type, BindingScope scope)
+    private OperatorApplicability ShiftCountApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.IsInteger || ReferenceEquals(type, BoundType.Never))
         {
@@ -236,33 +244,17 @@ public sealed partial class Binding
         }
 
         return type.IsProofDecided
-            ? this.OperatorRequirement(type, this.Library.PrimitiveInteger, scope, BindingFailure.InvalidShiftCount)
+            ? this.OperatorRequirement(type, this.Library.PrimitiveInteger, scope, site, BindingFailure.InvalidShiftCount)
             : new(null, null, BindingFailure.InvalidShiftCount, null, null, type, type);
     }
 
-    private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope)
-    {
-        if (type.IsNumeric || ReferenceEquals(type, BoundType.Never))
-        {
-            return default;
-        }
+    // SPEC 13.3.3, 13.3.4: any other Type is built-in numeric only as a parameter with proven PrimitiveInteger; else no row applies (a
+    // non-numeric primitive or a string NonNumericOperand, an unproven query UnprovenConstraint, a raw pointer, Tuple, fixed array or
+    // Never no provider: a Never operand proves no direction, 3.1.3). A user provider's routes are TryArithmetic's, first.
+    private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope, QuerySite site)
+        => type.IsNumeric ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
 
-        if (NonNumericOperand(type))
-        {
-            return new(null, null, BindingFailure.NonNumericOperand, null, null, type, type);
-        }
-
-        if (ReferenceTypes.IsPointer(type))
-        {
-            return new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
-        }
-
-        // A successful PrimitiveInteger query selects the built-in path; a non-integer arithmetic provider retains selection.
-        var integer = this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand);
-        return integer.Proof == ConstraintProof.Proven ? integer : default;
-    }
-
-    private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope)
+    private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
         if (type.IsNumeric)
         {
@@ -276,44 +268,44 @@ public sealed partial class Binding
 
         if (type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand);
+            return this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand);
         }
 
         if (type.IsProofDecided)
         {
-            return this.OperatorRequirement(type, this.Library.GetSymbol(KimiDeclarationId.Negatable)!, scope, BindingFailure.UnsatisfiedConstraint);
+            return this.OperatorRequirement(type, this.Library.GetSymbol(KimiDeclarationId.Negatable)!, scope, site, BindingFailure.UnsatisfiedConstraint);
         }
 
         return new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
     }
 
-    private OperatorApplicability ComparisonApplicability(BoundType type, KotoKind kind, BindingScope scope)
+    private OperatorApplicability ComparisonApplicability(BoundType type, KotoKind kind, BindingScope scope, QuerySite site)
     {
         var equality = kind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
-        var ordered = type.IsNumeric || ReferenceEquals(type, BoundType.Char) || ReferenceTypes.EndsInString(type);
+        var ordered = type.IsNumeric || ReferenceEquals(type, BoundType.Char) || ReferenceEquals(ComparisonReferent(type), BoundType.String);
         if (ReferenceEquals(type, BoundType.Never) || ordered)
         {
             return default;
         }
 
-        if (type.Kind == BoundTypeKind.Primitive || ReferenceTypes.IsPointer(type))
+        if (type.Kind == BoundTypeKind.Primitive || type.IsPointer)
         {
             return equality ? default : new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
         }
 
-        var integer = this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand);
+        var integer = this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand);
         if (integer.Proof == ConstraintProof.Proven)
         {
             return integer;
         }
 
         var contract = this.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        if (!ComparisonTypes.IsComposite(type))
+        if (!TyCtxt.IsComposite(type))
         {
-            return this.OperatorRequirement(type, contract, scope, BindingFailure.UnsatisfiedConstraint);
+            return this.OperatorRequirement(type, contract, scope, site, BindingFailure.UnsatisfiedConstraint);
         }
 
-        var proof = this.ComparisonProof(type, contract, scope, operators: true, out var witness);
+        var proof = this.ComparisonProof(type, contract, scope, site, operators: true, out var witness);
         return new(
             null,
             null,
@@ -324,10 +316,15 @@ public sealed partial class Binding
             proof == ConstraintProof.Proven ? null : type);
     }
 
-    private OperatorApplicability OperatorRequirement(BoundType subject, BindingSymbol contract, BindingScope scope, BindingFailure refuted)
+    // The one decision of every single-requirement operator (arithmetic, integer, shift count, negation, a non-composite comparison).
+    // SPEC 8.2.3, 23.1.2 (rule W; PLAN G1356, B's ruling 7): an Error proof read a failed premise or Type context whose record is
+    // reported, so the decision takes the cause the proof left (TakeFailedCause) at once and carries it (Cause): FailOperator rests the
+    // record on it (RestOnCause, RequireClauses' rule, R7-C3 B1) and IsDerived's InvalidConstraint row derives it. A decision its caller
+    // discards (ComparisonApplicability's PrimitiveInteger probe) drops the cause it took, so none stays in the channel.
+    private OperatorApplicability OperatorRequirement(BoundType subject, BindingSymbol contract, BindingScope scope, QuerySite site, BindingFailure refuted)
     {
         var requirement = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract));
-        var proof = this.ProveConstraint(requirement, scope);
+        var proof = this.ProveConstraint(requirement, scope, site);
         return new(
             null,
             null,
@@ -335,6 +332,9 @@ public sealed partial class Binding
             requirement,
             proof,
             proof == ConstraintProof.Proven ? null : subject,
-            proof == ConstraintProof.Proven ? null : subject);
+            proof == ConstraintProof.Proven ? null : subject)
+        {
+            Cause = proof == ConstraintProof.Error ? this.TakeFailedCause().Use : null,
+        };
     }
 }

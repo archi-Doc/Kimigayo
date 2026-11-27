@@ -4,10 +4,12 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Call relations (SPEC 15.6.1, 15.6.5, 10.1): the Origin relations of a selected call, judged after selection at their own sources
-// (the receiver's and each argument's fit to its completed parameter Type, then each substituted clause and a Within row), the bounds
-// its fits give omitted Origins (CollectFitBounds) and the input that fixed an equality. Files: this one; .Records.cs (the records of
-// a node beyond the first).
+// Call relations (SPEC 15.6.1, 15.6.5, 10.1): the Origin relations of a selected call, formed after selection at their own sources
+// (the receiver's and each argument's fit to its completed parameter Type, then each substituted clause and a Within row) as rows of the
+// body, which A5 judges (FormBodyRelation; R7-O1: Binding judges no call position and records none), each row with the input that fixed
+// its equality (FixedBy); and the bounds its fits give omitted Origins (CollectFitBounds). Its input fits and its substituted clauses that
+// relate an input raw layer's Origin to another form the call's raw fits (rawFits; G147 ruling 75). Files: this one; .Records.cs (the
+// Origin records).
 public sealed partial class Binding
 {
     // Whether the Origins and Origin arguments of a Type's parts name `origin`, a meet's operand included (a meet's operands are atoms,
@@ -52,19 +54,23 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1, 15.6.5, 10.1: applicability uses only the structural part of each fit, so the Origin relations of the selected
-    // candidate are judged here, after selection and at their own sources: the receiver's and each argument's fit to its completed
+    // candidate are formed here, after selection and at their own sources: the receiver's and each argument's fit to its completed
     // parameter Type, then the well-formedness of each slot the call fills (SPEC 15.6.4 step 3: the receiver's, each argument's and each
-    // default's, at the call), then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
-    // UnprovenOriginRelation_Kd records at the value that does not fit; a chain between body Origins, which ownership analysis cannot
-    // represent yet, is an obligation that it reports as the located limit at that value. An aggregate argument's well-formedness is
-    // judged by its positions' rows (JudgePositionRows). Erasures, anonymous bodies and join arguments (U2j) are judged where they
+    // default's, at the call), then each substituted clause. Each relation the fit's answer does not prove, and each body chain, is a row
+    // of the body at the value that does not fit (FormBodyRelation); A5 judges it, a Refuted or Unknown one its record and a chain it
+    // cannot represent yet the located limit there, and the input is not failed for it. An aggregate argument's well-formedness is
+    // formed by its positions' rows (JudgePositionRows). Erasures, anonymous bodies and join arguments (U2j) are judged where they
     // are bound. The expected result is judged at its destination. `operations` holds the arguments' and, last, the receiver's; the
     // selected candidate's solution holds its Origins and each argument's root row (F1, R4-M164), and the receiver is Evidence.
     private void JudgeSelectedCall(
         InvocationKoto call, in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, ReadOnlySpan<BoundDefaultArgument> defaults)
     {
         var selected = solution.Function;
-        this.callRelationScratch.Clear();
+
+        // The selected candidate's solve as its runs in this evaluation kept it (SlotSolution.Kept), whose published Marked fact the
+        // clauses and the input premises read; the solution rebuilt for this judgment begins none, and a property update keeps none.
+        var solved = solution.Kept is [var kept] ? kept : null;
+        this.RecordOpenings(call, solution);
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)
@@ -91,7 +97,7 @@ public sealed partial class Binding
             {
                 // The parameter's pattern as the candidate reads it, the receiver's too (DECISIONS BU-99).
                 var pattern = i < argumentCount ? solution.Rows[i].Pattern : solution.Pattern(selected.Parameters[receiver.ParameterIndex].Type.BoundType!);
-                this.RequireInputPremises(at, pattern!, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
+                this.RequireInputPremises(at, pattern!, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence, solved);
             }
             else if (i < argumentCount && operations[i] is { Source: { } whole, ParameterType: { } type })
             {
@@ -103,18 +109,31 @@ public sealed partial class Binding
                     root = root with { Pattern = IsBorrow(root.Pattern!.Semantics) ? root.Pattern.Components[0] : root.Pattern, Type = value };
                 }
 
-                this.JudgePositionRows(whole, root, solution);
+                this.JudgePositionRows(whole, root, solution, solved);
             }
         }
 
         foreach (var argument in defaults)
         {
-            this.RequireInputPremises(call, solution.Pattern(argument.Parameter.Type!)!, argument.ParameterType, null, Contribution.Signature);
+            this.RequireInputPremises(call, solution.Pattern(argument.Parameter.Type!)!, argument.ParameterType, null, Contribution.Signature, solved);
         }
 
-        this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
-        this.PublishCallRelations();
+        this.JudgeCallClauses(call, selected, operations, solution.Origins, solution.Inputs, solution.DeclaringType, solved);
         this.CollectFitBounds(operations, argumentCount);
+    }
+
+    // J2 (PLAN G936): the selected candidate's openings become the region graph's records (RecordOpening), before its fits and
+    // clauses are judged; only a candidate with a position without evidence opened anything (HasWaitingPosition, the gate
+    // SlotSolution.OpenWaited reads).
+    private void RecordOpenings(Koto call, in SlotSolution solution)
+    {
+        if (this.HasWaitingPosition(solution) && solution.Kept is [{ } inference])
+        {
+            foreach (var (region, bound) in inference.Opened)
+            {
+                this.RecordOpening(region, bound, call);
+            }
+        }
     }
 
     // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type
@@ -133,7 +152,7 @@ public sealed partial class Binding
                     // SPEC 10.1, 10.3, 15.6.1: applicability fitted the structural part alone (FitsStructuralPartAt); a Function Type
                     // position's whole contract and its implementation's own well-formedness are judged here, after selection, at the
                     // argument (DECISIONS R4-M155, landing review B1).
-                    var walk = new RelationWalk(this, at, OriginPart.Structural);
+                    var walk = new RelationWalk(this, this, at, OriginPart.Structural);
                     if (!walk.Fits(adapted, parameter))
                     {
                         _ = this.FailMismatch(at, at, adapted, parameter, walk.Failure);
@@ -147,18 +166,48 @@ public sealed partial class Binding
         }
     }
 
-    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    // `operations` holds the arguments' and, last, the receiver's; `solved` is the call's solve, whose published Marked fact a clause over
+    // a marked variable rests on (rule W, SPEC 23.1.2).
+    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType, OriginInference? solved)
     {
+        var argumentCount = operations.Length - 1;
         var binder = selected.OriginBinder;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
             foreach (var relation in declaration.Relations)
             {
+                if (solved is not null && (solved.ReadsMarked(relation.Longer) || solved.ReadsMarked(relation.Shorter)))
+                {
+                    continue;
+                }
+
                 // SPEC 15.6.1: a substituted clause is located at the first input whose parameter names its longer Origin.
                 var at = this.ClauseInput(selected, operations, argumentCount, relation.Longer) ?? call;
                 var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, declaringType);
                 var shorter = this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, declaringType);
-                this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
+                this.FormCallRelation(at, longer, shorter, relation.Equality, null, relation.Syntax);
+
+                // G147 ruling 75 Q-B: a clause letting another Origin outlive (or equal) an input raw layer's Origin summarizes a fit the
+                // callee may make into that layer, so the call forms that raw fit (the second source of rawFits, by its one entry rule).
+                if (this.InputRawLayerStates(selected, relation.Shorter) || (relation.Equality && this.InputRawLayerStates(selected, relation.Longer)))
+                {
+                    this.AddRawFit(this.rawFits, shorter, longer, relation.Equality);
+                }
+            }
+        }
+
+        // SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): a constructor proves nothing of its owner Type's clauses, which are premises
+        // inside the Type and obligations of each use, and it carries no result premises (CarriesResultPremises). Its result is the
+        // construction Type, whose declared relations go to the result's clause judge (RequireResultClause): a row of the call over a
+        // region of the construction, the formation proof's otherwise.
+        if (selected.IsConstructor && declaringType is { Symbol: { } owner } &&
+            this.originDeclarations.TryGetValue(owner.Declaration, out var ownerDeclaration) && ownerDeclaration.Completed)
+        {
+            foreach (var relation in ownerDeclaration.Relations)
+            {
+                var longer = this.SubstituteStoredOrigin(relation.Longer, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
+                var shorter = this.SubstituteStoredOrigin(relation.Shorter, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
+                this.RequireResultClause(call, longer, shorter, relation.Equality, relation.Syntax);
             }
         }
 
@@ -166,7 +215,7 @@ public sealed partial class Binding
         {
             // SPEC 5.6, 5.7 (D14): the result of an operation whose catalog row names Within lies within the Origin its argument states.
             var bound = this.SubstituteClauseOrigin(result, selected, origins, inputs, declaringType);
-            this.JudgeCallPosition(storage, within, bound, equality: false, variable: null, clause: null);
+            this.FormCallRelation(storage, within, bound, equality: false, variable: null, clause: null);
         }
     }
 
@@ -180,18 +229,25 @@ public sealed partial class Binding
         BoundType? declaringType)
         => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
-    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
-    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
-    // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is first the
-    // allowlist's Origin relation failure (HolderPlaceFailure; SPEC 5.7, DECISIONS R4-M110), its fit then judged no further.
+    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input's
+    // located limits are judged first (JudgeSelectedInput): a Borrow of a static root fails it, its relations (SPEC 11.8, a fit to static)
+    // waiting for P42, and the bare Reborrow rule's Shortened Reborrow is recorded beside it, its fit judged.
+    // An implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
+    // Origin relation problem (JudgeHolderPlace; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
-        if (operation is { Source: { } source, ParameterType: { } mode } && (this.FailStaticBorrow(source, operation.Kind, mode.Semantics) ||
-            (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics) &&
-            this.HolderPlaceFailure(source, HolderAccess.ExclusiveBorrow, null, source))))
+        if (operation is { Source: { } source, ParameterType: { } mode })
         {
-            return;
+            if (this.JudgeSelectedInput(source, operation.Kind, mode.Semantics, operation.SourceType, operation.AdaptedType))
+            {
+                return;
+            }
+
+            if (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics))
+            {
+                this.JudgeHolderPlace(source, null, source);
+            }
         }
 
         if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } || ReferenceEquals(adapted, parameter) ||
@@ -216,6 +272,13 @@ public sealed partial class Binding
             return; // SPEC 10.7: a Function Type is a whole contract, compared during applicability.
         }
 
+        if (ReferenceEquals(actual, expected))
+        {
+            // An interned Type is a DAG (DECISIONS BU-19): one part relates each of its Origins to itself, which forms no row
+            // (FormBodyRelation), so a shared part is never walked again along each of its paths (PLAN G1115).
+            return;
+        }
+
         this.termWalks++;
         if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { } parameter } && ContainerSlot(context.Selected, parameter) >= 0)
         {
@@ -227,10 +290,11 @@ public sealed partial class Binding
             pattern = null;
         }
 
-        if (FitOuterOrigins(actual, expected, this, context.At, out var longer, out var shorter) == OuterOriginFit.Relation)
+        // A call's fit is judged at the call, in no comparison (default); it places the argument, so it forms its raw fits (rawFits).
+        if (this.FitOuterOrigins(actual, expected, context.At, context.At, default, this.rawFits, invariant) is (OuterOriginFit.Relation, var longer, var shorter))
         {
             // SPEC 8.1.2, 15.6.5: a pair layer's slot, `o` included, exists only in its binder's borrow cases.
-            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At));
+            this.FormCallRelation(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At, default));
         }
 
         var exclusive = IsInvariantLayer(actual, this, context.At, default);
@@ -241,15 +305,15 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
         {
-            var variance = OriginArgumentVariance(actual, i, this);
+            var variance = this.OriginArgumentVariance(actual, i, this);
             var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
             if (both || variance == OriginVariance.Covariant)
             {
-                this.JudgeCallPosition(context.At, actual.OriginArguments[i], expected.OriginArguments[i], both, pattern?.OriginArguments[i], null, context: context, slot: slot);
+                this.FormCallRelation(context.At, actual.OriginArguments[i], expected.OriginArguments[i], both, pattern?.OriginArguments[i], null, context: context, slot: slot);
             }
             else
             {
-                this.JudgeCallPosition(context.At, expected.OriginArguments[i], actual.OriginArguments[i], false, pattern?.OriginArguments[i], null, context: context, slot: slot);
+                this.FormCallRelation(context.At, expected.OriginArguments[i], actual.OriginArguments[i], false, pattern?.OriginArguments[i], null, context: context, slot: slot);
             }
         }
 
@@ -279,62 +343,17 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.5: judges `longer outlives shorter` (and the reverse for `==`) at `at`. A meet at the longer end decomposes, so each
-    // failing operand is its own record (SPEC 15.3.6).
-    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null, bool wellFormed = false, ulong condition = 0)
+    // SPEC 15.6.1, 15.6.4 step 3, 15.6.5 (R7-O1 b1a): a selected call's relation `longer outlives shorter` (`==` when `equality`) at `at`,
+    // formed as a row of the body (FormBodyRelation), which A5 judges; Binding judges no call position. Its row carries the fit's
+    // destination (the completed parameter Type; a declared relation's row has none, its caller passing no fit), a declared relation's
+    // clause, and, for an `==` whose fresh Origin or Type slot another input fixed, that input (FixedBy; SPEC 15.6.1, Location; SPEC
+    // 10.8: the first invariant binding of a slot is its solution).
+    private void FormCallRelation(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, in CallFit context = default, BoundType? slot = null, bool wellFormed = false, ulong condition = 0)
     {
-        if (ReferenceEquals(longer, shorter))
-        {
-            return;
-        }
-
-        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
-        {
-            for (var i = 0; i < longer.Operands.Count; i++)
-            {
-                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context, slot, wellFormed, condition);
-            }
-
-            return;
-        }
-
-        // Complete initializer-owned holes before deferring finite constraints to the body graph.
-        var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
-        var backwardProven = !equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
-        if (BodyChain(longer, shorter, equality, this.formingBody))
-        {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));
-            return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
-        }
-
-        var forward = forwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at, this.formingBody, condition);
-        var backward = backwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at, this.formingBody, condition);
-        if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
-        {
-            // An equality fails as one `==` record; a fresh Origin or a Type slot fixed by another input relates that input (SPEC 15.6.1,
-            // Location; SPEC 10.8: the first invariant binding of a slot is its solution).
-            var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
-                : variable is not null ? this.EqualitySource(context, variable, shorter)
-                : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
-            var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
-            var destination = declared ? null : context.Parameter;
-            var supplier = this.SuppliedAtUse(longer, at);
-            var declaredClause = declared ? clause : null;
-            var fact = new OriginRelationFact(at, longer, supplier, shorter, equality, destination, refuted, declaredClause, declared, fixedBy, wellFormed);
-            this.callRelationScratch.Add((at, fact));
-            return;
-        }
-
-        // A chain between body Origins needs region inference over Loan edges: ownership reports it as the located limit at `at`.
-        if (forward == OriginJudgment.Unrepresentable)
-        {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, WellFormed: wellFormed, Condition: condition));
-        }
-
-        if (backward == OriginJudgment.Unrepresentable)
-        {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, shorter, longer, WellFormed: wellFormed, Condition: condition));
-        }
+        var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
+            : variable is not null ? this.EqualitySource(context, variable, shorter)
+            : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
+        this.FormBodyRelation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, context.Parameter, longer, shorter, Equality: equality, Clause: clause, WellFormed: wellFormed, Condition: condition, FixedBy: fixedBy));
     }
 
     // The input, other than the failing one, whose parameter names the callee's Origin `variable` and whose adapted Type carries the
@@ -359,6 +378,21 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    // Whether a raw layer of one of the callee's parameter Types states `origin` (a meet's operand included): a test of their Origin
+    // summaries' RawNodes.
+    private bool InputRawLayerStates(FunctionKoto selected, BoundOrigin origin)
+    {
+        for (var i = 0; i < selected.Parameters.Count; i++)
+        {
+            if (selected.Parameters[i].Type.BoundType is { } type && Array.IndexOf(this.SummaryOf(type).RawNodes, origin) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The first input, receiver first, whose parameter Type names `origin`.

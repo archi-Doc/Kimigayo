@@ -28,7 +28,7 @@ public partial class LayoutAttributeBindingTest
     private const string GenericInit = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
         "    public init(n: i32, value: T)\n        self.n = n\n        self.value = value@move\n";
 
-    private const string ImportHead = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func imported(value: ";
+    private const string ImportHead = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualProtect\")\n    public unsafe func imported(value: ";
 
     // The declarations whose C layout is unavailable (A: open, derived, empty; B: a direct zero-sized Field; W: a written instance of P<T>
     // storing one), the Type text X of their uses, and their twins (no #Layout("C"); P<i32>, P<[1 of i32]>).
@@ -238,7 +238,7 @@ public partial class LayoutAttributeBindingTest
                 rows.Add($"{shape.Name}.importret", returned, $"InvalidCLayout_Kd {result}|Unsupported_Kd {result}");
             }
 
-            var unnamed = ImportHead.Replace("\"VirtualAlloc\"", "\"\"", StringComparison.Ordinal) + "X) -> i32\n";
+            var unnamed = ImportHead.Replace("\"VirtualProtect\"", "\"\"", StringComparison.Ordinal) + "X) -> i32\n";
             var unit = Array.Find(Unavailable, static x => x.Name == "unit").Declaration;
             rows.Add("unit.importname", Program(unit, unnamed, "S"), "InvalidLibraryImport_Kd #LibraryImport(\"kernel32\", \"\")");
             return rows;
@@ -380,7 +380,7 @@ public partial class LayoutAttributeBindingTest
     private static Compilation Check(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

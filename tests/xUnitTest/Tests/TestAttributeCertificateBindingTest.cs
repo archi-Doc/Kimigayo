@@ -137,12 +137,12 @@ public class TestAttributeCertificateBindingTest
                 var cause = Assert.Single(causes);
                 if (expectedFailure == BindingFailure.None)
                 {
-                    Assert.DoesNotContain(target, c.Binding.DerivedIssues);
+                    Assert.DoesNotContain(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, target));
                     Assert.Contains(cause.Subject, markers);
                 }
                 else
                 {
-                    Assert.Contains(target, c.Binding.DerivedIssues);
+                    Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, target));
                     Assert.Equal(target.KeyOf(DiagnosticRequirement.Binding(expectedFailure)), cause);
                 }
 
@@ -206,7 +206,7 @@ public class TestAttributeCertificateBindingTest
             Assert.False(c.Bind().IsComplete);
             Assert.Equal(marker.Length == 0 ? BindingState.Unresolved : BindingState.Invalid, function.StateOf());
             Assert.Equal(expectedFailure, function.FailureOf());
-            Assert.Equal(marker.Length != 0 && expectedFailure != BindingFailure.None, c.Binding.DerivedIssues.Contains(function));
+            Assert.Equal(marker.Length != 0 && expectedFailure != BindingFailure.None, c.Binding.DerivedIssues.Any(x => ReferenceEquals(x.Node, function)));
             var key = Assert.Single(c.Binding.FailureCauses(function)!);
             if (expectedFailure == BindingFailure.None)
             {
@@ -251,7 +251,7 @@ public class TestAttributeCertificateBindingTest
             Assert.False(c.Bind().IsComplete);
             Assert.Equal(BindingState.Invalid, function.StateOf());
             Assert.Equal(Enum.Parse<BindingFailure>(failure), function.FailureOf());
-            Assert.DoesNotContain(function, c.Binding.DerivedIssues);
+            Assert.DoesNotContain(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, function));
             Assert.Equal(function.KeyOf(DiagnosticRequirement.Binding(function.FailureOf())), Assert.Single(c.Binding.FailureCauses(function)!));
             var errors = CompilationTestHelper.BindingErrors(c);
             Assert.Equal(count + 1, errors.Length);
@@ -274,7 +274,7 @@ public class TestAttributeCertificateBindingTest
             Assert.False(c.Bind().IsComplete);
             Assert.Equal(BindingState.Unresolved, function.StateOf());
             Assert.Equal(BindingFailure.Unsupported, function.FailureOf());
-            Assert.Contains(function, c.Binding.DerivedIssues);
+            Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, function));
             var key = Assert.Single(c.Binding.FailureCauses(function)!);
             Assert.Equal(function.KeyOf(DiagnosticRequirement.Binding(BindingFailure.Unsupported)), key);
             function.ReportDerived(DiagnosticRequirement.Startup, [key]);
@@ -301,10 +301,10 @@ public class TestAttributeCertificateBindingTest
             Assert.False(c.Bind().IsComplete);
             var original = Assert.Single(functions, x => x.FailureOf() == BindingFailure.ParameterShapeMismatch);
             Assert.Equal(BindingState.Invalid, original.StateOf());
-            Assert.DoesNotContain(original, c.Binding.DerivedIssues);
+            Assert.DoesNotContain(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, original));
             Assert.Equal(BindingState.Unresolved, pending.StateOf());
             Assert.Equal(BindingFailure.Unsupported, pending.FailureOf());
-            Assert.Contains(pending, c.Binding.DerivedIssues);
+            Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, pending));
             var key = Assert.Single(c.Binding.FailureCauses(pending)!);
             Assert.Equal(pending.KeyOf(DiagnosticRequirement.Binding(BindingFailure.Unsupported)), key);
             pending.ReportDerived(DiagnosticRequirement.Startup, [key]);

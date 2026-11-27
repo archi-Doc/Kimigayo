@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Verification;
@@ -108,8 +109,8 @@ public partial class SyntaxIdTest
     {
         var c = MinimalEmissionTest.Analyze(Source);
         var every = c.Binding.Semantics.Declarations;
-        var sources = Rows(every.In(new(c.SourceModules, null, new(0))));
-        var library = Rows(every.In(new([], c.Binding.Library.Kotonoha, new(0))));
+        var sources = Rows(every.In(new(c.SourceModules, null, new())));
+        var library = Rows(every.In(new([], c.Binding.Library.Kotonoha, new())));
         Assert.NotEmpty(sources);
         Assert.NotEmpty(library);
         Assert.All(sources, symbol => Assert.False(symbol.Declaration.Kotonoha.Syntax.IsLibrary));
@@ -132,8 +133,15 @@ public partial class SyntaxIdTest
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
-    // its container's list; OverrideEntries: a Type's implementations by original). The column is read by reflection, since the
-    // families' rows differ.
+    // its container's list; OverrideEntries: a Type's implementations by original; SpecializationStorage: Milestone11's specialization
+    // entries, reused by every Bind; KnownBases: j4's known base, which the Binds after its first start from; Refusals: the refusal a
+    // losing candidate's request past the round bound holds, unsettled, in a valid program, G881b's xovm; GatheredGroups: a call's
+    // group gathered from two aliases' groups, the same list refilled at each Bind, R7-N5 B1b-1). The column is read by
+    // reflection, since the families' rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each
+    // Final check's start empties them, so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
+    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`. IndexedPatterns (R7-N5
+    // B1b-1) has none either: this theory compares a row by reference, and its row is a `(bool, bool)` value; d7 covers its moves, and
+    // SyntaxEditInvalidationTest.AnEditedRoleLeavesNoStalePatternRow fails without ResetMatches' `Empty()`.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
@@ -143,6 +151,8 @@ public partial class SyntaxIdTest
     [InlineData("CopyByType", CopyPoint)]
     [InlineData("OverrideEntries", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
     [InlineData("SpecializationsByOriginal", "milestone:Milestone11")]
+    [InlineData("SpecializationStorage", "milestone:Milestone11")]
+    [InlineData("KnownBases", BaseInputFormationBindingTest.J4)]
     [InlineData("OriginDeclarations", "milestone:Milestone13")]
     [InlineData("DiscoveredOrigins", "milestone:Milestone13")]
     [InlineData("OriginRequirementNodes", "milestone:Milestone10")]
@@ -156,6 +166,8 @@ public partial class SyntaxIdTest
     [InlineData("RangeCalls", "milestone:Milestone23")]
     [InlineData("ResolvedKeys", "milestone:Milestone27")]
     [InlineData("MatchPlans", "milestone:Milestone10")]
+    [InlineData("Refusals", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\npublic func main() => ()\n")]
+    [InlineData("GatheredGroups", "alias A\nalias B\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet n = pick(7)\n")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source
@@ -183,7 +195,27 @@ public partial class SyntaxIdTest
     // parameters; ShapeContractHeads: the shape contracts of an overload group whose every pair shares a slot; ObjectErasures: an
     // override's call through its receiver's erased view, VirtualEntryErasureTest's program; InheritedOriginTypes: Milestone11's omitted
     // inherited Origins; DeferredConstraints: Milestone10's clause decisions; Matches: Milestone10's match plans; Adaptations: Milestone10's
-    // implicit adaptations; VirtualOverrides: that program's override). Checked after each edit (N5-5's review C1):
+    // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
+    // generic container's group whose struct a parameter names; FailingSteps: a path whose qualifier is missing (N1-13 B1); QualificationFailures: a member read without its `self.`, a failure
+    // family's program, which reports its failure at each Bind; R7-N5's: PairFollows, a `@follow` of a pair layer;
+    // ImplicitPairFollows, Milestone28's implicit follows; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
+    // under a holed annotation;
+    // B2a-2's ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B2b-1's UniqIndexing, a
+    // Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
+    // B1b-2's MemberSelections, a stored Field read and a method call, InferredConstructionTargets, a generic struct's construction
+    // without its Type arguments, and QualificationStops, an instance member named without `self`; D-986's FormReads, the kept operands
+    // `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query memos written in a Bind: the
+    // result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
+    // result; the guess rule's is written only after a Bind, by the lint report and MIR:
+    // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
+    // ReachedThroughBorrow, a member read below an owned Array's element; B5a's EarlyReads, j4's reads of a projected base not ready;
+    // B2b-2's ResolvedSlices, a slice selected by a range value; R7-N5 E's Prerequisites, the consultation range of `s == missing`,
+    // which read the missed Name; PartPrerequisites, a struct resting on its rejected attribute; PrerequisiteVisits, the walk of a
+    // clause whose subject failed, which IsDerived takes in the Bind; DuplicateDeclarations, a repeated `let`; B1b-1's ResolvingTypes,
+    // a written Type's BindType, whose rows are reset as it returns, so the column holds carved pages, not rows; SynthesizedCalls,
+    // Milestone23's range calls; R7-O2 O2-F's DeferredDefaults, a Closure header's result default over an omitted list's own capture,
+    // judged at Final; R7-E3 E3e's JudgedOccurrences, a parameter's written `Box<i32>` judged once in each pass).
+    // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -198,12 +230,43 @@ public partial class SyntaxIdTest
     [InlineData("Specializations", "milestone:Milestone11")]
     [InlineData("ImplicitConstructorDecisions", "open struct Base\n    public init() => ()\nstruct Derived : Base\n    public var y: i32 = 2\nlet d = Derived.init()\n")]
     [InlineData("VirtualEffectBounds", "milestone:Milestone44")]
-    public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program)
+    [InlineData("AliasTargets", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
+    [InlineData("ImportedContainers", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
+    [InlineData("FailingSteps", "func f(x: Missing.Inner) => ()\n", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("QualificationFailures", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
+    [InlineData("PairFollows", "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc view<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref\n")]
+    [InlineData("ImplicitPairFollows", "milestone:Milestone28")]
+    [InlineData("EffectBoundRejections", "enum E\n    A\n    effect confined\n    B\n", DiagnosticCode.InvalidEffectBound_Kd)]
+    [InlineData("ReceiverOperations", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
+    [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
+    [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
+    [InlineData("ReachedThroughBorrow", "struct S1\n    internal var x: Array<i32>\nstruct S2\n    internal var x: Array<S1>\nfunc f(s: S2) -> i32 => s.x[0].x[0]\n")]
+    [InlineData("JudgedOccurrences", "struct Box<T>\n    T is Copy\n    public init() => ()\nfunc f(b: Box<i32>) => ()\n")]
+    [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
+    [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
+    [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
+    [InlineData("MemberSelections", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
+    [InlineData("InferredConstructionTargets", "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet b = Box.init(1)\n")]
+    [InlineData("QualificationStops", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
+    [InlineData("FormReads", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("Prerequisites", "func f(s: string) -> bool\n    return s == missing\n", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("PartPrerequisites", "#Layout(\"bad\")\nstruct S\n", DiagnosticCode.InvalidLayoutAttribute_Kd)]
+    [InlineData("PrerequisiteVisits", "func f<U>(value: U)\n    value is D\n    U is Copy\n    ()\n", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("DuplicateDeclarations", "let x = 1\nlet x = 2\n", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("ResultCompletions", "func f(n: i32) -> i32\n    var s = 0\n    while s < n => s = s + 1\n    return s\n")]
+    [InlineData("PublishedCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
+    [InlineData("LintCompletions", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
+    [InlineData("EarlyReads", BaseInputFormationBindingTest.J4)]
+    [InlineData("ResolvedSlices", "let values: [4 of i32] = [1, 2, 3, 4]\nlet inner = 1..^1\nlet part = values[inner]\n")]
+    [InlineData("ResolvingTypes", "let x: i32 = 1\n")]
+    [InlineData("SynthesizedCalls", "milestone:Milestone23")]
+    [InlineData("DeferredDefaults", "struct Box {a}\n    public let v: ref/i32 during a\n    public init(v: ref/i32 during a) => self.v = v\npublic func main() => ()\nfunc f(p: ref/i32 during static) -> i32\n    let r = p\n    let c = func (k: Option<ref/i32 during r>) -> Box => Box.init(r)\n    return 0\n")]
+    public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
             : program.StartsWith("milestone:", StringComparison.Ordinal) ? Repository.ReadText("tests", "milestones", program["milestone:".Length..] + ".kimi") : program;
         var c = CompilationTestHelper.Parse(source, "Hello.kimi");
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(Bound(), MinimalEmissionTest.Describe(c));
         var field = typeof(NodeColumns).GetField(family, Members)!;
         var (before, used) = (Arena(), Used());
         Assert.NotNull(before);
@@ -211,10 +274,13 @@ public partial class SyntaxIdTest
         for (var i = 0; i < 2; i++)
         {
             c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
-            Assert.True(c.Bind().IsComplete);
+            Assert.True(Bound());
             Assert.Same(before, Arena());
             Assert.Equal(used, Used());
         }
+
+        // A valid program's Bind is complete; a failure family's program reports its failure at each Bind.
+        bool Bound() => c.Bind() is var result && (reported is { } code ? c.Binding.Issues.Any(x => x.Code == code) : result.IsComplete);
 
         Array? Arena() => Read<Array?>(Read<object>(field.GetValue(c.Kotonoha.Syntax.Hir.Families)!, "rows"), "arena");
         int Used() => (int)field.FieldType.GetProperty("Used", Members)!.GetValue(field.GetValue(c.Kotonoha.Syntax.Hir.Families))!;
@@ -308,7 +374,8 @@ public partial class SyntaxIdTest
 
         if (!type.IsValueType)
         {
-            return RuntimeHelpers.GetUninitializedObject(type);
+            // An abstract field (a Koto) takes an instance of a concrete derived type.
+            return RuntimeHelpers.GetUninitializedObject(type.IsAbstract ? type.Assembly.GetTypes().First(x => !x.IsAbstract && type.IsAssignableFrom(x)) : type);
         }
 
         if (Nullable.GetUnderlyingType(type) is { } inner)

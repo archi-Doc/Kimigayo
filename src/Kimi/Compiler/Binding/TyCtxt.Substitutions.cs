@@ -4,12 +4,24 @@
 // synthesizes, and their application to a Type and composition (SPEC 8.1.3, 8.6.4, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
 // substitution and Origin forwarding.
-// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance with its
-// storage verdict (Instance; Compose with the part deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
-// Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict, guarded by
-// it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
-// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
-// arrays Fit grows are reused.
+// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type in an instance by the substitution alone,
+// with its Formation (Apply); a substitution in an instance by the substitution alone, with its Formation (Compose); a Type in an
+// instance with its storage verdict (Instance: Apply, then Binding's one storage query, Binding.PrepareTypeStorage; DECISIONS BU-36,
+// BU-38, R4-M139); Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); and the instance a reader of
+// an instance's storage reads (ReadableInstance: Instance, then Binding.Readable's guard; R4-M139).
+// Formation, this file's representation: whether a substitution formed its instance, the cause travelling with a null one (Apply's
+// Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete; read as a broken contract in a
+// complete compilation, R5-M151), HeightLimit (Binding.TypeHeight's
+// refusal answered after Binding's run, under the innermost after-run owner (the instance collector's answer frame, OpenAnswer, or a
+// site, OpenBodySite and OpenSite; PLAN G651 U2b), to the formation that owns it, Answered, or Witness, a requirement call's resolution,
+// as its target's Cause; the read is answered to that owner: the collector's reader records it at its requesting site, a site is
+// marked). Apply and Compose read no storage, so their cause is the substitution's alone; an instance's stored Types are formed by
+// Binding.Instance, which publishes its own cause beside them (AdtDef.InstanceStorage.HeightLimit), never Apply's or Compose's
+// (Instance's verdict walk may form them). Apply, Instance and Compose own no refusal, so one outside Answered, Witness and an instance
+// is the innermost after-run owner's: the frame's, R7-T1's broken contract the collector's run throws after its close (N1), or a site's mark.
+// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
+// compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
+// grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
 
 using System.Runtime.CompilerServices;
@@ -29,33 +41,57 @@ internal sealed partial class TyCtxt
     // A function item's own Type arguments before interning, reused.
     private BoundType?[] itemTypes = [];
 
+    // CaseSubst's case Types before interning, reused.
+    private BoundType?[] caseTypes = [];
+
     // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
     private BoundLength?[] noLengths = [];
 
-    // DIAGNOSTICS rule 8 (DECISIONS BU-38): whether Binding is complete, so has rejected no part: a Rejected storage verdict (Instance,
-    // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and the C1-F4 view's (BU-102).
+    // Whether a substitution formed its instance (Apply, Compose), the cause a null instance carries (the header's contract).
+    internal enum Formation : byte
+    {
+        /// <summary>Every step of the substitution completed: the instance is formed.</summary>
+        Formed,
+
+        /// <summary>A step does not complete (BU-36's contract substitution that does not complete), or Binding.TypeHeight refused a
+        /// Type no formation of this query owns, recording it itself (the consultation's node during the run; after it, the innermost
+        /// after-run owner's: a site's mark, the collector frame's broken contract its run throws after the close (R7-T1), or with no owner
+        /// the throw (PLAN G651 U2b R13.1)). A capability work's evaluation is such an owner too: a refusal in it is the work's Unknown,
+        /// with no record (C8 ruling 30), so a formation whose normalization rests on it may be Incomplete with no record. Its readers read
+        /// it by R5-M151: a broken contract at the requesting site where Binding is complete (BindingComplete; InternalInvariant_Kd), else
+        /// a dependent of Binding's records (no record): the collector's Formed and a default's copy (MirBuilder.Defaults; PLAN G651
+        /// U2c).</summary>
+        Incomplete,
+
+        /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered it to this formation
+        /// after Binding's run instead of recording it (Answered, or a requirement call's resolution, Witness's target's Cause); the read
+        /// is answered to the innermost after-run owner (PLAN G651 U2b R3): the collector's reader records it, a site is marked.</summary>
+        HeightLimit,
+    }
+
+    // DIAGNOSTICS rule 8 (DECISIONS BU-38): whether Binding is complete, so has rejected no part: a Rejected storage verdict (Instance)
+    // met in a complete compilation is a broken contract, the premise of Binding.Readable's guard and the C1-F4 view's (BU-102).
     internal bool BindingComplete => binding.Result.IsComplete;
 
-    // DECISIONS BU-60: the Type instance a Closure Type's context holds (HeldContext); null for a context a function's instance made, and
-    // for none.
-    internal static BoundType? HeldType(BoundType closure)
-        => closure.ClosureContext is { Declaring: { } held } context && ReferenceEquals(context.Target, closure.Symbol) ? held : null;
+    // DECISIONS BU-60: the Type instance a nested definition's Type (a Closure Type, the Item of a function declared in a body) holds
+    // as its context (HeldContext); null for a context a function's instance made, and for none.
+    internal static BoundType? HeldType(BoundType nested)
+        => nested.InstanceContext is { Declaring: { } held } context && ReferenceEquals(context.Target, nested.Symbol) ? held : null;
 
-    // SPEC 6.1.3, 15.8.2 (DECISIONS BU-60): the substitution a Closure Type's readers apply, the one view of its context that its signature
-    // (Binding.ClosureDefinitionSignature), its environment (ClosureEnvironment) and its body (SubstOfClosure) read: the context, except a
+    // SPEC 6.1.3, 15.8.2 (DECISIONS BU-60): the substitution a nested definition's Type's readers apply, the one view of its context that
+    // a Closure's signature (Binding.ClosureDefinitionSignature), environment (ClosureEnvironment) and body (SubstOfClosure), an Item's
+    // declaring Type (Binding.ItemDeclaringType) and the inherited arguments (Binding.InheritedArguments) read: the context, except a
     // held instance with an Origin position (HasOriginPosition), which is closed in no instance, the EnclosingInstance gap until PLAN G300's
     // per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
-    internal static Subst? ClosureInstance(BoundType closure)
-        => HeldType(closure) is { } held && HasOriginPosition(held) ? null : closure.ClosureContext;
+    internal static Subst? NestedInstance(BoundType nested)
+        => HeldType(nested) is { } held && HasOriginPosition(held) ? null : nested.InstanceContext;
 
-    // Whether a reader of an instance may read a Type whose storage has this verdict (Binding.Readable; DECISIONS BU-36, R4-M139):
-    // Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract.
-    internal bool Readable(BoundType type, Binding.StorageOutcome storage) => binding.Readable(type, storage);
-
-    // DECISIONS R4-M139: a declared Type in the instance a substitution makes, as every reader of an instance reads one: Instance, then
-    // Readable; null where Readable refuses (a Limit) or the substitution does not complete, throwing where it throws.
+    // DECISIONS R4-M139: a declared Type in the instance a substitution makes, as every reader of an instance's storage reads one
+    // (retention, Binding.CapabilityParts, Binding.ClosureInstances, A4, A5's call rows, MirCases): Instance, then Binding.Readable
+    // (Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract); null where it refuses (a Limit)
+    // or the substitution does not complete, throwing where it throws.
     internal BoundType? ReadableInstance(BoundType type, Subst subst)
-        => this.Instance(type, subst) is ({ } instance, var storage) && this.Readable(instance, storage) ? instance : null;
+        => this.Instance(type, subst) is ({ } instance, var storage) && binding.Readable(instance, storage) ? instance : null;
 
     // SPEC 8.1.3, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
     // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
@@ -64,7 +100,7 @@ internal sealed partial class TyCtxt
             ? this.Intern(implementation, null, call.VirtualImplementingType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins)
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
-    // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it as its readers see it (ClosureInstance); a
+    // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it as its readers see it (NestedInstance); a
     // closure no instance closed is in the identity of the declaration whose instance it holds (EnclosingDeclaration), a function or a
     // Type, else in its own, as a held instance its readers do not see is (DECISIONS BU-60) and a generic container's group static is,
     // whose group has no instance (R5-M82, X33 (a)), so the instance collector reports either as the EnclosingInstance gap (R5-M157). The
@@ -76,12 +112,12 @@ internal sealed partial class TyCtxt
             return null;
         }
 
-        if (ClosureInstance(closure) is { } instance)
+        if (NestedInstance(closure) is { } instance)
         {
             return instance;
         }
 
-        var frame = closure.ClosureContext is null &&
+        var frame = closure.InstanceContext is null &&
             this.EnclosingDeclaration(symbol) is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Type } enclosing ? enclosing : symbol;
         return this.Identity(frame.Declaration);
     }
@@ -99,12 +135,12 @@ internal sealed partial class TyCtxt
             : this.Intern(closure, null, erased, [], [], [], []);
     }
 
-    // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
+    // The substitution Binding's storage instantiation of a call applies (Instance(type, StorageSubst(call))): its target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
     // that SubstOf adds, as the old analyses have always instantiated a call's Types. A second substitution per call beside SubstOf, it
-    // goes when the readers of that CallPlan form apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own go with R7's
-    // CallPlan pipeline (DECISIONS R5-M36).
-    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of the CallPlan form of InstantiateStorageType to SubstOf.")]
+    // goes when its readers apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own (requirement instantiation and
+    // formatting implementations) go with R7's CallPlan pipeline (DECISIONS R5-M36).
+    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of StorageSubst, Binding's requirement instantiation and formatting implementations, to SubstOf.")]
     internal Subst StorageSubst(CallPlan call)
         => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
@@ -152,46 +188,99 @@ internal sealed partial class TyCtxt
         => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
 
     // SPEC 4.4.1, 8.1.3: a length in the instance a substitution makes, Binding.InstanceLength, the one statement of an instance's length
-    // (Compose's lengths), which a default's copy and code generation's Length constant read (MirBuilder.Inline, InstanceCollector.LengthOf);
-    // the identity keeps it; null where the substitution does not complete it.
+    // (Compose's lengths), which a default's copy and code generation's Length constant read (MirBuilder.Instantiates and Inline,
+    // InstanceCollector.LengthOf); the identity keeps it; null where the substitution does not complete it. A bare read, no formation:
+    // an interpolation term's instance passes no height its values' did not (the terms' dominance, InterpolationHint), so a refusal
+    // inside it is a broken contract, loud through its readers' Incomplete and no-owner routes, never answered here (PLAN G651 U2c).
     internal BoundLength? InstanceLength(BoundLength length, Subst subst) => subst.IsIdentity ? length : binding.InstanceLength(length, subst);
 
-    // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
-    internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
+    // SPEC 8.1.3: a declared Type in the instance a substitution makes, by the substitution alone (Binding.StorageInstance: its closing
+    // step reads the closure's result's formation, never its storage), with its Formation: the identity keeps the Type; null exactly where
+    // the substitution does not form it, with the cause. No storage is walked or prepared (Instance gives the verdict).
+    internal (BoundType? Type, Formation Cause) Apply(BoundType type, Subst subst)
+        => subst.IsIdentity ? (type, Formation.Formed)
+            : binding.StorageInstance(type, subst) is { } instance ? (instance, Formation.Formed) : (null, Formation.Incomplete);
 
-    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36), which Binding computes until R7
-    // moves it here (Binding.StorageInstance, then Binding.PrepareTypeStorage): the identity keeps the Type, whose storage it does not query
-    // (Prepared); null and Limit where the substitution does not complete.
-    internal (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType type, Subst subst)
+    // R7-T1 (PLAN G651's after-run site kind "the caller records"): the instance collector's answer frame, opened by its run alone
+    // (InstanceCollector.Run, in a finally), so every substitution the run causes is inside it and none outside (Binding.TypeHeight).
+    internal OwnerState OpenAnswer() => binding.OpenAnswer();
+
+    // Closes the collector's answer frame: whether it took a refusal no formation owned (R7-T1's broken contract, which the run throws).
+    internal bool CloseAnswer(OwnerState frame) => binding.CloseAnswer(frame);
+
+    // PLAN G651 U2b R2, R5 (DECISIONS: COMPILER_ARCHITECTURE's MIR builder and analyses rows): the after-run sites MIR's drivers open, a
+    // body site per element every path of it passes through and a node site at each node it visits, the only non-pure TyCtxt members MIR
+    // calls with Answered; a read of a published height refusal inside one marks it, and the body site's close hands its marks to the
+    // driver, which adds them to MirReport's limit table (MirReport.Uses).
+    internal OwnerState OpenBodySite(SourceRef subject) => binding.OpenBodySite(subject);
+
+    internal ReadOnlySpan<SiteMark> CloseBodySite(OwnerState site) => binding.CloseBodySite(site);
+
+    internal (Binding.AfterRunOwner Kind, SourceRef Subject) OpenSite(SourceRef subject) => binding.OpenSite(subject);
+
+    internal void CloseSite((Binding.AfterRunOwner Kind, SourceRef Subject) site) => binding.CloseSite(site);
+
+    // R7-T1: Apply as a formation owning its refusals in the collector's answer frame, the collector's query, whose one reader of a cause
+    // (InstanceCollector.Formed) records it at its requesting site: a refusal of a Type above the height limit is answered as HeightLimit,
+    // and Binding records nothing; any other result is Apply's.
+    internal (BoundType? Type, Formation Cause) Answered(BoundType type, Subst subst)
     {
-        if (subst.IsIdentity)
+        var formation = binding.OpenFormation();
+        var (instance, cause) = this.Apply(type, subst);
+        if (!binding.CloseAnswer(formation))
         {
-            return (type, Binding.StorageOutcome.Prepared);
+            return (instance, cause);
         }
 
-        var instance = binding.StorageInstance(type, subst);
-        return (instance, instance is null ? Binding.StorageOutcome.Limit : binding.PrepareTypeStorage(instance));
+        binding.AnswerSite(null); // PLAN G651 U2b R3.2: the reader's site, else the collector's frame (its reader records).
+        return (null, Formation.HeightLimit);
+    }
+
+    // R7-T1: Compose as such a formation, the collector's query for a call's edge (as Answered for a Type): a refused height is HeightLimit
+    // with no Subst; any other result is Compose's.
+    internal (Subst? Subst, Formation Cause) Answered(Subst inner, Subst outer)
+    {
+        var formation = binding.OpenFormation();
+        var composed = this.Compose(inner, outer);
+        if (!binding.CloseAnswer(formation))
+        {
+            return composed;
+        }
+
+        binding.AnswerSite(null); // PLAN G651 U2b R3.2.
+        return (null, Formation.HeightLimit);
+    }
+
+    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): Apply, then the instance's
+    // verdict: no instance is a Limit, whatever the cause (BU-36's contract substitution that does not complete); the identity's Type is
+    // Prepared without a walk (PLAN G242), since a binder's own Types are open and their storage is no instance's; any other instance's is
+    // Binding's walk (DECISIONS BU-12: Binding.PrepareTypeStorage, the one storage query, a function of the Type alone, a limit taking
+    // precedence, memoized per pass by the Type, so a warm query allocates nothing; never queried during a walk, whose guard throws).
+    // Rejected keeps its instance, a part Binding rejected holding, placing and destroying nothing (BU-38), so Binding's own readers,
+    // during its passes, read every verdict but a Limit (Binding.Formatting, RequirementInstances, ClosureInstances).
+    internal (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType type, Subst subst)
+    {
+        var instance = this.Apply(type, subst).Type;
+        return (instance, instance is null ? Binding.StorageOutcome.Limit
+            : subst.IsIdentity ? Binding.StorageOutcome.Prepared : binding.PrepareTypeStorage(instance));
     }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
     // the substitution of the call omitting the default: each binding of the inner one in the outer instance (a length's interpolation-bound
     // term over its value Types' instance, Binding.InstanceLength), so applying
-    // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with the
-    // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
-    // keeps the composed substitution, its Types instantiated; null and Limit when the outer instance does not substitute an
-    // inner Type, length, conforming Self or declaring Type, or one's storage is a limit. Part is the verdict's deciding part (R4-M139):
-    // the instance of the first part reaching it in the order Compose walks (conforming Self, declaring Type, Types by index); null when
-    // Prepared, when a length decides, or when that part has no instance. Instance gives a Limit exactly where it gives no instance, so
-    // Part is never null when Rejected.
-    internal (Subst? Subst, Binding.StorageOutcome Storage, BoundType? Part) Compose(Subst inner, Subst outer)
+    // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with its
+    // Formation, by the substitution alone as Apply's (no storage is walked or prepared: a part whose storage is Rejected or past
+    // Binding's bound keeps the composed substitution, as Apply keeps its Type; DECISIONS R7-M54). Subst is null exactly where the outer
+    // instance does not form an inner Type, length, conforming Self or declaring Type, Cause the first such part's (Apply's; a length's
+    // Incomplete).
+    internal (Subst? Subst, Formation Cause) Compose(Subst inner, Subst outer)
     {
         if (outer.IsIdentity)
         {
-            return (inner, Binding.StorageOutcome.Prepared, null);
+            return (inner, Formation.Formed);
         }
 
-        var storage = Binding.StorageOutcome.Prepared;
-        var part = default(BoundType);
+        var cause = Formation.Formed;
         var types = Fit(ref this.composedTypes, inner.Types.Length);
         var lengths = Fit(ref this.composedLengths, inner.Lengths.Length);
         var origins = Fit(ref this.composedOrigins, inner.Origins.Length + inner.Inputs.Length);
@@ -205,15 +294,15 @@ internal sealed partial class TyCtxt
         for (var i = 0; i < lengths.Length; i++)
         {
             lengths[i] = inner.Lengths[i] is { } length ? binding.InstanceLength(length, outer) : null;
-            if (lengths[i] is null && inner.Lengths[i] is not null && storage != Binding.StorageOutcome.Limit)
+            if (lengths[i] is null && inner.Lengths[i] is not null)
             {
-                (storage, part) = (Binding.StorageOutcome.Limit, null);
+                cause = cause == Formation.Formed ? Formation.Incomplete : cause;
             }
         }
 
-        if (storage == Binding.StorageOutcome.Limit)
+        if (cause != Formation.Formed)
         {
-            return (null, storage, part);
+            return (null, cause);
         }
 
         for (var i = 0; i < origins.Length; i++)
@@ -222,18 +311,13 @@ internal sealed partial class TyCtxt
                 ? binding.ForwardOrigin(origin, outer.Target, outer.Declaring, outer.Origins, outer.Inputs, outer.Types) : null!;
         }
 
-        return (this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]), storage, part);
+        return (this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]), cause);
 
-        // A part in the outer instance; its verdict joins the composition's in the verdicts' order (a limit, then Rejected), the first part
-        // reaching the worst one deciding it.
+        // A part in the outer instance (Apply), the first that does not form giving the cause.
         BoundType? Part(BoundType type)
         {
-            var (instance, verdict) = this.Instance(type, outer);
-            if (verdict > storage)
-            {
-                (storage, part) = (verdict, instance);
-            }
-
+            var (instance, formation) = this.Apply(type, outer);
+            cause = cause == Formation.Formed ? formation : cause;
             return instance;
         }
     }
@@ -283,9 +367,16 @@ internal sealed partial class TyCtxt
             hash.Add(RuntimeHelpers.GetHashCode(input));
         }
 
+        // The one find over the two levels (Binding.PassPart.Levels; PLAN G949 Stage 2 U4).
         var key = hash.ToHashCode();
-        if (this.substs.TryGetValue(key, out var bucket))
+        var levels = Binding.PassPart.Interned(library, library.Layer.Substs, this.substs);
+        foreach (var level in levels)
         {
+            if (!level.TryGetValue(key, out var bucket))
+            {
+                continue;
+            }
+
             for (var i = 0; i < bucket.Count; i++)
             {
                 var subst = bucket[i];
@@ -296,13 +387,15 @@ internal sealed partial class TyCtxt
                 }
             }
         }
-        else
+
+        var open = levels.Open;
+        if (!open.TryGetValue(key, out var into))
         {
-            this.substs.Add(key, bucket = new(1));
+            open.Add(key, into = new(1));
         }
 
         var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray());
-        bucket.Add(created);
+        into.Add(created);
         return created;
     }
 }

@@ -66,7 +66,7 @@ public partial class CallableOriginForwardingTest
         "    let local: i32 = 5\n    return g(local@ref)@follow\n";
 
     private const string StoringCallable = "func callIt<F>(f: uniq/F, x: ref/i32) -> i32\n    F is Callable<uniq, (ref/i32) -> ref/i32>\n    if x@follow > 0\n" +
-        "        let local: i32 = 5\n        f(local@ref)\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 = x\n" +
+        "        let local: i32 = 5\n        f(local@ref)\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 during x = x\n" +
         "    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    return callIt(c@uniq, x)\n";
 
     private const string ReadingCallable = "func callIt<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    let local: i32 = 5\n    return f(local@ref)\n" +
@@ -151,6 +151,13 @@ public partial class CallableOriginForwardingTest
     [InlineData("FixedResult", "func use(x: ref/i32, y: ref/i32) -> i32\n    origin x outlives y\n    let g: (ref/i32 during x, i32) -> ref/i32 during y = func (n, k) => n\n    return g(x, 5)@follow\nlet a: i32 = 4\nrequire use(a@ref, a@ref) == 4 else => $abort(\"result\")")]
     public void MixedFixedAndPerCallInputsFit(string name, string source)
         => ScalarEmissionTest.EmitFixture("CallableInstance" + name, source, string.Empty);
+
+    // SPEC 10.4 step 3, 15.6.1, 10.8 (PLAN G379 (a)): a Closure erased at both candidates fits each by its structural part, so step 3 selects
+    // the non-generic candidate and the caller's clause proves its erasure after selection; the base dropped it by the Origin part and ran
+    // the generic one (wrong code: `k` returned 1).
+    [Fact]
+    public void AClosuresOriginPartNeverSelectsACandidate()
+        => ScalarEmissionTest.EmitFixture("CallableOriginForwardSelection", "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: i32) -> i32 => 0\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: T) -> i32 => 1\nfunc k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n    let c = func [] (z: ref/i32 during b) -> i32 => z@follow\n    let v: i32 = 1\n    return h(c@move, a, b, v)\nlet x: i32 = 5\nrequire k(x@ref, x@ref) == 0 else => $abort(\"h1\")", string.Empty);
 
     // SPEC 10.7: a per-call implementation fits a required input written over a fixed Origin by instantiating its call-time Origin.
     [Fact]

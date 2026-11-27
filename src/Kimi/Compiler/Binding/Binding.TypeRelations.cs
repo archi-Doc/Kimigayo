@@ -11,20 +11,14 @@ namespace Kimi.Compiler;
 // callable one (CallableSignatureFits). Each entry is one query of the relation's one walk (RelationWalk, Binding.TypeRelations.Walk.cs).
 public sealed partial class Binding
 {
-    /// <summary>Compares interned complete types without erasing their Origin contracts.</summary>
-    /// <param name="left">The first canonical type.</param>
-    /// <param name="right">The second canonical type from the same compilation.</param>
-    /// <returns>Whether both references identify the same complete type.</returns>
-    public static bool SameType(BoundType left, BoundType right) => ReferenceEquals(left, right);
-
-    // SPEC 3.8: whether `actual` is a subtype of `expected`; `own` is the declaration whose per-call inputs `actual` names.
-    internal static bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null)
-        => new RelationWalk(null, null, OriginPart.Judged).Fits(actual, expected, own: own);
+    // SPEC 3.8: whether `actual` is a subtype of `expected`.
+    internal bool IsSubtype(BoundType actual, BoundType expected)
+        => new RelationWalk(this, null, null, OriginPart.Judged).Fits(actual, expected);
 
     // IsSubtype with the walk's first failure, for a comparison that records its mismatch (FailMismatch).
-    internal static bool IsSubtype(BoundType actual, BoundType expected, out ComparisonFailure failure)
+    internal bool IsSubtype(BoundType actual, BoundType expected, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var walk = new RelationWalk(this, null, null, OriginPart.Judged);
         var fits = walk.Fits(actual, expected);
         failure = walk.Failure;
         return fits;
@@ -32,27 +26,27 @@ public sealed partial class Binding
 
     // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
     // bindings never rank candidates.
-    internal static bool FitsStructuralPart(BoundType actual, BoundType expected)
-        => new RelationWalk(null, null, OriginPart.Everywhere).Fits(actual, expected);
+    internal bool FitsStructuralPart(BoundType actual, BoundType expected)
+        => new RelationWalk(this, null, null, OriginPart.Everywhere).Fits(actual, expected);
 
-    // SPEC 10.7, 15.6.1: the part of callable compatibility that applicability reads: subtyping against the required signature, its
-    // result Never when the implementation's is (CompatibleResult), judged without recording a bound and without premises; `own` is the
-    // declaration whose per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
-    internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own, out ComparisonFailure failure)
+    // FitsStructuralPart with whether its walk held a part against an open atom (RelationWalk.MetOpenSlot), for the identity questions
+    // that read it (Binding.OpenSlots: such a pair holds for a fit and is identical for none, SPEC 10.8 Unbound slots).
+    internal bool FitsStructuralPart(BoundType actual, BoundType expected, out bool metOpenSlot)
     {
-        var walk = new RelationWalk(null, null, OriginPart.Contract);
-        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
-        failure = walk.Failure;
+        var walk = new RelationWalk(this, null, null, OriginPart.Everywhere);
+        var fits = walk.Fits(actual, expected);
+        metOpenSlot = walk.MetOpenSlot;
         return fits;
     }
 
-    // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Closure's or a Function value's signature with a required one at `use`, a
-    // whole-contract comparison: its member Origins and the implementation's conditions, its own well-formedness among them (the
-    // owner's (a); FunctionFits), are proven from the required signature's premises and those of `use` alone (DECISIONS BU-93).
-    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, out ComparisonFailure failure)
+    // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Function value's signature with a required one at `use` (a Callable
+    // proof's; a Closure's and a Function Item's contract is DefinitionContractFits'), a whole-contract comparison: its member Origins
+    // and the implementation's conditions, its own well-formedness among them (the owner's (a); FunctionFits), are proven from the
+    // required signature's premises and those of `use` alone (DECISIONS BU-93); a region conjunct is not proven (no row reader).
+    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(this, use, OriginPart.Contract);
-        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
+        var walk = new RelationWalk(this, this, use, OriginPart.Contract);
+        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected));
         failure = walk.Failure;
         return fits;
     }
@@ -60,7 +54,7 @@ public sealed partial class Binding
     // SPEC 3.8 at a use whose premises and Origins the relation reads, in the whole-contract comparison `comparison` (SPEC 15.3.7), whose
     // required signature's own well-formedness its proofs assume.
     internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use, in CallableInstance comparison)
-        => new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected, instance: comparison);
+        => new RelationWalk(this, this, use, OriginPart.Judged).Fits(actual, expected, instance: comparison);
 
     // SPEC 10.7: an implementation's result R fits a required result Q when R <: Q or R is Never, at the result's top level only: the
     // required result it is compared against.
@@ -72,10 +66,10 @@ public sealed partial class Binding
     private static bool IsInvariantLayer(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
         => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type, use, comparison));
 
-    // The Callable comparison of `actual`, whose per-call inputs `own` binds (its own syntax when null), with `expected`, nested in the
-    // comparisons `outer` names.
-    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing)
-        => new(actual, own ?? actual.Binder, expected, expected.Binder, enclosing.Enclosing) { Scope = enclosing.Scope };
+    // The Callable comparison of `actual`, whose per-call inputs its own syntax binds, with `expected`, nested in the comparisons
+    // `enclosing` names and judged in its scope, its region conjuncts taken by `rows` (CallableInstance.Rows).
+    private static CallableInstance Comparison(BoundType actual, BoundType expected, in CallableInstance enclosing, List<BindingObligation>? rows)
+        => new(actual, actual.Binder, expected, expected.Binder, enclosing.Enclosing) { Scope = enclosing.Scope, Rows = rows };
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
     // required per-call Origins are rigid: one outlives another only at the same position or by the own well-formedness of the
@@ -88,15 +82,17 @@ public sealed partial class Binding
         var comparison = instance;
         return Outlives(a, b, 0);
 
-        bool Outlives(BoundOrigin longer, BoundOrigin shorter, int depth)
+        // The ends as written, before the implementation's per-call Origins are instantiated: every exit hands them so to the comparison's
+        // one decision for a region conjunct (LeavesBodyRows, directly or through FitOrigin), which instantiates where it reads them.
+        bool Outlives(BoundOrigin writtenLonger, BoundOrigin writtenShorter, int depth)
         {
             if (depth > 8)
             {
                 return false;
             }
 
-            longer = comparison.Instantiate(longer);
-            shorter = comparison.Instantiate(shorter);
+            var longer = comparison.Instantiate(writtenLonger);
+            var shorter = comparison.Instantiate(writtenShorter);
             if (ReferenceEquals(longer, shorter) || longer.Kind == OriginKind.Static)
             {
                 return true;
@@ -106,7 +102,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < longer.Operands.Count; i++)
                 {
-                    if (!Outlives(longer.Operands[i], shorter, depth + 1))
+                    if (!Outlives(longer.Operands[i], writtenShorter, depth + 1))
                     {
                         return false;
                     }
@@ -119,7 +115,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < shorter.Operands.Count; i++)
                 {
-                    if (Outlives(longer, shorter.Operands[i], depth + 1))
+                    if (Outlives(writtenLonger, shorter.Operands[i], depth + 1))
                     {
                         return true;
                     }
@@ -130,8 +126,10 @@ public sealed partial class Binding
 
             if (comparison.IsRequiredSlot(longer) || comparison.IsRequiredSlot(shorter))
             {
-                // A required per-call Origin relates to another only through the required signatures' own well-formedness.
-                return binding is not null && binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition);
+                // A required per-call Origin relates to another only through the required signatures' own well-formedness; a local
+                // region at the longer end is the comparison's one decision's (LeavesBodyRows, the L1 lift), on the written ends.
+                return binding is not null && (binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition) ||
+                    binding.LeavesBodyRows(writtenLonger, writtenShorter, use!, comparison, condition, null));
             }
 
             if (shorter is { Kind: OriginKind.Inference, Open: true } && comparison.IsResultOnlyOrigin(longer))
@@ -139,7 +137,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(longer, shorter, use!, comparison, condition);
+            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(writtenLonger, writtenShorter, use!, comparison, condition);
         }
     }
 
@@ -169,7 +167,10 @@ public sealed partial class Binding
             : this.types.Rebuild(required, [required.Components[0], BoundType.Never], required.Origin, (BoundOrigin[])required.OriginArguments);
     }
 
-    private BoundType DirectTarget(BoundType whole)
+    // SPEC 8.1.1: the direct target of a pair binder's binding: a family's case by case, a layer's target, a Type parameter's or pair
+    // original's projection, and a value Type or an owner-proven abstract Type itself; a binding that forms no Type has none represented
+    // (Unformed, BU-240).
+    private BoundType? DirectTarget(BoundType whole)
     {
         if (whole.Kind == BoundTypeKind.SemanticsAdaptation)
         {
@@ -186,7 +187,7 @@ public sealed partial class Binding
             return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.types.Intern(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
         }
 
-        return whole;
+        return this.FormsUnder(whole) ? whole : this.Unformed();
     }
 
     // A Type with its binder's slots, lengths and pair Origins and the images of its Origin binder's declared slots and per-call atoms
@@ -285,7 +286,7 @@ public sealed partial class Binding
                 return this.SubstituteFamilyArgument(type, substitution, slot, selection);
             }
 
-            if (selection.Kind != BoundTypeKind.Parameter && selection.Semantics != SemanticsKind.Parameter)
+            if (!this.IsAbstractBinding(selection))
             {
                 return FamilyCase(type, selection.Semantics) is { } child ? this.SubstitutePart(child, substitution, query) : null;
             }
@@ -307,18 +308,11 @@ public sealed partial class Binding
             // SPEC 8.1.2: an original `s/T` denotes the pair's binding (TyCtxt.PairBinding), its projection `T` the direct target.
             var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole)
                 : type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } ? this.types.PairBinding(whole) : whole;
-            if (type.Origin is { } replacement && (IsBorrow(projected.Semantics) || projected.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation))
-            {
-                // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
-                // and an abstract binding keeps it conditional.
-                projected = this.WithOrigins(projected, this.SubstituteSlotOrigin(replacement, substitution), (BoundOrigin[])projected.OriginArguments);
-            }
-
-            return projected;
+            return projected is not null && type.Origin is { } replacement ? this.AnnotatedOriginal(projected, this.SubstituteSlotOrigin(replacement, substitution)) : projected;
         }
 
         // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.
-        var context = type.ClosureContext;
+        var context = type.InstanceContext;
         if (TyCtxt.HeldType(type) is { } held)
         {
             if (this.SubstitutePart(held, substitution, query) is not { } image)
@@ -356,7 +350,7 @@ public sealed partial class Binding
                 }
             }
 
-            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.ClosureContext);
+            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.InstanceContext);
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];

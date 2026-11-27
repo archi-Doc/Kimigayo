@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Reflection.Emit;
 using System.Runtime;
 using Kimi.Compiler;
+using Kimi.Compiler.Target;
 using Xunit;
 
 namespace XunitTest;
@@ -48,6 +49,7 @@ internal static class AllocationMeasurement
     internal static long Measure(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        FreezeLibraries();
         return OnNewThread(() =>
         {
             Pool.RecordCurrentThread();
@@ -99,6 +101,7 @@ internal static class AllocationMeasurement
     internal static long MeasureOnce(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        FreezeLibraries();
         if (!CompilerThread.IsCurrent)
         {
             return CompilerThread.Run(operation, static operation => MeasureOnce(operation));
@@ -137,6 +140,7 @@ internal static class AllocationMeasurement
             throw new InvalidOperationException("A cold series runs in AllocationIsolationCollection: put its test in a nested AllocationTests class.");
         }
 
+        FreezeLibraries();
         if (!CompilerThread.IsCurrent)
         {
             return CompilerThread.Run((count, fresh), static series => MeasureSeries(series.count, series.fresh));
@@ -186,6 +190,16 @@ internal static class AllocationMeasurement
         }
 
         return allocated;
+    }
+
+    // PLAN G949 Stage 2 U3 (design 8, s10): a compilation reads the process's frozen library for its target (KimiLibrary.Of), which
+    // the target's first reader freezes. Each measurement forces it first for two keys only, windows-x64 (the test profile's) and none
+    // (TargetTriple.Invalid), so no window or run of a compilation for those measures the freeze, only the program's share; a row that
+    // measures a compilation for another target forces that target's library itself (the implementation review's N7).
+    private static void FreezeLibraries()
+    {
+        _ = KimiLibrary.Of(TargetTriple.Parse(TargetProfile.Windows.Target));
+        _ = KimiLibrary.Of(TargetTriple.Invalid);
     }
 
     private static (long Caller, long Worker) Hops()

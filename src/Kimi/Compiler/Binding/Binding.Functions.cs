@@ -1,7 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The binding of a function definition: its header (BindHeader's function part, also bound lazily from a use), its signature, then its
-// parts (defaults, base initializer, body).
+// parts (defaults, base initializer, body); and SPEC 7.2.3's parameter positions, by the default of its function a node lies in
+// (DefaultIndex, the one statement of it, also read by the index walk to enter a default template body and by the HIR's position of a
+// default, HirPublisher.FormPosition, which records it in Hir.Defaults) and the parameters in a default's scope (ParameterInScope,
+// also a default template body's roots, RootOf): which parameters a name there may select (ParameterVisible, the rule of every name
+// lookup, a value's and a written Origin's), and that a parameter read in the default of a later parameter names the slot its call
+// prepared (InLaterDefault, read by the capture diagnostics and the HIR tables, HirRes.PreparedParam).
 
 using Kimi.Compiler.Parsing;
 
@@ -9,6 +14,65 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    /// <summary>Gets whether a node lies in the default of a later parameter of the function that declares a parameter, so that
+    /// the parameter names the slot its call prepared, which the default can neither move nor keep a borrow of (SPEC 7.2.3).</summary>
+    /// <param name="node">The node, such as a closure.</param>
+    /// <param name="symbol">The parameter it reads.</param>
+    /// <returns>Whether the node is in a later default of the parameter's function; never for a constructor's or destructor's receiver,
+    /// whose slot is no parameter index (Binding.ReceiverSlot).</returns>
+    internal static bool InLaterDefault(Koto node, BindingSymbol symbol) => InLaterDefault(node, symbol, out _);
+
+    /// <summary>Gets the same, with the parents walked, a scaling check's work measure.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="symbol">The parameter it reads.</param>
+    /// <param name="walked">The parents the answer read: the node's depth below the parameter's function, bounded by IMPL A.4's L.</param>
+    /// <returns>Whether the node is in a later default of the parameter's function.</returns>
+    internal static bool InLaterDefault(Koto node, BindingSymbol symbol, out int walked)
+    {
+        walked = 0;
+        return symbol.Kind == BindingSymbolKind.Parameter && symbol.Scope.Owner is FunctionKoto declaration &&
+            (uint)symbol.Slot < (uint)declaration.Parameters.Count && DefaultIndex(node, declaration, out walked) > symbol.Slot;
+    }
+
+    // SPEC 7.2.3 with 15.3.4 (the owner's D-1236 (A)): whether a name at `use` may select a parameter: in default i of its function,
+    // whatever the default holds (a Closure, a named function's signature or body, a local's annotation), only one before i
+    // (ParameterInScope); elsewhere every parameter in scope.
+    private static bool ParameterVisible(BindingSymbol candidate, Koto use)
+        => candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function ||
+            ParameterInScope(candidate.Slot, DefaultIndex(use, function, out _));
+
+    // SPEC 7.2.3: whether parameter `slot` (j) of a function is in scope at `index` (i), the default of that function a position lies in:
+    // in a default when j < i (a constructor's or destructor's receiver and a helper borrow, whose slots are no parameter index, never),
+    // and every parameter where `index` < 0 (the function's signature or body). Read by a name's position (ParameterVisible) and by a
+    // default template body's roots (RootOf, the body (f, i)).
+    private static bool ParameterInScope(int slot, int index) => index < 0 || (uint)slot < (uint)index;
+
+    // SPEC 7.2.3: the parameter of `function` whose default holds `node`, else -1 (its signature, its body, or outside it); `walked`
+    // counts the parents read, the node's depth below the function, bounded by IMPL A.4's L.
+    private static int DefaultIndex(Koto node, FunctionKoto function, out int walked)
+    {
+        walked = 0;
+        Koto child = node;
+        for (var parent = node.Parent; parent is not null; child = parent, parent = parent.Parent)
+        {
+            walked++;
+            if (ReferenceEquals(parent, function))
+            {
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    if (ReferenceEquals(function.Parameters[i].DefaultValue, child))
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
+            }
+        }
+
+        return -1;
+    }
+
     private static bool HasParameterDefaults(FunctionKoto function)
     {
         for (var i = 0; i < function.Parameters.Count; i++)
@@ -80,9 +144,15 @@ public sealed partial class Binding
                 this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
             }
 
-            if (function.ReturnType is { } resultSyntax)
+            // Temporary (PLAN G230-H's Q-B row): a `let` or `var` local that a header names is demanded there (OriginCandidate). So a
+            // parameter or result that the header failed is bound again here only for a local that the demand cannot form before its
+            // evaluating construct binds: a Pattern or `for` binding, which has no declaration to demand, or a local of a Closure body
+            // whose literal's environment is not ready (FormEnvironment: an omitted parameter Type, SPEC 7.7.1, or a pending entry
+            // source such as a `for` binding). It goes when the demand can form both: the Pattern or `for` head bound on demand, and the
+            // literal's expected input formed on demand.
+            if (function.ReturnType is { } resultSyntax && symbol is { Type: null })
             {
-                this.BindType(resultSyntax, scope);
+                symbol.Type = this.BindType(resultSyntax, scope);
             }
 
             this.CheckCaseBound(function);
@@ -133,8 +203,10 @@ public sealed partial class Binding
             if (symbol is not null)
             {
                 var structural = this.ResultStructure();
+                // SPEC 15.3.4, 15.6.5 (R7-O3 O3-A): the result fit is at the value, inside the body, as a `return`'s is at its node: every
+                // reading at the use (RegionValueAtUse, DeclaredAtUse) resolves in this function's own body, never in the declaring one.
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
-                    symbol.Type is { } expected && result is not null && !this.FitsValueAt(result, expected, function, expression, out var failure))
+                    symbol.Type is { } expected && result is not null && !this.FitsValueAt(result, expected, expression, expression, out var failure))
                 {
                     this.FailMismatch(expression, expression, result, expected, failure);
                 }
@@ -149,25 +221,29 @@ public sealed partial class Binding
     private bool BindFunctionHeader(BindingSymbol symbol, FunctionKoto function)
     {
         var scope = this.scopes[function];
-        this.PrepareVirtualHeaderPremises(function, scope);
+        // PLAN G651 a2 (F1, BU-161; IMPL 21.3.2): the header is its declaration's, never the demander's (SPEC 23.1.2): the premises it forms
+        // outside its parameters' walks are in a site frame at the function whatever frame the demander holds, so a Type past the limit
+        // formed there is refused at the function.
+        var frame = this.BeginConsultation(function);
+        var header = this.PrepareVirtualHeaderPremises(function, scope); // An override's inputs and result bind under its header layer.
+        this.DropConsultation(frame);
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
+            this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, header);
         }
 
         // Named signatures never infer a result from their body or callers (SPEC 10.5).
-        symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
+        symbol.Type = function.ReturnType is { } result ? this.BindType(result, header) : BoundType.Unit;
         var pendingInputs = false;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             // BindType retains a partial value on the parameter symbol without publishing it on
             // syntax. A failed Type (null) is already an error, not an inference dependency.
-            pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.PendingAssociatedType(parameterType);
+            pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.HoldsPendingProjection(parameterType);
         }
 
-        var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
-        if (this.associatedInferenceReady && pendingHeader)
+        if (pendingInputs || (symbol.Type is { } resultType && this.HoldsPendingProjection(resultType)))
         {
             // Result portions that do not depend on missing Type values use the ordinary Origin
             // completion. Unrelated result holes do not hide a determined input/elision contract.
@@ -190,7 +266,7 @@ public sealed partial class Binding
             var receiver = function.Parameters[symbol.ReceiverIndex];
             if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.DefaultValue is not null)
             {
-                this.Fail(function, BindingFailure.InvalidTypeFormation);
+                this.Record(function, BindingFailure.InvalidTypeFormation, []);
             }
         }
 

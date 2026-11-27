@@ -14,11 +14,19 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 {
     private const string Len = "func len(n: ref/i32) -> i32 => n@follow\n";
 
+    private const string Pick = "func pick(n: ref/i32) -> ref/i32 => n\n";
+
+    private const string FixedMake = "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\n";
+
+    private const string MixedMake = "func make<T>(v: ref/i32 during x, action: (ref/i32 during x, ref/i32) -> T) -> i32 => 1\nfunc run()\n    let n: i32 = 6\n";
+
     private const string WrapDeclarations = "func identity<T>(value: T) -> T => value@move\nfunc wrap<T>(v: T) -> Option<T> => .Some(v@move)\nfunc wrap2<T>(v: (T, i32)) -> Option<T> => .None\nfunc twice(v: i64) -> i64 => v\nfunc show(value: i32) -> () => ()\nfunc show<T>(value: T) -> () => ()\nfunc k() -> i32\n";
 
     private const string NeverDeclarations = "func stopAt(x: i32) -> Never => $abort(\"stop\")\nfunc stopB(x: bool) -> Never => $abort(\"stop\")\nfunc h(f: (i32) -> i32) -> i32 => f(1)\nfunc cb<F>(f: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return f(1)\n";
 
     private const string ItemDeclarations = "func twice(v: i64) -> i64 => v\nfunc g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n";
+
+    private const string ItemIdentity = "func identity<T>(value: T) -> T => value@move\n" + ItemDeclarations;
 
     // A closure whose result borrows its hidden environment receiver (SPEC 8.10, 7.7.4).
     private const string EnvironmentClosure = "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n";
@@ -248,9 +256,27 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
 
+    // DECISIONS BU-175 (R7-C8 U-D3r): the Input row with its input nested in Tuples past 64 levels; `s` is still result-only. On
+    // `2f7d4a10d^` this valid form fails by Mentions' count of 64 (NoApplicableOverload_Kd). Today it guards the form's acceptance,
+    // not Mentions: with that count put back, or with Mentions answering "mentioned" at every depth, no row of this class changes,
+    // since FitOrigin proves the result's relation that IsResultOnlyOrigin would decide. No invalid twin: the cut only answered
+    // "mentioned", which an input naming the universal already is.
+    [Theory]
+    [InlineData(65)]
+    [InlineData(130)]
+    public void AResultOnlyUniversalBesideADeepInputIsInstantiatedToTheOpenRegion(int depth)
+    {
+        // A nested borrow names its Origin (SPEC 15.4.2): `t` in the Item, `static` in the expected signature.
+        string Nest(string terminal) => new string('(', depth) + terminal + string.Concat(Enumerable.Repeat(", i32)", depth));
+        var source = $"func constantOf(n: {Nest("ref/i32 during t")}) -> ref/i32 during s => $abort(\"never\")\n" +
+            $"func make<T>(f: ({Nest("ref/i32 during static")}) -> T) -> i32 => 7\n" +
+            "let r = make(constantOf)\nrequire r == 7 else => $abort(\"result only\")\n";
+        CompilationTestHelper.AssertBindingRecordsAtLines($"result-only-{depth}", source, string.Empty); // Binding's records; see AReferenceBindsASlotOfAnyHeight.
+    }
+
     // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
     [Theory]
-    [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "makeOf(bounded)")]
+    [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "bounded")]
     public void AResultOnlyInstantiationKeepsItsLimits(string body, string code, string text)
     {
         var source = "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc bounded(n: ref/i32) -> ref/i32 during s\n    origin n outlives s\n    return n\n" +
@@ -361,6 +387,31 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(("argument", argument), (related.Role, Text(source, related.Span)));
     }
 
+    // D-840 (R7-N5 B4): the per-call Origin fact is a fact of its pass, so a call node that an edit keeps and turns into an enum
+    // construction whose Origin is missing (a failure without a fact) is reported as a fresh compilation reports it: no per-call label
+    // and no related argument. The table had no reset, so the edited compilation's Check read the earlier pass's fact. An AST edit keeps
+    // the call's source span, so the row compares the code, the label and the related roles, not the text.
+    [Fact]
+    public void AnEditedCallKeepsNoPerCallOriginOfAnEarlierPass()
+    {
+        const string Declarations = "func pick(n: ref/i32) -> ref/i32 => n\ngroup G\n    public func A<T>(action: (ref/i32) -> T) -> i32 => 7\nenum E {a}\n    A(ref/i32 during a)\n    B\n";
+        const string Edited = Declarations + "func f() -> i32\n    let e = E.A($abort(\"x\"))\n    return 0\n";
+        var c = MinimalEmissionTest.Check(Declarations + "func f() -> i32\n    let e = G.A(pick)\n    return 0\n");
+        Assert.Contains("MissingOriginBinding_Kd | only a per-call Origin of pick would satisfy T | argument", Records(c));
+        var call = Call(c.Kotonoha.RootKoto, "G.A(pick)");
+        var donor = Call(ParseTestHelper.ParseSuccess(Edited).RootKoto, "E.A($abort(\"x\"))");
+        Assert.True(KotoHelper.Replace(call, call.Method, ParseTestHelper.Detach(donor.Method, new CodeBlockKoto(donor.CodeContext))));
+        Assert.True(KotoHelper.Replace(call, call.ArgumentNodes[0], ParseTestHelper.Detach(donor.ArgumentNodes[0], new CodeBlockKoto(donor.CodeContext))));
+        c.Check();
+        Assert.Equal(Records(MinimalEmissionTest.Check(Edited)), Records(c));
+
+        static string[] Records(Compilation compilation)
+            => [.. compilation.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission).Diagnostics
+                .Select(static x => $"{x.Code} | {x.Label} | {string.Join(',', x.Related?.Select(static r => r.Role) ?? [])}")];
+
+        static InvocationKoto Call(Koto root, string text) => KotoTree.Walk(root).OfType<InvocationKoto>().Single(x => x.ToString() == text);
+    }
+
     // SPEC 10.8, 10.6: a header that omits its result supplies no evidence for T, which only the waiting body could fix; that is the
     // inference-boundary record at the call, relating the anonymous function, not a per-call Origin.
     [Fact]
@@ -410,8 +461,29 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             "func h(p: ref/i32, q: ref/i32) -> ref/i32 during q => make(p, pick)\npublic func main() -> ()\n    Console.writeLine(\"\\(g()@follow)\")\n";
         var rejected = DiagnosticCorpus.Check(escape);
         Assert.False(rejected.Accepted);
-        Assert.Equal(["make(local@ref, pick)", "make(p, pick)"], rejected.Diagnostics.Select(x => Text(escape, x.Span)));
+        Assert.Equal(["pick", "pick"], rejected.Diagnostics.Select(x => Text(escape, x.Span)));
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    // SPEC 10.7, 10.8, 15.6.1 (PLAN G379 (a)): the per-call stand-in decides only a function group's or a Closure or Function Item value's
+    // argument whose own per-call input left an open region; a Function value and an anonymous function written in the call keep their
+    // fit, so no Origin fact makes the candidate inapplicable. mixc is the instantiation's row: an instantiation that leaves the
+    // argument's other per-call input open solves nothing (AFixedRequiredInputDecidesNothingElse's rule for a Closure). The fixed-input
+    // forms of an anonymous function and a Function value (anonfixed, fvfixedm, fvparam, fvret) are valid and wait for the stand-in of
+    // those kinds (G1037, the open issue PLAN G379 (a) opens).
+    [Theory]
+    [InlineData("G1037", "anonfixed", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc run()\n    let n: i32 = 6\n    let r = make(n@ref, func (k: ref/i32) -> ref/i32 => k)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("guard", "anonmake", "func make<T>(action: (ref/i32) -> T) -> i32 => 7\nfunc run()\n    let m = make(func (k: ref/i32) -> ref/i32 => k)\n", "UnprovenOriginContract_Kd: let m = make(func (k: ref/i32) -> ref/i32 => k)")]
+    [InlineData("G1037", "fvfixedm", Pick + FixedMake + "func run()\n    let n: i32 = 6\n    let fv: (ref/i32) -> ref/i32 = pick\n    let r = make(n@ref, fv@move)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("G1037", "fvparam", FixedMake + "func use(fv: (ref/i32) -> ref/i32) -> i32\n    let n: i32 = 6\n    let r = make(n@ref, fv@move)\n    return r@follow\n", "", Explicit = true)]
+    [InlineData("G1037", "fvret", Pick + "func get() -> (ref/i32) -> ref/i32 => pick\n" + FixedMake + "func run()\n    let n: i32 = 6\n    let r = make(n@ref, get())\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("guard", "fvmakem", Pick + "func make<T>(action: (ref/i32) -> T) -> i32 => 7\nfunc run()\n    let fv: (ref/i32) -> ref/i32 = pick\n    let m = make(fv@move)\n", "Unsupported_Kd: let m = make(fv@move)")]
+    [InlineData("guard", "fvsamem", Pick + "func same<T>(action: (T) -> T) -> i32 => 7\nfunc run()\n    let fv: (ref/i32) -> ref/i32 = pick\n    let m = same(fv@move)\n", "")]
+    [InlineData("guard", "mixc", MixedMake + "    let c = func (a: ref/i32, b: ref/i32) -> ref/i32 => a\n    let r = make(n@ref, c)\n", "MissingOriginBinding_Kd: let r = make(n@ref, c)")]
+    [InlineData("guard", "mixcv", MixedMake + "    let c = func (a: ref/i32, b: ref/i32) -> ref/i32 during a => a\n    let r = make(n@ref, c)\n", "")]
+    public void APerCallStandInDecidesOnlyItsOwnArguments(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 23.1: the record and its related argument reach the CLI, the language server and JSON.
     [Fact]
@@ -453,10 +525,13 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var call = body.Trim().Split('\n')[0][8..];
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), call), (error.Code, Text(source, error.Span)));
 
-        // DECISIONS BU-86: the record carries the judgment that left the candidate pending, the argument and the slot.
-        Assert.Equal("The result of c over its environment is no evidence for T", error.Note);
-        var argument = Assert.Single(error.Related!);
-        Assert.Equal(("argument", call[5..^1]), (argument.Role, Text(source, argument.Span)));
+        // DECISIONS BU-86 (amended by R7-E3 E3b-2): the record relates the judgment that left the candidate pending, the argument and the
+        // slot's Type parameter; it has no Note.
+        Assert.Null(error.Note);
+        Assert.Collection(
+            error.Related!,
+            argument => Assert.Equal(("argument", call[5..^1]), (argument.Role, Text(source, argument.Span))),
+            slot => Assert.Equal(("declaration", "T"), (slot.Role, Text(source, slot.Span))));
 
         var valid = "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\npublic func main() -> ()\n    var x: i32 = 5\n    let r = x@ref\n    let c = func [r] () => r\n    let s = make(c@ref)\n    x = 6\n    Console.writeLine(\"\\(s@follow)\")\n";
         var conflict = Assert.Single(DiagnosticCorpus.Check(valid).Diagnostics);
@@ -466,7 +541,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 
     // DECISIONS BU-86: a result whose callee Origin no argument substitutes (`.None` is no evidence for s) no longer leaves the candidate
     // Pending: s is a call region (SPEC 15.6.4 step 1; DECISIONS BU-104's twelfth-amendment paragraph), so the record is the Callable
-    // Constraint's own, with the call's Note and the Constraint related, and still carries no environment judgment.
+    // Constraint's own, with the call's Note and the Constraint and the called declaration related (R7-E2 E2-5b, M4: a location the record
+    // names is shown), and still carries no environment judgment.
     [Fact]
     public void AnUnsubstitutedResultOriginCarriesNoEnvironmentJudgment()
     {
@@ -475,8 +551,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(
             (nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", "Call make requires F is Callable<() -> T>; this condition cannot be proven under the supplied bindings"),
             (error.Code, Text(source, error.Span), error.Note));
-        var constraint = Assert.Single(error.Related!);
-        Assert.Equal(("constraint", "F is Callable<() -> T>"), (constraint.Role, Text(source, constraint.Span)));
+        Assert.Equal(["constraint", "declaration"], error.Related!.Select(static x => x.Role));
+        Assert.Equal(("F is Callable<() -> T>", "make"), (Text(source, error.Related![0].Span), error.Related![1].Label));
     }
 
     // DECISIONS BU-86 (2026-11-03): the environment judgment decides only for a slot that no evidence binds (SPEC 10.8). Once another
@@ -531,9 +607,11 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             (overload ? "func make<F, G>(" + closures + ", t: i32, v: i64) -> i32\n    return 2\n" : string.Empty) + EnvironmentClosure +
             "    let w: Array<i32> = [1]\n    let e = func [w@move] () => w@ref\n    let n: i32 = 1\n    let r = make(" + arguments + ", n, 2)\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(
-            (nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(" + arguments + ", n, 2)", "The result of e over its environment is no evidence for U"),
-            (error.Code, Text(source, error.Span), error.Note));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(" + arguments + ", n, 2)"), (error.Code, Text(source, error.Span)));
+        Assert.Collection(
+            error.Related!,
+            argument => Assert.Equal(("argument", "e@ref"), (argument.Role, Text(source, argument.Span))),
+            slot => Assert.Equal(("declaration", "U"), (slot.Role, Text(source, slot.Span))));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -623,6 +701,17 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("guard", "gt1n", ItemDeclarations + "    return g<(i64) -> bool>(twice)\n", "*: return g<(i64) -> bool>(twice) | ...")]
     [InlineData("guard", "gt2n", ItemDeclarations + "    return g<(i64) -> bool>(if c1 => twice else => twice)\n", "*: return g<(i64) -> bool>(if c1 => twice else => twice) | ...")]
     public void AnItemIsErasedAtASlotAnExplicitTypeArgumentFixes(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.5.3, 10.8, 10.3, 10.2 (PLAN G356 it1, R7-P1): a lone non-generic Item needs no S, so it is independently typable and binds T
+    // to its Function Item Type; the expected result fills no bound slot, and the declaration erases the Item Type (10.2's erasure row).
+    // No existing row pins it1's form.
+    [Theory]
+    [InlineData("I3", "it1", ItemIdentity + "    let v: (i64) -> i64 = identity(twice)\n    _ = v(1)\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "it1i", ItemIdentity + "    let v = identity(twice)\n    _ = v(1)\n    return 0\n", "")]
+    [InlineData("guard", "it1d", ItemIdentity + "    let v: (i64) -> i64 = twice\n    _ = v(1)\n    return 0\n", "")]
+    [InlineData("guard", "it1n", ItemIdentity + "    let v: (i64) -> bool = identity(twice)\n    return 0\n", "*: let v: (i64) -> bool = identity(twice) | ...")]
+    public void AnItemArgumentKeepsItsItemTypeAndTheExpectedResultErasesIt(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

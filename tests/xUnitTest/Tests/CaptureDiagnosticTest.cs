@@ -32,6 +32,10 @@ public class CaptureDiagnosticTest
     // A method whose own premise validates the projection it captures; the capture is Unsupported for its own reason.
     private const string ValidatedCapture = "    public func good(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        T is Iter<i32>\n        let c = func [t@move] () -> () => ()\n        return";
 
+    // A function whose parameter x, of a pair target under an identity premise, a capture entry holds only as a located limit (SPEC
+    // 23.1.1; Captures' interim row (2), PLAN G170; ConditionalCaptureTest's premise-target row with t named x).
+    private const string PremiseTarget = "func f<s/T, r/U>(m: s/T, n: r/U, x: T, w: ref/i32 during a) -> i32\n    s is owner or ref\n    r is owner or ref\n    T is r/i32 during a\n";
+
     // SPEC 7.7.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
     [Theory]
@@ -49,8 +53,8 @@ public class CaptureDiagnosticTest
         Assert.Equal(("declaration", "capture entry", source.IndexOf("func [", StringComparison.Ordinal) + 6), (related.Role, related.Label, related.Span!.Value.Start));
     }
 
-    // PLAN G765: a list's repeats are rows reused between passes, so a warm rebind of a list that repeats an entry or a parameter
-    // allocates nothing (SPEC 7.7.2).
+    // PLAN G765: a list's repeats are records whose facts the report keeps in reused storage, so a warm rebind of a list that repeats
+    // an entry or a parameter allocates nothing (SPEC 7.7.2).
     [Theory]
     [Trait("Purpose", "Allocation")]
     [InlineData("public func main() -> ()\n    let x: i32 = 1\n    let g = func [x, x] () => x\n    require g() == 1 else => $abort(\"g\")\n")]
@@ -123,6 +127,28 @@ public class CaptureDiagnosticTest
         var alone = Assert.Single(DiagnosticCorpus.Check(source.Remove(repeat - 2, name.Length + 2)).Diagnostics);
         Assert.Equal((code, located.Start, output.Diagnostics[0].Note), (alone.Code, alone.Span!.Value.Start, alone.Note));
         Assert.Empty(DiagnosticCorpus.Check("let x: i32 = 1\nlet y: i32 = 2\nlet h = func [x, y] () => x + y\nrequire h() == 3 else => $abort(\"h\")").Diagnostics);
+    }
+
+    // SPEC 7.7.2, 23.1.1, 23.1.2 (PLAN G1129): a repeated name, or a parameter that repeats an entry, is its own record beside another
+    // entry's located limit, in either order of the entries (the limit took the Closure's one slot first and hid the repeat). The limit
+    // is x's interim row (2) (PremiseTarget, F ruling 32; a pair-layer Parameter is captured and reaches none); a body reads k in its own
+    // statement and adds only the filed row's `x + 0`, so no failure the rows do not test (F ruling 33).
+    [Theory]
+    [InlineData("    let k: i32 = 1\n    var g = func [x, k, k] () -> i32 => x + 0\n    return g()\n", "[x, k, ", "func [x, ")]
+    [InlineData("    let k: i32 = 1\n    var g = func [x, k] (k: i32) -> i32\n        _ = k\n        return x + 0\n    return g(1)\n", "] (", "func [x, ")]
+    [InlineData("    let k: i32 = 1\n    var g = func [k, x, k] () -> i32\n        _ = k\n        return x + 0\n    return g()\n", "[k, x, ", "func [")]
+    public void ARepeatStandsBesideAnEntrysLimit(string body, string beforeRepeat, string beforeEntry)
+    {
+        var source = PremiseTarget + body + "public func main() -> ()\n    Console.writeLine(\"p\")\n";
+        var output = DiagnosticCorpus.Check(source);
+        Assert.Equal(
+            [(nameof(DiagnosticCode.Unsupported_Kd), "x"), (nameof(DiagnosticCode.DuplicateBinding_Kd), "k")],
+            output.Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span!.Value.Length))).ToArray());
+        var repeat = output.Diagnostics[1];
+        Assert.Equal(source.IndexOf(beforeRepeat, StringComparison.Ordinal) + beforeRepeat.Length, repeat.Span!.Value.Start);
+        Assert.Equal("'k' is declared again", repeat.Label);
+        var related = Assert.Single(repeat.Related!);
+        Assert.Equal(("declaration", "capture entry", source.IndexOf(beforeEntry, StringComparison.Ordinal) + beforeEntry.Length), (related.Role, related.Label, related.Span!.Value.Start));
     }
 
     // The entry's record and the repeat reach the command rendering and both language-server placements as two records.
@@ -270,16 +296,16 @@ public class CaptureDiagnosticTest
         Assert.Equal(note, error.Note);
     }
 
-    // SPEC 10.5, 7.7.4: erasure receiver conditions are checked at the argument after selection, without a Callable Constraint.
+    // SPEC 7.7.4, 10.1, 10.2 (G379 (a) Revision 3): an erasure's receiver condition decides its row, so an Exclusive-receiver Closure
+    // leaves the lone candidate inapplicable: NoApplicableOverload_Kd at the call, without a Callable Constraint.
     [Fact]
-    public void ACommonFunctionReceiverFailureNamesTheConvertedArgument()
+    public void ACommonFunctionReceiverFailureLeavesTheLoneCandidateInapplicable()
     {
         const string Source = "func pass(f: () -> i32) -> i32 => f()\n" + Count + "Console.writeLine(\"\\(pass(count@move))\")";
         var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
-        Assert.Equal("count@move", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        Assert.Contains("Exclusive call", error.Note, StringComparison.Ordinal);
-        Assert.DoesNotContain("Callable Constraint", error.Note!, StringComparison.Ordinal);
+        Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), error.Code);
+        Assert.Equal("pass(count@move)", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.DoesNotContain("Callable Constraint", error.Note ?? string.Empty, StringComparison.Ordinal);
     }
 
     // The receivers reach the command rendering and both language-server placements.

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -12,16 +13,22 @@ namespace Kimi.Compiler;
 //   in the use-site context, its outer arguments from its path or the environment (9.7.1), its Origins, and the completion of its syntax.
 // - Inputs: the reference's syntax, the declaration its lookup selected, the use-site scope. Outputs: the bound reference (the declaration
 //   itself when it has no parameters, or for its own parameters inside it), each level completed with it; null after a located failure.
-// - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax. Its callers: that path, internal
+// - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax; a reference the library layer's
+//   part holds is complete (State 2) from the library's seal and never rebuilt (PLAN G949 Stage 2 U4: the internal-invariant form). Its callers: that path, internal
 //   Type substitution, a compiler-made reference of a library Contract (arithmetic operators), and readers of a formed reference
-//   (ContractReferenceOf).
+//   (ContractReferenceOf). ContractReferenceType is its inverse: a symbol's reference Type, a declaration's own reference its SelfType.
 // - Prohibitions: no other member forms a Contract's Constructed Type from Type-argument syntax. The path reads no subject, substitutes
-//   nothing and answers no declaration query; queries by declaration (SatisfiesDeclaration, ConformanceByDeclaration, IsRefinement over a
+//   nothing and answers no declaration query; queries by declaration (SatisfiesDeclaration, SelectConformance, IsRefinement over a
 //   library Contract) take symbols the compiler holds, never a written Contract.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
+
+    // CompleteEffectBounds' scratch: the running part's entries, copied before EnsureEffectBounds may add one; empty between uses.
+    private readonly List<BindingSymbol> boundScratch = new();
+
+    // The running pass's bound Contract references (PassPart.BoundContracts, EnterPass); a lookup finds the layer's part first.
+    private Dictionary<BoundType, BindingSymbol> boundContracts;
 
     // SPEC 8.6.1, 9.7.1 (R7-N1e2-1R): a Contract use names its declaration, the selection its lookup published (its Symbols entry, written
     // once, never a bound reference), and the bound reference its Type arguments formed is its Type (the Meaning column). This writes
@@ -135,28 +142,58 @@ public sealed partial class Binding
         }
 
         var reference = this.BindContainerReference(syntax, declaration, scope, context, own is null ? [] : (BoundType[])own.Components);
-        reference = reference is null ? null : this.CompleteOrigins(reference, syntax as TypeSemanticsKoto, syntax, scope, context);
-        if (reference is null || reference.OriginArguments.Count != declaration.Schema.Origins.Count || reference.OriginArguments.Contains(null!))
+        if (reference is null)
         {
+            // Transitional, R7-E5 (E4c, B1, n2): a null reference reads BindContainerReference's record (its arity, its qualifier's
+            // dependence, or a Core qualifier's Ambiguous at the member path, ContainerReferences.cs:319), so it keeps `Fail` until
+            // R7-E5's per-problem inputs.
             this.Fail(syntax, BindingFailure.InvalidOrigin);
             return null;
         }
 
-        // The levels between a root-name form and its application resolve with the reference, as a parent's do (BuildContract).
+        // SPEC 15.3.2: a Contract declares no Origin slots, so CompleteOrigins returns null only after recording at `syntax` itself
+        // (a binding set, TypeOrigins 109; B-4).
+        reference = this.CompleteOrigins(reference, syntax as TypeSemanticsKoto, syntax, scope, context);
+        if (reference is null)
+        {
+            return null;
+        }
+
+        if (reference.OriginArguments.Count != declaration.Schema.Origins.Count || reference.OriginArguments.Contains(null!))
+        {
+            this.Record(syntax, BindingFailure.InvalidOrigin, []);
+            return null;
+        }
+
+        // The levels between a root-name form and its application resolve with the reference, as a parent's do (BuildContract). Each
+        // written level forms the reference (FormedTypeRows, PLAN G1278: this is a written Contract reference's one path, so its formation
+        // site), as BindType's completion forms a written Type occurrence.
         for (var level = generic is not null && unwrapped is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : null; level is not null; level = ReferenceEquals(level, generic) ? null : ((TypeSemanticsKoto)level).Type)
         {
             level.BoundSymbol = declaration;
+            FormedTypeRows.Add(level, this.formingBody);
             Complete(level, reference);
         }
 
         if (!ReferenceEquals(unwrapped, syntax))
         {
+            FormedTypeRows.Add(unwrapped, this.formingBody);
             Complete(unwrapped, reference);
         }
 
+        FormedTypeRows.Add(syntax, this.formingBody);
         Complete(syntax, reference);
         return this.BoundContractReference(reference);
     }
+
+    // SPEC 8.4.1, 8.6.1: BoundContractReference's inverse, the reference Type a Contract symbol stands for: a bound reference's Type, or a
+    // declaration symbol's SelfType, the declaration applied to its own parameters (`R<A>` written in R, which BoundContractReference
+    // collapses to the symbol). Every reader that instantiates or substitutes a symbol's reference reads it, so the own reference is bound
+    // like any other (InstantiatedContract, SubstituteConstraint, ProjectionContract). Precondition: `contract` is a bound reference (its
+    // Type set) or a declaration symbol with a schema, which SelfType reads; a caller that may hold another symbol tests it first
+    // (SubstituteConstraint and InstantiatedContract test its Type, the expansion walk its nodes).
+    private BoundType ContractReferenceType(BindingSymbol contract)
+        => IsBoundContractReference(contract) ? contract.Type! : this.SelfType(contract);
 
     private BindingSymbol BoundContractReference(BoundType reference)
     {
@@ -165,9 +202,17 @@ public sealed partial class Binding
             return reference.Symbol;
         }
 
-        if (this.boundContracts.TryGetValue(reference, out var cached) && cached.Contract!.State == 2)
+        var found = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.BoundContracts, this.boundContracts), reference, out var cached);
+        if (found is not null && cached!.Contract!.State == 2)
         {
             return cached;
+        }
+
+        // PLAN G949 Stage 2 U4: a frozen entry is complete (State 2) at the seal and never reset (ResetContracts resets the running part
+        // only), so a rebuild in place of one is a broken contract.
+        if (ReferenceEquals(found, this.Library.Layer.Part.BoundContracts) && this.Library.Frozen)
+        {
+            throw new InvalidOperationException("A frozen bound Contract reference is incomplete after the library's seal (InternalInvariant; PLAN G949 Stage 2 U4).");
         }
 
         var declaration = reference.Symbol!;
@@ -247,6 +292,34 @@ public sealed partial class Binding
         return bound;
     }
 
+    // SPEC 8.11.1 (PLAN G949 S1-1, E3 and w1 (i)): every Contract of the running pass has its effect bounds: each Contract its modules
+    // declare (the `symbols` family's rows, those no node of the pass holds included, such as the library's `#Lang` markers, which
+    // PrepareEffectBounds' shapes never reach) and every bound Contract reference of the running part, the references its bounds
+    // substitute included (EnsureEffectBounds may add one), so no later pass computes the effect bounds of a Contract another pass made
+    // (census O5, O15).
+    private void CompleteEffectBounds()
+    {
+        foreach (var symbol in this.symbols.Values.In(this.pass))
+        {
+            if (symbol.Contract is { } contract)
+            {
+                this.EnsureEffectBounds(contract);
+            }
+        }
+
+        for (var done = -1; done != this.boundContracts.Count;)
+        {
+            done = this.boundContracts.Count;
+            this.boundScratch.AddRange(this.boundContracts.Values);
+            for (var i = 0; i < this.boundScratch.Count; i++)
+            {
+                this.EnsureEffectBounds(this.boundScratch[i].Contract!);
+            }
+
+            this.boundScratch.Clear();
+        }
+    }
+
     private BindingSymbol SubstituteRequirementContract(BindingSymbol contract, BoundType reference)
         => IsBoundContractReference(contract) && this.StoredType(contract.Type!, reference) is { } substituted && !ReferenceEquals(substituted, contract.Type)
             ? this.BoundContractReference(substituted) : contract;
@@ -301,17 +374,31 @@ public sealed partial class Binding
     // nothing, so one scratch map serves every check (a warm bind allocates none).
     private bool MayUnify(BoundType left, BoundType right, FunctionKoto? leftBinder = null, FunctionKoto? rightBinder = null, bool shared = false)
     {
+        Debug.Assert(leftBinder is null || !ReferenceEquals(leftBinder, rightBinder), "MayUnify's two binders differ when both are set: a side names one function.");
         this.collisionSubstitutions.Clear();
         this.collisionLeft = leftBinder;
         this.collisionRight = rightBinder;
         this.collisionShared = shared;
         this.shapeSharedSlots.Clear();
-        return this.UnifyTypes(new(left, leftBinder), new(right, rightBinder));
+        return this.UnifyTypes(new(left, leftBinder is null ? CollisionSide.None : CollisionSide.Left), new(right, rightBinder is null ? CollisionSide.None : CollisionSide.Right));
     }
 
     // A candidate identity qualifies only its inferred variables; fixed enclosing variables keep
     // one identity. No synthetic Type tree or declaration is needed for candidate independence.
-    private readonly record struct CollisionTerm(BoundType Type, FunctionKoto? Binder);
+    private readonly record struct CollisionTerm(BoundType Type, CollisionSide Side);
+
+    // A term's candidate by its side of the unification (R7-N5 B8; DECISIONS BU-220): the two functions are MayUnify's (CollisionBinder),
+    // distinct whenever both are set (an overload pair's), so a side names exactly the function whose inferred variables the term's are;
+    // None: no candidate (no binder, or a variable not the binder's own).
+    private enum CollisionSide : byte
+    {
+        None,
+        Left,
+        Right,
+    }
+
+    private FunctionKoto? CollisionBinder(CollisionSide side)
+        => side == CollisionSide.Left ? this.collisionLeft : side == CollisionSide.Right ? this.collisionRight : null;
 
     private CollisionTerm NormalizeCollisionTerm(CollisionTerm term)
     {
@@ -320,10 +407,10 @@ public sealed partial class Binding
             return term;
         }
 
-        if (term.Binder is not { } binder || term.Type.Symbol is not { } symbol ||
+        if (this.CollisionBinder(term.Side) is not { } binder || term.Type.Symbol is not { } symbol ||
             !ReferenceEquals(symbol.Scope.Owner, CallSlotOwner(binder)) || symbol.Slot >= CallOwnSlots(binder).Count)
         {
-            return new(term.Type, null);
+            return new(term.Type, CollisionSide.None);
         }
 
         if (this.collisionShared && this.collisionLeft is { } left && this.collisionRight is { } right && PermittedSlotSharing(left, right))
@@ -333,7 +420,7 @@ public sealed partial class Binding
                 this.shapeSharedSlots.Add(symbol.Slot);
             }
 
-            return new(CallOwnSlots(left)[symbol.Slot].BoundSymbol!.WholeType!, left);
+            return new(CallOwnSlots(left)[symbol.Slot].BoundSymbol!.WholeType!, CollisionSide.Left);
         }
 
         return term;
@@ -360,7 +447,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < value.Type.Components.Count; i++)
         {
-            if (this.ContainsVariable(new(value.Type.Components[i], value.Binder), variable))
+            if (this.ContainsVariable(new(value.Type.Components[i], value.Side), variable))
             {
                 return true;
             }
@@ -379,7 +466,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < value.Type.Components.Count; i++)
         {
-            if (!this.IsFreeTerm(new(value.Type.Components[i], value.Binder)))
+            if (!this.IsFreeTerm(new(value.Type.Components[i], value.Side)))
             {
                 return false;
             }
@@ -435,7 +522,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < a.Components.Count; i++)
         {
-            if (!this.UnifyTypes(new(a.Components[i], left.Binder), new(b.Components[i], right.Binder)))
+            if (!this.UnifyTypes(new(a.Components[i], left.Side), new(b.Components[i], right.Side)))
             {
                 return false;
             }

@@ -5,11 +5,22 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Owns the facts of a constraint's operand Types: whether a part of an operand names a declaration whose context failed (Invalid) or is not
-// yet resolved (Unresolved), which a proof reads before it judges the proposition (JudgeConstraintAtom, the capability requests), and
-// whether a part is an associated projection (an interned constraint's HasAssociatedProjection). Each walk visits a distinct part once
-// per query (DECISIONS BU-19). Reads binding states and their retained part causes; never binds or reports.
+// yet resolved (Unresolved), which a proof reads before it judges the proposition (JudgeConstraintAtom, the capability requests),
+// whether a part is an associated projection (an interned constraint's HasAssociatedProjection), and the parameters and projections
+// occurring in the operand Types (AbstractParts, the arithmetic direction check's seeds). Each walk visits a distinct part once per
+// query (DECISIONS BU-19). Reads binding states and their retained part causes; never binds or reports.
 public sealed partial class Binding
 {
+    // OperandContexts' answer: a part names a declaration in a failed context, one not yet resolved.
+    private const int InvalidContext = 1;
+    private const int UnresolvedContext = 2;
+
+    // The running capability request's query of clearParts and the change signal at its begin (ClearQuery); a query of 0: no request.
+    private (uint Query, int Signal) clearRequest;
+
+    /// <summary>Gets the parts OperandContexts decided in this compilation, which the scaling rows read.</summary>
+    internal int OperandContextWork { get; private set; }
+
     private static bool UnresolvedTypeDeclarationContext(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
@@ -24,17 +35,45 @@ public sealed partial class Binding
         return false;
     }
 
+    // Whether a walk's query of `table` meets a part for the first time in a state, one bit: a walk whose effect at a part depends on a
+    // small state as well keeps the visits of each state apart. A leaf is cheaper to answer again than to record.
+    private static bool FirstVisit(TypeMemo<BoundType, byte> table, BoundType part, uint query, byte state)
+    {
+        if (part.Components.Count == 0)
+        {
+            return true;
+        }
+
+        table.TryGet(part, query, out var met);
+        if ((met & state) != 0)
+        {
+            return false;
+        }
+
+        table.Set(part, query, (byte)(met | state));
+        return true;
+    }
+
     private bool InvalidDeclarationContext(Koto declaration)
         => this.InvalidDeclarationContextCause(declaration) is not null;
 
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
     // An independent failure can keep the signature valid; a failed declaration part still rejects that context.
     private Koto? InvalidDeclarationContextCause(Koto declaration)
+        => this.FailedDeclarationContext(declaration) is { } context ? this.ReadFailedDeclaration(context) : null;
+
+    // SPEC 23.1.2, 8.3.3: the read by which a check consults a failed declaration (or conditional conformance) that its outcome rests
+    // on: the check rests on the node its failure is recorded at, whose record explains the check's outcome (IsDerived), a refused
+    // premise closure's limit included (Refusal: reported once, at the declaration's first refused site), so a check reading it
+    // keeps no record of its own. A check that names the failed node as its cause directly (CompleteDependent with the struct,
+    // FailDerived through InvalidOperandContext, VerifyConformance's failedCause, InvalidEnvironment) records it in that channel, and
+    // the raw-state readers of PLAN G1026 record no cause yet.
+    private Koto? ReadFailedDeclaration(Koto declaration)
     {
-        var cause = this.FailedDeclarationContext(declaration) is { } context ? this.InvalidDeclarationCause(context) : null;
+        var cause = this.InvalidDeclarationCause(declaration);
         if (cause is not null)
         {
-            this.Consulted(cause); // SPEC 23.1.2: the check read it; its record explains the check's outcome (IsDerived).
+            this.Consulted(cause);
         }
 
         return cause;
@@ -58,7 +97,7 @@ public sealed partial class Binding
     // the declaration itself when it is left unresolved on a failure of its own (an accessor resting on a missing part).
     private Koto? InvalidCalledDeclaration(Koto node)
     {
-        for (var i = 0; CallPlan.Called(node, i) is { } called; i++)
+        for (var i = 0; CallPlan.Called(this, node, i) is { } called; i++)
         {
             if ((this.InvalidDeclarationContextCause(called) ?? (called.BindingState == BindingState.Unresolved && this.HasFailureCauses(called) ? called : null)) is { } cause)
             {
@@ -69,9 +108,19 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 23.1.2: whether a declaration is failed for the check reading it: Invalid, but not the declaration whose own validation step
+    // runs, whatever that step recorded against it (validationStep: a self-read is no failed input). Every read of a declaration's
+    // failure in a proof goes through it. Its readers (F's C2 ruling 328): InvalidDeclarationCause, the context's owner, which a leaf
+    // capability's Type reads (Capabilities' ObjectPayload and Sealed: a declaration whose own failure is its premise error keeps its
+    // context, SPEC 8.2.3, so k2n's own `Self is ObjectPayload` is judged); and the raw failure where a proof uses another declaration:
+    // a conformance's Contract (ResolveConformance's three arms; uses of a failed Contract rest on its record, RecursiveContractTest's
+    // `Missing is Copy` rows) and a called implementation or accessor (ProjectedReceiverProof; uses of a failed declaration rest).
+    private bool DeclarationFailed(Koto declaration)
+        => declaration.BindingState == BindingState.Invalid && !ReferenceEquals(declaration, this.validationStep);
+
     private Koto? InvalidDeclarationCause(Koto declaration)
     {
-        if (declaration.BindingState != BindingState.Invalid)
+        if (!this.DeclarationFailed(declaration))
         {
             return null;
         }
@@ -80,13 +129,33 @@ public sealed partial class Binding
     }
 
     // The declaration contexts a Type's parts name: whether one is in a failed context and whether one is not yet resolved, each distinct
-    // part visited once (DECISIONS BU-19).
+    // part decided once per query (DECISIONS BU-19), and once per capability request for a part found clear (ClearQuery).
     private (bool Invalid, bool Unresolved) OperandContexts(BoundType type)
     {
-        var found = (Invalid: false, Unresolved: false);
-        this.OperandContexts(type, this.visitedParts.Begin(this.storageVersion), ref found);
-        return found;
+        var found = this.OperandContexts(type, this.visitedParts.Begin(this.storageVersion), this.ClearQuery());
+        return ((found & InvalidContext) != 0, (found & UnresolvedContext) != 0);
     }
+
+    // R7-C6 a (DECISIONS BU-19 as amended): one query of clearParts spans a capability request, from the outermost request's first
+    // evaluation to its settle (BeginClearParts, EndClearParts), so a chain of works whose Types share their parts walks each part once,
+    // not once per work. Its fixed inputs are the declaration contexts' states, which change during a request only through the change
+    // signal's writer (Invalidated: Fail, FailPremise), so a moved signal begins a new query; the request binds no declaration (the
+    // engine runs after declarations are bound, capabilitiesReady) and runs inside one validation step (validationStep). Only a clear
+    // answer is kept, so a failed context is read, and consulted (ReadFailedDeclaration), at every query as before. Outside a request
+    // the query is 0: no part is kept. A request begun inside another ends both queries (the outer one walks on without the memo).
+    private uint ClearQuery()
+    {
+        if (this.clearRequest.Query != 0 && this.clearRequest.Signal != this.invalidations)
+        {
+            this.BeginClearParts();
+        }
+
+        return this.clearRequest.Query;
+    }
+
+    private void BeginClearParts() => this.clearRequest = (this.clearParts.Begin(this.storageVersion), this.invalidations);
+
+    private void EndClearParts() => this.clearRequest = default;
 
     // An atom's operand contexts: its subject's and required Type's, and its Contract's own declaration.
     private (bool Invalid, bool Unresolved) OperandContexts(BoundConstraint proposition)
@@ -110,21 +179,49 @@ public sealed partial class Binding
     private bool ContainsAssociatedProjection(BoundType? type)
         => type is { HasAbstractPart: true } && this.ProjectionPart(type, this.visitedParts.Begin(this.storageVersion));
 
-    private void OperandContexts(BoundType type, uint query, ref (bool Invalid, bool Unresolved) found)
+    // The contexts in a part's subtree (InvalidContext, UnresolvedContext): a leaf decided at each meet, a constructed part once per query
+    // (its answer kept beside the visit bit in visitedParts) and, inside a capability request, a clear one once per request (clearParts).
+    private int OperandContexts(BoundType type, uint query, uint clear)
     {
+        var constructed = type.Components.Count != 0;
+        if (constructed && clear != 0 && this.clearParts.TryGet(type, clear, out _))
+        {
+            return 0;
+        }
+
+        this.OperandContextWork++;
+        var found = 0;
         if (type.Symbol is { } symbol)
         {
-            found.Invalid |= this.InvalidDeclarationContext(symbol.Declaration);
-            found.Unresolved |= UnresolvedTypeDeclarationContext(symbol.Declaration);
+            found = (this.InvalidDeclarationContext(symbol.Declaration) ? InvalidContext : 0) |
+                (UnresolvedTypeDeclarationContext(symbol.Declaration) ? UnresolvedContext : 0);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (this.FirstVisit(type.Components[i], query))
+            var part = type.Components[i];
+            if (part.Components.Count == 0)
             {
-                this.OperandContexts(type.Components[i], query, ref found);
+                found |= this.OperandContexts(part, query, clear);
+            }
+            else if (this.visitedParts.TryGet(part, query, out var met))
+            {
+                found |= met >> 1;
+            }
+            else
+            {
+                var inner = this.OperandContexts(part, query, clear);
+                this.visitedParts.Set(part, query, (byte)(1 | (inner << 1)));
+                found |= inner;
             }
         }
+
+        if (constructed && found == 0 && clear != 0)
+        {
+            this.clearParts.Set(type, clear, 1);
+        }
+
+        return found;
     }
 
     // The Invalid node a check that could not judge a Type rests on (DECISIONS BU-75): the failed context of the first part that names one,
@@ -149,6 +246,46 @@ public sealed partial class Binding
         return null;
     }
 
+    // The parameters and projections (BoundType.IsAbstractType: a Semantics binder, the whole `s/T`, has no Contract row) occurring in a
+    // constraint's operand Types, appended to `into`: in its subject, its required Type and its Contract's arguments, at every part (a
+    // constructed Type's components, a projection's subject and Contract arguments), and in an And's, Or's or Not's operands. One query
+    // may span several constraints; each distinct part is met once in it, a leaf too (the list is the walk's answer, so a leaf is
+    // recorded rather than answered again).
+    private void AbstractParts(BoundConstraint constraint, uint query, List<BoundType> into)
+    {
+        this.AbstractParts(constraint.Subject, query, into);
+        this.AbstractParts(constraint.RequiredType, query, into);
+        this.AbstractParts(constraint.Contract?.Type, query, into);
+        if (constraint.Left is { } left)
+        {
+            this.AbstractParts(left, query, into);
+        }
+
+        if (constraint.Right is { } right)
+        {
+            this.AbstractParts(right, query, into);
+        }
+    }
+
+    private void AbstractParts(BoundType? type, uint query, List<BoundType> into)
+    {
+        if (type is not { HasAbstractPart: true } || this.visitedParts.TryGet(type, query, out _))
+        {
+            return;
+        }
+
+        this.visitedParts.Set(type, query, 1);
+        if (type.IsAbstractType)
+        {
+            into.Add(type);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.AbstractParts(type.Components[i], query, into);
+        }
+    }
+
     private bool ProjectionPart(BoundType type, uint query)
     {
         if (type.Kind == BoundTypeKind.AssociatedProjection)
@@ -168,25 +305,9 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether an existence walk's query meets a part for the first time; a leaf is cheaper to answer again than to record.
-    private bool FirstVisit(BoundType part, uint query) => this.FirstVisit(part, query, 1);
+    // Whether an existence walk's query of visitedParts meets a part for the first time.
+    private bool FirstVisit(BoundType part, uint query) => FirstVisit(this.visitedParts, part, query, 1);
 
-    // Whether a walk's query meets a part for the first time in a state, one bit: a walk whose effect at a part depends on a small state
-    // as well keeps the visits of each state apart (visitedParts).
-    private bool FirstVisit(BoundType part, uint query, byte state)
-    {
-        if (part.Components.Count == 0)
-        {
-            return true;
-        }
-
-        this.visitedParts.TryGet(part, query, out var met);
-        if ((met & state) != 0)
-        {
-            return false;
-        }
-
-        this.visitedParts.Set(part, query, (byte)(met | state));
-        return true;
-    }
+    // The same in a state, one bit of visitedParts.
+    private bool FirstVisit(BoundType part, uint query, byte state) => FirstVisit(this.visitedParts, part, query, state);
 }

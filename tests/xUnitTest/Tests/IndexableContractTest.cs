@@ -15,6 +15,12 @@ public class IndexableContractTest
         "    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
         "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self\n        self.uniqCalls += 1\n        return self.first@uniq\n";
 
+    // Counting with a public `first`, which a nested selection's program reads (`w.first.uniqCalls`).
+    private const string CountingFirst = "struct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    public var first: T\n" +
+        "    public var uniqCalls: i32 = 0\n    public init(first: T) => self.first = first@move\n" +
+        "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self\n        self.uniqCalls += 1\n        return self.first@uniq\n";
+
     private const string SharedSubject = Counting + "func f(v: uniq/Two<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    var total: i32 = 0\n    for x in v[0].0\n" +
         "        total += x\n    return total\nvar items: Array<i32> = [1, 2]\nvar r = items@ref\nvar t = (r@uniq, 1)\nvar two = Two.init(t@move)\nlet n = f(two@uniq)\n" +
         "require two.uniqCalls == 0 else => $abort(\"indexUniq ran\")\n";
@@ -97,7 +103,7 @@ public class IndexableContractTest
     [InlineData("func f<S>(items: uniq/S) -> uniq/S.Element during items\n    S is Indexable<isize>\n    return items[0]@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Shared + FirstUniq + "var view = View.init(1)\nfirstUniq(view@uniq)@follow = 2", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("func firstKeyed<S>(items: ref/S) -> ref/S.Element during items\n    S is Indexable<i32>\n    return items[0]@ref\nlet values: Array<i32> = [1, 2]\nlet first = firstKeyed(values)", DiagnosticCode.NoApplicableOverload_Kd)]
-    [InlineData("struct Bare\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("struct Bare\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value", DiagnosticCode.ExclusiveBorrowRequired_Kd)]
     [InlineData("struct Two\n    Self is UniqIndexable<isize>\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i64 during self => $abort(\"two\")", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\nlet n: i32 = 7\npair.indexUniq(0) = n", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(ThroughTwoLayers + "let x: i32 = rr[0]", DiagnosticCode.Unsupported_Kd)]
@@ -110,8 +116,8 @@ public class IndexableContractTest
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Binding.Issues, x => x.Code == code);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c)); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
+        Assert.Contains(CompilationTestHelper.PublishedErrors(c), x => x.Code == code.ToString());
     }
 
     // SPEC 4.7.1, 8.5.2 (PLAN G715): Array conforms to UniqIndexable<isize>, so a projection through it or its parent names the element
@@ -149,9 +155,9 @@ public class IndexableContractTest
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.index(0) -= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) |= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
-    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
-    [InlineData("var values: Array<i32> = [1, 2]\nvar view = values.sliceUniq()\nview.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
-    [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) = 5", "InvalidAssignment_Kd,TypeMismatch_Kd")]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\npair.indexUniq(0) = 5", "InvalidAssignment_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvar view = values.sliceUniq()\nview.indexUniq(0) = 5", "InvalidAssignment_Kd")]
+    [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) = 5", "InvalidAssignment_Kd")]
     [InlineData("var values: Array<i32> = [1, 2]\nvalues.indexUniq(0) += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("var values: Array<i32> = [1, 2]\nvalues.index(0) += nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
     [InlineData("var names: Dictionary<i64, i32> = [:]\nnames.indexUniq(1) *= nope", "InvalidAssignment_Kd,UnresolvedBinding_Kd")]
@@ -294,13 +300,17 @@ public class IndexableContractTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
+    // SPEC 4.7.1: an unfitted literal key could fit both keys, and a string key fits neither: one AmbiguousBinding_Kd at the index
+    // (Binding.Indexers TryBindIndexer).
     [Theory]
-    [InlineData("let table = Table.init(3, 4)\nlet a: i32 = table[0]")]
-    [InlineData("let table = Table.init(3, 4)\nlet s: string = \"x\"\nlet a: i32 = table[s]")]
-    public void AKeyThatSelectsNoSingleConformanceIsRejected(string use)
+    [InlineData("let table = Table.init(3, 4)\nlet a: i32 = table[0]", "table[0]")]
+    [InlineData("let table = Table.init(3, 4)\nlet s: string = \"x\"\nlet a: i32 = table[s]", "table[s]")]
+    public void AKeyThatSelectsNoSingleConformanceIsRejected(string use, string at)
     {
         var c = MinimalEmissionTest.Analyze(TwoKeys + use);
         Assert.False(c.Binding.Result.IsComplete);
+        var record = Assert.Single(DiagnosticCorpus.Check(TwoKeys + use).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (record.Code, (TwoKeys + use).Substring(record.Span!.Value.Start, record.Span.Value.Length)));
     }
 
     [Fact]
@@ -409,5 +419,434 @@ public class IndexableContractTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var uniqIndexable = c.Library.GetSymbol(KimiDeclarationId.UniqIndexable)!;
         Assert.Contains(uniqIndexable.Contract!.Ancestors, x => ReferenceEquals(x.Declaration, c.Library.GetSymbol(KimiDeclarationId.Indexable)!.Declaration) && !ReferenceEquals(x, c.Library.GetSymbol(KimiDeclarationId.Indexable)));
+    }
+
+    // R7 plan Z23 (SPEC 8.14, 8.15.2, 4.7.1 step 3, 4.7.4, 7.2.3): a standing bare take of a pair-layer element selects index in the
+    // views where it Copies and indexUniq where it Reborrows, through a case branch (MirTerminatorKind.CaseSwitch); each s=ref program
+    // ran indexUniq on dev 5dd6543e6 (aborted or printed indexUniq), each control keeps its indexUniq calls.
+    // a1: `let x = v[0]`, s=ref, index only.
+    [Fact]
+    public void ASelectionByCaseLetRef()
+    {
+        const string Source = """
+            func f<s/T>(v: uniq/Two<s/T>) -> ()
+                s is ref or uniq
+                let x = v[0]
+                _ = x
+            var n: i32 = 1
+            var two = Two.init(n@ref)
+            f(two@uniq)
+            require two.uniqCalls == 0 else => $abort("indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseLetRef", Counting + Source, "ok\n");
+    }
+
+    // a4: a1's s=uniq instance, indexUniq once.
+    [Fact]
+    public void ASelectionByCaseLetUniq()
+    {
+        const string Source = """
+            func f<s/T>(v: uniq/Two<s/T>) -> ()
+                s is ref or uniq
+                let x = v[0]
+                _ = x
+            var n: i32 = 1
+            var two = Two.init(n@uniq)
+            f(two@uniq)
+            require two.uniqCalls == 1 else => $abort("no indexUniq")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseLetUniq", Counting + Source, "ok\n");
+    }
+
+    // n5: `w[0][0]`, s=ref, index at both levels.
+    [Fact]
+    public void ASelectionByCaseNestedRef()
+    {
+        const string Source = """
+            func f<s/T>(w: uniq/Two<Two<s/T>>) -> ()
+                s is ref or uniq
+                let x = w[0][0]
+                _ = x
+            var n: i32 = 1
+            var two = Two.init(Two.init(n@ref))
+            f(two@uniq)
+            require two.uniqCalls == 0 else => $abort("outer indexUniq ran")
+            require two.first.uniqCalls == 0 else => $abort("inner indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseNestedRef", CountingFirst + Source, "ok\n");
+    }
+
+    // m3: a Closure body's bare take through a capture, s=ref.
+    [Fact]
+    public void ASelectionByCaseCaptureRef()
+    {
+        const string Source = """
+            func f<s/T>(v: uniq/Two<s/T>) -> ()
+                s is ref or uniq
+                var h = func [v] () -> ()
+                    let x = v[0]
+                    _ = x
+                h()
+            var n: i32 = 1
+            var two = Two.init(n@ref)
+            f(two@uniq)
+            require two.uniqCalls == 0 else => $abort("indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseCaptureRef", Counting + Source, "ok\n");
+    }
+
+    // m6: two takes of two binders in one Tuple, (ref, ref).
+    [Fact]
+    public void ASelectionByCaseTwoDeciders()
+    {
+        const string Source = """
+            func f<s/T, r/U>(v: uniq/Two<s/T>, w: uniq/Two<r/U>) -> ()
+                s is ref or uniq
+                r is ref or uniq
+                let t = (v[0], w[0])
+                _ = t@move
+            var n: i32 = 1
+            var m: i32 = 2
+            var a = Two.init(n@ref)
+            var b = Two.init(m@ref)
+            f(a@uniq, b@uniq)
+            require a.uniqCalls == 0 else => $abort("a indexUniq ran")
+            require b.uniqCalls == 0 else => $abort("b indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseTwoDeciders", Counting + Source, "ok\n");
+    }
+
+    // r1: the key's take of another binder owns its frame, (ref, ref).
+    [Fact]
+    public void ASelectionByCaseKeyOtherDecider()
+    {
+        const string Source = """
+            func pick<X>(value: X) -> isize => 0
+            func f<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>) -> ()
+                s is ref or uniq
+                r is ref or uniq
+                let x = w[0][pick(u[0])]
+                _ = x
+            var n: i32 = 1
+            var m: i32 = 2
+            var w = Two.init(Two.init(n@ref))
+            var u = Two.init(m@ref)
+            f(w@uniq, u@uniq)
+            require w.uniqCalls == 0 else => $abort("outer")
+            require w.first.uniqCalls == 0 else => $abort("inner")
+            require u.uniqCalls == 0 else => $abort("key")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseKeyOtherDecider", CountingFirst + Source, "ok\n");
+    }
+
+    // r1m: r1 at (uniq, ref).
+    [Fact]
+    public void ASelectionByCaseKeyOtherDeciderMixed()
+    {
+        const string Source = """
+            func pick<X>(value: X) -> isize => 0
+            func f<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>) -> ()
+                s is ref or uniq
+                r is ref or uniq
+                let x = w[0][pick(u[0])]
+                _ = x
+            var n: i32 = 1
+            var m: i32 = 2
+            var w = Two.init(Two.init(n@uniq))
+            var u = Two.init(m@ref)
+            f(w@uniq, u@uniq)
+            require w.uniqCalls == 1 else => $abort("outer")
+            require w.first.uniqCalls == 1 else => $abort("inner")
+            require u.uniqCalls == 0 else => $abort("key")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseKeyOtherDeciderMixed", CountingFirst + Source, "ok\n");
+    }
+
+    // r2: the key's take of the same decision takes the side, s=ref.
+    [Fact]
+    public void ASelectionByCaseKeySameDecider()
+    {
+        const string Source = """
+            func pick<X>(value: X) -> isize => 0
+            func f<s/T>(w: uniq/Two<Two<s/T>>, u: uniq/Two<s/T>) -> ()
+                s is ref or uniq
+                let x = w[0][pick(u[0])]
+                _ = x
+            var n: i32 = 1
+            var m: i32 = 2
+            var w = Two.init(Two.init(n@ref))
+            var u = Two.init(m@ref)
+            f(w@uniq, u@uniq)
+            require w.uniqCalls == 0 else => $abort("outer")
+            require w.first.uniqCalls == 0 else => $abort("inner")
+            require u.uniqCalls == 0 else => $abort("key")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseKeySameDecider", CountingFirst + Source, "ok\n");
+    }
+
+    // k1: a capture entry's take in the outer key opens nothing, s=ref.
+    [Fact]
+    public void ASelectionByCaseCaptureInKey()
+    {
+        const string Source = """
+            func pick<X>(value: X) -> isize => 0
+            func f<s/T>(w: uniq/Two<Two<s/T>>, p: s/T) -> ()
+                s is ref or uniq
+                let x = w[0][pick(func [p] () -> isize => pick(p))]
+                _ = x
+            var n: i32 = 1
+            var m: i32 = 2
+            var w = Two.init(Two.init(n@ref))
+            f(w@uniq, m@ref)
+            require w.uniqCalls == 0 else => $abort("outer")
+            require w.first.uniqCalls == 0 else => $abort("inner")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseCaptureInKey", CountingFirst + Source, "ok\n");
+    }
+
+    // d2: a default's copy decided by its case-free decider, ref.
+    [Fact]
+    public void ASelectionByCaseDefaultRef()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    Console.writeLine("indexUniq")
+                    return self.first@uniq
+            func pick<X>(value: X) -> isize => 0
+            func g<s/T>(v: s/T, k: isize = pick(Two.init(5@s)[0])) -> isize
+                s is ref or uniq
+                return k
+            var n: i32 = 1
+            _ = g(n@ref)
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseDefaultRef", Source, "ok\n");
+    }
+
+    // d2u: d2 at uniq.
+    [Fact]
+    public void ASelectionByCaseDefaultUniq()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    Console.writeLine("indexUniq")
+                    return self.first@uniq
+            func pick<X>(value: X) -> isize => 0
+            func g<s/T>(v: s/T, k: isize = pick(Two.init(5@s)[0])) -> isize
+                s is ref or uniq
+                return k
+            var n: i32 = 1
+            _ = g(n@uniq)
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseDefaultUniq", Source, "indexUniq\nok\n");
+    }
+
+    // d2g: d2's copy in a generic caller, r=ref.
+    [Fact]
+    public void ASelectionByCaseDefaultGeneric()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    Console.writeLine("indexUniq")
+                    return self.first@uniq
+            func pick<X>(value: X) -> isize => 0
+            func g<s/T>(v: s/T, k: isize = pick(Two.init(5@s)[0])) -> isize
+                s is ref or uniq
+                return k
+            func h<r/U>(v: r/U) -> isize
+                r is ref or uniq
+                return g(v)
+            var n: i32 = 1
+            _ = h(n@ref)
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseDefaultGeneric", Source, "ok\n");
+    }
+
+    // d3: d2's copy on each side of an open frame, s=ref.
+    [Fact]
+    public void ASelectionByCaseDefaultOpenSide()
+    {
+        const string Source = """
+            struct Loud<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    Console.writeLine("loudUniq")
+                    return self.first@uniq
+            func pick<X>(value: X) -> isize => 0
+            func g<s/T>(v: s/T, k: isize = pick(Loud.init(5@s)[0])) -> isize
+                s is ref or uniq
+                return k
+            func f<s/T>(w: uniq/Two<Two<s/T>>, q: s/T) -> ()
+                s is ref or uniq
+                let x = w[0][g(q)]
+                _ = x
+            var n: i32 = 1
+            var m: i32 = 2
+            var w = Two.init(Two.init(n@ref))
+            f(w@uniq, m@ref)
+            require w.uniqCalls == 0 else => $abort("outer")
+            require w.first.uniqCalls == 0 else => $abort("inner")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseDefaultOpenSide", CountingFirst + Source, "ok\n");
+    }
+
+    // a2: `s is owner or uniq`, `T is Copy`, the s=owner instance runs index only.
+    [Fact]
+    public void ASelectionByCaseLetOwner()
+    {
+        const string Source = """
+            func g<s/T>(v: uniq/Two<s/T>) -> ()
+                s is owner or uniq
+                T is Copy
+                let x = v[0]
+                _ = x
+            let five: i32 = 5
+            var two = Two.init(five)
+            g(two@uniq)
+            require two.uniqCalls == 0 else => $abort("indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseLetOwner", Counting + Source, "ok\n");
+    }
+
+    // a3: `_ = v[0]`, s=ref.
+    [Fact]
+    public void ASelectionByCaseDiscard()
+    {
+        const string Source = """
+            func f<s/T>(v: uniq/Two<s/T>) -> ()
+                s is ref or uniq
+                _ = v[0]
+            var n: i32 = 1
+            var two = Two.init(n@ref)
+            f(two@uniq)
+            require two.uniqCalls == 0 else => $abort("indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseDiscard", Counting + Source, "ok\n");
+    }
+
+    // a7b: `(v[0], 1)`, s=ref.
+    [Fact]
+    public void ASelectionByCaseTupleElement()
+    {
+        const string Source = """
+            func f<s/T>(v: uniq/Two<s/T>) -> ()
+                s is ref or uniq
+                let t = (v[0], 1)
+                _ = t@move
+            var n: i32 = 1
+            var two = Two.init(n@ref)
+            f(two@uniq)
+            require two.uniqCalls == 0 else => $abort("indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseTupleElement", Counting + Source, "ok\n");
+    }
+
+    // a8b: `.Some(v[0])`, s=ref.
+    [Fact]
+    public void ASelectionByCasePayload()
+    {
+        const string Source = """
+            func f<s/T>(v: uniq/Two<s/T>) -> ()
+                s is ref or uniq
+                let o = Option.Some(v[0])
+                _ = o@move
+            var n: i32 = 1
+            var two = Two.init(n@ref)
+            f(two@uniq)
+            require two.uniqCalls == 0 else => $abort("indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCasePayload", Counting + Source, "ok\n");
+    }
+
+    // a12: `v[0].link`, the decider the Field below the index, s=ref.
+    [Fact]
+    public void ASelectionByCaseFieldDecider()
+    {
+        const string Source = """
+            struct Holder<T>
+                public var link: T
+                public init(link: T) => self.link = link@move
+            func f<s/T>(v: uniq/Two<Holder<s/T>>) -> ()
+                s is ref or uniq
+                let y = v[0].link
+                _ = y
+            var n: i32 = 1
+            var two = Two.init(Holder.init(n@ref))
+            f(two@uniq)
+            require two.uniqCalls == 0 else => $abort("indexUniq ran")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseFieldDecider", Counting + Source, "ok\n");
+    }
+
+    // m1, a guard row: a Dictionary element, s=ref. It ran ok on dev too, where its indexer was indexUniq's body: the code moves, not
+    // the output, so this row guards the Dictionary path rather than reproducing the defect.
+    [Fact]
+    public void ASelectionByCaseDictionary()
+    {
+        const string Source = """
+            func f<s/T>(d: uniq/Dictionary<i32, s/T>) -> ()
+                s is ref or uniq
+                let x = d[1]
+                _ = x
+            var n: i32 = 1
+            var d: Dictionary<i32, ref/i32> = [1: n@ref]
+            f(d@uniq)
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexByCaseDictionary", Source, "ok\n");
+    }
+
+    // t1 (the code review's B3; SPEC 8.14, 4.7.4): the opened index's own key holds a take by case of another binder, `v[pick(u[0])]`:
+    // the key is located before v's branch, its own frame closed first. Each binder's Copy case selects index: (ref, ref) runs no
+    // indexUniq, (uniq, ref) runs v's once and none of u's.
+    [Theory]
+    [InlineData("RefRef", "ref", "ref", 0, 0)]
+    [InlineData("UniqRef", "uniq", "ref", 1, 0)]
+    public void ASelectionByCaseInTheOpenedIndexsKey(string name, string s, string r, int v, int u)
+    {
+        var source = Counting + "func pick<X>(value: X) -> isize => 0\nfunc f<s/T, r/U>(v: uniq/Two<s/T>, u: uniq/Two<r/U>) -> ()\n    s is ref or uniq\n" +
+            "    r is ref or uniq\n    let x = v[pick(u[0])]\n    _ = x\nvar n: i32 = 1\nvar m: i32 = 2\n" +
+            $"var v = Two.init(n@{s})\nvar u = Two.init(m@{r})\nf(v@uniq, u@uniq)\nrequire v.uniqCalls == {v} else => $abort(\"v\")\n" +
+            $"require u.uniqCalls == {u} else => $abort(\"u\")\nConsole.writeLine(\"ok\")\n";
+        ScalarEmissionTest.EmitFixture($"IndexByCaseLocatedKey{name}", source, "ok\n");
     }
 }

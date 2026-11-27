@@ -260,7 +260,7 @@ public sealed partial class TyCtxtTest
             Assert.True(t.SameStructure(form, form)); // Reflexive without a reference test (review N2: the walk discharges it).
         }
 
-        Same(true, AdtDef.FieldType(p["b"], 0)!, c.Types.StoredParts(p["b"], out _)[0]!); // AdtDef's view, kept part.
+        Same(true, AdtDef.FieldType(c.Types, p["b"], 0)!, c.Types.StoredParts(p["b"], out _)[0]!); // AdtDef's view, kept part.
     }
 
     [Fact]
@@ -332,12 +332,12 @@ public sealed partial class TyCtxtTest
                 {
                     if (local.Name is { } named)
                     {
-                        locals.TryAdd((name, named), local.Type);
+                        locals.TryAdd((name, named), local.Type!);
                     }
 
                     if (name == "cl" && local.Name is "k" or "m")
                     {
-                        parameters.TryAdd(local.Name, local.Type);
+                        parameters.TryAdd(local.Name, local.Type!);
                     }
                 }
             }

@@ -1,0 +1,20 @@
+e4461fb98dafb729ab59c934fcbf2cf1a5373071163e8ce115fafa463b39f571
+flags 0 0
+1 55
+w _DYNAMIC
+U __libc_start_main
+w _fini
+w _init
+U main
+
+2 21
+T _start
+T _start_c
+
+4 2
+o
+5 1
+
+6 1
+
+7 0

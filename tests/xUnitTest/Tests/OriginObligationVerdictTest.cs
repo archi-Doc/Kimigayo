@@ -15,7 +15,7 @@ public class OriginObligationVerdictTest
 {
     public static TheoryData<string, string?> Families => OriginProofScalingTest.Families;
 
-    // SPEC 15.6.1: check's verdict on each family is Accepts with the family's one record, Binding's or, on a complete Binding, the
+    // SPEC 15.6.1: check's verdict on each family is Accepts with the family's records, Binding's or, on a complete Binding, the
     // MIR's (R6-check H5, DECISIONS R5-M185), and a rebind and a new analysis give the same verdict.
     [Theory]
     [MemberData(nameof(Families))]
@@ -23,7 +23,7 @@ public class OriginObligationVerdictTest
     {
         var c = Analyze(OriginProofWorkloads.Create(family, 2));
         Assert.Empty(TestDiagnostics.Of(c)); // Nothing is published before the reports, so no syntax record (Analyze checks none).
-        DiagnosticCode[] expected = code is null ? [] : [Enum.Parse<DiagnosticCode>(code)];
+        DiagnosticCode[] expected = code is null ? [] : [.. code.Split(' ').Select(static x => Enum.Parse<DiagnosticCode>(x))];
         Assert.Equal(code is null, c.Accepts);
         Assert.Equal(expected, c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
         c.ReportAnalysis();
@@ -77,10 +77,12 @@ public class OriginObligationVerdictTest
     }
 
     // SPEC 15.3.6, 15.4.4 (DECISIONS BU-85, rule W): an Origin a local's Type omits is inferred when the local binds; when its
-    // initializer fails, the inference is left resting on that failure and adds no record. A valid local leaves none.
+    // initializer fails, the inference is left resting on that failure and adds no record, also a join no source supplies a candidate
+    // to (G103 C: one with a candidate, as `if c => x@ref else => missing`, is typed by it, and the inference is made). A valid local
+    // leaves none.
     [Theory]
     [InlineData("func f()\n    var x = 1\n    let p = x@ref\n    let r: ref/i32 = bogus(p)\n", false)]
-    [InlineData("func f(c: bool)\n    let x = 1\n    let r: ref/i32 = if c => x@ref else => missing\n", false)]
+    [InlineData("func f(c: bool)\n    let r: ref/i32 = if c => missing else => missing2\n", false)]
     [InlineData("func f()\n    let x = 1\n    let r: ref/i32 = x@ref\n", true)]
     public void AnOriginInferenceRestsOnItsLocalsFailure(string source, bool valid)
     {
@@ -93,7 +95,7 @@ public class OriginObligationVerdictTest
     private static Compilation Analyze(string source)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("verdict.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

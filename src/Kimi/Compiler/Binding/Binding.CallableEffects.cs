@@ -6,13 +6,17 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
-
     // Each selected use of a bounded Callable clause, once per pass: the running pass's part (PassPart, EnterPass).
     private List<CallableEffectUse> callableEffectUses;
 
+    // SPEC 3.4.3, 7.7.3, 8.10: the Callable a callee value designates, without its acquisition layers: below every ref and uniq layer
+    // (ComparisonReferent), where selection continues, and below a concrete handle's or view's layer, whose View Target selection stops at;
+    // any other Type is its own (a raw pointer is no layer selection follows, SPEC 3.4.1).
     internal static BoundType? CallableCore(BoundType? type)
-        => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
+    {
+        var terminal = type is null ? null : ComparisonReferent(type);
+        return terminal is { Kind: BoundTypeKind.Semantics, Components: [var view] } && IsObjectSemantics(terminal.Semantics) ? view : terminal;
+    }
 
     /// <summary>Gets explicit bounds available on a Callable subject and signature under the local premises.</summary>
     /// <param name="type">The callable Type, without its acquisition layer.</param>
@@ -27,7 +31,9 @@ public sealed partial class Binding
     {
         // SPEC 8.11.4: the evidence is a premise on the Type with the signature, an equal or stronger receiver and the bound: the
         // Type's available Callable rows whose Source is a written premise (a Contract-wide clause carries no bound list), each
-        // with the bounds its clause declares in the scope stating it (ContractSolver's FirstRows).
+        // with the union of the bounds of the clauses of its fact's Statements in its environment (ContractSolver's FirstRows;
+        // ConstraintEnvironment.States: the in-place one and each recorded, as an override's inherited premise's, SPEC 6.4.2 step 3).
+        // The evidence names the clause's declaration and written premise.
         var confined = false;
         var required = this.CallableContractType(signature, scope);
         var start = this.premiseRows.Count;
@@ -35,16 +41,16 @@ public sealed partial class Binding
         for (var r = start; r < this.premiseRows.Count; r++)
         {
             if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact, Raw: { } raw, Stated: { } stated } ||
-                !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
+                !this.SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
             {
                 continue;
             }
 
-            var clauses = this.callableEffectClausesView;
+            var clauses = this.selectableEffectClauses;
             for (var i = 0; i < clauses.Count; i++)
             {
-                var clause = clauses[i];
-                if (!ReferenceEquals(clause.Parent, stated.Owner) || !ReferenceEquals(clause.BoundConstraint, raw))
+                if (clauses[i] is not { Parent: { } owner, BoundConstraint: { } written } clause ||
+                    !stated.Constraints!.States(raw, stated.Owner, owner, written))
                 {
                     continue;
                 }
@@ -58,7 +64,7 @@ public sealed partial class Binding
                     }
 
                     confined = true;
-                    evidence?.Add(new(effect, stated.Owner, raw, clause));
+                    evidence?.Add(new(effect, owner, written, clause));
                 }
             }
         }
@@ -70,21 +76,20 @@ public sealed partial class Binding
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
 
-    private bool ReportCallablePremiseFailure(Koto use, Kimi.Diagnostics.DiagnosticRequirement diagnostic)
+    // SPEC 8.11.4: an implementation's bounded Callable clause its requirement's premises do not declare, from its facts: the clause
+    // (Related, role 0) and the requirement (role 1), whose name is read from its declaration.
+    private void ReportCallablePremise(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        if (!this.callablePremiseFailures.TryGetValue(use, out var failure))
-        {
-            return false;
-        }
-
-        use.Report(
-            diagnostic,
-            DiagnosticCode.IncompatibleContractImplementation_Kd,
-            evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {failure.Requirement.Name} " +
+        var facts = this.report.Facts(index);
+        var requirement = this.compilation.SyntaxOf(facts[1].Site);
+        use.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {requirement.BoundSymbol!.Name} " +
                 "do not declare it"],
-            note: "An implementation must be callable under its requirement's declared premises",
-            related: [("bound", failure.Clause, "the implementation's bounded Callable Constraint"), ("requirement", failure.Requirement, "the requirement whose premises lack the bound")]);
-        return true;
+            related: [("bound", this.compilation.SyntaxOf(facts[0].Site), "the implementation's bounded Callable Constraint"), ("requirement", requirement, "the requirement whose premises lack the bound")],
+            condition: problem.Condition);
     }
 
     // SPEC 8.11.4: the selected uses of bounded Callable clauses: each selected call, function reference and Type formation, located at
@@ -92,12 +97,12 @@ public sealed partial class Binding
     private void CollectCallableEffectUses()
     {
         this.callableEffectUses.Clear();
-        // A use may select a library callee's bounded clause, so the test reads every pass's clauses (review-r1a B2), as
+        // A use may select a library callee's bounded clause, so the test reads the clauses the pass may select (review-r1a B2), as
         // AvailableCallableEffects does; the uses collected are the pass's own (its nodes).
-        for (var i = 0; i < this.nodes.Count && this.callableEffectClausesView.Count != 0; i++)
+        for (var i = 0; i < this.nodes.Count && this.selectableEffectClauses.Count != 0; i++)
         {
             var node = this.nodes[i];
-            if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
+            if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
             {
                 this.CheckCallableEffectUses(node, function.TypeConstraints, SubstitutionOf(function, call), call);
             }

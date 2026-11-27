@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="TataraObjects">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -36,24 +36,80 @@
     <EmbeddedResource Include="Diagnostics\DiagnosticCode.tinyhand" />
     <EmbeddedResource Include="Diagnostics\DiagnosticRequirement.tinyhand" />
     <EmbeddedResource Include="Diagnostics\RepairKind.tinyhand" />
-    <EmbeddedResource Include="Compiler\Backend\WindowsRuntime.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\Runtime.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\WindowsPlatform.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\LinuxPlatform.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\NonePlatform.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\HeapRuntime.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\MemoryRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\ErasedWriterRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\Utf8FloatRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\Utf8FloatRyu.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\FormatInteger128Runtime.ll.in" />
     <EmbeddedResource Include="Testing\TestRuntime.ll" />
     <EmbeddedResource Include="..\backend\windows-x64\profile.json" LogicalName="Kimi.WindowsBackendProfile.json" />
-    <EmbeddedResource Include="..\backend\windows-x64\kernel32.def" LogicalName="Kimi.Kernel32.def" />
+    <EmbeddedResource Include="..\backend\windows-x64\kernel32.lib" LogicalName="Kimi.Kernel32.lib" />
+    <EmbeddedResource Include="..\backend\windows-x64\kernel32.lib.facts" LogicalName="Kimi.Kernel32.lib.facts" />
+    <EmbeddedResource Include="..\backend\windows-x64\kimi_backend_windows_x64_v1.lib" LogicalName="Kimi.WindowsBackend.lib" />
+    <EmbeddedResource Include="..\backend\windows-x64\kimi_backend_windows_x64_v1.lib.facts" LogicalName="Kimi.WindowsBackend.lib.facts" />
+    <EmbeddedResource Include="..\backend\linux-x64\profile.json" LogicalName="Kimi.LinuxBackendProfile.json" />
+    <EmbeddedResource Include="..\backend\linux-x64\crt1.o;..\backend\linux-x64\crti.o;..\backend\linux-x64\crtn.o;..\backend\linux-x64\libc.a;..\backend\linux-x64\crt1.o.facts;..\backend\linux-x64\crti.o.facts;..\backend\linux-x64\crtn.o.facts;..\backend\linux-x64\libc.a.facts;..\backend\linux-x64\COPYRIGHT" LogicalName="Kimi.Linux.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\backend\none-x64\profile.json" LogicalName="Kimi.NoneBackendProfile.json" />
+    <EmbeddedResource Include="..\backend\none-x64\kimi_backend_none_x64_v1.a;..\backend\none-x64\kimi_backend_none_x64_v1.a.facts;..\backend\none-x64\LICENSE-compiler-rt.txt" LogicalName="Kimi.None.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Tatara\tatara.h" LogicalName="Kimi.Tatara.h" />
     <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>
 
+  <!-- The managed form's Tatara (Tatara B6b1): the checkout's toolchain's tatara.dll beside Kimi.dll and beside the outputs that
+       reference Kimi; without one, Kimi builds and its first native build names setup. The published kimi.exe links Tatara (below). -->
   <ItemGroup>
-    <PackageReference Include="Arc.Collections" Version="2.0.0" />
-    <PackageReference Include="Arc.Threading" Version="0.54.0" />
-    <PackageReference Include="Arc.Unit" Version="0.48.0" />
+    <None Include="$(KimiRepositoryRoot)toolchain\tatara.dll" Link="tatara.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="'$(PublishAot)' != 'true' and Exists('$(KimiRepositoryRoot)toolchain\tatara.dll')" />
+  </ItemGroup>
+
+  <!-- The published kimi.exe (Tatara B6b2, scripts/build-kimi.ps1): Tatara linked in from src/Tatara/build.ps1's checked objects and
+       its link.rsp (the archive's libraries and LLVMSupport's link interface, as tatara.dll is linked), on the static UCRT: NativeAOT's
+       two arguments that link the UCRT dynamically are removed, so LLVM's rpmalloc serves the whole image's malloc and free and no CRT
+       allocates from another heap. build-kimi.ps1's import check guards the removal. TataraObjects (the objects' directory) takes its
+       trailing separator here, a TreatAsLocalProperty of the project, never in the argument. -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <TataraObjects>$([MSBuild]::EnsureTrailingSlash('$(TataraObjects)'))</TataraObjects>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(PublishAot)' == 'true'">
+    <DirectPInvoke Include="tatara" />
+    <NativeLibrary Include="$(TataraObjects)*.obj" />
+  </ItemGroup>
+  <Target Name="TataraLink" AfterTargets="SetupOSSpecificProps" Condition="'$(PublishAot)' == 'true'">
+    <Error Condition="'$(TataraObjects)' == '' or !Exists('$(TataraObjects)link.rsp')" Text="kimi.exe links Tatara: publish it with scripts/build-kimi.ps1." />
+    <ReadLinesFromFile File="$(TataraObjects)link.rsp">
+      <Output TaskParameter="Lines" ItemName="TataraLinkInput" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <LinkerArg Include="@(TataraLinkInput)" />
+      <LinkerArg Remove="/NODEFAULTLIB:libucrt.lib;/DEFAULTLIB:ucrt.lib" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The published folder is kimi.exe alone: KimiLeftOut lists the package DLLs Kimi never calls, each a native asset by package and
+       file name (decision 20 Q1 (a)), and only those are left out, so any other native asset reaches the folder and fails the one-file
+       check. The one list: build-kimi.ps1 reads it as MSBuild evaluates it for the publish and refuses an image naming one of its
+       modules. -->
+  <ItemGroup>
+    <KimiLeftOut Include="blake3_dotnet.dll" AssetType="native" NuGetPackageId="Arc.Crypto" />
+    <KimiLeftOut Include="libsodium.dll" AssetType="native" NuGetPackageId="libsodium" />
+  </ItemGroup>
+  <Target Name="KimiOneFile" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(PublishAot)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(KimiLeftOut)" MatchOnMetadata="AssetType;NuGetPackageId;Filename;Extension" MatchOnMetadataOptions="CaseInsensitive" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="Arc.Collections" Version="2.2.0" />
+    <PackageReference Include="Arc.Threading" Version="0.56.0" />
+    <PackageReference Include="Arc.Unit" Version="0.49.0" />
     <PackageReference Include="SimpleCommandLine" Version="0.47.0" />
-    <PackageReference Include="SimplePrompt" Version="0.28.0" />
+    <PackageReference Include="SimplePrompt" Version="0.30.0" />
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

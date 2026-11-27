@@ -9,18 +9,11 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     // SPEC 13.4.1: the call of a comparison operator, a tuple operator's Composite call, any other the Contract call Binding selected; ==
-    // gives equals' bool, != its negation and another compare's i32 compared with zero by the relation. A tuple operator whose Self has no
-    // comparison (TyCtxt.Comparison's Limit, null) is a located Unsupported (PD30), its operands not built.
+    // gives equals' bool, != its negation and another compare's i32 compared with zero by the relation.
     private void Compare(MirPlace destination, CallPlan call, Koto node, MirBinaryOp relation)
     {
         var equality = relation is MirBinaryOp.Eq or MirBinaryOp.Ne;
         var contract = compilation.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        if (call.TupleOperator && compilation.Types.Comparison(contract, call.ConformingType!, operators: true) is null)
-        {
-            this.Unsupported(node, destination);
-            return;
-        }
-
         var result = relation == MirBinaryOp.Eq ? destination : this.Hold(call.ReturnType, node);
         if (call.TupleOperator)
         {
@@ -28,7 +21,11 @@ internal sealed partial class MirBuilder
         }
         else
         {
+            // SPEC 13.4.1, 14.10.3: the Contract call's receiver, its left operand, is its first pending slot, cleared until the operand is
+            // evaluated into it (a call there pends after the slots): an inspection while the right operand is evaluated.
+            this.inspections.Add(this.arguments.Count);
             this.Call(result, call, node, first: null);
+            this.inspections.RemoveAt(this.inspections.Count - 1);
         }
 
         if (relation != MirBinaryOp.Eq)
@@ -109,11 +106,11 @@ internal sealed partial class MirBuilder
         // it: a shared borrow of it, retyped by a copy into a reference to the premised Type (MirTypes.Agrees admits it), whose referent the
         // walk then follows, since MIR Types keep the parameter (DECISIONS BU-72).
         var place = operand.Place;
-        if (this.body.TypeOf(place) is { } actual && MirTypes.Premised(this.body, actual) is var premised && !MirTypes.Agree(actual, premised))
+        if (this.body.TypeOf(place) is { } actual && MirTypes.Premised(compilation.Types, this.body, actual) is var premised && !MirTypes.Agree(actual, premised))
         {
             var view = this.Temp(compilation.Types.Reference(SemanticsKind.Ref, premised), node);
             this.Set(view, MirRvalue.Use(this.body.AddOperand(this.Borrow(SemanticsKind.Ref, place, node))), node);
-            place = this.body.Project(view, MirProjectionKind.Deref, 0);
+            place = this.body.Project(compilation.Types, view, MirProjectionKind.Deref, 0);
         }
 
         return this.Inspected(this.FollowTo(place, type), node);
@@ -128,8 +125,10 @@ internal sealed partial class MirBuilder
         var (left, right, self) = (call.ArgumentOperations[0], call.ArgumentOperations[1], call.ConformingType!);
         var start = this.arguments.Count;
         var view = this.Operand(left.Source!, left.AdaptedType ?? left.ParameterType);
-        this.arguments.Add(Builds(right.Source!) ? this.Secure(view, left.Source!) : view);
+        this.arguments.Add(Builds(right.Source!, HirTables.AdjustOf(right.Source!)) ? this.Secure(view, left.Source!) : view);
+        this.inspections.Add(start); // SPEC 13.4, 14.10.3: an inspection while the right operand is evaluated.
         view = this.Operand(right.Source!, right.AdaptedType ?? right.ParameterType);
+        this.inspections.RemoveAt(this.inspections.Count - 1);
         this.arguments[start] = this.Inspected(this.FollowTo(this.arguments[start].Place, self), node);
         this.arguments.Add(this.Inspected(this.FollowTo(view.Place, self), node));
         var requirement = contract.Contract!.OwnRequirement()!; // Equatable's equals, Comparable's compare.

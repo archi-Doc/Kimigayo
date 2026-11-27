@@ -13,6 +13,7 @@ public sealed partial class Binding
     private BoundConstraint BindRequirement(Koto node, BoundType? subject, bool semantics, BindingScope scope)
     {
         BoundConstraint result;
+        Koto? cause = null;
         switch (node)
         {
             case ParenthesizedKoto parentheses:
@@ -51,8 +52,7 @@ public sealed partial class Binding
                             result = this.BindCallableRequirement(node, subject, scope, target);
                             if (result.Kind == ConstraintKind.Error && this.FailedSignaturePart(node) is { } part)
                             {
-                                // SPEC 23.1.2: a Callable signature that failed for a part of its own syntax rests on that part.
-                                (this.constraintDiagnosticCauses ??= new(ReferenceEqualityComparer.Instance))[node] = part;
+                                cause = part; // SPEC 23.1.2: a Callable signature that failed for a part of its own syntax rests on that part.
                             }
 
                             break;
@@ -84,8 +84,17 @@ public sealed partial class Binding
         if (result.Kind == ConstraintKind.Error)
         {
             // SPEC 23.1.2: a transparent wrapper is the requirement it wraps, so the failure rests on that node; one that failed already
-            // keeps its own record, whatever wraps it.
-            this.Fail(UnwrapTransparentType(node)!, BindingFailure.InvalidConstraint);
+            // keeps its own record, whatever wraps it. A failure whose check named the part it rests on records that cause; the cause-less
+            // Fail keeps the node's first failure, which may be the node's own earlier verdict (BindType's record of the complete Type above,
+            // at this node), until R7-E5's per-problem inputs (Transitional, E2-5's O2; FailConstraint's guard names its other callers).
+            if (cause is null)
+            {
+                this.Fail(UnwrapTransparentType(node)!, BindingFailure.InvalidConstraint);
+            }
+            else
+            {
+                this.RecordConstraint(UnwrapTransparentType(node)!, ConstraintProof.Error, [new(ProblemFactKind.Cause, this.FactSite(cause), -1)]);
+            }
         }
         else if (result.HasUnresolved && node.BindingState != BindingState.Invalid)
         {

@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 // - Inputs: the position's matched Type, whether its Pattern is structural, the parent's reach, the plan (its Subject Place
 //   and whether it extracts a value, SPEC 17.3) and the admitted sets of the pair binders in scope.
 // - Outputs: the selected Type, the number of layers and the reach after them; BindingTypeOf, the Type of the local a Binding position
-//   declares: the bound value's, opened into the binding's own region slots when it is reassignable (LocalBorrowType).
+//   declares: the bound value's, opened into the binding's own region slots when it is reassignable (LocalBorrowType), else with the
+//   layer its reach adds as its own region (ValuedRegion).
 // - Invariants: a structural position selects the referent of every safe value-reference layer that lacks its structure, a
 //   qualifying pair layer included; a Binding (structural: false) selects only a qualifying pair layer it reaches with owned
 //   access, which offers no Take (13.5.5), and then binds a reference to the layer's selected Place in the mode past it; a
@@ -30,7 +31,7 @@ public sealed partial class Binding
         layers = 0;
         while (true)
         {
-            if (structural && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            if (structural && type.SafeReferent is { } referent)
             {
                 // SPEC 10.2: a ref layer is a Copy that restarts the dependency at its own Origin; a uniq layer below it
                 // is Reborrowed, so its Origin is met with the dependency reached so far.
@@ -38,7 +39,7 @@ public sealed partial class Binding
                 var readOnly = type.Semantics == SemanticsKind.Ref || reach.Access == PatternAccessMode.Shared;
                 var restarted = this.MeetLayer(origin, type.Origin, shared: type.Semantics == SemanticsKind.Ref);
                 reach = new(readOnly ? PatternAccessMode.Shared : PatternAccessMode.Exclusive, restarted, OwnedPart: false);
-                type = type.Components[0];
+                type = referent;
                 layers++;
                 continue;
             }
@@ -88,12 +89,20 @@ public sealed partial class Binding
 
     // SPEC 15.1.6 (Bindings): a part of an owned Subject or item reached with owned access is bound as its stored Type; a Place reached
     // with shared or exclusive access binds ref/T or uniq/T of the Place the step selected, also for a Copy T.
-    // The binding is a local initialized by that value (SPEC 14.8.2, 15.4.4): a reassignable one has its own region slots, as a var
-    // local does (LocalBorrowType, PLAN G817).
+    // The binding is a body local initialized by that value (SPEC 14.8.2, 15.4.4): a reassignable one has its own region slots, as a var
+    // local does (LocalBorrowType, PLAN G817); a `let` one stores T unchanged (14.8.3), and the layer its reach adds is its own region
+    // whose value is the reach's dependency (ValuedRegion; SPEC 15.6.5, PLAN G922).
     private BoundType BindingTypeOf(BoundType selected, in PatternReach reach, Koto declaration)
     {
-        var bound = reach.Access == PatternAccessMode.Owned ? selected : this.types.Intern(
-            BoundTypeKind.Semantics, null, reach.Access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [selected], origin: reach.Origin);
+        if (reach.Access == PatternAccessMode.Owned)
+        {
+            return this.LocalBorrowType(selected, declaration, declaration, -1);
+        }
+
+        var origin = reach.Origin is { } reached && !IsMutableDeclaration(declaration)
+            ? this.ValuedRegion(declaration, -1, OriginVariance.Covariant, reached, declaration) : reach.Origin;
+        var bound = this.types.Intern(
+            BoundTypeKind.Semantics, null, reach.Access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [selected], origin: origin);
         return this.LocalBorrowType(bound, declaration, declaration, -1);
     }
 

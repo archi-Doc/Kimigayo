@@ -58,7 +58,7 @@ public sealed partial class Binding
         // Written annotations are invalid even when the otherwise formed target has an unsupported dependency.
         if (this.ImportedOrigin(test.Right) is not null)
         {
-            return this.Fail(test, BindingFailure.InvalidTypeFormation);
+            return this.Record(test, BindingFailure.InvalidTypeFormation, []);
         }
 
         // SPEC 13.6.4: a target that is itself a Type parameter or an associated Type is invalid; a struct Core whose Type
@@ -71,11 +71,11 @@ public sealed partial class Binding
 
         if (associated || !IsRuntimeStructCore(target))
         {
-            return this.Fail(test, BindingFailure.InvalidTypeFormation);
+            return this.Record(test, BindingFailure.InvalidTypeFormation, []);
         }
 
         // SPEC 13.6.4: refinement would give the operand an object form of the target, which an opt-out forbids.
-        if (target.Symbol!.ObjectPayloadOptOut is { } renounced)
+        if (this.ObjectPayloadOptOut(target.Symbol) is { } renounced)
         {
             return this.FailObjectPayload(test, renounced);
         }
@@ -98,7 +98,7 @@ public sealed partial class Binding
         }
 
         var plan = new BoundRuntimeTypeTest(operand, target);
-        var proof = this.CheckRuntimeTestTypeConstraints(plan, scope);
+        var proof = this.CheckRuntimeTestTypeConstraints(plan, scope, test);
         if (proof != ConstraintProof.Proven)
         {
             this.RequireConstraint(test, proof, this.capabilityMode);
@@ -115,6 +115,6 @@ public sealed partial class Binding
         return Complete(test, BoundType.Boolean);
     }
 
-    private ConstraintProof CheckRuntimeTestTypeConstraints(BoundRuntimeTypeTest test, BindingScope scope)
-        => CombineProof(this.CheckTypeConstraints(test.OperandType, scope), this.CheckTypeConstraints(test.TargetType, scope), true);
+    private ConstraintProof CheckRuntimeTestTypeConstraints(BoundRuntimeTypeTest test, BindingScope scope, QuerySite site)
+        => CombineProof(this.CheckTypeConstraints(test.OperandType, scope, site), this.CheckTypeConstraints(test.TargetType, scope, site), true);
 }

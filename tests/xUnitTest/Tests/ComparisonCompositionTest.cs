@@ -460,12 +460,13 @@ public class ComparisonCompositionTest
     // SPEC 13.4, 13.4.1: tuples and `ref` layers compose elementwise, built-in Types natively, a closed leaf by its witness under its declaring
     // instance (a conditional conformance's too), a leaf with an abstract part by the Contract's requirement on it; each mode and key has its own
     // node, asked again the same one.
-    // A leaf whose storage nests past Binding's depth bound makes the comparison a Limit (null), its shallow form not.
+    // A leaf whose storage nests past Binding's depth bound composes as its shallow form does, by its witness: what it runs does not depend
+    // on its storage (R7-T1 c4; fail-before: a Limit, null).
     [Fact]
     public void AComparisonComposesItsLeaves()
     {
         var c = MinimalEmissionTest.Analyze(ViewSource);
-        var shown = Comparisons(c.Kotonoha).Where(static x => x.ConformingType!.Kind == BoundTypeKind.Tuple).Select(x => Show(View(c, x)!));
+        var shown = Comparisons(c.Binding, c.Kotonoha).Where(static x => x.ConformingType!.Kind == BoundTypeKind.Tuple).Select(x => Show(View(c, x)!));
         string[] expected = [
             "(T.equals, f64)", "(T.compare, f64)", "((Key.compare @Key), f64)", "(i32, (f64, (Key.equals @Key)))", "(f64, (Key.equals @Key))",
             "((Held.equals @Held<i32>), i32)", "((Box.compare @Box<Box<Key>>), f64)"];
@@ -483,7 +484,8 @@ public class ComparisonCompositionTest
             deep = c.Types.Intern(wrap.Kind, wrap.Symbol, wrap.Semantics, [deep]);
         }
 
-        Assert.Null(c.Types.Comparison(equatable, c.Types.Tuple([deep, BoundType.I32]), operators: true));
+        var node = c.Types.Comparison(equatable, c.Types.Tuple([deep, BoundType.I32]), operators: true);
+        Assert.Equal((ComparisonKind.Composite, ComparisonKind.Witness, "equals"), (node.Kind, node.Parts[0].Kind, node.Parts[0].Target!.Name));
         var shallow = c.Types.Intern(wrap.Kind, wrap.Symbol, wrap.Semantics, [BoundType.I32]);
         Assert.Equal("(Wrap.equals @Wrap<i32>, i32)", Show(c.Types.Comparison(equatable, c.Types.Tuple([shallow, BoundType.I32]), operators: true)!));
     }
@@ -494,14 +496,14 @@ public class ComparisonCompositionTest
     public void AnEditRecomputesTheComparison()
     {
         var c = MinimalEmissionTest.Analyze(ViewSource);
-        var call = Comparisons(c.Kotonoha).First(static x => x.ConformingType is { Kind: BoundTypeKind.Tuple, HasAbstractPart: false });
+        var call = Comparisons(c.Binding, c.Kotonoha).First(static x => x.ConformingType is { Kind: BoundTypeKind.Tuple, HasAbstractPart: false });
         var before = View(c, call)!.Parts[0].Parts[0];
         var self = call.ConformingType;
         var donor = MinimalEmissionTest.Analyze(ViewSource.Replace("self.value - other.value", "other.value - self.value", StringComparison.Ordinal));
         var key = Container(c, "Key");
         Assert.True(KotoHelper.Replace(key, Compare(key), ParseTestHelper.Detach(Compare(Container(donor, "Key")), new CodeBlockKoto(key.CodeContext))));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
-        call = Comparisons(c.Kotonoha).First(x => ReferenceEquals(x.ConformingType, self));
+        call = Comparisons(c.Binding, c.Kotonoha).First(x => ReferenceEquals(x.ConformingType, self));
         var after = View(c, call)!.Parts[0].Parts[0];
         Assert.Equal("Key.compare @Key", Show(after));
         Assert.NotSame(before.Target, after.Target);
@@ -518,7 +520,7 @@ public class ComparisonCompositionTest
     public void AWarmComparisonIsTheSameAndAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(ViewSource);
-        var calls = Comparisons(c.Kotonoha).ToArray();
+        var calls = Comparisons(c.Binding, c.Kotonoha).ToArray();
         var nodes = calls.Select(x => View(c, x)).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -534,9 +536,9 @@ public class ComparisonCompositionTest
     }
 
     // Each call of a module that compares through Equatable or Comparable, with the Self it compares.
-    private static IEnumerable<CallPlan> Comparisons(Kotonoha module)
+    private static IEnumerable<CallPlan> Comparisons(Binding binding, Kotonoha module)
         => KotoTree.Walk(module.RootKoto)
-            .SelectMany(static x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
+            .SelectMany(x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(binding, x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
             .Where(static x => x is { Target.Definition.Kind: DispositionKind.Shim, ConformingType: not null } &&
                 TyCtxt.Contract(x.Target).LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable);
 
@@ -561,7 +563,7 @@ public class ComparisonCompositionTest
     {
         var version = HirTables.Publish(c);
         var issues = c.Binding.Issues.Count;
-        var views = Comparisons(module).Select(x => (Call: x, Node: View(c, x))).ToArray();
+        var views = Comparisons(c.Binding, module).Select(x => (Call: x, Node: View(c, x))).ToArray();
         if (HirTables.Publish(c) != version || c.Binding.Issues.Count != issues)
         {
             problems.Add($"{label}: a view changed Binding's state");

@@ -3,20 +3,29 @@
 // Closure literals (SPEC 7.7, 10.5, 10.8, 15.3.4): an anonymous function bound as a Closure value.
 // - Responsibility: the literal's header against a fixed expected signature (ClosureExpectation restates it over the literal's
 //   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
-//   ClosureResultType); its capture entries, body and result, and the published Signature and EnvironmentType
-//   (BindConcreteClosure, by BindClosureHeader, CaptureEntriesFail, BindClosureBody and PublishClosure); a Closure argument bound under
+//   ClosureResultType, and formed once per binding, at its commitment or its failed fit, as every nested signature's is,
+//   FormNestedResult), each binding of the written header in the scope Binding.Captures' ClosureHeaderScope gives (R7-O2 O2-H); its
+//   capture entries, body and result, and the published Signature and EnvironmentType
+//   (BindConcreteClosure, by BindClosureHeader, FormEnvironment, BindClosureBody and PublishClosure); a Closure argument bound under
 //   a consultation (BindClosureArgument); for TryCandidate, the one Closure
 //   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers,
 //   PermittedClosureReceiver).
-// - Inputs: the literal, its scope, an expected Type and whether its result is open, the capture sources it looks up; capture
+// - Inputs: the literal, its scope, an expected Type and its open parts (OpenParts), the capture sources it looks up; capture
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
-// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
-//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
-// - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
-//   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
-//   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
-//   then (Binding.OriginProof.cs); a header probe binds no parameter, visits no body and restores the enclosing probe on exit.
+// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Signature, EnvironmentType and InfersResult (its
+//   Storage and Carried are Binding.Captures'; the symbol's DeclaringBody the index walk's); the Environment query (FormEnvironment);
+//   a ClosureReceiverRefutation; the located InternalInvariant_Kd of each use no consumer takes.
+// - Invariants: BindClosure clears the published Signature, Published and Classified before a binding; the environment (Storage,
+//   Carried) is formed once in the pass (FormEnvironment, from the index
+//   walk's reset, BoundClosure.ResetPass) and kept by every later binding, and is not ready before the literal's header binds an
+//   omitted parameter Type or an entry's source binds (abandoned, no record); BindConcreteClosure starts from reset receiver facts (Shared,
+//   no exclusive cause) and has them classified right after the body is bound (a relation naming a pending atom is a row, DECISIONS
+//   R7-M66); PublishClosure publishes the definition on both paths, with no Signature where a parameter's or the
+//   result's slot failed (BoundClosure's Access paragraph), and, in a Property header's frame, for a literal its header types before
+//   any body (TypedByHeader), whose body the Property's variable binding binds with its parts (BindLeftBodies); a header probe binds no
+//   parameter, visits no body and restores the enclosing probe on exit (its header scope records the literal's written entries'
+//   regions, as the binding's does, and forms no capture).
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
 //   Binding.Captures.cs, Binding.CaptureDiagnostics.cs).
 
@@ -32,6 +41,21 @@ public sealed partial class Binding
     // result's elision depends on those inputs, so it is rebound for each fixed context and at commitment.
     private FunctionKoto? closureHeader;
     private BoundType? closureHeaderInputs;
+
+    // SPEC 7.7.1: whether a parameter Type the literal omits, its expected Function Type's input, is unbound in the pass; the literal's
+    // binding binds its header first (BindClosureHeader), so never there.
+    private static bool AwaitsExpectedInput(FunctionKoto literal)
+    {
+        for (var i = 0; i < literal.Parameters.Count; i++)
+        {
+            if (literal.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType, BindingState: BindingState.Unvisited })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private BoundType? ClosureResultType(FunctionKoto function, BoundType inputs, BindingScope scope)
     {
@@ -56,9 +80,9 @@ public sealed partial class Binding
     // SPEC 7.7.3, 8.10: a refuted candidate's closure argument whose minimum call receiver its Callable Constraint does not permit is the
     // candidate's failure only when the candidate applies once that receiver is permitted (TryCandidate); a rejected candidate then names
     // both receivers (NoApplicableOverload_Kd).
-    private ClosureReceiverRefutation? PermittedClosureReceiver(int[] mapping, in SlotSolution solution, bool waitingCallables)
+    private ClosureReceiverRefutation? PermittedClosureReceiver(in SlotSolution solution, bool waitingCallables)
     {
-        if (this.ClosureReceiverMismatch(solution.Call, solution.Function, mapping) is not { } mismatch)
+        if (this.ClosureReceiverMismatch(solution.Call, solution.Function, solution.Mapping) is not { } mismatch)
         {
             return null;
         }
@@ -77,7 +101,7 @@ public sealed partial class Binding
 
     // SPEC 7.7.3, 8.10: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
     // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
-    private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, int[] mapping)
+    private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, ReadOnlySpan<int> mapping)
     {
         ClosureReceiverRefutation? found = null;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -103,12 +127,12 @@ public sealed partial class Binding
         return found;
     }
 
-    // With `openResult`, the signature's result is open (SPEC 10.8): only its parameter Types guide the body, whose result is inferred.
-    private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature, bool openResult = false)
+    // With `open`, parts of the signature are open (OpenParts): only its other parts guide the header and the body.
+    private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature, OpenParts open = default)
     {
         // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
         var parent = this.BeginConsultation(closure);
-        this.BindClosure(closure, this.NodeScope(closure, scope), signature, openResult);
+        this.BindClosure(closure, this.NodeScope(closure, scope), signature, open);
         this.EndConsultation(closure, parent);
         return this.BindNode(argument, scope);
     }
@@ -149,6 +173,17 @@ public sealed partial class Binding
         {
             // An expectation that is no Function Type, such as a Type parameter F under Callable (SPEC 7.2.3), names the
             // anonymous function as found.
+            // Transitional, R7-E5 (D-924; B's E3a-2 ruling): the Closure recorded its own located limit at its header first (a
+            // parameter past the subset), so a mismatch here is that header's second record; it keeps its first failure, as a Fail does,
+            // until R7-E5's per-problem inputs (PropertyBindingTest's field-Closure rows; probe g4). An entry's failure, the
+            // Environment query's Error that a demand from the body recorded first, is no input of this fit: the mismatch is its own
+            // record beside the entry's (SPEC 23.1.2; F's G230H-12 C-b, thdr_inf).
+            if (this.RecordedFailure(function) != BindingFailure.None &&
+                !(this.symbols.GetValueOrDefault(function) is { } symbol && this.QueryRecord(symbol, DeclQueryKind.Environment) is not null))
+            {
+                return this.Fail(function, BindingFailure.TypeMismatch);
+            }
+
             return this.RecordMismatch(function, function, new(null, MismatchForm.AnonymousFunction), expected, ComparisonFailure.Shape);
         }
 
@@ -161,7 +196,7 @@ public sealed partial class Binding
             return this.RecordMismatch(function, function, found, expected, ComparisonFailure.Shape);
         }
 
-        var scope = this.scopes[function];
+        var scope = this.ClosureHeaderScope(function);
         var types = this.RentTypes(count);
         try
         {
@@ -176,7 +211,8 @@ public sealed partial class Binding
                 types[i] = parameter;
             }
 
-            var result = function.ReturnType is not null ? this.ClosureResultType(function, inputs, scope) : restated.Components[1];
+            // The written result is formed although the fit failed: its formation reads only it and the inputs (SPEC 23.1.2).
+            var result = function.ReturnType is not null ? this.FormNestedResult(this.ClosureResultType(function, inputs, scope), function.ReturnType) : restated.Components[1];
             if (result is null)
             {
                 return this.Fail(function, BindingFailure.TypeMismatch);
@@ -196,7 +232,7 @@ public sealed partial class Binding
     // treated as equal): a Function Type of its arity whose written parameter and result Types agree in structure. Their Origins are the
     // conversion's, judged once by erasure (SPEC 7.7.4, ErasesToFunction) after the closure binds under its written header, and never
     // select a candidate.
-    private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, bool openResult = false)
+    private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, OpenParts open = default)
     {
         if (expected.Kind != BoundTypeKind.Function)
         {
@@ -212,27 +248,35 @@ public sealed partial class Binding
             return false;
         }
 
-        var scope = this.scopes[function];
+        var scope = this.ClosureHeaderScope(function);
         for (var i = 0; i < count; i++)
         {
-            if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType })
+            if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } || open.Input(i))
             {
-                continue; // SPEC 10.5: an omitted parameter Type takes the fixed expected input.
+                continue; // SPEC 10.5: an omitted parameter Type takes the fixed expected input; an open one was judged case by case.
             }
 
             var type = this.BindType(function.Parameters[i].Type, scope);
-            if (!ReferenceTypes.StorageMatches(inputs.Components[i], type))
+            if (!TyCtxt.StorageMatches(inputs.Components[i], type))
             {
                 return false;
             }
         }
 
-        return openResult || function.ReturnType is null ||
-            ReferenceTypes.StorageMatches(expected.Components[1], this.ClosureResultType(function, inputs, scope));
+        return open.Result || function.ReturnType is null ||
+            TyCtxt.StorageMatches(expected.Components[1], this.ClosureResultType(function, inputs, scope));
     }
 
-    private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
+    private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, OpenParts open = default)
     {
+        if (expected is { ContainsOpen: true })
+        {
+            // DECISIONS BU-240 (temporary with BoundTypeKind.Open): the expected signature's parts a split binding decides are open, read
+            // once from its marks (OpenParts.Of) and then removed.
+            open = OpenParts.Of(expected, open);
+            expected = this.Unmarked(expected);
+        }
+
         // SPEC 8.11.1: a literal's effect items are judged as every function's are (BindEffectBound), on every path; a literal
         // declares no bound.
         for (var i = 0; i < function.EffectBounds.Count; i++)
@@ -242,12 +286,12 @@ public sealed partial class Binding
 
         if (function.ClosureStorage is { } previous)
         {
-            previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
+            previous.Signature = null;
+            previous.Published = false; // BoundClosure.Of is this binding's definition, set once it is published.
             previous.Classified = false; // And its receiver facts this binding's, once it has classified them.
-            this.LeavePendingRelations(function); // The pending relations of an earlier binding leave with it (R4-M126 §2.5 (d)).
         }
 
-        if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
+        if (expected is not null && !this.ClosureSignatureFits(function, expected, open))
         {
             // SPEC 10.5, 23.1.2: the written header disagrees with the fixed signature; the omitted parameter Types that
             // signature would have supplied rest on this failure.
@@ -264,38 +308,56 @@ public sealed partial class Binding
 
         // A fixed signature supplies header inference, never a different capture or ownership model. The ordinary
         // expected-Type adaptation erases the resulting concrete value only after its body and receiver are known.
-        return this.BindConcreteClosure(function, scope, expected, openResult);
+        return this.BindConcreteClosure(function, scope, expected, open);
     }
 
-    private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
+    private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope, BoundType? expected, OpenParts open)
     {
         expected = expected is null ? null : this.ClosureExpectation(function, expected);
         var plan = function.ClosureStorage ??= new();
-        plan.Storage.Clear();
+        plan.Walk.Clear();
+        plan.WalkVersion = -1;
         plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
-        plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        this.BindClosureHeader(function, scope, expected, openResult, plan);
-        if (this.CaptureEntriesFail(function, scope, out var failed))
+        this.BindClosureHeader(function, expected, open, plan);
+        if (this.FormEnvironment(function) is DeclState.Error or DeclState.NotStarted)
         {
-            return failed;
+            return null; // The entry's, or the evaluating body's, record at the literal, or a pending entry source it rests on (SPEC 23.1.2).
         }
 
+        if (this.FormsBorrows)
+        {
+            this.CaptureBorrows(plan, this.borrows); // The entries' Borrows, before the body that states their atoms (Binding.RawOrigins.Borrows).
+        }
+
+        if (this.TypedByHeader(function, scope, plan, open) is { } property)
+        {
+            // Typing the Property needs this Type, not the body, which its variable binding binds with its parts (BindLeftBodies).
+            (property.LeftBodies ??= []).Add((function, expected));
+            return this.PublishClosure(function, plan, expected, open);
+        }
+
+        return this.BindClosureChecks(function, scope, plan, expected, open);
+    }
+
+    // The body and what reads it: the receiver's classification, the result's sources and the omitted captures (SPEC 7.7.3, 15.8.2).
+    private BoundType? BindClosureChecks(FunctionKoto function, BindingScope scope, BoundClosure plan, BoundType? expected, OpenParts open)
+    {
         this.BindClosureBody(function, scope);
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
         // included; classification reads neither the signature nor the environment Type. A use of a pair-layer capture that no consumer
-        // takes, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M145). The
-        // relations that waited for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
+        // takes is a broken contract, a located InternalInvariant_Kd (DECISIONS R7-M53; it was R4-M145's net). No relation waits for the
+        // classification: one naming a pending atom is a row, which A5 judges (SPEC 15.8.2; DECISIONS R7-M66).
         var effects = this.closureEffects ??= new(this);
         effects.Classify(function, plan);
-        foreach (var (use, _) in effects.Unlisted)
+        foreach (var use in effects.Unlisted)
         {
-            this.Fail(use, BindingFailure.Unsupported);
+            this.Fail(use, BindingFailure.Internal);
         }
 
         // A use whose need no published fact decides leaves the receiver undecided, a located Unsupported_Kd: a call of a foreign import
@@ -306,13 +368,15 @@ public sealed partial class Binding
             this.Fail(use, BindingFailure.Unsupported);
         }
 
-        this.JudgePendingRelations(function);
-        return this.PublishClosure(function, plan, expected, openResult);
+        return this.PublishClosure(function, plan, expected, open);
     }
 
-    // The header (SPEC 10.5): each parameter, the result a written annotation or the expectation fixes, the Origin declaration over them.
-    private void BindClosureHeader(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult, BoundClosure plan)
+    // The header (SPEC 10.5): each parameter, the result a written annotation or the expectation fixes, the Origin declaration over them,
+    // in the literal's header scope (ClosureHeaderScope, which also states its evaluating body). An omitted parameter Type at an open
+    // input takes the expected input in the header, and the body reads it as resting (OpenParts).
+    private void BindClosureHeader(FunctionKoto function, BoundType? expected, OpenParts open, BoundClosure plan)
     {
+        var scope = this.ClosureHeaderScope(function);
         var symbol = this.symbols[function];
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
@@ -323,73 +387,242 @@ public sealed partial class Binding
 
         symbol.Type = function.ReturnType is { } annotation
             ? expected is null ? this.BindType(annotation, scope) : this.ClosureResultType(function, expected.Components[0], scope)
-            : openResult ? null : expected?.Components[1];
+            : open.Result ? null : expected?.Components[1];
         plan.InfersResult = symbol.Type is null; // SPEC 10.5.4: the body's context is the one this fixes, never its inferred result.
         this.CompleteOriginDeclaration(originDeclaration);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.ParameterSymbol(function, i).Type = function.Parameters[i].Type.BoundType;
+            this.ParameterSymbol(function, i).Type = open.Input(i) && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType }
+                ? null : function.Parameters[i].Type.BoundType;
+        }
+
+        // Formed once the header's inputs and Origin declaration are complete: its proof reads the signature's own inputs.
+        symbol.Type = this.FormNestedResult(symbol.Type, function.ReturnType);
+    }
+
+    // DeclQueryKind.Environment (SPEC 7.7.1, 7.7.2, 15.3.4; PLAN G230-H (i), F's G230H-6): what a literal's body reads of its literal,
+    // formed once in the pass by its binding (after its header) or by a demand from its body that comes first (a local of the body bound
+    // before the literal, BindVariable through BodyEnvironment): its evaluating body's own environment where that body is a Closure's,
+    // its written parameter Types as its header binds them (a probe may have bound one already), and its written entries
+    // (CaptureEntries, the plan created at the header scope), formed before the expected input is read, as each entry's Type needs
+    // only its own source (F's G230H-11 C-1), so a header in the body names an entry's environment binding on every program. Not ready
+    // (abandoned: nothing recorded, asked again later), one criterion (F's G230H-6, G230H-10 C1): the environment cannot form before
+    // what it reads binds. An omitted parameter Type, which only the literal's expected Function Type gives (SPEC 7.7.1), is unbound
+    // until the literal's binding binds its header; an evaluating body's environment that is not ready waits the same way; and an
+    // entry's source that is pending (unbound in the pass, a retry with no recorded failure, or one resting on another's reported
+    // record, whose record the literal's then derives: rule W) leaves the literal resting on it, the entries before it kept. Error: the
+    // literal's record (an entry's, or the resting evaluating body's) ends its binding. Every later reader reads the formed entries, so
+    // none is formed or recorded twice; a re-entry (Running) reads the entries formed so far.
+    private DeclState FormEnvironment(FunctionKoto literal)
+    {
+        var symbol = this.symbols[literal];
+        var state = this.BeginQuery(symbol, DeclQueryKind.Environment);
+        if (state != DeclState.NotStarted)
+        {
+            return state;
+        }
+
+        var saved = this.EnterBody(symbol.DeclaringBody); // The header and captures are the evaluating body's (R4-M101 E1).
+        try
+        {
+            var outer = this.BodyEnvironment(symbol.DeclaringBody, out var enclosing);
+            if (outer == DeclState.Error)
+            {
+                this.CompleteDependent(literal, enclosing!);
+                this.FailQuery(symbol, DeclQueryKind.Environment);
+                return DeclState.Error;
+            }
+
+            if (outer == DeclState.NotStarted)
+            {
+                this.AbandonQuery(symbol, DeclQueryKind.Environment);
+                return DeclState.NotStarted;
+            }
+
+            var scope = this.ClosureHeaderScope(literal);
+            for (var i = 0; i < literal.Parameters.Count; i++)
+            {
+                var written = literal.Parameters[i].Type;
+                if (written is SyntaxFormKoto { Akind: KotoKind.InferredType })
+                {
+                    continue; // Bound by the literal's header (AwaitsExpectedInput).
+                }
+
+                var parameter = this.ParameterSymbol(literal, i);
+                parameter.Type = written.BindingState == BindingState.Unvisited ? this.BindType(written, scope) : written.BoundType;
+            }
+
+            // The entries before the expected input (F's G230H-11 C-1): each entry's Type reads only its own source, never a parameter.
+            var entries = this.CaptureEntries(literal, scope);
+            entries = entries == DeclState.Done && AwaitsExpectedInput(literal) ? DeclState.NotStarted : entries;
+            if (entries == DeclState.NotStarted)
+            {
+                this.AbandonQuery(symbol, DeclQueryKind.Environment);
+            }
+            else if (entries == DeclState.Error)
+            {
+                this.FailQuery(symbol, DeclQueryKind.Environment);
+            }
+            else
+            {
+                this.CompleteQuery(symbol, DeclQueryKind.Environment);
+            }
+
+            return entries;
+        }
+        finally
+        {
+            this.formingBody = saved;
         }
     }
 
-    // SPEC 7.7.2: the written capture list's entries; true, with the literal's Type, where an entry ends the binding.
-    private bool CaptureEntriesFail(FunctionKoto function, BindingScope scope, out BoundType? failed)
+    // The Environment query's answer for the literal whose body `body` is, and that literal (FormEnvironment, demanded here); Done, with
+    // no literal, for any other body.
+    private DeclState BodyEnvironment(ExecutableBody body, out FunctionKoto? literal)
     {
-        failed = null;
+        literal = body.Definition?.Declaration is FunctionKoto { IsAnonymous: true } function ? function : null;
+        return literal is null ? DeclState.Done : this.FormEnvironment(literal);
+    }
+
+    // SPEC 7.7.1, F's G230H-6, G230H-8 (1) and G230H-11 C-2: whether a function's header (`owner`) is bound ahead of the environment of
+    // the literal one of whose own scopes `scope` is (its header scope or a body scope, the published scope Function), an environment
+    // the demand cannot form before its evaluating construct binds: that literal, another than the owner, whose Environment query is
+    // not ready. A named function's scope, a ready literal's and the owner's own are never ahead (SPEC 9.3, 15.3.4).
+    private bool AheadOfEnvironment(Koto? owner, BindingScope scope)
+        => owner is FunctionKoto && scope.Function is { IsAnonymous: true } literal && !ReferenceEquals(literal, owner) &&
+            this.FormEnvironment(literal) == DeclState.NotStarted;
+
+    // SPEC 7.7.2: the written capture list's entries: Done; Error where the list repeats a name or an entry ends the binding (its record
+    // at the literal); NotStarted where an entry's source is pending (FormEnvironment's not-ready criterion). Each entry's source is
+    // demanded first (QueryValueType), so the entry is judged on its source's declared Type whenever the list is formed.
+    private DeclState CaptureEntries(FunctionKoto function, BindingScope scope)
+    {
         if (function.Captures is not { } captures)
         {
-            return false;
+            return DeclState.Done;
         }
 
-        // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
-        // again keeps the environment bindings of its earlier binding. The other entries are still bound, and the first that
-        // fails on its own is reported beside the repeats (SPEC 23.1.2).
-        var repeats = this.RepeatedCaptures(function, captures);
-        foreach (var capture in captures)
+        // SPEC 7.7.2, 23.1.2: a repeated capture name and a collision with a parameter are recorded from the written list. The other
+        // entries are still bound, and the first that fails on its own is recorded beside the repeats.
+        var repeats = this.RecordRepeatedCaptures(function, captures);
+        for (var i = 0; i < captures.Length; i++)
         {
-            if (this.RepeatsEarlierEntry(repeats, capture))
+            var capture = captures[i];
+            if (repeats && RepeatedEntry(captures, i) >= 0)
             {
-                continue;
+                continue; // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
             }
 
-            var source = this.Lookup(capture.Name, scope.Parent!, function);
-            if (source is not null && Receiver(source) is not null)
+            if (this.Lookup(capture.Name, scope.Parent!, function) is not { } source)
+            {
+                this.Record(function, BindingFailure.Capture, []); // An unresolved name, without facts.
+                return DeclState.Error;
+            }
+
+            this.QueryValueType(source);
+            if (Receiver(source) is not null)
             {
                 // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                 // which self is reached only through its Fields (Receiver).
-                failed = this.FailCaptureEntry(function, repeats, BindingFailure.Capture, CaptureFailure.Of(capture, source));
-                return true;
+                this.CaptureFacts(function, CaptureProblem.Receiver, capture.Span, i, source);
+                this.RecordCapture(function, BindingFailure.Capture);
+                return DeclState.Error;
             }
 
-            if (source is not null && this.HelperCarrier(function, source) is { } helper)
+            if (this.HelperCarrier(function, source) is { } helper)
             {
-                failed = this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
-                return true;
+                this.RecordHelperCapture(function, capture.Span, i, source, helper); // SPEC 16.3.1: nor its helper borrow.
+                return DeclState.Error;
             }
 
-            if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
+            // SPEC 23.1.2: no environment holds a source whose Type failed (QueryValueType demanded it above, so Capture would bind
+            // nothing more); the entry rests on it, and a list that repeats a name has its records.
+            if (source.Type is null)
             {
-                // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
-                failed = source is { Type: null } ? repeats.Count == 0 ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
-                    : this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
-                return true;
+                if (repeats)
+                {
+                    return DeclState.Error;
+                }
+
+                // The literal rests on the source's TypeSource: Error on a recorded failure, which derives the entry; not ready on a
+                // pending source (F's G230H-10 C1).
+                var cause = TypeSource(source) ?? source.Declaration;
+                this.CompleteDependent(function, cause);
+                return this.RecordedState(cause) == BindingState.Invalid ? DeclState.Error : DeclState.NotStarted;
+            }
+
+            if (this.Capture(function, source, scope, capture) is not { } environment)
+            {
+                return DeclState.Error; // Capture recorded its refusal.
             }
 
             environment.MutableCapture = capture.IsMutable;
             if (this.CaptureEntry(function, capture, source, environment) is { } failure)
             {
-                failed = this.FailCaptureEntry(function, repeats, failure, CaptureFailure.Of(capture, source));
-                return true;
+                // SPEC 7.7.2, 8.14: a bare entry's Type and the cases its bare acquisition moves in, judged here for its Note.
+                var facts = this.CaptureFacts(function, CaptureProblem.Entry, capture.Span, i, source);
+                if (failure == BindingFailure.TransferRequired)
+                {
+                    facts.Add(new(ProblemFactKind.Actual, SourceRef.Of(function), this.report.Keep(source.Type)));
+                    if (this.BareAcquisition(source.Type, function, out _) is not SemanticsMask.None and var moving)
+                    {
+                        facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(function), (long)moving));
+                    }
+                }
+
+                this.RecordCapture(function, failure);
+                return DeclState.Error;
             }
         }
 
-        if (repeats.Count != 0)
+        return repeats ? DeclState.Error : DeclState.Done;
+    }
+
+    // SPEC 11.6, 3.2.1, 7.7.1, 7.7.2, 10.5.4 (G812 rulings 174, 176): typing a Property's initializer needs a literal's Type, not its body,
+    // where the header fixes that Type and the call receiver checks in the header read without the body: its signature (a written or
+    // expected result, no input a split leaves open) and an empty environment (a written empty list, or no runtime binding visible at it
+    // between it and the Property, CanCapture), whose receiver is Shared whatever the body does (SPEC 7.7.3). A capturing literal keeps its body
+    // in the frame: its receiver comes from the body (G812 ruling 179). While that Property's header is computed or failed
+    // (HeaderRunningOrFailed), such a literal of its initializer is published with its Type and no body (BoundProperty.LeftBodies): the
+    // Property, or null.
+    private BoundProperty? TypedByHeader(FunctionKoto function, BindingScope scope, BoundClosure plan, OpenParts open)
+    {
+        if (plan.InfersResult || open.Inputs != 0 || function.Captures is { Length: > 0 } ||
+            Definition(function) is not PropertyKoto { InitializerKoto: { } initializer } definition || !IsWithin(function, initializer) ||
+            this.symbols[definition] is not { Property: { } bound } property || !this.HeaderRunningOrFailed(property))
         {
-            failed = this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
-            return true;
+            return null;
         }
 
-        return false;
+        var declaration = this.DeclarationScope(property);
+        for (var enclosing = scope.Parent; function.Captures is null && !ReferenceEquals(enclosing, declaration); enclosing = enclosing.Parent)
+        {
+            if (enclosing is null || this.CanCapture(enclosing, function))
+            {
+                return null;
+            }
+        }
+
+        return bound;
+    }
+
+    // SPEC 10.5.4, 23.1.2 (G812 ruling 174): the bodies of the literals a Property's header left (TypedByHeader), bound by its variable
+    // binding with its parts, outside its frame (DECISIONS G52-1): its header is complete, so each body is checked against its written
+    // signature and reads formed headers; its records are its own, as when the header bound it.
+    private void BindLeftBodies(BoundProperty property)
+    {
+        if (property.LeftBodies is not { Count: > 0 } left)
+        {
+            return;
+        }
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            var (literal, expected) = left[i];
+            this.BindClosureChecks(literal, this.scopes[literal], literal.ClosureStorage!, expected, default);
+        }
+
+        left.Clear();
     }
 
     // The body and its result (SPEC 14.9, 15.3.4).
@@ -424,55 +657,116 @@ public sealed partial class Binding
 
     // The result, the Signature and the EnvironmentType, once the receiver is classified, and what the published result's fit and the omitted
     // captures judge (SPEC 15.8.2, 7.7.2).
-    private BoundType? PublishClosure(FunctionKoto function, BoundClosure plan, BoundType? expected, bool openResult)
+    private BoundType? PublishClosure(FunctionKoto function, BoundClosure plan, BoundType? expected, OpenParts open)
     {
         var symbol = this.symbols[function];
-        if (symbol.Type is null)
+
+        // DECISIONS BU-240 (G812 rulings 134, 158, 172): the body read an open input's parameter as resting (BindClosureHeader); once it is
+        // bound, the parameter's slot takes the header's Type, the canonical case's, as the split's completion gives a marked node its
+        // Type with its state unchanged: its uses still rest, nothing is judged again, and the Signature below is formed from typed
+        // slots (PLAN G1073, G1110).
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            return Complete(function, null);
+            if (open.Input(i) && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
+            {
+                this.ParameterSymbol(function, i).Type = inferred.BoundType;
+            }
         }
 
         // SPEC 15.8.2 (DECISIONS R4-M126 P8, R4-M152): an inferred result is published once the receiver is classified.
-        var publishes = function.ReturnType is null && (expected is null || openResult);
+        var publishes = symbol.Type is not null && function.ReturnType is null && (expected is null || open.Result);
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
-            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type, closureBody));
+            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type!, closureBody));
         }
 
-        var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
+        // SPEC 23.1.2 (PLAN G1110, DECISIONS R5-M63 (1) as amended): a parameter or result slot that failed (the failed-slot fact) leaves the
+        // Signature null and the creation failed; the definition is still published (Published) with its final EnvironmentType, its
+        // Origin arguments from the typed header parts only (a failed part names no atom).
+        var failed = symbol.Type is null;
+        var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count + 1, plan.Storage.Count));
         try
         {
+            var typed = 0;
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                if (function.Parameters[i].Type.BoundType is not { } input)
+                if (function.Parameters[i].Type.BoundType is { } input)
                 {
-                    return Complete(function, null);
+                    buffer[typed++] = input;
                 }
-
-                buffer[i] = input;
+                else
+                {
+                    failed = true;
+                }
             }
 
-            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
+            BoundType header;
+            if (!failed)
+            {
+                var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
+                plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type!]);
+                header = plan.Signature;
+            }
+            else
+            {
+                if (symbol.Type is { } result)
+                {
+                    buffer[typed++] = result;
+                }
+
+                header = typed == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, typed));
+            }
+
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
-            plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
+            plan.EnvironmentType = this.ClosureType(symbol, function, header, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
         }
         finally
         {
             this.typeScratch.Return(buffer, clearArray: true);
         }
 
+        plan.Published = true;
+        // SPEC 23.1.2 (rule W): the result's sources and the omitted captures are judged on both paths; a returned value read from a
+        // failed slot has no Type and rests (FitResultSources skips it), any other source is fitted.
         if (publishes)
         {
-            this.FitResultSources(function, closureBody, symbol.Type); // A returned value over the call's own storage is Refuted where it returns.
+            this.FitResultSources(function, closureBody, symbol.Type!); // A returned value over the call's own storage is Refuted where it returns.
         }
 
         this.JudgeOmittedCaptures(function, plan);
-        return Complete(function, plan.EnvironmentType);
+        return Complete(function, failed ? null : plan.EnvironmentType);
+    }
+
+    // SPEC 10.5, 10.8, 23.1.2: the parts of an anonymous function's fixed expected signature that guide nothing: the result, inferred
+    // from the body (SPEC 10.8: a result Type the call leaves open, FailUnboundSlots), and the inputs (bit i) a split layer decides case
+    // by case (DECISIONS BU-240 with rule W, temporary with it; G812 ruling 134). At an open input an omitted parameter Type takes the
+    // expected input in the published header, while the body reads the parameter as resting, so each check that reads it rests on the
+    // split (O-332 (a)); a written one is not compared, its fit having been judged in each case.
+    private readonly record struct OpenParts(bool Result, ulong Inputs)
+    {
+        internal bool Input(int i) => i < 64 && (this.Inputs & (1UL << i)) != 0;
+
+        // DECISIONS BU-240: `open` with the parts of `expected` that hold a mark: an input or the result, or every part where the whole is
+        // marked (a signature a split binding decides as a whole).
+        internal static OpenParts Of(BoundType expected, OpenParts open)
+        {
+            if (expected is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })
+            {
+                return new(true, ulong.MaxValue);
+            }
+
+            var bits = open.Inputs;
+            for (var i = 0; i < Math.Min(inputs.Components.Count, 64); i++)
+            {
+                bits |= inputs.Components[i].ContainsOpen ? 1UL << i : 0;
+            }
+
+            return new(open.Result || result.ContainsOpen, bits);
+        }
     }
 }

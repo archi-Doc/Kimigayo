@@ -17,7 +17,7 @@ public sealed partial class Binding
     {
         result = null;
         var core = receiver;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var inner] })
+        while (core?.SafeReferent is { } inner)
         {
             core = inner;
         }
@@ -34,8 +34,8 @@ public sealed partial class Binding
             return true;
         }
 
-        var range = ReferenceTypes.IsResolvedRange(key) || this.ProvesClosedContract(key, this.Library.PositionRange, scope);
-        if (!range && !this.ProvesClosedContract(key, this.Library.Position, scope))
+        var range = key is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange } || this.ProvesClosedContract(key, this.Library.PositionRange, scope, source);
+        if (!range && !this.ProvesClosedContract(key, this.Library.Position, scope, source))
         {
             this.RecordMismatch(source.Right, source.Right, key, new(null, MismatchForm.PositionType), ComparisonFailure.Shape);
             result = this.CompleteDependent(source, source.Right);
@@ -46,14 +46,14 @@ public sealed partial class Binding
         var shared = this.BindViewCall(source, scope, core, key, range, false);
         if (!range && shared is not null)
         {
-            this.uniqIndexing[source] = new(true, null);
-            if (ExclusivelyAcquirable(source.Left))
+            this.uniqIndexing[source] = new(true, null, null);
+            if (this.ExclusivelyAcquirable(source.Left))
             {
                 this.BindViewCall(source, scope, core, key, false, true);
             }
         }
 
-        result = Complete(source, range ? shared?.BoundType : LentElement(shared));
+        result = Complete(source, range ? shared?.BoundType : this.LentElement(shared));
         return true;
     }
 

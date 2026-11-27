@@ -154,6 +154,22 @@
     Description="a base and a Contract parent are inheritance references: a Container path with at most a binding set or a during binding"
     Phrase="inheritance reference"
 
+  + Name="Syntax.ContractReference"
+    Description="a Contract reference is a Container path with at most a binding set: no Semantics prefix, group, '?', during binding, operator or other Type"
+    Phrase="contract reference"
+
+  + Name="Syntax.ContractMember"
+    Description="a grouped Contract after '.' is followed by '.' and its member Name: .(C).Name"
+    Phrase="grouped Contract followed by its member Name"
+
+  + Name="Syntax.ConformanceSubject"
+    Description="a conditional conformance's subject is Self"
+    Phrase="Self as a conditional conformance's subject"
+
+  + Name="Syntax.ConformanceRequirement"
+    Description="a conformance condition's requirement joins its atoms with and; not and or are unavailable there"
+    Phrase="conformance requirement"
+
   + Name="Syntax.ExtensionDeclaration"
     Description="no extension declaration is written"
     Phrase="extension declaration"
@@ -507,7 +523,7 @@
     Description="the runtime symbol import matches the reserved supply"
 
   + Name="Binding.ConflictingImportSupply"
-    Description="the imports of one symbol agree on their supply"
+    Description="the imports of one symbol agree on their providing library"
 
   + Name="Binding.DirectCallFunctionValue"
     Description="the function that supports direct calls only is not used as a value"
@@ -677,11 +693,20 @@
   + Name="Ownership.DepthLimit"
     Description="ownership analysis stays within its Type nesting bound"
 
+  + Name="Ownership.PlatformStatic"
+    Description="a platform member and every function it calls access no static storage"
+
   + Name="Binding.CaseLimit"
     Description="the Semantics cases of the definition stay within the implementation bound"
 
   + Name="Binding.TypeHeightLimit"
     Description="every Type the program forms stays within the implementation's height limit"
+
+  + Name="Binding.AnalysisLimit"
+    Description="every analysis Binding bounds stays within its implementation limit"
+
+  + Name="Binding.ResolutionWorkLimit"
+    Description="the resolution of every call stays within the implementation's limit of checked arguments"
 
   + Name="Emission"
     Description="generation succeeds"

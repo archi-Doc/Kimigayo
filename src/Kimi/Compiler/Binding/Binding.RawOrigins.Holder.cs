@@ -5,13 +5,23 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Raw Origins, `during self` layers (SPEC 5.7 Reading and Writing a Field; DECISIONS BU-24, R4-M105; contract in Binding.RawOrigins.cs):
-// a Type holding one in inline storage (HoldsHolder), the layer read at a Place with the Origin its path is reached through
-// (ReadHolder, ReplaceHolder), and the allowlist of its Place reached through no dereference (HolderPlaceFailure, HolderWriteFailure).
+// a Type holding one in inline storage (HoldsHolder), whether a constructor's or drop's receiver holds a layer a path reaches
+// (ReceiverHolds), the layer read at a Place with the Origin its path is reached through (ReadHolder, ReplaceHolder), and the allowlist
+// of its Place reached through no dereference (JudgeHolderPlace, JudgeHolderAccess).
 public sealed partial class Binding
 {
     // Whether a Type holds a `during self` layer in its inline storage: the layer, or a Tuple or fixed array with a component holding one
     // (its Origin summary's bit, Binding.OriginSummaries).
     private bool HoldsHolder(BoundType type) => this.SummaryOf(type).HoldsHolder;
+
+    // SPEC 5.7 Origins, Reading and Writing a Field (DECISIONS R4-M105, OQ-R1 (a); BU-24; PLAN G1119): whether `path` reaches a `during
+    // self` layer "through `self` in the constructors and drop of the struct or enum whose inline storage holds the layer": the stored
+    // Field holding the layer (Field, a Tuple or fixed-array selection below it included: Stored) is selected directly from a special
+    // receiver (Receiver), which then is the layer's holding value ("`self` names the holding value"). There the layer reads with the
+    // receiver's Origin (ReadHolder) and the allowlist does not apply (JudgeHolderPlace): the one decision both read. Below another
+    // stored Field (`self.inner.data`, at any depth) the holding value is that Field's, which no Origin expression names (15.2.1), so the
+    // layer reads with no Origin and the allowlist applies: construction rights cover the receiver's own Fields only (6.3.4, 15.1.2).
+    private bool ReceiverHolds(in RawPath path) => Receiver(path.Field?.Left) is not null && path.Stored is { } stored && this.HoldsHolder(stored);
 
     // SPEC 5.1, 5.7 (R4-M105, OQ-R1 (a)): what a write of `source` puts in a `during self` layer that `stored` is or holds inline, other
     // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,
@@ -50,8 +60,8 @@ public sealed partial class Binding
     }
 
     // SPEC 5.7, Reading a Field: a `during self` layer read at `place` (a Field, or a Subject a payload is selected from in place)
-    // states the Origin of the last borrow or raw pointer the path dereferences (PathOrigin), the special receiver's in a constructor or
-    // drop, or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
+    // states the Origin of the last borrow or raw pointer the path dereferences (PathOrigin), the special receiver's where it holds the
+    // layer (ReceiverHolds), or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
     private BoundType? ReadHolder(BoundType type, Koto place, Koto node)
     {
         if (!type.CarriesRawOrigin || !this.HoldsHolder(type))
@@ -66,7 +76,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return this.ReplaceHolder(type, path.Origin);
+        return this.ReplaceHolder(type, path.Dereferences == true || this.ReceiverHolds(path) ? path.Origin : null);
     }
 
     // A part holding no `during self` layer is its own image (HoldsHolder, its Origin summary's bit), so only the parts holding one are
@@ -100,47 +110,36 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a); R4-M110): through no dereference, except through `self` in the constructors and drop of
-    // the Type whose inline storage holds the layer, a `during self` layer's Place admits reads (a Move included), shared borrows and
-    // writes of null only; an enclosing Tuple or fixed-array Place is written and borrowed as the layer's Place is. Whether `access` to
-    // `place`, writing `source`, failed at `at` (HolderWriteFailure), for a write, an update, a written exclusive borrow, a receiver's
-    // implicit one (JudgeCallFit) and a Move; PathOrigin publishes the stored Field and the Place's stored Type.
-    private bool HolderPlaceFailure(Koto place, HolderAccess access, Koto? source, Koto at)
-        => this.PathOrigin(place) is { Dereferences: false, Field: { } field, Stored: { } stored } && this.HoldsHolder(stored) && Receiver(field.Left) is null &&
-            this.HolderWriteFailure(stored, access, source, at);
-
-    // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. Admitted: a write
-    // whose value puts null in every layer (NonNullAtLayers) and a Move of the layer's Place, a read whose restoring write is a write.
-    // A Move of an enclosing Place is a located Unsupported_Kd (PLAN G212: SPEC does not say what it gives). Any other write, an update
-    // and an exclusive borrow, of the layer's Place or an enclosing one, record an Origin relation failure at `at` and form no
-    // relation: the holder's storage, which no Origin expression names, outlives no Origin. Its longer end is the Origin of the value
-    // reaching the layer, none for an update or a borrow, which admit the Place's read Type.
-    private bool HolderWriteFailure(BoundType stored, HolderAccess access, Koto? source, Koto at)
+    // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a); R4-M110; R4-M117 item 6): through no dereference, except through `self` in the constructors
+    // and drop of the Type whose inline storage holds the layer (ReceiverHolds), a `during self` layer's Place admits reads (a Move
+    // included), shared borrows and writes of null only, and an enclosing Tuple or fixed-array Place is read, written and borrowed as the
+    // layer's Place is, element by element. A read, a Move included, takes the Place's read Type (ReadHolder) and is no access the
+    // allowlist judges; it judges a write of `source` to `place`, or with no source an update, a written exclusive borrow or a receiver's
+    // implicit one (JudgeCallFit), at `at` (JudgeHolderAccess). PathOrigin publishes the stored Field and the Place's stored Type.
+    private void JudgeHolderPlace(Koto place, Koto? source, Koto at)
     {
-        var written = access == HolderAccess.Write && source is not null ? this.NonNullAtLayers(stored, source) : null;
-        if ((access == HolderAccess.Write && written is null) || (access == HolderAccess.Move && stored.Kind == BoundTypeKind.Semantics))
+        if (this.PathOrigin(place) is { Dereferences: false, Stored: { } stored } path && this.HoldsHolder(stored) && !this.ReceiverHolds(path))
         {
-            return false; // A Semantics `stored` is the layer itself; an enclosing one is a Tuple or fixed array (HoldsHolder).
+            this.JudgeHolderAccess(stored, source, at);
         }
+    }
 
-        if (access == HolderAccess.Move)
+    // A write of `source` (none: an update or an exclusive borrow) to storage whose Type `stored` is, or encloses, a `during self` layer
+    // reached through no dereference. Admitted: a write whose value puts null in every layer (NonNullAtLayers). Any other write, an update
+    // and an exclusive borrow, of the layer's Place or an enclosing one, is an Origin relation problem of `at` that forms no relation and
+    // leaves `at` Resolved (R7-O1 B4; SPEC 15.6.1: a failed relation adds no constraint, so the access's Loans reach MIR; 23.1.2): the
+    // holder's storage, which no Origin expression names, outlives no Origin. Its longer end is the Origin of the value reaching the
+    // layer, none for an update or a borrow, which admit the Place's read Type.
+    private void JudgeHolderAccess(BoundType stored, Koto? source, Koto at)
+    {
+        var written = source is null ? null : this.NonNullAtLayers(stored, source);
+        if (source is not null && written is null)
         {
-            this.Fail(at, BindingFailure.Unsupported);
-            return true;
+            return;
         }
 
         var longer = written?.BoundType?.RawOrigin ?? BoundOrigin.Unstated;
         var relation = new OriginRelationFact(at, longer, this.SuppliedAtUse(longer, at), BoundOrigin.Holder, Equality: false, stored, Refuted: true);
-        this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, relation);
-        return true;
-    }
-
-    // The accesses of a `during self` layer's Place the allowlist decides (HolderPlaceFailure).
-    private enum HolderAccess : byte
-    {
-        Write,
-        Update,
-        ExclusiveBorrow,
-        Move,
+        this.RecordResolvedOrigin(at, relation);
     }
 }

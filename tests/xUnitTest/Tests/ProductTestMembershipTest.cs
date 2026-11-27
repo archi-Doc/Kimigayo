@@ -99,7 +99,7 @@ public class ProductTestMembershipTest
     [InlineData("#Test\nvirtual func t() => ()", "InvalidVirtualDeclaration_Kd", "InvalidVirtualDeclaration_Kd")]
     [InlineData("group G\n    func t() => ()\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("group G\n    #Test\n    protected func t() => ()", "ProtectedPlacement_Kd", "ProtectedPlacement_Kd")]
-    [InlineData("open struct B\n    var x: i32\n    public func t(self: ref/Self) -> i32 => 1\nstruct D : B\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
+    [InlineData("open struct B\n    var x: i32\n    public func t(self: ref/Self) -> i32 => 1\nstruct D : B\n    #Test\n    func t() => ()", "DuplicateBinding_Kd DuplicateBinding_Kd", "DuplicateBinding_Kd DuplicateBinding_Kd")] // D and its t relating B's (R7-E2 E2-4b, ruling 2)
     [InlineData("enum E\n    T\n    #Test\n    func T() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("struct S\n    var t: i32\n    #Test\n    func t() => ()", "DuplicateBinding_Kd", "DuplicateBinding_Kd")]
     [InlineData("group G\n    #Test\n    static func t() => ()", "MisplacedSyntax_Kd", "MisplacedSyntax_Kd")]
@@ -134,6 +134,29 @@ public class ProductTestMembershipTest
         Assert.DoesNotContain(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
     }
 
+    // R7-D2 c: an excluded test's own row writes its leading attribute chain before the walk reaches the chain (its unknown markers'
+    // Unsupported, an invalid test's marker, a nested function's marker), and the indexer's walk resets a node with its leading chain
+    // before those writes, so each record stays, in Binding.Issues' order, cold and on a warm rebind. Labels (SPEC 6.7: `#Bench` is no
+    // recognized Attribute; 6.7.1: `#Layout` applies only to structs; 6.7.2: a parameter or a local function makes the target
+    // ineligible), all invalid: c5a (the review's B1 program; its `InvalidTestDefinition_Kd@2:1` is a record SPEC 6.7.2 does not give,
+    // since `#Test` attaches to an eligible `t` past `#Bench`: a PLAN open issue, kept here as dev's), c5b and c5c (each attribute's
+    // record), c5d (the marker written by the test's row and again by the misplaced-marker rule, listed twice; `#Bench`'s record only in
+    // a Test build, PLAN G660's records-only part) and c5e (the nested marker, 4:5).
+    [Theory]
+    [InlineData("#Test\n#Bench\nfunc t() => ()", "Unsupported_Kd@3:1 InvalidTestDefinition_Kd@2:1")]
+    [InlineData("#Bench\n#Layout(\"C\")\n#Test\nfunc t() => ()", "Unsupported_Kd@2:1 InvalidLayoutAttribute_Kd@3:1")]
+    [InlineData("#Layout(\"C\")\n#Bench\n#Test\nfunc t() => ()", "Unsupported_Kd@3:1 InvalidLayoutAttribute_Kd@2:1")]
+    [InlineData("#Test\n#Bench\nfunc t(x: i32) => ()", "InvalidTestDefinition_Kd@2:1 InvalidTestDefinition_Kd@2:1")]
+    [InlineData("#Test\nfunc outer()\n    #Test\n    func nested() => ()\n    ()", "InvalidTestDefinition_Kd@4:5")]
+    public void AnExcludedTestKeepsTheRecordsItsRowWritesOnItsAttributes(string declaration, string records)
+    {
+        var source = "Console.writeLine(\"p\")\n" + declaration;
+        var compilation = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(records, Issues(compilation, source));
+        compilation.Bind();
+        Assert.Equal(records, Issues(compilation, source));
+    }
+
     [Fact]
     public void TestEditsDoNotChangeProductIrWhenProductLocationsAreUnchanged()
     {
@@ -153,7 +176,7 @@ public class ProductTestMembershipTest
         var original = MinimalEmissionTest.Analyze("Console.writeLine(\"product\")\n#Test\nfunc test() => Missing.api()");
         var bytes = TinyhandSerializer.Serialize(original.Kotonoha);
         var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
+        Assert.True(restored.Prepare(TargetProfile.Windows.Target));
         var module = restored.Kotonoha;
         TinyhandSerializer.DeserializeObject(bytes, ref module);
         Assert.NotNull(module);
@@ -202,6 +225,11 @@ public class ProductTestMembershipTest
         c.Bind();
         return CompilationTestHelper.BindingErrors(c);
     }
+
+    // Binding.Issues in order, each as its code at its node's line and column.
+    private static string Issues(Compilation compilation, string source)
+        => string.Join(' ', compilation.Binding.Issues.Select(x =>
+            $"{x.Code}@{source.AsSpan(0, x.Node.Span.Start).Count('\n') + 1}:{x.Node.Span.Start - source.LastIndexOf('\n', Math.Max(x.Node.Span.Start - 1, 0))}"));
 
     private static FunctionKoto? FindFunction(Koto node, string name)
     {

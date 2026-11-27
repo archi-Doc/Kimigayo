@@ -177,21 +177,25 @@ public sealed partial class MirBuildTest
             body.Operands[x.Rvalue.Start] is { Kind: MirOperandKind.Copy, Place: { Root: 1, Projection: 0 } }));
     }
 
-    // SPEC 12.2 (R4-M37's Open): a pair-layer argument is acquired by case where it is evaluated, before a later argument's code, not at its
-    // Call.
-    [Fact]
-    public void APairLayerArgumentIsAcquiredWhereItIsEvaluated()
+    // SPEC 12.2 (R4-M37's Open): a pair-layer argument is acquired where it is evaluated, before a later argument's code, not at its Call:
+    // by case where its cases differ (`owner or uniq`: a Copy and a Reborrow), and as a plain Copy of the parameter where every case
+    // Copies (`owner or ref`; SPEC 8.15.2, 8.14: Copy in every case is the engine's Proven, the owner's O-417 (a); the Middle's C-398 N1).
+    [Theory]
+    [InlineData("owner or uniq", false)]
+    [InlineData("owner or ref", true)]
+    public void APairLayerArgumentIsAcquiredWhereItIsEvaluated(string semantics, bool copies)
     {
-        const string Source = "func pass<s/T>(a: s/T, b: i32)\n    s is owner or ref\n    T is Copy\n    _ = b\nfunc one() -> i32 => 1\n" +
-            "func pending<s/T>(x: s/T)\n    s is owner or ref\n    T is Copy\n    pass(x, one())\n";
-        var body = Body(Source, "pending");
+        var source = $"func pass<s/T>(a: s/T, b: i32)\n    s is {semantics}\n    T is Copy\n    _ = b\nfunc one() -> i32 => 1\n" +
+            $"func pending<s/T>(x: s/T)\n    s is {semantics}\n    T is Copy\n    pass(x, one())\n";
+        var body = Body(source, "pending");
         var path = RuntimePath(body).ToArray();
         var one = Array.FindIndex(path, at => at.Index == body.Blocks[at.Block].Count && body.Blocks[at.Block].Terminator.Callee.Symbol?.Name == "one");
         Assert.InRange(Array.FindIndex(path, Acquires), 0, one - 1);
 
         bool Acquires(MirLocation at) => at.Index < body.Blocks[at.Block].Count &&
             body.Statements[body.Blocks[at.Block].Start + at.Index] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } statement &&
-            body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
+            body.Operands[statement.Rvalue.Start] is var operand &&
+            (copies ? operand is { Kind: MirOperandKind.Copy, Place: { Root: 1, Projection: 0 } } : operand.Kind == MirOperandKind.PairAcquire);
     }
 
     // PLAN G703 (SPEC 3.5.3, 10.2; the Middle's C-219 N2 and condition 1): a value read through qualifying pair layers at an annotated
@@ -350,32 +354,17 @@ public sealed partial class MirBuildTest
     public void AFieldAMembersPremiseMakesNeverIsAcquiredAsTheNeverValue()
         => _ = Body("struct Box<E>\n    var v: E\n    public func f(self: ref/Self) -> i32\n        E is Never\n        return self.v\n", "f");
 
-    // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
-    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call),
-    // which marks f, the body it lies in, alone (MirBody.HasConstructionRecord; GR-1a, fail-before: none).
-    [Fact]
-    public void ATupleOperatorWithoutItsComparisonIsUnsupported()
-    {
-        var c = Compile(Unbuilt.Declarations + $"func f(a: ref/{Unbuilt.Tuple}, b: ref/{Unbuilt.Tuple}) -> bool => a == b\n");
-        var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        var record = Assert.Single(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
-        Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
-        Assert.Equal(["f"], program.Bodies.ToArray().Where(static x => x.HasConstructionRecord && x.Source.Module == 0).Select(static x => x.Key.Decl?.Name));
-    }
-
-    // SPEC 13.4, 23.1.2 (DECISIONS BU-38, R5-M166): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or
-    // through a handle, has its comparison, since what the leaf's witness runs does not depend on that part: its comparison call (equals
-    // under the operator mode) builds, with no record of the builder's (fail-before: the Limit of the twin above, Unsupported_Kd at the
-    // operator).
+    // SPEC 13.4, 13.4.1, 23.1.2 (DECISIONS BU-38, R5-M166, R7-M54 (R7-T1 c4)): what a tuple operator's leaf's witness runs does not depend
+    // on the leaf's storage, so a tuple operator whose leaf's storage rests on a part Binding rejected, inline or through a handle, or nests
+    // past Binding's bound (Wrap^80<i32>, a complete program) has its comparison: its comparison call (equals under the operator mode) builds,
+    // with no record of the builder's (fail-before: for the deep leaf, TyCtxt.Comparison's Limit, Unsupported_Kd at the operator with an
+    // Opaque value, the builder's B1; for the rejected ones, that Limit before BU-38).
     [Theory]
-    [InlineData("struct Bad\n    Self is Equatable\n    public var m: Missing\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Bad, b: ref/Bad) -> bool => (a, 1) == (b, 1)\n")]
-    [InlineData("struct Bad\n    public var m: Missing\nstruct Sx\n    Self is Equatable\n    public var x: rc/Bad\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Sx, b: ref/Sx) -> bool => (a, 1) == (b, 1)\n")]
-    public void ATupleOperatorOverRejectedStorageBuildsItsComparison(string source)
+    [MemberData(nameof(TupleOperators))]
+    public void ATupleOperatorBuildsItsComparisonWhateverItsStorage(string source, string errors)
     {
         var c = Compile(source);
-        Assert.Equal(["UnresolvedBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
+        Assert.Equal(errors, string.Join(' ', CompilationTestHelper.BindingErrors(c).Select(static x => x.Code)));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
@@ -386,6 +375,18 @@ public sealed partial class MirBuildTest
             Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Requirement, Symbol.Name: "equals", Arg: (int)ComparisonMode.Operator },
         });
     }
+
+    // ATupleOperatorBuildsItsComparisonWhateverItsStorage's programs and their Binding records.
+    public static TheoryData<string, string> TupleOperators => new()
+    {
+        { "struct Bad\n    Self is Equatable\n    public var m: Missing\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Bad, b: ref/Bad) -> bool => (a, 1) == (b, 1)\n", "UnresolvedBinding_Kd" },
+        { "struct Bad\n    public var m: Missing\nstruct Sx\n    Self is Equatable\n    public var x: rc/Bad\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Sx, b: ref/Sx) -> bool => (a, 1) == (b, 1)\n", "UnresolvedBinding_Kd" },
+        {
+            "struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+                $"func f(a: ref/{string.Concat(Enumerable.Repeat("Wrap<", 80))}i32{new string('>', 80)}, b: ref/{string.Concat(Enumerable.Repeat("Wrap<", 80))}i32{new string('>', 80)}) -> bool => (a, 1) == (b, 1)\n",
+            string.Empty
+        },
+    };
 
     // SPEC 8.2.3, 13.4 (R8-OT): a comparison operand whose Type an identity premise makes layered (T is ref/string or uniq/string, ref/U
     // over U is ref/string, under an explicit ref, uniq or pair layer, on either side, in a Closure or before a Literal Pattern) compares
@@ -429,6 +430,28 @@ public sealed partial class MirBuildTest
         var signature = body.Consts[call.Terminator.Callee.Arg];
         Assert.Equal(MirConstKind.TypeToken, signature.Kind);
         Assert.Same(body.TypeOf(new MirPlace(1)), signature.Type);
+    }
+
+    // SPEC 7.7.3, 7.3.3, 3.4.3, 13.5.5 (PLAN G1120, D-888): a value call's callee stored behind several ref and uniq layers, or behind a
+    // layer over an `obj` handle in a Shared call, is acquired on the path through every layer (`p@follow@ref`, `p@follow@uniq`): the
+    // Value call's operand is one reference in the call's mode to the Callable, which code generation, the collector and the MIR analyses
+    // read below one layer (TyCtxt.Layer), with a result naming the call receiver too. Fail-before: the operand kept every layer
+    // (`ref/ref/F`, `ref/obj/F`), and code generation's Value call reported InternalInvariant_Kd.
+    [Theory]
+    [InlineData("    let g = func () -> i32 => 2\n    let r = g@ref\n    let rr = r@ref\n    return rr()\n", SemanticsKind.Ref)]
+    [InlineData("    var g = func () -> i32 => 2\n    let u = g@uniq\n    let ru = u@ref\n    return ru()\n", SemanticsKind.Ref)]
+    [InlineData("    let n: i32 = 7\n    let g = func [n] () => n@ref\n    let r = g@ref\n    let rr = r@ref\n    let v = rr()\n    return v\n", SemanticsKind.Ref)]
+    [InlineData("    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var u = next@uniq\n    let uu = u@uniq\n    return uu()\n", SemanticsKind.Uniq)]
+    [InlineData("    let o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let ro = o@ref\n    return ro()\n", SemanticsKind.Ref)]
+    [InlineData("    var o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let uo = o@uniq\n    return uo()\n", SemanticsKind.Ref)]
+    public void AValueCalleeThroughLayersIsOneReferenceToItsCallable(string body, SemanticsKind mode)
+    {
+        var f = Body("func f() -> i32\n" + body + "public func main() => ()\n", "f");
+        var call = Assert.Single(f.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value }).Terminator;
+        var callee = f.TypeOf(call.Operand.Place)!;
+        Assert.Equal(mode, callee.Semantics);
+        Assert.Equal(HirPlaceKind.Deref, TyCtxt.Layer(callee, out var callable, out _));
+        Assert.Equal(BoundTypeKind.Closure, callable!.Kind);
     }
 
     // SPEC 3.6, 16.2.1, 7.2.3, 14.6.2 (DECISIONS R4-M129): a temporary is destroyed before every temporary created while it was evaluated
@@ -543,7 +566,8 @@ public sealed partial class MirBuildTest
 
     // SPEC 22.10.4, 14.10.3 (PLAN G410; DECISIONS R4-M62): a $tryWrite's writer is evaluated first; one of Type Never is the Never value,
     // which its status and writes take as it is, so its writes and embedded expressions are built in their order where only the checks
-    // continue, and A1 checks them as with a real writer, and its result, a call's, is placed. Each row: the parameters, the statements
+    // continue, and A1 checks them as with a real writer, and its result, a call's, is placed; the last row's real writer (`w`, a
+    // `uniq/Utf8Writer` parameter) has its writes built and checked the same way. Each row: the parameters, the statements
     // around the write (WRITE), its writer and literal, then A1's problems; the MIR layer observes the rule, the body's write calls and A1's
     // records (fail-before: the builder went to the result at the Never writer, building no write, so A1 reported nothing at b or u and
     // UninitializedPlace_Kd at r). Dev's located Unsupported_Kd at `<formatting>`, which G410's Binding half removes, is not compared.
@@ -554,7 +578,7 @@ public sealed partial class MirBuildTest
     [InlineData("", "let b = Box.init()\n    _ = WRITE\n    return 0", "do => return 7", "\\(b)", "")]
     [InlineData("", "let r = WRITE\n    match r\n        .Ok(_) => return 1\n        .Err(_) => return 2", "do => return 7", "\\(42)", "")]
     [InlineData("w: uniq/Utf8Writer", "let b = Box.init()\n    _ = WRITE\n    return 0", "w", "\\(b)x\\(b)", "")]
-    public void ANeverWritersWritesAreBuiltForTheChecks(string parameters, string statements, string writer, string literal, string problems)
+    public void ATryWritesWritesAreBuiltWithANeverOrARealWriter(string parameters, string statements, string writer, string literal, string problems)
     {
         var c = Compile("struct Box\n    Self is Utf8Format\n    public init() => ()\n" +
             "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(writer, \"v\")\n" +
@@ -633,9 +657,9 @@ public sealed partial class MirBuildTest
         Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
         Assert.Equal(calls, body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(x => Step(body, x.Terminator).Split(' ')[0])
             .Where(static x => x != "Fail").Order(StringComparer.Ordinal));
-        Assert.Equal(region, Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type)
+        Assert.Equal(region, Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type!)
             .Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name).SingleOrDefault());
-        var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
+        var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type!.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
         Assert.Single(writers); // One writer local, both arms' (consent 1).
     }
 
@@ -709,7 +733,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Problems.All.ToArray());
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
-        var locals = Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type).ToArray();
+        var locals = Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type!).ToArray();
         Assert.Equal(regions, locals.Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name));
         Assert.Equal(writers, Regex.Matches(MirDumpTest.Unsited(program, body), @"= writer<(\w+)>\(").Select(static x => x.Groups[1].Value));
         Assert.Equal(writers.Length, locals.Count(static x => x.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer)); // One writer local for each plan.
@@ -832,7 +856,7 @@ public sealed partial class MirBuildTest
         var dropped = body.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place.Projection: 0 })
             .Select(static x => x.Terminator.Place.Root).Distinct().ToArray();
         return dropped.Any(x => body.Locals[x].Name == key) ? Assert.Single(dropped, x => body.Locals[x].Name == key)
-            : Assert.Single(dropped, x => TyCtxt.Name(body.Locals[x].Type) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
+            : Assert.Single(dropped, x => TyCtxt.Name(body.Locals[x].Type!) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
     }
 
     // Whether a body drops a local and, in the cleanup chain after some Drop of it (along Drops and Gotos), another; an assignment's Drop

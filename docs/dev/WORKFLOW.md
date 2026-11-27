@@ -9,14 +9,15 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 | --- | --- | --- |
 | **Front** | P1–P5s: Syntax and Binding | Language rules, Types and Contracts, Binding diagnostics, SemanticQuery (Hover, LSP) |
 | **Middle** | P6–P10: MIR build, analyses and acceptance | Ownership and borrowing, effects, drop, MIR diagnostics, `MirValidator` |
-| **Back** | P11–P13: Backend and runtime | Layout and ABI, code generation, O2 performance, the object runtime, the Kimi library's generated code |
+| **Back** | P11–P12: Backend and runtime | Layout and ABI, code generation, O2 performance, the object runtime, the Kimi library's generated code |
+| **Tatara** | P13: Build (`src/Kimi/Build`) and Tatara (`src/Tatara`, the native part) | The build chain (in-process LLVM / LLD), `kimi tatara`, link material; reviewed by the Middle |
 | **Coordinator** | Cross-cutting | Landing on dev (windows), PLAN and DECISIONS numbering, project documents, verification scripts and the benchmark infrastructure |
 
 - Other areas: the Kimi library source (`src/Kimi/Library`) is the Back's; the diagnostics adapter (`src/Kimi/Diagnostics`) and the
   VS Code extension (`src/kimi-ext`) the Front's; `Compiler/Documentation` and the `tests/mir` goldens the Middle's. `Core`,
   `SolutionAndProject` and `Unit` are edited by any session under a board hold and reviewed by the Middle. A `src/Benchmark` series
   follows the component it measures, its infrastructure the Coordinator's.
-- **Planning session.** The Front, Middle and Back each plan their area's units: classification, design, delegation, splitting and
+- **Planning session.** The Front, Middle, Back and Tatara each plan their area's units: classification, design, delegation, splitting and
   owner reports. A unit across areas is planned by the session owning the component where the cause lies; the others consent to and
   review their hunks; a disagreement goes to the owner. The Coordinator decides no design and plans only its own script and
   benchmark-infrastructure units.
@@ -27,7 +28,8 @@ This document owns who plans, designs, reviews, implements and lands a change. P
   implementing unit. Where a rule says a unit records something in a document, the Coordinator edits it on the session's request.
 - AGENTS, SPEC and IMPL changes get an independent review by an agent who did not write them; no other document needs review.
   Policy documents still change only on the owner's explicit instruction (AGENTS Documentation).
-- A session that needs a document change adds a row with the proposed text to the board's document requests. The Coordinator handles
+- A session that needs a document change adds a row with the proposed text to the board's document requests, patch-ready: per
+  document the anchor and the complete new text, quoting the old text where a sentence changes (DECISIONS Q24). The Coordinator handles
   the requests when a window opens or closes and every 30 minutes. A message only points at a row that needs an answer.
 - A DECISIONS entry is drafted by the implementer (state file or request row) and landed by the Coordinator in the window that lands
   the unit.
@@ -42,8 +44,13 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 | **Minor** | A local change: it stays in one owning component, keeps its contract and invariants, adds no branch, parameter, state or code table, and a search finds no other site with the same cause. Its commit states the rule and the search. | Implementation → review |
 | **Major** | Every other change. | Design → design review where [Design](#design) step 5 requires one → implementation → review |
 
-- Work prototype first (DECISIONS R7-M3 RP13): iterate an implementation against the tests, then write the design from it. A
-  required design review judges that design before the implementation is completed.
+- Work prototype first (DECISIONS R7-M3 RP13, Q23): iterate an implementation against the tests, then write the design from its
+  diff. The design cites the prototype's commit, kept on a pushed `proto/…` branch until the unit lands, and states its measured
+  facts (its size, the sites it touched, the test rows' results); reviews read the diff with the design as its explanation. Being
+  first decides no structure: the design still compares the options ([Design](#design) step 3), a required design review (step 5)
+  judges the design before the prototype is completed, and a prototype settles no owner question. A unit whose plan row puts a
+  measurement first, or whose design depends on a measurement, measures before any prototype; its prototype starts once an option
+  is adopted.
 - Two candidates or any other special flow run only on the owner's instruction for that unit.
 
 ## Design
@@ -53,7 +60,7 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 3. A Major change gets a short design as one chain: the required meaning (the SPEC rule and the forms it governs) → what the
    representation lacks or wrongly allows → the owning component that decides it → what becomes unnecessary. It lists the sites
    sharing the cause ([CODEMAP](CODEMAP.md)), the options (at least a fix inside the owning component and a change of shared
-   structure), the deletions and the expected size and speed.
+   structure) with the reasons for rejecting the others, the deletions and the expected size and speed.
    It also states three things:
    - **Owner.** For each decision the change makes, the component that owns it, and whether the design reads that owner, moves the
      decision into it or creates it; a new owner names what it replaces.
@@ -62,6 +69,10 @@ This document owns who plans, designs, reviews, implements and lands a change. P
      each is a row of the coverage table (step 4), and the design decides what the change gives it.
    - **Readings.** Each SPEC reading the design relies on that the text does not state word for word, with the sentence it reads, or
      the DECISIONS entry or owner answer that settled it.
+   The design is about 1,000 to 1,500 words of prose (DECISIONS Q23) and holds only its current text: a revision replaces text in
+   place, the history stays in git and in the reviews' identified versions ([Repeated reviews](#repeated-reviews)), and a ruling
+   that changes the design goes into its text or a DECISIONS draft, never into a revision, rulings or response log. The planning
+   session's other rulings (on other sessions' rows, placements, applying an owner's answer) go in its notes, linked from the row.
 4. A change, Minor or Major, that moves acceptance ([Windows](#windows), Moves) or changes the code that decides a SPEC clause's
    condition, the forms it governs or its record gets a **coverage table**, on the base, before its first prototype:
    - a row per SPEC clause or table row the change decides, per form or position the rule governs, and per boundary where the rule
@@ -72,8 +83,8 @@ This document owns who plans, designs, reviews, implements and lands a change. P
    - a Minor change's table includes its exposure programs (step 3);
    - the rows become test rows in their owning test classes, at the lowest public layer that observes them; rows that earlier units
      wrote for the same SPEC text are reused by name, not written again.
-   The change passes every row before its first implementation review. A Minor change keeps its table in its tests; its commit names
-   the rows by section.
+   The change passes every row before its first implementation review. The table lives in its test rows, each with its section and
+   label; a Major design and a Minor commit name the rows by section and copy no table into prose (DECISIONS Q23).
 5. A design review is required for a change to a shared representation or across phases. Another Major change gets one only when a
    design issue must be settled before the implementation is completed, for example: the cause is still a hypothesis; the options
    differ in owning component or representation; the design departs from a DECISIONS or SETTLED entry; the sites sharing the cause
@@ -147,8 +158,11 @@ blocking findings above stand:
   - Where the program is rejected anyway, its record is reported.
   - Where the program may be valid, a located `Unsupported_Kd` marks the analysis limit. On a program the base accepts, that is
     regression 1. Replacing an independent Language record with `Unsupported_Kd` is regression 3.
-- A unit has one review, by one reviewer; a fix after REVISE is that reviewer's repeated review. A unit across areas adds each other
-  area session's reviewer on its own hunks (DECISIONS R7-M2).
+- A unit has one review, by one reviewer; a fix after REVISE or after ACCEPT is that reviewer's repeated review. A unit across areas
+  adds each other area session's reviewer on its own hunks (DECISIONS R7-M2). Another session reads a unit's delta (a fix after a
+  review) only where it touches files that session's area owns, as that reviewer on its own hunks, or where it adds a return, a rest
+  point or a skipped binding on a path MIR reads: then the Middle runs the delta's rows and adversarial twins on a CLI of the head
+  (DECISIONS Q23).
 
 | Verdict | Design review | Implementation review | Next |
 | --- | --- | --- | --- |
@@ -230,17 +244,21 @@ PLAN's open issues hold one row per cause (DECISIONS Q17).
 
 A window merges queued units onto dev, verifies them once and lands them together (DECISIONS Q15).
 
-- **Entry.** A unit enters when its review is ACCEPT, its unit checks passed on a base at most two windows old, and its queue row
-  names its branch head (the Coordinator's docs commit included) and its expected record and acceptance moves.
+- **Entry.** A unit enters when its review is ACCEPT, its unit checks (Unit verification, no Session of its own: DECISIONS Q20) passed on a base at most two windows old, and its queue row
+  names its branch head (the Coordinator's docs commit included) and its expected record and acceptance moves. A unit that changes
+  runtime code or code generation also names its O2 kernel A/B against the newest dev (DECISIONS Q24).
 - **Moves.** A unit moves acceptance when a program it changes goes from rejected to accepted or back; it moves records when only
   the records of programs that stay rejected change.
 - **Size.** At most five units that move records or acceptance, and at most one unit that moves acceptance per area (Front, Middle,
-  Back), or two when they share no file and each names its expected moves (DECISIONS Q18). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
-- **Files.** Units of one window share no file except PLAN's table end and separate DECISIONS entries. An overlap waits for the
+  Back, Tatara), or two when they share no file and each names its expected moves (DECISIONS Q18). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
+- **Files.** Units of one window share no file except PLAN's table end, separate DECISIONS entries and separate named constants or rows of a ratchet or pin
+  test (`ArchitectureRulesTest`, `KimiLibraryShapeTest`) that `git merge-tree` merges cleanly (DECISIONS Q20), and any other file
+  whose units merge cleanly with no two units' hunks overlapping or within 3 lines (DECISIONS Q21). An overlap waits for the
   next window, in order of readiness.
 - **Run.** The Coordinator merges the units onto dev, builds the solution with warnings as errors and runs the heavy set once: the
   default Session with the diagnostic snapshot against the shared base and every native fixture (a fixture whose inputs match the
-  base's passed result within 24 hours is reused, VERIFICATION), the milestones, the CLI harnesses and a semantic write. The
+  base's passed result within 24 hours is reused, VERIFICATION), the milestones, the CLI harnesses (`test-cli` only when the
+  window changes the command line's paths, DECISIONS Q24) and a semantic write. The
   window's opening line names each unit's expected moves; any other snapshot difference fails the window.
 - **Failure.** A failing unit leaves the window and the window runs again. When a failure names no unit, the units are split in
   halves until it does.

@@ -9,8 +9,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The MIR side of a test (DECISIONS R5-M188, refining R4-M136, R4-M50 and R4-M60): the Error records that
-/// decide a program's verdict, each at its exact subject, so a changed MIR verdict fails the test. Its rows are Binding's records except
-/// the twins of A5's rows (until R7), then the publisher's MIR rows (<see cref="MirSide"/>).</summary>
+/// decide a program's verdict, each at its exact subject, so a changed MIR verdict fails the test. Its rows are Binding's records, then
+/// the publisher's MIR rows (<see cref="MirSide"/>).</summary>
 internal static class MirTargetSide
 {
     /// <summary>Asserts an analyzed compilation's MIR side (<see cref="MirSide"/>).</summary>
@@ -36,8 +36,7 @@ internal static class MirTargetSide
 
     /// <summary>Lists a compilation's MIR side (R6-check H10a D3, D4) after <see cref="Compilation.Analyze"/>, which it runs; Analyze
     /// rebuilds and analyzes the MIR and clears the ControlFlow and Ownership partitions on every call, and it publishes nothing
-    /// (<see cref="Compilation.ReportAnalysis"/> does): Binding's issues and HIR lint Error records in their order, without a twin (D4: an Origin relation record of a
-    /// node <see cref="Binding.IsTwinRecord"/> names, whose A5 row stands for it until R7), then <c>Compilation.Problems</c>' rows as the
+    /// (<see cref="Compilation.ReportAnalysis"/> does): Binding's issues and HIR lint Error records in their order, then <c>Compilation.Problems</c>' rows as the
     /// publisher has them, without a requirement: every merged problem of the MIR's report under its own code (construction and collection
     /// records, derived problems), then each validator finding as <c>InternalInvariant_Kd</c>. It never runs the old analysis.</summary>
     /// <param name="compilation">The compilation after final Binding and the startup check.</param>
@@ -48,10 +47,7 @@ internal static class MirTargetSide
         var rows = new List<(DiagnosticRequirement? Requirement, DiagnosticCode Code, Koto Node)>();
         foreach (var issue in compilation.Binding.Issues)
         {
-            if (!(issue.Failure == BindingFailure.OriginRelation && issue.Code.IsUnprovenOrigin() && compilation.Binding.IsTwinRecord(issue.Node)))
-            {
-                rows.Add((DiagnosticRequirement.Binding(issue.Failure), issue.Code, issue.Node));
-            }
+            rows.Add((DiagnosticRequirement.Binding(issue.Failure), issue.Code, issue.Node));
         }
 
         foreach (var (node, code) in compilation.Binding.LintErrorRecords)

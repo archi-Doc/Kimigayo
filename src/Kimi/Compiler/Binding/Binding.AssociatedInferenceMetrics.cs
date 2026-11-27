@@ -6,6 +6,9 @@ internal readonly record struct AssociatedInferenceMetrics(int Batches, int Matc
 
 public sealed partial class Binding
 {
+    // The inference's storage kept across passes, which a warm Bind reuses: the kept batches (InferenceBatches, a kept NodeColumns
+    // family) and the eager tables. An inference hole's facts are its problem's, in the report's storage (InferenceFacts), never counted
+    // here.
     internal AssociatedInferenceMetrics AssociatedMetrics
     {
         get
@@ -16,7 +19,7 @@ public sealed partial class Binding
             var evidenceCapacity = 0;
             var batches = 0;
             var graphCapacity = this.associatedInference.Capacity + this.pendingAssociatedTypes.EnsureCapacity(0) + this.completeTypeIdentities.EnsureCapacity(0) +
-                this.inferenceFailures.EnsureCapacity(0) + this.inferenceSources.Capacity + this.inferenceInvalidation.EnsureCapacity(0);
+                this.inferenceSources.Capacity + this.inferenceInvalidation.EnsureCapacity(0);
             for (var i = 0; i < this.impls.Paths.Count; i++)
             {
                 var path = this.impls.Paths[i];

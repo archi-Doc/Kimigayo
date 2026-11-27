@@ -73,6 +73,54 @@ public sealed class CheckJsonOutputTest : IDisposable
         }
     }
 
+    // SPEC 23.2.3's publication (Tatara design A4 §2.2, C-427 B1 and r3): Publish holds the process's Ctrl+C action empty from the
+    // token's last check to the flush. A cancellation before it writes no JSON (OperationCanceledException: the command's 130); a press
+    // during the write calls the held action and changes nothing, the document whole; the action is restored after either. The row's
+    // own action stands for the default, which no in-process test calls (r2); the class runs alone, as it replaces Program.CancelKey.
+    [Collection<ConsoleIsolationCollection>]
+    public sealed class Publication
+    {
+        [Fact]
+        public void ThePublicationHoldsTheCtrlCAction()
+        {
+            var document = CheckJsonOutput.Create(new KimiOptions(), ["invalid\0.kimiproj"], TestContext.Current.CancellationToken);
+            var previous = Program.CancelKey;
+            var pressed = 0;
+            Action action = () => pressed++;
+            Program.CancelKey = action;
+            try
+            {
+                using var cancelled = new CancellationTokenSource();
+                cancelled.Cancel();
+                var none = new PressingWriter();
+                Assert.Throws<OperationCanceledException>(() => CheckJsonOutput.Publish(none, document, cancelled.Token));
+                Assert.Equal(string.Empty, none.ToString());
+                Assert.Same(action, Program.CancelKey);
+                var output = new PressingWriter();
+                CheckJsonOutput.Publish(output, document, TestContext.Current.CancellationToken);
+                Assert.Equal(JsonSerializer.Serialize(document, DiagnosticJsonContext.Default.CheckDocument) + Environment.NewLine, output.ToString());
+                Assert.Equal(0, pressed);
+                Assert.Same(action, Program.CancelKey);
+                Program.CancelKey();
+                Assert.Equal(1, pressed);
+            }
+            finally
+            {
+                Program.CancelKey = previous;
+            }
+        }
+
+        // Standard output whose line write presses Ctrl+C first.
+        private sealed class PressingWriter : StringWriter
+        {
+            public override void WriteLine(string? value)
+            {
+                Program.CancelKey();
+                base.WriteLine(value);
+            }
+        }
+    }
+
     private sealed class FailingDirectoryInput(Exception failure) : CheckInputSource
     {
         public override byte[] ReadAllBytes(string path) => throw new InvalidOperationException("No file should be read.");
@@ -89,7 +137,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         var document = CheckJsonOutput.Create(new KimiOptions(), [project], TestContext.Current.CancellationToken);
         Assert.Equal(CheckDocument.SchemaName, document.Schema);
         Assert.Equal(Compilation.CompilerVersion, document.Compiler);
-        Assert.Equal(new CheckUnitDescription(project, WindowsProfile.Target, CheckMode.Product, false), document.Unit);
+        Assert.Equal(new CheckUnitDescription(project, TargetProfile.Windows.Target, CheckMode.Product, false), document.Unit);
         Assert.Equal(CheckOutcome.Completed, document.Outcome);
         Assert.False(document.Accepted);
         Assert.Equal(TestPresence.No, document.TestPresence);
@@ -103,7 +151,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
-        var expected = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        var expected = CheckService.Run(loaded, TargetProfile.Windows.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(expected.Diagnostics, document.Diagnostics);
         var record = Assert.Single(document.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), record.Code);
@@ -160,6 +208,32 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.Single(document.Diagnostics, static x => x.Note!.EndsWith("Alias requires nonempty Container paths.", StringComparison.Ordinal));
     }
 
+    // SPEC 23.2.3 (PLAN G1010): a project whose load fails is a Blocked document, its reason the record (its file's read; its
+    // configuration's parse and an ill-typed value, IMPL 20.2), and one whose load ends by any other exception is a Faulted document
+    // (DIAGNOSTICS rule 9). A key that is not a name is the configuration's own failure (IMPL 20.1), each failure its record.
+    [Theory]
+    [InlineData("OutputKind={", null, nameof(DiagnosticCode.ProjectLoadFailed_Kd), "': Failed to deserialize Kimi.ProjectFile value.")]
+    [InlineData("OutputKind=\"Foo\"", null, nameof(DiagnosticCode.ProjectLoadFailed_Kd), "': Failed to deserialize Kimi.ProjectFile value.")]
+    [InlineData("2=\"a\"", null, nameof(DiagnosticCode.ProjectLoadFailed_Kd), "': A setting name in the project file must be a name.", "': Failed to deserialize Kimi.ProjectFile value.")]
+    [InlineData("", "held", nameof(DiagnosticCode.ProjectLoadFailed_Kd), "' could not be loaded: held")]
+    [InlineData("", "defect", nameof(DiagnosticCode.CheckFaulted_Kd), "System.InvalidOperationException: defect")]
+    public void AProjectThatDoesNotLoadIsBlockedByItsLoadAndFaultedByAnyOtherException(string settings, string? thrown, string code, params string[] notes)
+    {
+        var project = this.WriteProject("App", "main.kimi", "()");
+        if (settings.Length != 0)
+        {
+            File.WriteAllText(project, $"Targets={{\"{TargetProfile.Windows.Target}\"}} {settings}");
+        }
+
+        var failure = thrown is null ? null : thrown == "held" ? new IOException(thrown) : (Exception)new InvalidOperationException(thrown);
+        var document = CheckJsonOutput.Create(new KimiOptions(), [project], TestContext.Current.CancellationToken, failure is null ? null : new FailingInputSource(project, failure));
+        Assert.Equal(code == nameof(DiagnosticCode.CheckFaulted_Kd) ? CheckOutcome.Faulted : CheckOutcome.Blocked, document.Outcome);
+        Assert.False(document.Accepted);
+        Assert.Equal(notes.Length, document.Diagnostics.Length);
+        Assert.All(document.Diagnostics, x => Assert.Equal(code, x.Code));
+        Assert.All(notes, x => Assert.Single(document.Diagnostics, y => y.Note!.EndsWith(x, StringComparison.Ordinal)));
+    }
+
     // Standard output carries the document alone; the exit code follows acceptance as in the text form.
     [Fact]
     public async Task TheCommandWritesOnlyTheDocumentToStandardOutput()
@@ -195,7 +269,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         var folder = Path.Combine(this.directory, name);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".kimiproj");
-        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{TargetProfile.Windows.Target}\"}}");
         File.WriteAllText(Path.Combine(folder, file), text);
         return path;
     }

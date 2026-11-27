@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -12,15 +13,19 @@ public sealed partial class Binding
     // coinductively, so a revisit of a C-layout struct on its own path is eligible and ends the walk, and a finite nest has no limit.
     private const int CLayoutFieldBound = 32;
 
-    private readonly List<BindingSymbol> importDeclarations = new();
-    private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
+    // IMPL 21.2's one final symbol table: each external symbol's first import's providing library, the reserved supply it names (Module
+    // null), else its defining Kotonoha and logical name (SPEC 22.6, IMPL 20.4), and the first known physical signature (ImportAbi).
+    private readonly Dictionary<string, (string? Signature, Kotonoha? Module, string Library)> importSymbols = new(StringComparer.Ordinal);
     private readonly List<string?> importSignatures = new();
 
-    /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
+    // The running pass's import declarations: its part (PassPart, EnterPass).
+    private List<BindingSymbol> importDeclarations;
+
+    /// <summary>Gets the import declarations of the latest Bind (SPEC 22.6), the program part's then the library layer's (the composed view): the function of each <c>#LibraryImport</c> declaration whose
     /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
     /// ones. One whose Attribute fails before (InvalidLibraryImport) is none here, though <c>DirectCallOnly</c>, which reads the Attribute,
     /// still holds it to direct calls.</summary>
-    internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
+    internal IReadOnlyList<BindingSymbol> ImportDeclarations { get; }
 
     private static Koto? AttributeTarget(AttributeKoto attribute)
     {
@@ -38,7 +43,7 @@ public sealed partial class Binding
     private static bool HasNoCCounterpart(BoundType type)
         => ReferenceEquals(type, BoundType.String) || type.HandleMode is not null ||
             type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem ||
-            (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && HasNoCCounterpart(referent));
+            (type.SafeReferent is { } referent && HasNoCCounterpart(referent));
 
     // SPEC 22.6: a fixed-width integer Core or f32/f64 by width (i8/u8 share '1'); '?' for any other Type, a wrapping integer included.
     private static char ScalarCode(BoundType type)
@@ -53,14 +58,13 @@ public sealed partial class Binding
             _ => '?',
         };
 
-    // A rejected selected attribute is the declaration's failed prerequisite, not another failed requirement.
+    // A rejected selected attribute is the declaration's failed prerequisite, not another failed requirement (RestOnPart).
     // These markers cannot resolve within this pass; removing or replacing them rebuilds the cause on the next Bind.
     private void InvalidateAttributeTarget(AttributeKoto attribute)
     {
         if (AttributeTarget(attribute) is { } target)
         {
-            target.BindingState = BindingState.Invalid;
-            this.AddPrerequisite(target, attribute);
+            this.RestOnPart(target, attribute);
         }
     }
 
@@ -74,7 +78,7 @@ public sealed partial class Binding
 
         if (target is not StructKoto || attribute.LayoutMode is null)
         {
-            this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+            this.Record(attribute, BindingFailure.InvalidLayoutAttribute, []);
             this.InvalidateAttributeTarget(attribute);
         }
         else
@@ -88,8 +92,18 @@ public sealed partial class Binding
     private void ValidateLibraryImports()
     {
         string? target = null;
+        var row = TargetProfile.Find(this.compilation.TargetTriple.Value); // The selected row, or none (a target without a row).
         var symbols = this.importSymbols;
         symbols.Clear();
+
+        // The composed compilation's one table (IMPL 21.2): the frozen library's imports first, so a program's import carries the record;
+        // empty in the library pass, whose part ResetPass cleared.
+        foreach (var import in this.Library.Layer.Part.Imports)
+        {
+            var (module, library) = Provider(import.Library, import.Decl.Declaration.CodeContext.Kotonoha);
+            symbols.TryAdd(import.Symbol, (import.Signature, module, library));
+        }
+
         var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -103,29 +117,25 @@ public sealed partial class Binding
                 attribute.Operand is not InvocationKoto { ArgumentNodes.Count: 2 } call ||
                 !IsImportName(call, 0, out var name) || !IsImportName(call, 1, out var symbol) || IsReservedExternalName(symbol))
             {
-                this.Fail(attribute, BindingFailure.InvalidLibraryImport);
+                this.Record(attribute, BindingFailure.InvalidLibraryImport, []);
                 continue;
             }
 
-            // SPEC 20.4/20.8.2.4: the Kind of the defining module's requirement, after self-targeted
-            // supply expansion, decides dllimport generation; reserved supplies have their fixed kinds.
+            var identity = Provider(name, attribute.CodeContext.Kotonoha);
+
+            // IMPL 20.4/21.4.7: a reserved supply is any target row's supply of the name, with its fixed kind; an import of a symbol no
+            // row's supply of that name provides is an error on every target, and one only another row's supply provides is the selected
+            // row's Unsupported (below; SPEC 22 ¶1: validity is target-independent, an Unsupported report may depend on the target). Any
+            // other library's Kind is the defining module's requirement's, after self-targeted supply expansion (IMPL 20.4), and decides
+            // dllimport generation.
             string? kind = null;
-            if (name is WindowsProfile.Kernel32Library)
+            var reserved = TargetProfile.ReservedSupply(name);
+            if (reserved is not null)
             {
-                kind = "import"; // The generated kernel32 import library (SPEC 20.4).
-                if (Array.IndexOf(WindowsProfile.Kernel32Symbols, symbol) < 0)
+                kind = reserved.Kind;
+                if (!TargetProfile.Provides(name, symbol))
                 {
-                    // SPEC 20.4: the reserved supply exports only the reviewed project-owned definition.
-                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
-                }
-            }
-            else if (name is WindowsProfile.BackendLibrary)
-            {
-                kind = "static"; // The compiler-managed backend archive (SPEC 20.4).
-                if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
-                {
-                    // SPEC 21.4.7: the backend archive supplies only its catalog, whose names are reserved above.
-                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
                 }
             }
             else
@@ -136,7 +146,7 @@ public sealed partial class Binding
                 var supply = configuration is not null && configuration.NativeLibraries.TryGetValue(target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
                 if (requirement is null && supply is null)
                 {
-                    this.Fail(attribute, BindingFailure.MissingNativeRequirement);
+                    this.Record(attribute, BindingFailure.MissingNativeRequirement, []);
                 }
                 else
                 {
@@ -148,33 +158,46 @@ public sealed partial class Binding
             var signature = this.ImportAbi(attribute, function, ordinal++);
             if (signature is not null)
             {
-                // SPEC 21.2/22.5.6: the runtime's own kernel32 declarations share the same final symbol
-                // table; an import joins one only through the reserved kernel32 supply with an equal
-                // physical Type, and never a declaration carrying an inexpressible ABI attribute.
-                if (IsRuntimeDeclaration(symbol, out var declared) && (name != WindowsProfile.Kernel32Library || declared != signature))
+                // IMPL 21.2, 21.4.7: a runtime's own import declarations share the same final symbol table; an import joins one only
+                // through the declaring row's supply providing its symbol (its one providing library: a row's supplies' symbol sets are
+                // disjoint) with an equal physical Type, and never a declaration carrying an inexpressible ABI attribute. Judged against
+                // every row's declarations, so the error is target-independent (SPEC 22 ¶1; the Tatara plan's G1 (i)). The provider is a
+                // reserved supply's name, which no program library carries (IMPL 20.4), so the identities compare as the names would.
+                if (TargetProfile.TryGetRuntimeDeclaration(symbol, out var declared, out var provider) && (declared != signature || identity != (null, provider)))
                 {
                     this.Record(attribute, BindingFailure.ConflictingRuntimeSymbol, []);
                 }
+            }
 
-                // SPEC 21.2: one final symbol table; same-named declarations share only an equal physical
-                // Type and dllimport setting. An unresolved kind already has its own diagnostic.
-                if (!symbols.TryAdd(symbol, (signature, kind)))
+            // IMPL 21.2: one final symbol table; the imports of one symbol agree in their physical signature and their providing library,
+            // two independent records (SPEC 23.1.2). Every import joins: a signature is compared only when both are known (an unknown one
+            // has its own record), the providing library always (it reads neither the requirement nor the Types).
+            ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(symbols, symbol, out var known);
+            if (!known)
+            {
+                entry = (signature, identity.Module, identity.Library);
+            }
+            else
+            {
+                if (signature is not null && entry.Signature is not null && entry.Signature != signature)
                 {
-                    var previous = symbols[symbol];
-                    if (previous.Signature != signature)
-                    {
-                        this.Record(attribute, BindingFailure.ConflictingImportSignature, []);
-                    }
-                    else if (kind is not null && previous.Kind is not null && previous.Kind != kind)
-                    {
-                        this.Record(attribute, BindingFailure.ConflictingImportSupply, []);
-                    }
+                    this.Record(attribute, BindingFailure.ConflictingImportSignature, []);
+                }
+
+                entry.Signature ??= signature;
+                if ((entry.Module, entry.Library) != identity)
+                {
+                    this.Record(attribute, BindingFailure.ConflictingImportSupply, []);
                 }
             }
 
-            // A dependency module's supplies are not linked yet, but the reserved kernel32 one: the import's limit, the located
-            // Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92).
-            if (name is not WindowsProfile.Kernel32Library && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha))
+            // The import's limits, the located Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92):
+            // a dependency module's supplies are not linked yet, but the reserved ones, which the compiler links for every module (IMPL
+            // 20.4); the selected row links neither another row's reserved supply or symbol nor a kind outside its Kinds (IMPL 20.4, 21.2;
+            // SPEC 22 ¶1). A target without a row is never built, so it reports neither. A later import's conflict above replaces its
+            // limit, the edge's and the row's alike (T's ruling 1a, BU-92).
+            if ((reserved is null && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha)) ||
+                (row is not null && !RowLinks(row, reserved, symbol, kind)))
             {
                 this.Fail(attribute, BindingFailure.Unsupported);
             }
@@ -183,9 +206,14 @@ public sealed partial class Binding
             Complete(attribute, BoundType.Unit);
             if (attribute.BindingState == BindingState.Resolved && signature is not null && kind is not null)
             {
-                this.libraryImports.Add(new(function.BoundSymbol!, name, symbol, kind));
+                this.libraryImports.Add(new(function.BoundSymbol!, name, symbol, kind, signature));
             }
         }
+
+        // IMPL 21.2's providing library (SPEC 22.6, IMPL 20.4): a reserved supply by name, every Kotonoha's and every row's; any other
+        // library its defining Kotonoha's logical name. Kotonoha has no == overload: tuple equality compares the module by reference.
+        static (Kotonoha? Module, string Library) Provider(string library, Kotonoha kotonoha)
+            => (TargetProfile.ReservedSupply(library) is null ? kotonoha : null, library);
 
         // SPEC 22.6: a direct group or receiverless struct type function without
         // generic/Origin parameters, specializations or argument defaults.
@@ -233,27 +261,18 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 21.4.7 declarations generated beside the runtime; the signature is null when none can agree.
-        static bool IsRuntimeDeclaration(string symbol, out string? declared)
-        {
-            foreach (var declaration in WindowsProfile.RuntimeDeclarations)
-            {
-                if (string.Equals(declaration.Symbol, symbol, StringComparison.Ordinal))
-                {
-                    declared = declaration.Signature;
-                    return true;
-                }
-            }
+        // Whether the selected row links an import: a reserved supply's symbol through the row's own supply of that name, and the
+        // import's kind among the row's Kinds (an unresolved kind has its own diagnostic).
+        static bool RowLinks(TargetProfile row, TargetSupply? reserved, string symbol, string? kind)
+            => (reserved is null || (row.Supply(reserved.Name) is { } own && Array.IndexOf(own.Symbols, symbol) >= 0)) &&
+                (kind is null || Array.IndexOf(row.Kinds, kind) >= 0);
 
-            declared = null;
-            return false;
-        }
-
-        // SPEC 21.2 reserves compiler, LLVM and profile-supply external names; the supply names
-        // are the profile's own catalog, so the two cannot drift apart.
+        // IMPL 21.2 reserves the compiler's and LLVM's external names and the table's on every target (ReservedSymbols: every row's
+        // float marker and backend supply's catalog, the memory functions and the C entry), so the names and the supplies cannot drift
+        // apart and the error is target-independent (SPEC 22 ¶1).
         static bool IsReservedExternalName(string symbol)
             => symbol.StartsWith("__kimi_", StringComparison.Ordinal) || symbol.StartsWith("llvm.", StringComparison.Ordinal) ||
-                symbol == WindowsProfile.FloatMarker || Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) >= 0;
+                Array.IndexOf(TargetProfile.ReservedSymbols, symbol) >= 0;
 
         static bool IsImportName(InvocationKoto call, int index, out string value)
         {
@@ -319,9 +338,9 @@ public sealed partial class Binding
     // Never, Unit as a parameter, Tuples, enums (the nonnull Option of a borrow is not laid out yet), Slices, structs and fixed arrays by
     // value, object borrows and borrows of other referents.
     private char PhysicalCode(BoundType type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ? 'p' :
+        => type.IsPointer ? 'p' :
             HasNoCCounterpart(type) ? '\0' :
-            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ?
+            type.SafeReferent is { } referent ?
                 this.CExchangeable(referent, 0) switch { true => 'p', false => '?', null => '!' } :
             ScalarCode(type);
 
@@ -383,7 +402,11 @@ public sealed partial class Binding
 
     // SPEC 6.7.1: the Attribute's own errors (its mode, fragments and storage fragment) and the published declaration facts: IsCLayout for
     // a valid C selection whose layout is available at the declaration, CLayoutUnavailable for one on an open, derived or empty struct,
-    // which Layout judges CLayout at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8: no declaration error).
+    // which Layout judges CLayout at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8: no declaration error). A split struct keeps a
+    // failure of its own beside its Field's record, since that record derives from any recovery the Field's other checks read, such as its
+    // initializer's syntax error (IsDerived's requirement-blind arms judge the node's recorded inputs, not the split check's): resting the
+    // struct on the Field (RestOnPart) would leave the split with no record (SPEC 23.1.2).
+    [Transitional("R7", Reason = "The split struct's own InvalidTypeFormation stands for its Field's record (q1a: a syntax error in the split Field's initializer), until R7-E5's per-problem inputs, when the struct rests on the Field.")]
     private void ValidateLayoutFragments()
     {
         for (var i = 0; i < this.nodes.Count; i++)
@@ -406,7 +429,7 @@ public sealed partial class Binding
 
                 if (previousFragment == attribute.FragmentOrdinal)
                 {
-                    this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+                    this.Record(attribute, BindingFailure.InvalidLayoutAttribute, []);
                 }
 
                 if (attribute.BindingState == BindingState.Invalid)
@@ -420,7 +443,7 @@ public sealed partial class Binding
                 {
                     if (mode is not null && mode != explicitMode)
                     {
-                        this.Fail(latestSpecification!, BindingFailure.ConflictingLayout);
+                        this.Record(latestSpecification!, BindingFailure.ConflictingLayout, []);
                         this.InvalidateAttributeTarget(latestSpecification!);
                         valid = false;
                     }
@@ -440,7 +463,7 @@ public sealed partial class Binding
                 {
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
-                        this.Fail(field, BindingFailure.SplitCLayoutStorage);
+                        this.Record(field, BindingFailure.SplitCLayoutStorage, []);
                         this.Fail(container, BindingFailure.InvalidTypeFormation);
                         valid = false;
                     }

@@ -1,11 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns initialization and moves (A1; SPEC 15.1, 14.10.3, 7.2.3; DECISIONS R4-M21, R4-M6a, R4-M69) per body and Semantics case view.
-// Input: a validated body, its move paths (MirMoveData), its dataflow (MirDataflow) and the selected view (MirCases). Output: the
-// problems UninitializedPlace_Kd, MovedPlace_Kd, ReassignedLet_Kd, StaticMovePathRequired_Kd and DefaultArgumentMove_Kd through MirReport,
-// each inside an inline default copy with the copy's call as its Inlined fact, and the arena limit through MirDataflow.StorageLimit; to
-// A2 (MirDrops) the code, subject (in the location's scope) and MirReport.Add's index of each problem it records (R4-M102, R4-M132), the
-// paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
+// Input: a validated body, its move paths (MirMoveData), its dataflow (MirDataflow), the selected view (MirCases) and the report, the
+// program's MirReport, the one A2 records into (MirDrops.Begin reads program.Problems; the driver and both harnesses pass the same object).
+// Output: the Language problems UninitializedPlace_Kd, MovedPlace_Kd, ReassignedLet_Kd, StaticMovePathRequired_Kd and
+// DefaultArgumentMove_Kd through A2's record of them (MirDrops.Problem), which adds each one outside every inline default copy to
+// MirReport (a copy's is its template's check, SPEC 7.2.3, R4-M69); a broken contract, InternalInvariant_Kd, to MirReport wherever it
+// lies; OwnershipStorageLimit_Kd, the arena limit, through MirDataflow.StorageLimit; to A2, with each problem, its subject in the
+// location's scope (R4-M102, R4-M132), the paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
 // before each Drop, with whether the runtime edges reach it, and each state event the runtime edges reach.
 // Six lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self), and Unplaced, A1's alone: the value the
@@ -13,7 +15,10 @@
 // definition initializes a path's subtree but its Never parts and what a temp it takes left unplaced on the path (MirMoveData's
 // NeverParts and Carries, SPEC 14.10.3; a fact on a Move Path is MaybeUninit, its complement Unplaced), clearing Unplaced first: a
 // carry gives its destination its fact where its source's own bit is set, and one onto the defined path itself (a Use of a whole temp
-// that holds nothing there places nothing) keeps the destination's state instead,
+// that holds nothing there places nothing) keeps the destination's state instead, which is exact only where the value's construct
+// cannot touch the destination, a first placement (a builder temp, or a binding whose lifetime starts at the Use: a let or var
+// initialization or binding, the return local): its state is then the same on the paths that hold the value and on those that do
+// not, though not on every path (a result temp in a loop keeps what an earlier iteration left),
 // a Move or a Drop uninitializes it and clears Unplaced, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
 // every incoming path, its own bit being the construction fact, and no Unplaced bit in it; a use through a runtime Index of storage reports on its receiver under
 // the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
@@ -34,7 +39,9 @@
 // Invariants: no Unplaced bit is set in a Move Path's subtree at a Drop the runtime edges reach, which A2 destroys whole by its own bit,
 // and no definition the runtime edges reach keeps its path's state (a Use of a temp that holds nothing would set MaybeInit, A2's lane,
 // where nothing was placed): a construction leaves a part unplaced, and a temp holds nothing, only after a Never form, which ends the
-// runtime paths (SPEC 14.9.3, 14.10.3); a broken one is InternalInvariant_Kd at the location.
+// runtime paths (SPEC 14.9.3, 14.10.3); and no path, assumed too, reaches an overwrite's Use without its value (the Use of a temp
+// MirBuilder.Replace published as MirLocalRole.Assigned), as a path without it goes around the overwrite (SPEC 13.7.1; DECISIONS
+// R4-M62), so a kept definition is a first placement; a broken one is InternalInvariant_Kd at the location.
 // Must not judge Take eligibility (Binding's), decide a Drop (A2's), apply a derived-problem rule (MirReport's) or copy the body per view.
 
 using Kimi.Diagnostics;
@@ -109,6 +116,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         private bool placing; // Whether the location places its operands, its facts applying: an Assign of a Use or an aggregate into a Move Path, or a Places Call.
         private bool placed; // Whether the next Place reported is the whole temp an operand of such a location moves.
         private int kept = -1; // The path the location defines that keeps its state: a Use places a temp there that may hold nothing; else -1.
+        private MirOpaque site; // The Opaque site the location assigns (MirBody.SiteOf), whose enclosing uses are checked for construction.
 
         internal required MirReport Report { get; init; }
 
@@ -158,17 +166,19 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 {
                     var assign = statement.Kind == MirStatementKind.Assign;
                     this.placing = assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate && this.Tracked(statement.Place);
+                    this.site = body.SiteOf(statement);
                     var carries = this.placing ? moves.Carries(data.Start + i) : default;
                     this.Uses(carries, this.placing ? moves.NeverParts(data.Start + i) : default, carries.IsEmpty ? -1 : moves.Find(statement.Place, out _));
                 }
             }
 
+            this.site = default;
             if (data.Terminator.Kind != MirTerminatorKind.Return)
             {
                 (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
                 this.placing = data.Terminator.Places;
                 var key = moves.Insertion(block);
-                this.Uses(this.placing ? moves.Carries(key) : default, this.placing ? moves.NeverParts(key) : default, -1);
+                this.Uses(this.placing ? moves.Carries(key) : default, this.placing ? moves.NeverParts(key) : default, int.MinValue);
             }
         }
 
@@ -188,7 +198,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // A use of a Place under the view (Path). A whole use of the return local delivers it, which only the runtime edges can (SPEC
         // 14.10.3). Through a Deref or an Index only the prefix's path is used, and a Move there has no Move Path (SPEC 15.1.3, 15.1.5). A2
         // judges a Drop from the state before it, by its path (-1: none), and whether the runtime edges reach it; a runtime Drop's Move
-        // Path lacks no part (the header's invariant).
+        // Path lacks no part (the header's invariant). An Opaque site's undecided use is checked as a read of its own Place, not at
+        // MirDescriptors.Judged's root: A1 asks only whether the part is usable (DECISIONS Z17); an enclosing one, whether it is constructed
+        // (Z27).
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var transfer = this.placed;
@@ -235,6 +247,15 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             {
                 this.Take(path, 1 << Uninit);
             }
+            else if (MirDescriptors.IsUndecided(access) && body.OpaqueUses.Slice(this.site.Start + this.site.Kept, this.site.Enclosing).Contains(place))
+            {
+                // DECISIONS Z27 (SPEC 13.7.1, 15.1.2): an enclosing use, a Place its site designates strictly within, needs its construction
+                // only, as a definition's prefix: its own bit (a temp's is no construction fact) and its ancestors'.
+                if (this.Checks && this.Reported(path))
+                {
+                    this.Constructed(this.Checked(path) == path ? path : -1);
+                }
+            }
             else
             {
                 this.Check(path, this.subject);
@@ -254,9 +275,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 var held = source >= 0 ? MirDataflow.Any(state, Lanes, Uninit, source, source + 1) : MirDataflow.Any(state, Lanes, Unplaced, ~source, ~source + 1);
                 var kept = held && carries[k + 1] == defined;
                 (this.Held[k >> 1], this.kept) = (held && !kept, kept ? defined : this.kept);
-                if (kept && this.runtime && this.Checks)
+                if (kept && (this.runtime || body.Locals[moves.Paths[source >= 0 ? source : ~source].Local].Role == MirLocalRole.Assigned) && this.Checks)
                 {
-                    this.Broken(); // The header's invariant: MaybeInit would be set where nothing was placed, which A2 would destroy.
+                    this.Broken(); // The header's invariants: MaybeInit would be set where nothing was placed; an overwrite's value is placed.
                 }
             }
 
@@ -360,13 +381,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         {
             var paths = moves.Paths;
             var checks = this.Checks && this.Reported(path);
-            for (var above = paths[path].Parent; checks && above >= 0; above = paths[above].Parent)
+            if (checks)
             {
-                if (MirDataflow.Any(state, Lanes, Uninit, above, above + 1))
-                {
-                    this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, above, above + 1), this.subject);
-                    break;
-                }
+                this.Constructed(paths[path].Parent);
             }
 
             if (checks && paths[path].Once && MirDataflow.Any(state, Lanes, Ever, path, paths[path].End))
@@ -377,6 +394,22 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             var cleared = path == this.kept ? 0 : (1 << Uninit) | (1 << Moved) | (1 << Partial) | (1 << Unplaced);
             MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: cleared);
             this.Event(path, set: true);
+        }
+
+        // A path and every ancestor constructed, their own bits initialized on every incoming path (SPEC 15.1.1, 15.1.2): a definition's
+        // prefix, from its parent, and an enclosing use's, from its own path; else UninitializedPlace_Kd, or MovedPlace_Kd where it may have
+        // been moved, at the location for the first one that is not; nothing from -1.
+        private readonly void Constructed(int from)
+        {
+            var paths = moves.Paths;
+            for (var above = from; above >= 0; above = paths[above].Parent)
+            {
+                if (MirDataflow.Any(state, Lanes, Uninit, above, above + 1))
+                {
+                    this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, above, above + 1), this.subject);
+                    break;
+                }
+            }
         }
 
         // A part its definition left unplaced (SPEC 14.10.3): a Never part, or a part a carried temp left so on this path. A Move Path holds
@@ -444,21 +477,19 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             DiagnosticRequirement.Ownership(moved ? OwnershipRequirement.PossiblyMovedUse : OwnershipRequirement.UninitializedUse),
             subject);
 
-        // A broken contract at the location (the header's invariants; R6-check H3-2: its requirement first): A2's table marks the body.
+        // A broken contract at the location (the header's invariants; R6-check H3-2: its requirement first), the body's wherever it lies,
+        // an inline default copy included: A2's table marks the body.
         private readonly void Broken()
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-            this.Add(DiagnosticCode.InternalInvariant_Kd, requirement, this.subject);
+            var problem = new MirProblem(DiagnosticCode.InternalInvariant_Kd, requirement, this.subject, body.Ordinal, this.Views);
+            _ = this.Report.Add(problem);
+            drops.Incomplete(problem.Code, new(this.subject, this.scope, StatementStart: false));
         }
 
-        // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69); A2's table
-        // records it first, a copy's included (R4-M102), at its subject in the location's scope.
+        // A Language problem at the location, recorded through A2 (MirDrops.Problem), which marks the body, a copy's included (R4-M102), at
+        // its subject in the location's scope and omits a copy's from MirReport (its template's check, R4-M69).
         private readonly void Add(DiagnosticCode code, DiagnosticRequirement requirement, SourceRef subject)
-        {
-            var problem = new MirProblem(code, requirement, subject, body.Ordinal, this.Views);
-            var inlined = body.Inlining(this.scope);
-            this.Report.Add(problem, inlined < 0 ? default : [new(ProblemFactKind.Inlined, body.Scopes[inlined].Source)]);
-            drops.Incomplete(code, new(subject, this.scope, StatementStart: false));
-        }
+            => drops.Problem(new(code, requirement, subject, body.Ordinal, this.Views), new(subject, this.scope, StatementStart: false));
     }
 }

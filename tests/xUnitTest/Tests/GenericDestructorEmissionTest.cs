@@ -71,7 +71,7 @@ public class GenericDestructorEmissionTest
     [InlineData("Support.see(self)", null)]
     [InlineData("let whole = self@ref\n        let n = whole.n\n        Support.see(self@ref)\n        let m = self.look()", null)]
     [InlineData("Support.take(self@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("Support.take(self)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("Support.take(self)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("Support.sink(self@move)", DiagnosticCode.ExclusivePathTake_Kd)]
     [InlineData("Support.sink(self)", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let copied = self@copy", DiagnosticCode.NonCopyOperand_Kd)]

@@ -145,6 +145,15 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets the mutable member list, creating it on first use.</summary>
     protected List<Koto> KotoList => this.kotoList ??= new(4);
 
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields()
+    {
+        _ = this.GenericArguments;
+        _ = this.TypeConstraints;
+        _ = this.Origins;
+        _ = this.KotoList;
+    }
+
     /// <summary>Gets nested Declaration Containers.</summary>
     public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
         => this.NestedContainers;
@@ -727,7 +736,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
 
             reader.Advance();
-            var propertyKoto = Parser.ParseProperty(ref reader, ref token);
+            var propertyKoto = Parser.ParseProperty(ref reader, ref token, this);
             if (propertyKoto is not null)
             {
                 if ((this is ContractKoto) != propertyKoto.IsContractRequirement || this is EnumKoto)
@@ -986,15 +995,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
             if (reader.IsCurrentIdentifier("when"))
             {
-                reader.Advance();
-                var conditions = new List<Koto>();
-                do
-                {
-                    conditions.Add(Parser.ParseTypeConstraint(ref reader, finishLine: false));
-                }
-                while (reader.TryConsume(TokenKind.Comma));
-                var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);
-                var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
+                var premises = Parser.ParseConformanceConditions(ref reader, constraint);
+                var span = SourceSpan.FromBounds(constraint.Span.Start, premises.Span.End);
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
                     // A condition takes no effect list (SPEC F.6): the block is the conformance's, whatever item starts it.

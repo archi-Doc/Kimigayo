@@ -211,29 +211,61 @@ internal static class DiagnosticCorpus
     /// <param name="source">The program.</param>
     /// <param name="outputKind">The project's OutputKind.</param>
     /// <returns>The counts.</returns>
-    internal static string RecordProfile(string source, string outputKind)
+    internal static string RecordProfile(string source, string outputKind) => RecordProfile(Check(source, outputKind));
+
+    /// <summary>Counts a check's records by code, in ordinal order: "2*A_Kd 1*B_Kd", or "clean".</summary>
+    /// <param name="output">The check's output.</param>
+    /// <returns>The counts.</returns>
+    internal static string RecordProfile(CheckOutput output)
     {
-        var records = Check(source, outputKind).Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
+        var records = output.Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
         return records.Any() ? string.Join(' ', records.Select(static x => $"{x.Count()}*{x.Key}")) : "clean";
+    }
+
+    /// <summary>Lists an Application program's records in result order (SPEC 23.1, 23.3), each as its code, its location's line and
+    /// column, the text there and the labels of its related locations: "A_Kd 4:19 H1, inaccessible declaration 'H1'".</summary>
+    /// <param name="source">The program, in one source.</param>
+    /// <returns>The records.</returns>
+    internal static string[] LocatedRecords(string source)
+    {
+        return [.. Check(source).Diagnostics.Select(x => Located(x) + string.Concat(x.Related?.Select(static r => ", " + r.Label) ?? []))];
+
+        string Located(CheckDiagnostic record)
+        {
+            if (record.Span is not { } span)
+            {
+                return record.Code;
+            }
+
+            var column = span.Start == 0 ? 1 : span.Start - source.LastIndexOf('\n', span.Start - 1);
+            return $"{record.Code} {source.AsSpan(0, span.Start).Count('\n') + 1}:{column} {source.Substring(span.Start, span.Length)}";
+        }
     }
 
     /// <summary>Checks a program of an output kind.</summary>
     /// <param name="source">The program.</param>
     /// <param name="outputKind">The project's OutputKind.</param>
     /// <returns>The check's output.</returns>
-    internal static CheckOutput Check(string source, string outputKind)
+    internal static CheckOutput Check(string source, string outputKind) => Check(source, outputKind, string.Empty);
+
+    /// <summary>Checks a program of an output kind with further project settings (default aliases, for example).</summary>
+    /// <param name="source">The program.</param>
+    /// <param name="outputKind">The project's OutputKind.</param>
+    /// <param name="settings">Project file text appended after OutputKind and Targets, such as <c>Alias={"Tools"}</c>.</param>
+    /// <returns>The check's output.</returns>
+    internal static CheckOutput Check(string source, string outputKind, string settings)
     {
         var folder = Path.Combine(Path.GetTempPath(), "kimi-check-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
         {
             var project = Path.Combine(folder, "Program.kimiproj");
-            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{WindowsProfile.Target}\"}}");
+            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{TargetProfile.Windows.Target}\"}}\n{settings}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
             Assert.True(
                 Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
                 string.Join(", ", failures));
-            return CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+            return CheckService.Run(loaded, TargetProfile.Windows.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         }
         finally
         {

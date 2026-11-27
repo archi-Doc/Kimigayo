@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -7,12 +8,13 @@ namespace Kimi.Compiler;
 
 public partial class Compilation
 {
-    private static readonly string[] RequiredAliases = ["Kimi"];
+    internal static readonly string[] RequiredAliases = ["Kimi"];
     private DependencyPartition? dependencyGraph;
     private Dictionary<Kotonoha, IReadOnlyDictionary<string, BasicValue>>? moduleVariables;
     private Dictionary<Kotonoha, Dictionary<string, Kotonoha>>? moduleReferences;
     private Dictionary<Kotonoha, string[]>? moduleAliases;
     private Dictionary<Kotonoha, ProjectFile>? moduleConfigurations;
+    private Dictionary<Kotonoha, DefaultAlias[]>? defaultAliasRows;
     private string[] rootAliases = RequiredAliases;
 
     /// <summary>Gets the source modules by ordinal. A prepared Compilation may have none (<see cref="AnalyzesNoModule"/>): R5-M25's
@@ -26,6 +28,9 @@ public partial class Compilation
     /// (SPEC 23.2.2), and no fact of a parsed source exists.</summary>
     internal bool AnalyzesNoModule => this.SourceModules.Length == 0;
 
+    // A module's effective default-alias paths (SPEC 18.2.3): the required paths and the configured additions, each without a leading
+    // `::`, in ordinal order. A module adding no other path gets the RequiredAliases instance itself (never a copy), the key by which
+    // DefaultAliases returns the library's rows; a caller never writes the result.
     internal static string[] EffectiveAliases(string[] additions)
     {
         if (additions.Length == 0)
@@ -33,17 +38,55 @@ public partial class Compilation
             return RequiredAliases;
         }
 
-        var paths = new HashSet<string>(StringComparer.Ordinal) { "Kimi" };
+        var paths = new HashSet<string>(RequiredAliases, StringComparer.Ordinal);
         foreach (var path in additions)
         {
             paths.Add(path.StartsWith("::", StringComparison.Ordinal) ? path[2..] : path);
         }
 
-        return paths.Count == 1 ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
+        return paths.Count == RequiredAliases.Length ? RequiredAliases : paths.Order(StringComparer.Ordinal).ToArray();
+    }
+
+    // A configured path read by the Type production (F.5; the alias target's, GroupKoto) in a configuration document of its module, as
+    // KimiLibrary.CreateAbort forms its built-in syntax, and declared as the opening alias the configuration states (SPEC 18.2.3), so its
+    // lookup row is an alias target's (UseRow: Qualifier). The document is named by its configuration file and entry and its text is
+    // the path (F's ruling N1-9 (1)), so a record in it is located like any source's. A path that does not read whole is reported by
+    // the parse in that document, as a source alias's target is (GroupKoto), and gives no alias (N1-9 (4)): null. The loader refused an
+    // empty path; the effective path has no leading `::`. The result is the alias, whose TargetSyntax is the path's node.
+    internal static AliasKoto? ParseConfiguredPath(Kotonoha module, string configuration, string path)
+    {
+        var source = new SourceDocument($"{configuration}#Alias[{path}]", path);
+        _ = module.LogicalName(source);
+        var context = new CodeContext(module, sourceDocument: source);
+        var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
+        try
+        {
+            tokenizer.ReadAll();
+            var reader = new TokenReader(context, ref tokenizer);
+            var target = Parser.ParseType(ref reader, Parser.TypeContext.AnnotatedType);
+            if (target is ErrorKoto || context.RecoveryCause(target) is not null)
+            {
+                return null;
+            }
+
+            var whole = !reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock;
+            reader.ExpectLineEnd();
+            if (!whole)
+            {
+                return null;
+            }
+
+            return new AliasKoto(ref reader, target, null, target.Span);
+        }
+        finally
+        {
+            tokenizer.Dispose();
+        }
     }
 
     internal bool Prepare(string target, DependencyPartition graph)
     {
+        this.EnsureNoBinding();
         if (this.hasParsedSource)
         {
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
@@ -60,6 +103,25 @@ public partial class Compilation
         return this.Prepare(target);
     }
 
+    // The module set this compilation binds (PLAN G949 Stage 2 U3-1; the Front's U0b-6 N2), its one owner: the source modules by ordinal,
+    // then its library's module (SyntaxTable.LibraryModule). Binding's readers outside a pass walk it (Binding.Modules), hover reads its
+    // documents, HoldsModule tests it and ModuleOf resolves a reference in it; the program pass binds the source modules alone.
+    internal (Kotonoha[] Sources, Kotonoha Library) BoundModules => (this.SourceModules, this.Library.Kotonoha);
+
+    // The module of the set that a reference names: the library's for SyntaxTable.LibraryModule, else the source module of its ordinal.
+    internal Kotonoha ModuleOf(SourceRef source)
+    {
+        var (sources, library) = this.BoundModules;
+        return source.IsLibrary ? library : sources[source.Module];
+    }
+
+    // Whether a module is in the set. Binding.GetDocumentation documents only a declaration of such a module.
+    internal bool HoldsModule(Kotonoha module)
+    {
+        var (sources, library) = this.BoundModules;
+        return ReferenceEquals(module, library) || Array.IndexOf(sources, module) >= 0;
+    }
+
     internal Kotonoha? FindReference(Kotonoha module, string name)
         => this.moduleReferences?.GetValueOrDefault(module)?.GetValueOrDefault(name);
 
@@ -69,8 +131,44 @@ public partial class Compilation
     internal ProjectFile? Configuration(Kotonoha module)
         => ReferenceEquals(module, this.Kotonoha) ? this.Project.ProjectFile : this.moduleConfigurations?.GetValueOrDefault(module);
 
-    internal string[] DefaultAliases(Kotonoha module)
-        => ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
+    // A module's configured default aliases (SPEC 18.2.3). A required path's row is the library's (KimiLibrary.DefaultAliases, the owner's
+    // O-511 (a), PLAN G1320): the same alias in every module, which cannot fail, made and evaluated in the library's pass before its table
+    // freezes, so a module adding no path reads the library's rows and no Compilation parses or evaluates a required path again. Each path
+    // a module adds is parsed once for the Compilation (F's ruling N1-4 (1), (2)): the configuration owner reads it by the Type production
+    // in a configuration document of the module, as KimiLibrary forms its built-in syntax; the node lives for the Compilation and
+    // Binding's index walk resets its rows each pass. A path the parse refused has no row (N1-9 (4)).
+    internal DefaultAlias[] DefaultAliases(Kotonoha module)
+    {
+        var root = ReferenceEquals(module, this.Kotonoha);
+        var paths = ReferenceEquals(module, this.Library.Kotonoha) ? RequiredAliases : root ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
+        if (ReferenceEquals(paths, RequiredAliases))
+        {
+            return this.Library.DefaultAliases;
+        }
+
+        var rows = this.defaultAliasRows ??= new();
+        if (!rows.TryGetValue(module, out var parsed))
+        {
+            var configuration = root ? this.Project.FilePath ?? this.Project.Name : module.Url;
+            var list = new List<DefaultAlias>(paths.Length);
+            foreach (var path in paths)
+            {
+                if (Array.IndexOf(RequiredAliases, path) is var required and >= 0)
+                {
+                    list.Add(this.Library.DefaultAliases[required]);
+                }
+                else if (ParseConfiguredPath(module, configuration, path) is { } alias)
+                {
+                    list.Add(new(path, alias));
+                }
+            }
+
+            parsed = list.ToArray();
+            rows.Add(module, parsed);
+        }
+
+        return parsed;
+    }
 
     // failed is the root's verdict. The graph's checks below read no root fact it rests on, so they run after a root failure, each
     // failure its own record (SPEC 23.1.2); the modules are established only when no check failed. A module's variables start from the
@@ -168,4 +266,9 @@ public partial class Compilation
         this.SourceModules = modules;
         return true;
     }
+
+    /// <summary>A module's configured default alias (SPEC 18.2.3, IMPL 20.2): its effective path and the opening alias that path declares,
+    /// read once by the Type production in a configuration document of the module (F's rulings N1-4 (1), N1-15 C5), which Binding indexes
+    /// and evaluates as a source alias.</summary>
+    internal readonly record struct DefaultAlias(string Path, AliasKoto Alias);
 }

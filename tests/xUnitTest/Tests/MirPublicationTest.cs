@@ -27,6 +27,18 @@ public sealed class MirPublicationTest
     private static readonly DiagnosticRequirement Limit = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
     private static readonly DiagnosticRequirement Depth = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
 
+    // DIAGNOSTICS §12's A6 fact tables (2g-7, Z21), the two whose header's first cell is Fact: per row its kinds (every backticked name of
+    // its first cell) and, unless its third cell starts "None:", that cell split at its first ": ", the related location's role (the
+    // backticked name before it) and wording (the text after it).
+    private static readonly Lazy<(ProblemFactKind[] Kinds, string[]? Related)[]> FactRows = new(static () =>
+        [.. MirAnalysisTest.DiagnosticsRows(static x => x.StartsWith("| Fact |", StringComparison.Ordinal)).Select(static x => (
+            MirAnalysisTest.Names(x[0]).Select(static y => Enum.Parse<ProblemFactKind>(y)).ToArray(),
+            x[2].StartsWith("None:", StringComparison.Ordinal) ? null : x[2].Split(": ", 2)))]);
+
+    // The fact kinds whose row relates a location, with its role and wording (FactRows).
+    public static TheoryData<byte, string, string> SiteFacts
+        => [.. FactRows.Value.Where(static x => x.Related is not null).SelectMany(static x => x.Kinds.Select(k => ((byte)k, MirAnalysisTest.Names(x.Related![0]).Single(), x.Related![1])))];
+
     // Design 3.2: a located problem (a record class, or a code of category Unsupported, Resource or Internal without Arguments) is keyed by
     // its location, so one at each sibling of a for expansion is one record at the loop.
     [Fact]
@@ -39,7 +51,7 @@ public sealed class MirPublicationTest
             var site = SourceRef.Of(arm.Pattern);
             program.Report(site);
             program.Report(site, DiagnosticCode.OversizedLayout_Kd, MirRecordClass.Collection);
-            program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Limit, site, MirProblem.NoBody, 0b01));
+            program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Limit, site));
             program.Problems.Add(Found(DiagnosticCode.OwnershipDepthLimit_Kd, Depth, site));
             program.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), site, 0, 0b01));
         }
@@ -62,9 +74,9 @@ public sealed class MirPublicationTest
         var relation = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
         var equality = new MirReason(null, null, true);
         program.Problems.Add(Found(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, site));
-        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, site, MirProblem.NoBody, 0b01, equality));
+        program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, site) with { Reason = equality });
         program.Problems.Add(Found(DiagnosticCode.Unsupported_Kd, Limit, site));
-        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Limit, site, MirProblem.NoBody, 0b01, equality));
+        program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Limit, site) with { Reason = equality });
         Assert.Equal([0, 1, 0, 1], program.Problems.Merged.ToArray().Select(static x => x.Ordinal));
         Publish(c, program);
         Assert.Equal(
@@ -116,10 +128,10 @@ public sealed class MirPublicationTest
             Errors(c).Select(static x => (x.Code, x.Text)).Order());
     }
 
-    // Design 3.2 (N3), 3.3 (N1): a located problem carries no fact, and the fact table has a row for every kind it meets (Inlined's problem
-    // never reaches Merged, since MirReport.Add drops it); a located problem with a fact, a Cause too, and a fact of a kind without a row are
-    // broken contracts: InternalInvariant_Kd at the subject under Ownership.Internal, as MirReport's defects, so it is one record with an
-    // analysis InternalInvariant_Kd there, and the problem itself is not published.
+    // Design 3.2 (N3), 3.3 (N1): a located problem carries no fact, and the fact table has a row for every kind it meets; a located problem
+    // with a fact, a Cause too, and a fact of a kind without a row are broken contracts: InternalInvariant_Kd at the subject under
+    // Ownership.Internal, as MirReport's defects, so it is one record with an analysis InternalInvariant_Kd there, and the problem itself
+    // is not published.
     [Fact]
     public void AFactThePublisherCannotPublishIsABrokenContract()
     {
@@ -148,6 +160,12 @@ public sealed class MirPublicationTest
     [InlineData((byte)ProblemFactKind.Terminal)]
     [InlineData((byte)ProblemFactKind.Constraint)]
     [InlineData((byte)ProblemFactKind.OriginRecord)]
+    [InlineData((byte)ProblemFactKind.Related)]
+    [InlineData((byte)ProblemFactKind.Count)]
+    [InlineData((byte)ProblemFactKind.Reason)]
+    [InlineData((byte)ProblemFactKind.Key)]
+    [InlineData((byte)ProblemFactKind.Instance)]
+    [InlineData((byte)ProblemFactKind.Checked)]
     public void AMirRecordCarryingABindingKindIsABrokenContract(byte kind)
     {
         var (c, program) = Program(Valid);
@@ -158,16 +176,9 @@ public sealed class MirPublicationTest
         Assert.Equal(("InternalInvariant_Kd", "return total"), (error.Code, error.Text));
     }
 
-    // Design 3.3 (DIAGNOSTICS' A6 fact tables): a fact naming a site is a related location with its role and wording.
+    // Design 3.3 (DIAGNOSTICS' A6 fact tables, SiteFacts; Z21): a fact naming a site is a related location with its role and wording.
     [Theory]
-    [InlineData((byte)ProblemFactKind.Anchor, "borrow", "borrow that created the loan")]
-    [InlineData((byte)ProblemFactKind.Use, "loan", "later use of the value retaining the conflicting loan")]
-    [InlineData((byte)ProblemFactKind.Store, "loan", "value retaining the conflicting loan")]
-    [InlineData((byte)ProblemFactKind.Reservation, "reservation", "conflicting exclusive call reservation")]
-    [InlineData((byte)ProblemFactKind.Evaluated, "default", "the default this call omits, evaluated here, does this")]
-    [InlineData((byte)ProblemFactKind.EffectRead, "declaration", "the call or destruction may read this static")]
-    [InlineData((byte)ProblemFactKind.EffectWrite, "declaration", "the call or destruction may write this static")]
-    [InlineData((byte)ProblemFactKind.EffectUnknown, "declaration", "the call's or destruction's effects are unknown, so they may access this static")]
+    [MemberData(nameof(SiteFacts))]
     public void ASiteFactIsARelatedLocation(byte kind, string role, string label)
     {
         var (c, program) = Program(Valid);
@@ -179,6 +190,13 @@ public sealed class MirPublicationTest
         var related = Assert.Single(record.Related!);
         Assert.Equal((role, "var total = 0", label), (related.Role, Text(Valid, related.Span), related.Label));
     }
+
+    // DIAGNOSTICS §12's A6 fact tables (Z21): every fact kind a MIR recording rule writes (Anchor to Cause, ProblemFact's contract) has
+    // exactly one row, and no Binding kind has one.
+    [Fact]
+    public void EachMirFactKindHasOneA6FactRow()
+        => Assert.Equal(
+            Enum.GetValues<ProblemFactKind>().Where(static x => x <= ProblemFactKind.Cause), FactRows.Value.SelectMany(static x => x.Kinds).Order());
 
     // Design 3.3: a storage limit's Required, Limit and Table facts are OwnershipStorageLimit_Kd's requiredBytes, limitBytes and table.
     [Fact]
@@ -194,6 +212,29 @@ public sealed class MirPublicationTest
         var record = Assert.Single(Records(c));
         Assert.Equal(nameof(DiagnosticCode.OwnershipStorageLimit_Kd), record.Code);
         Assert.Equal([("requiredBytes", "4096"), ("limitBytes", "1024"), ("table", "Loans")], record.Reason!.Select(static x => (x.Name, x.Value)));
+    }
+
+    // Design 3.3 (R7-T1; the Middle's P1): a problem's facts publish whatever its class, a Limit fact as its code's last argument and a
+    // Required fact the one before it, so a collection record's TypeHeightLimit_Kd carries its limit at its subject, as an analysis
+    // problem's does; a fact its code's catalog row has no argument slot for (a Required beside TypeHeightLimit_Kd's one argument, a Limit
+    // for MovedPlace_Kd, which takes none) is a broken contract: InternalInvariant_Kd at the subject.
+    [Theory]
+    [InlineData((int)MirRecordClass.Collection, "TypeHeightLimit_Kd", false, "TypeHeightLimit_Kd limit=8192")]
+    [InlineData(MirProblem.NoBody, "TypeHeightLimit_Kd", false, "TypeHeightLimit_Kd limit=8192")]
+    [InlineData((int)MirRecordClass.Collection, "TypeHeightLimit_Kd", true, "InternalInvariant_Kd")]
+    [InlineData(MirProblem.NoBody, "MovedPlace_Kd", false, "InternalInvariant_Kd")]
+    public void ALimitFactIsItsCodesLastArgument(int body, string code, bool required, string record)
+    {
+        var (c, program) = Program(Valid);
+        var subject = Site(c, Valid, "return total");
+        var limit = new ProblemFact(ProblemFactKind.Limit, subject, 8192);
+        program.Problems.Add(
+            new(Enum.Parse<DiagnosticCode>(code), DiagnosticRequirement.ControlFlow, subject, body, MirProblem.NoBodyViews),
+            required ? [new(ProblemFactKind.Required, subject, 1), limit] : [limit]);
+        Publish(c, program);
+        var published = Assert.Single(Records(c));
+        var reason = published.Reason?.Select(static x => $" {x.Name}={x.Value}") ?? [];
+        Assert.Equal((record, "return total"), (published.Code + string.Concat(reason), Text(Valid, published.Span)));
     }
 
     // Design 3.3 (Q-BU-1): an Origin problem's Relation fact is Binding.OriginRelationFacts' evidence, from its C1-F4 row (a fit, with its
@@ -213,7 +254,7 @@ public sealed class MirPublicationTest
         Assert.Equal(
             [
                 ("let local: i32 = 1", "relation longer shorter source", "wellFormed"),
-                ("return local@ref", "relation longer shorter source destination", "fit"),
+                ("local@ref", "relation longer shorter source destination", "fit"), // At the value (R7-O1 H).
             ],
             Records(c).Select(x => (Text(Source, x.Span), string.Join(' ', x.Reason!.Select(static r => r.Name)), x.Reason!.Single(IsSource).Value)).Order());
 
@@ -236,7 +277,7 @@ public sealed class MirPublicationTest
         Add("var v = value@move", (f, MirCases.Every(program.Body(f))));
         Add("let local = v", (f, 0b10));
         Add("_ = local@follow", (f, 0b10), (main, 0b01));
-        Add("f(n, 9)", (f, 0b10), (MirProblem.NoBody, 0b01));
+        Add("f(n, 9)", (f, 0b10), (MirProblem.NoBody, MirProblem.NoBodyViews));
         for (var i = start; i < program.Problems.Merged.Length; i++)
         {
             c.Publish(program, i);
@@ -260,15 +301,16 @@ public sealed class MirPublicationTest
         static bool IsDeclaration(DiagnosticRelated related) => related.Role == "declaration";
     }
 
-    // Design 5 (BU-2's four shapes, synthetic before 2g-1): where Binding leaves the node it reports at resolved (a rejected assignment
-    // target, a resolved recovery node, an unreadable char literal), the node has no FailureCauses, so a Binding cause there is a broken
-    // contract (2g-1 sites it at the failed node): InternalInvariant_Kd at the subject. G353's Field selection now rests on the Property's
-    // refusal (DECISIONS BU-73), so its cause names Binding's located limit and the problem is suppressed by it.
+    // Design 5 (BU-2's four shapes, synthetic before 2g-1): where Binding leaves the node it reports at resolved and nothing rejected it (a
+    // rejected assignment target, a resolved recovery node), the node has no RestingCauses, so a Binding cause there is a broken contract:
+    // InternalInvariant_Kd at the subject. An unreadable char literal rests on its own lexical record (DECISIONS Z16's gap row; fail-before:
+    // InternalInvariant_Kd), which suppresses the problem, as G353's Field selection rests on the Property's refusal (DECISIONS BU-73), so
+    // its cause names Binding's located limit and the problem is suppressed by it.
     [Theory]
     [InlineData("public func main()\n    let x = 1\n    x = 2\n", "x = 2", "x", false)]
     [InlineData(ClosureView + "    let c = view.cb\n    return 1\npublic func main() => ()\n", "return 1", "view.cb", true)]
     [InlineData("public func main()\n    let t = (1, 2\n", "let t = (1, 2", "(1, 2", false)]
-    [InlineData("public func main()\n    let c = 'ab'\n", "let c = 'ab'", "'ab'", false)]
+    [InlineData("public func main()\n    let c = 'ab'\n", "let c = 'ab'", "'ab'", true)]
     public void ABindingCauseNamesBindingsCausesAtItsSite(string source, string subject, string site, bool sited)
     {
         var c = CompilationTestHelper.Parse(source, "Hello.kimi");
@@ -277,7 +319,7 @@ public sealed class MirPublicationTest
         var before = Errors(c).Length;
         var program = new MirProgram();
         var at = Node(c, source, site);
-        Assert.Equal(sited, c.Binding.FailureCauses(at) is not null);
+        Assert.Equal(sited, c.Binding.RestingCauses(at) is not null);
         program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, source, subject)), [new(ProblemFactKind.Cause, SourceRef.Of(at), -1)]);
         Publish(c, program);
         var added = Errors(c).Where(static x => x.Code is nameof(DiagnosticCode.InternalInvariant_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
@@ -310,17 +352,18 @@ public sealed class MirPublicationTest
         Assert.Equal(errors, string.Join("; ", Errors(c).Select(static x => $"{x.Code} {x.Text}").Order(StringComparer.Ordinal)));
     }
 
-    // H0a 5.2 (A; PLAN G128): where one call meets G128's bound, the collector's Unsupported_Kd and A5's OwnershipDepthLimit_Kd both publish,
-    // two located records of one implementation bound at Chain<i32>'s need(c@move) (ComponentSummaryTest's program; built without
-    // Analyze).
+    // H0a 5.2 (A; PLAN G128; R7-T1): where one call meets G128's bound, A5's OwnershipDepthLimit_Kd alone publishes at Chain<i32>'s
+    // need(c@move), the collector reading no storage verdict (before R7-T1: its Unsupported_Kd beside it, two located records of one
+    // implementation bound); the collector's record is the value's growing drop glue at need's parameter (ComponentSummaryTest's program;
+    // built without Analyze).
     [Fact]
-    public void ChainsBoundIsTwoRecordsAtOneCall()
+    public void ChainsBoundIsA5sRecordAtTheCall()
     {
         var c = MirBuildTest.Compile(
             "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" +
             "func need<T>(x: T)\n    T is Owned\n    ()\n" + "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
         Publish(c, c.BuildMir());
-        Assert.Equal(["OwnershipDepthLimit_Kd", "Unsupported_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
+        Assert.Equal(["OwnershipDepthLimit_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
     }
 
     // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording; R6-check H10a D12, design §10 Q7): a MIR problem with Cause facts is
@@ -381,5 +424,5 @@ public sealed class MirPublicationTest
 
     // An analysis problem no body describes, so it has no case text.
     private static MirProblem Found(DiagnosticCode code, DiagnosticRequirement requirement, SourceRef subject)
-        => new(code, requirement, subject, MirProblem.NoBody, 0b01);
+        => MirProblem.WithoutBody(code, requirement, subject);
 }

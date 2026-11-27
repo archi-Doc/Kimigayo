@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
 using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
@@ -13,7 +12,8 @@ internal sealed partial class InstanceCollector
     private int[] chain = []; // A Place's steps, last first (ListNeeds' scratch).
 
     /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
-    /// is Resource (IMPL 21.3.2); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
+    /// is Resource (IMPL 21.3.2), and so is a stored Type past IMPL A.4's height (HeightLimit: TypeHeightLimit_Kd, R7-T1), each recorded as
+    /// a limit (MirReport.Limit); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
     /// any depth in the window, is the Language error InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage, which rests on
     /// a part Binding rejected, is a broken contract in a complete compilation and otherwise a dependent that Report drops (DECISIONS BU-38,
     /// R5-M151). Oversized is reported through Result.Oversized, which an oversized CLayout carries too.</summary>
@@ -24,6 +24,7 @@ internal sealed partial class InstanceCollector
         Layout.Outcome.Ok or Layout.Outcome.Oversized => null,
         Layout.Outcome.Rejected => DiagnosticCode.InternalInvariant_Kd,
         Layout.Outcome.SizeLimit or Layout.Outcome.CountLimit or Layout.Outcome.DepthLimit => DiagnosticCode.GenerationResourceLimit_Kd,
+        Layout.Outcome.HeightLimit => DiagnosticCode.TypeHeightLimit_Kd,
         Layout.Outcome.CLayout => DiagnosticCode.InvalidCLayout_Kd,
         _ => throw new InvalidOperationException($"The layout outcome {outcome} has no record row."),
     };
@@ -74,13 +75,13 @@ internal sealed partial class InstanceCollector
                 continue;
             }
 
-            _ = TyCtxt.Signature(function, null, -1, out var count);
+            _ = this.types.Signature(function, null, -1, out var count);
             for (var slot = -1; slot < count; slot++)
             {
-                if (TyCtxt.Signature(function, null, slot, out _) is { } type &&
-                    SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, slot)) is var site && this.Verdict(site, type).IsLimit)
+                if (this.types.Signature(function, null, slot, out _) is { } type &&
+                    SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, slot)) is var site && this.Verdict(site, type) is { IsLimit: true } result)
                 {
-                    this.Limit(this.types.Erase(type), new(function, MirBodyKind.Fn), site); // The import is its own declaration.
+                    this.program!.Problems.Limit(this.RecordOf(result.Outcome)!.Value, this.types.Erase(result.Instance ?? type), default, new(function, MirBodyKind.Fn), site); // The import is its own declaration.
                 }
             }
         }
@@ -199,14 +200,15 @@ internal sealed partial class InstanceCollector
         return laid;
     }
 
-    // Whether a by-value use's Type, at a site of an item's records, is laid out (Verdict); a limit is a use of its erased Type in the
-    // item's declaration (Limit).
+    // Whether a by-value use's Type, at a site of an item's records, is laid out (Verdict); a limit is a use in the item's declaration,
+    // with the limit's record (MirReport.Limit, RecordOf), of the erased Type Layout names: the instance whose stored Type passes the
+    // height (R7-T1), else the use's.
     private bool LaysOut(int item, SourceRef subject, BoundType type)
     {
         var result = this.Verdict(subject, type);
         if (result.IsLimit)
         {
-            this.Limit(this.types.Erase(type), this.Declaration(item), subject);
+            this.program!.Problems.Limit(this.RecordOf(result.Outcome)!.Value, this.types.Erase(result.Instance ?? type), default, this.Declaration(item), subject);
         }
 
         return result.Outcome == Layout.Outcome.Ok;
@@ -214,7 +216,7 @@ internal sealed partial class InstanceCollector
 
     // Layout's verdict on a by-value use's Type, memoized per program version and the same for Types that differ in Origins only (Layout
     // reads no Origin). A Language record is at each use (SPEC 8.15.3; one per code and subject), a layout over 2^63 - 1 bytes (IMPL
-    // 21.1.1, R5-M52) beside a CLayout's when both hold; a limit's record is Limit's.
+    // 21.1.1, R5-M52) beside a CLayout's when both hold; a limit's record is MirReport's limit table's (MirReport.Limit).
     private Layout.Result Verdict(SourceRef subject, BoundType type)
     {
         var result = this.layout.Of(type);
@@ -231,41 +233,8 @@ internal sealed partial class InstanceCollector
         return result;
     }
 
-    // IMPL 21.3.2, DIAGNOSTICS rule 6 (DECISIONS R5-M171): a use of an erased Type over a limit in a declaration, kept
-    // as the least subject of the declaration's uses in SourceRef order (module, then the syntax table's pre-order), whatever the
-    // collection's order; RecordLimits makes each Type's one record per declaration.
-    private void Limit(BoundType erased, MirDefKey declaration, SourceRef subject)
-    {
-        ref var least = ref CollectionsMarshal.GetValueRefOrAddDefault(this.limits, (erased, declaration), out var found);
-        if (!found || Order(subject, least) < 0)
-        {
-            least = subject;
-        }
-    }
-
-    // IMPL 21.3.2 (DECISIONS R5-M171): the record of each erased Type over a limit in each declaration that uses it, at its least use, in
-    // subject order (DIAGNOSTICS rule 6), after the run, when every use has been seen.
-    private void RecordLimits()
-    {
-        if (this.limits.Count == 0)
-        {
-            return;
-        }
-
-        this.limitSubjects.Clear();
-        foreach (var subject in this.limits.Values)
-        {
-            this.limitSubjects.Add(subject);
-        }
-
-        this.limitSubjects.Sort(static (x, y) => Order(x, y));
-        foreach (var subject in this.limitSubjects)
-        {
-            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, subject);
-        }
-    }
-
-    // The Places a location uses, each listed by its needs (ListNeeds).
+    // The Places a location uses, each listed by its needs (ListNeeds); an Opaque site's undecided use at its root (MirDescriptors.Judged,
+    // DECISIONS Z17), which lists none: the collector runs at check over every body without a finding, Opaque sites included (SPEC 8.15.3).
     private readonly struct NeedReader(InstanceCollector owner, TemplateStore store, MirBody body, MirLocation at) : IMirUses
     {
         public void Operand(in MirOperand operand)
@@ -278,9 +247,9 @@ internal sealed partial class InstanceCollector
 
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
-            if (place.Projection != 0)
+            if (MirDescriptors.Judged(place, access) is { Projection: not 0 } judged)
             {
-                owner.ListNeeds(store, body, at, place);
+                owner.ListNeeds(store, body, at, judged);
             }
         }
     }

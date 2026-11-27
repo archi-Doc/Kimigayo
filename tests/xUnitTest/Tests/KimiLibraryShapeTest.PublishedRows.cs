@@ -25,11 +25,13 @@ public partial class KimiLibraryShapeTest
         Assert.Equal((0, false), ((int)entry.Row.Value.Destroys, entry.Row.Value.InPlace));
     }
 
-    // SPEC 5.2 Placement, 5.6 (C-189): each parameter slot an operation contract stores no value through (KimiLibraryCatalog.NoStore, read
-    // by TyCtxt.NoStore) is a parameter of a bodiless contract, named here, so a reordered, renamed or removed parameter, a body given to
-    // the contract or a changed row fails here first. Fail-before: KimiLibraryCatalog.NoStore does not exist.
+    // SPEC 5.2 Placement, 5.6, 15.7 (C-189): each parameter slot an operation contract stores no value through (KimiLibraryCatalog.NoStore,
+    // read by TyCtxt.NoStore) is a parameter of a contract whose calls are checked against its identity, named here: a bodiless contract,
+    // or a 15.7 declaration (`replace`, `exchange`: "A call is checked against this section's rules, which belong to the declarations'
+    // identities, never against a body"), so a reordered, renamed or removed parameter, a body given to another contract or a changed row
+    // fails here first. Fail-before: KimiLibraryCatalog.NoStore does not exist; before D-933 `replace` and `exchange` had no row.
     [Fact]
-    public void NoStoreInputsAreBodilessContractsNamedParameters()
+    public void NoStoreInputsAreIdentityContractsNamedParameters()
     {
         var c = Library.Value;
         var inputs = new List<string>();
@@ -41,14 +43,14 @@ public partial class KimiLibraryShapeTest
                 if (KimiLibraryCatalog.NoStore(symbol, i))
                 {
                     var function = Assert.IsType<FunctionKoto>(symbol!.Declaration);
-                    Assert.False(HasBody(function), Line(function));
+                    Assert.False(HasBody(function) && entry.Id is not (KimiDeclarationId.Replace or KimiDeclarationId.Exchange), Line(function));
                     Assert.InRange(i, 0, function.Parameters.Count - 1);
                     inputs.Add($"{entry.Id} {function.Parameters[i].InternalName}");
                 }
             }
         }
 
-        Assert.Equal(["StorageTransferBytes source", "RawRelease storage", "RawInitialize value", "RawSlice storage"], inputs);
+        Assert.Equal(["Replace value", "Exchange value", "StorageTransferBytes source", "RawRelease storage", "RawInitialize value", "RawSlice storage", "RawReadVolatile storage"], inputs);
     }
 
     // PLAN G779 (O-195 (a)): the functions code generation keeps out of line (KimiLibraryCatalog.KeepsOutOfLine) are a closed set, each

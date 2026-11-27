@@ -24,6 +24,10 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     private const string Registry = "group Registry\n    public let total: i32 = 5\n";
     private const string Branches = "func use(c: bool) -> i32 => if c => Registry.total else => Registry.total\n";
 
+    // A struct of a moved and a Copy Field (AnUndecidedUseThroughASharedLayerIsJudgedAtItsRoot).
+    private const string StructP = "struct P\n    public var s: string\n    public var n: i32\n    public init(s: string, n: i32)\n" +
+        "        self.s = s@move\n        self.n = n\n";
+
     private static readonly SourceInfo At = default;
 
     // The source of what a rule's body changes.
@@ -61,8 +65,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
-    // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its roots', is an Opaque
-    // root's (MirDescriptors.IsOpaqueRoot, G191 N1).
+    // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its undecided uses', is
+    // an undecided use's (MirDescriptors.IsUndecided, G191 N1; DECISIONS Z17).
     [Fact]
     public void EveryKindHasADescriptorRow()
     {
@@ -81,7 +85,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             {
                 var row = (MirDescriptor)overload.Invoke(null, [value])!;
                 Assert.True(row.Defined != value is IntrinsicId.None, $"{kind.Name}.{value}");
-                Assert.True(MirDescriptors.IsOpaqueRoot(row.Access) == value is MirRvalueKind.Opaque, $"{kind.Name}.{value}");
+                Assert.True(MirDescriptors.IsUndecided(row.Access) == value is MirRvalueKind.Opaque, $"{kind.Name}.{value}");
             }
 
             Assert.False(((MirDescriptor)overload.Invoke(null, [Enum.ToObject(kind, 200)])!).Defined);
@@ -126,7 +130,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.NotEmpty(declared);
         foreach (var (row, declaration) in declared)
         {
-            _ = TyCtxt.Signature(declaration!, null, -1, out var count);
+            _ = c.Types.Signature(declaration!, null, -1, out var count);
             Assert.True(count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity)), declaration!.Name);
         }
 
@@ -164,21 +168,21 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var pointer = MirModelTest.Local(body, c.Types.Pointer(BoundType.I32));
         _ = TyCtxt.Layer(types.Pair, out var payload, out _);
         var value = MirModelTest.Local(body, payload!);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var shared = body.Static(new(types.Function, BoundType.I32, false, true));
         var (ensure, entry, abort, drop, exit) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock()); // The ensure first.
         var result = new MirPlace(0);
         void Assign(MirPlace place, MirRvalue rvalue) => body.Push(entry, MirStatement.Assign(place, rvalue, At));
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
         var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
-        Assign(result, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Copy(body.Project(pairs, MirProjectionKind.Field, 0)), one), false));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
+        Assign(result, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Copy(body.Project(c.Types, pairs, MirProjectionKind.Field, 0)), one), false));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, array, MirProjectionKind.Index, index.Root)))));
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, shared, At));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
-        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(pair, MirProjectionKind.PairLayer, 0), At));
+        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0), At));
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, shared, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Cast(MirCastKind.IntToPointer, Operands(MirOperand.Copy(index)), body.TypeOf(pointer)!));
-        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [array.Root])));
+        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)], 1, 0)));
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, payload!)));
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(value), token), value, types.Pair, shorthand: true, input: false));
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
@@ -223,6 +227,18 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         Assert.Empty(Validate(Build(null)));
         Assert.Empty(Validate(Typed(null)));
+    }
+
+    // DECISIONS Z17c, Z27: an Opaque site's kept and enclosing uses are among its uses, so counts past them are an Opaque finding; a count
+    // equal to them is valid (the site of ValidBodyHasNoFinding's typed body keeps its one use).
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    public void AnOpaqueSiteKeepsNoMoreThanItsUses(int kept, int enclosing)
+    {
+        var body = Build(null);
+        body.AddOpaque(default, [], kept, enclosing);
+        Assert.Equal([MirViolation.Opaque], Validate(body).Select(static x => x.Rule));
     }
 
     [Theory]
@@ -329,6 +345,24 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
     }
 
+    // DECISIONS R7-M115: a layer body's _0, its Receiver, is its struct's Self Type, which its Return gives; an _0 of another Type (an
+    // i32) is a Type finding at the Return.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ALayerBodysReturnLocalIsItsStructsSelfType(bool broken)
+    {
+        var c = MirBuildTest.Compile("struct S\n    public let p: i32\n    public var n: i32 = 1\n");
+        var symbol = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "S").SymbolOf()!;
+        var body = new MirBody();
+        body.Reset(new(symbol, MirBodyKind.Layer), default);
+        body.AddLocal(new(broken ? BoundType.I32 : c.Types.SelfType(symbol), MirLocalKind.Return, At, Role: MirLocalRole.Receiver));
+        body.Terminate(body.AddBlock(), MirTerminator.Return(At));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(broken ? [MirViolation.Type] : [], findings.Select(static x => x.Rule));
+    }
+
     // SPEC 4.8.1, 8.15.3 (PLAN G597): a keyed Storage has two operands, its start position, an isize, and the token of its key's Type,
     // whose start is open in the body (R; the S of Range<S, End> and Range<S, E>, keys whose own IsAbstract is false): no finding. A key
     // that decides its start takes the unkeyed form, so its token is an Operation finding either way: one that starts at the storage
@@ -350,9 +384,41 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("r", 3, "Arity")]
     public void AKeyedStorageTakesAStartAndAnOpenKey(string form, int count, string? rule)
     {
-        var (body, types) = KeyedStorage(form, count);
+        var (body, types, _) = KeyedStorage("v", form, count);
         MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
         Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // SPEC 5.3 (PLAN G597's L2; O-92 (a)'s list and a raw pointer, whose elements start at its value: Storage.viewStart's form): a
+    // Storage over a raw pointer Place (raw/i32) is admitted unkeyed and keyed, its element the pointee; over a Place that is neither a
+    // sequence nor a raw pointer (an i32) it is an Operation finding either way (fail-before: the raw pointer Place was one too).
+    [Theory]
+    [InlineData("p", 0, null)]
+    [InlineData("p", 2, null)]
+    [InlineData("n", 0, "Operation")]
+    [InlineData("n", 2, "Operation")]
+    public void AStorageOverARawPointerIsAdmitted(string sequence, int count, string? rule)
+    {
+        var (body, types, _) = KeyedStorage(sequence, "r", count);
+        MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // PLAN G597's L2 (the owner's O-490 (a)): the builder writes a Form function's call as its MIR form, so a Call of Storage.viewStart
+    // is an Operation finding at the Call, and only that (no signature is read): A4 and the instance collector, which trust validated
+    // MIR, never see one (fail-before: the Call went to the signature checks). Its operands are KeyedStorage's raw/i32 _4 and start
+    // _3, after its Storage.
+    [Fact]
+    public void AFormFunctionIsNeverACall()
+    {
+        var (body, types, c) = KeyedStorage("p", "r", 0);
+        var view = c.Library.GetSymbol(KimiDeclarationId.ViewStart)!;
+        Assert.Equal(DispositionKind.Form, view.Definition.Kind);
+        var (into, next) = (MirModelTest.Local(body, body.TypeOf(new(2))!), body.AddBlock());
+        var passed = AddOperands(body, [MirOperand.Copy(new(4)), MirOperand.Copy(new(3))]);
+        body.Terminate(0, MirTerminator.Call(new(MirCalleeKind.Fn, view), passed, 2, into, next, Broken));
+        body.Terminate(next, MirTerminator.Return(At));
+        Assert.Equal([(MirViolation.Operation, Broken.Syntax)], Validate(body, types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // SPEC 4.9.5, 4.9.6, 22.5.1 (DECISIONS R5-M129): an Array aggregate of elements publishes its buffer's allocation and its Abort through
@@ -392,15 +458,15 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var c = MirBuildTest.Compile("func pick(x: ref/i32) -> ref/i32 during x => x\nfunc same<S, E>(a: S, b: E) -> S\n    E is S\n    return b@move\n");
         Assert.Empty(c.BuildMir().Findings);
         BindingSymbol Function(string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name).SymbolOf()!;
-        var held = TyCtxt.Signature(Function("pick"), null, -1, out _)!;
+        var held = c.Types.Signature(Function("pick"), null, -1, out _)!;
         Assert.True(held.CarriesOrigin);
         Assert.True(MirTypes.Agree(held, c.Types.Reference(SemanticsKind.Ref, BoundType.I32)));
         Assert.False(MirTypes.Agree(held, c.Types.Reference(SemanticsKind.Ref, BoundType.Boolean)));
         Assert.False(MirTypes.Agree(held, c.Types.Reference(SemanticsKind.Uniq, BoundType.I32)));
         var same = Function("same");
-        var (s, e) = (TyCtxt.Signature(same, null, 0, out _)!, TyCtxt.Signature(same, null, 1, out _)!);
+        var (s, e) = (c.Types.Signature(same, null, 0, out _)!, c.Types.Signature(same, null, 1, out _)!);
         Assert.False(MirTypes.Agree(s, e));
-        Assert.Same(TyCtxt.Premised(same, s), TyCtxt.Premised(same, e));
+        Assert.Same(c.Types.Premised(same, s), c.Types.Premised(same, e));
     }
 
     // G131 (DECISIONS R5-M33): only check-only blocks read a Temp whose only writes are diverging Calls' destinations, an argument's here;
@@ -441,6 +507,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("field", null)]
     public void ADivergingCallsDestinationIsCheckedAsAPlace(string form, string? rule)
     {
+        var c = Fixture.Value.Compilation;
         var body = Build(null);
         var abort = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Target: -1 });
         var locals = Enumerable.Range(0, body.Locals.Length);
@@ -448,8 +515,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         {
             "root" => new MirPlace(99),
             "chain" => body.Blocks[abort].Terminator.Place with { Projection = 99 },
-            "step" => body.Project(new(locals.First(x => body.Locals[x].Type == BoundType.ISize)), MirProjectionKind.Field, 0),
-            _ => body.Project(new(locals.First(x => body.Locals[x].Type?.Kind == BoundTypeKind.Tuple)), MirProjectionKind.Field, 0),
+            "step" => body.Project(c.Types, new(locals.First(x => body.Locals[x].Type == BoundType.ISize)), MirProjectionKind.Field, 0),
+            _ => body.Project(c.Types, new(locals.First(x => body.Locals[x].Type?.Kind == BoundTypeKind.Tuple)), MirProjectionKind.Field, 0),
         };
         body.Terminate(abort, body.Blocks[abort].Terminator with { Place = destination, Source = Broken });
         MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
@@ -476,7 +543,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var py = KotoTree.Walk(function).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y").SymbolOf()!.Type!;
         Assert.Equal(BoundTypeKind.SemanticsAdaptation, py.Kind);
         var y = MirModelTest.Local(body, py);
-        PairBinder.Collect(function, body.Binders);
+        PairBinder.Collect(c.Binding, function, body.Binders);
         var block = body.AddBlock();
         void Read(MirOperand operand, BoundType type, SourceInfo source) => body.Push(block, MirStatement.Assign(
             MirModelTest.Local(body, type),
@@ -485,16 +552,16 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Read(MirOperand.PairAcquire(0, a), pa, At);
         Read(MirOperand.PairAcquire(1, b), pb, At);
         Read(MirOperand.PairAcquire(2, y), py, At);
-        Read(MirOperand.Copy(body.Project(a, MirProjectionKind.PairLayer, 0)), t!, At);
-        Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 1)), u!, At);
+        Read(MirOperand.Copy(body.Project(c.Types, a, MirProjectionKind.PairLayer, 0)), t!, At);
+        Read(MirOperand.Copy(body.Project(c.Types, b, MirProjectionKind.PairLayer, 1)), u!, At);
         body.Terminate(block, MirTerminator.Return(At));
         Assert.Empty(Validate(body, c.Types));
 
         // A family is never followed as one layer (it has no single target), so a PairLayer step of it is a finding as well.
         Read(MirOperand.PairAcquire(1, a), pa, Broken);
-        Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 0)), u!, Broken);
+        Read(MirOperand.Copy(body.Project(c.Types, b, MirProjectionKind.PairLayer, 0)), u!, Broken);
         Read(MirOperand.PairAcquire(0, y), py, Broken);
-        Read(MirOperand.Copy(body.Project(y, MirProjectionKind.PairLayer, 2)), py, Broken);
+        Read(MirOperand.Copy(body.Project(c.Types, y, MirProjectionKind.PairLayer, 2)), py, Broken);
         Assert.Equal(
             [(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax), (MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)],
             Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
@@ -522,7 +589,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
         var (pa, pb) = (function.Parameters[0].Type.TypeOf()!, function.Parameters[1].Type.TypeOf()!);
         var (a, b) = (MirModelTest.Local(body, pa, MirLocalKind.Arg), MirModelTest.Local(body, pb, MirLocalKind.Arg));
-        PairBinder.Collect(function, body.Binders);
+        PairBinder.Collect(c.Binding, function, body.Binders);
         var (first, second) = (MirModelTest.Local(body, pa, MirLocalKind.Temp), MirModelTest.Local(body, pb, MirLocalKind.Temp));
         var (tuple, number) = (MirModelTest.Local(body, c.Types.Tuple([pa, BoundType.I32])), MirModelTest.Local(body, BoundType.I32));
         var (block, next) = (body.AddBlock(), body.AddBlock());
@@ -532,7 +599,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var mark = broken switch { "unmarked" => MirRefKind.Shared, "raw" => MirRefKind.Raw, _ => MirRefKind.Uniq };
         Assign(first, MirRvalue.Acquire(body.AddOperand(acquire), mark), broken is "unmarked" or "raw" ? broken : string.Empty);
         Assign(second, MirRvalue.Acquire(body.AddOperand(MirOperand.PairAcquire(1, b)), MirRefKind.TwoPhaseUniq), string.Empty);
-        var projected = broken == "projection" ? body.Project(tuple, MirProjectionKind.Field, 0) : first;
+        var projected = broken == "projection" ? body.Project(c.Types, tuple, MirProjectionKind.Field, 0) : first;
         Assign(projected, MirRvalue.Acquire(body.AddOperand(acquire), MirRefKind.Uniq), "projection");
         var elements = AddOperands(body, [broken == "aggregate" ? acquire : MirOperand.Move(first), one]);
         Assign(tuple, MirRvalue.Aggregate(MirAggregateKind.Tuple, elements, 2, body.TypeOf(tuple)!), "aggregate");
@@ -643,21 +710,23 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     // G191 (K package 4.5 row 7, DECISIONS R4-M121): the builder builds a static's Place after its staticEnsure (MirBuilder.Places), so each
     // static root of a Place a location accesses is named by a staticEnsure of the body: the built body is valid, and with its ensure turned
     // into a Goto its read is an Unensured finding at the access. An Opaque site's root names a static the replaced syntax may access, with
-    // no staticEnsure (here a call Binding rejects), and is valid.
+    // no staticEnsure (here a branch of an `if` without a Type, which the call Binding rejects keeps replaced, PLAN G121; a direct argument
+    // is kept and ensured since DECISIONS Z16), and is valid.
     [Theory]
     [InlineData(null)]
     [InlineData("goto")]
     [InlineData("opaque")]
     public void AStaticPlaceIsEnsuredByItsBody(string? form)
     {
-        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc use() -> i32 => " + (form == "opaque" ? "missing(Registry.total)\n" : "Registry.total\n"));
+        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc use(c: bool) -> i32 => " +
+            (form == "opaque" ? "missing(if c => missing2 else => Registry.total)\n" : "Registry.total\n"));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
         var block = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is
             { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
         Assert.Equal(form == "opaque", block < 0);
-        Assert.Equal(form == "opaque", body.OpaqueRoots.ToArray().Contains(-1));
+        Assert.Equal(form == "opaque", body.OpaqueUses.ToArray().Any(static x => x.Root == -1));
         if (form == "goto")
         {
             var ensure = body.Blocks[block].Terminator;
@@ -871,7 +940,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var lengths = body.Consts.ToArray().Where(static x => x.Kind == MirConstKind.Length).ToArray();
         Assert.Equal([LengthOperation.InterpolationBound, LengthOperation.InterpolationHint], lengths.Select(static x => ((BoundLength)x.Value!).Operation));
         var length = lengths[0];
-        var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type;
+        var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type!;
         Assert.Equal((LengthOperation.InterpolationBound, (object)region.LengthExpression!), (region.LengthExpression!.Operation, length.Value!));
         Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
         var findings = new List<MirFinding>();
@@ -915,16 +984,18 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // R5-M72 (its first review's B1): an input that does not reserve, an obj/Base or an objref/Base, is not checked, though a conditional's
-    // Adapts of a pair layer write it twice; the objref/Base program's only records are Binding's.
+    // Adapts of a pair layer write it twice: a moved obj/Base and a borrowed objref/Base. The call is a local's initializer, where the
+    // qualifier's omitted Origin is a local region (SPEC 15.3.6); in an expression statement it is MissingOriginBinding_Kd (PLAN G10), and
+    // the conversion rests on it and writes no Adapt (E3e ruling 15 (b)).
     [Theory]
-    [InlineData("obj")]
-    [InlineData("objref")]
-    public void AnInputThatDoesNotReserveIsNotChecked(string semantics)
+    [InlineData("obj", "@move")]
+    [InlineData("objref", "")]
+    public void AnInputThatDoesNotReserveIsNotChecked(string semantics, string transfer)
     {
         var c = MirBuildTest.Compile("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
             $"func own(x: {semantics}/Base) -> () => ()\nfunc probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n" +
-            $"    own(if flag => a@move@{semantics}/Base else => b@move@{semantics}/Base)\n");
-        Assert.Equal(semantics == "obj" ? [] : [Kimi.DiagnosticCode.MissingOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code).Distinct());
+            $"    let done = own(if flag => a{transfer}@{semantics}/Base else => b{transfer}@{semantics}/Base)\n");
+        Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
         Assert.Equal(2, body.Statements.ToArray().Count(static x => x.Rvalue.Kind == MirRvalueKind.Adapt));
@@ -943,7 +1014,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
         var slot = body.Statements.ToArray().Single(static x => x.Rvalue is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.TwoPhaseUniq }).Place.Root;
-        Assert.Contains(slot, body.OpaqueRoots.ToArray());
+        Assert.Contains(body.OpaqueUses.ToArray(), x => x.Root == slot);
         Assert.Empty(program.Findings);
     }
 
@@ -988,14 +1059,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
         var prepared = new MirPlace(body.AddLocal(new(
             Layer(SemanticsKind.Ref, form == "slot ref" ? Layer(SemanticsKind.Ref, tuple) : BoundType.I32), MirLocalKind.Arg, At, Role: MirLocalRole.PreparedInput)));
-        PairBinder.Collect(types.Generic, body.Binders); // Its binder admits owner or uniq.
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders); // Its binder admits owner or uniq.
         if (form == "pair ref")
         {
             body.Binders[0] = body.Binders[0] with { Admitted = SemanticsMask.Ref | SemanticsMask.Uniq };
         }
 
         MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
-        MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
+        MirPlace Deref(MirPlace place) => body.Project(c.Types, place, MirProjectionKind.Deref, 0);
         var index = MirModelTest.Local(body, BoundType.ISize, MirLocalKind.Temp);
         var reference = Local(Layer(SemanticsKind.Ref, BoundType.I32));
         var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
@@ -1006,7 +1077,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "unscoped" => Broken with { Scope = 9 },
             _ => Broken,
         };
-        MirPlace Payload(SemanticsKind semantics) => body.Project(Deref(Local(Layer(semantics, types.Point))), MirProjectionKind.Field, 0); // x
+        MirPlace Payload(SemanticsKind semantics) => body.Project(c.Types, Deref(Local(Layer(semantics, types.Point))), MirProjectionKind.Field, 0); // x
         var place = form switch
         {
             "ref" or "ref drop" or "call" or "move" or "shared borrow" or "address" or "inlined" or "unscoped" => Deref(reference),
@@ -1018,13 +1089,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "arc" => Payload(SemanticsKind.Arc),
             "objuniq" => Payload(SemanticsKind.ObjUniq),
             "obj" => Payload(SemanticsKind.Obj),
-            "slice" or "slice drop" => body.Project(Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
-            "array" => body.Project(Local(types.Array), MirProjectionKind.Index, index.Root),
+            "slice" or "slice drop" => body.Project(c.Types, Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
+            "array" => body.Project(c.Types, Local(types.Array), MirProjectionKind.Index, index.Root),
             "uniq" => Deref(Local(Layer(SemanticsKind.Uniq, BoundType.I32))),
-            "ref raw" => Deref(body.Project(Deref(Local(Layer(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
-            "pair ref" or "pair uniq" => body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0),
+            "ref raw" => Deref(body.Project(c.Types, Deref(Local(Layer(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
+            "pair ref" or "pair uniq" => body.Project(c.Types, Local(types.Pair), MirProjectionKind.PairLayer, 0),
             "slot" => Deref(prepared),
-            _ => body.Project(Deref(Deref(prepared)), MirProjectionKind.Field, 0), // slot ref: the parameter's own shared layer past the slot.
+            _ => body.Project(c.Types, Deref(Deref(prepared)), MirProjectionKind.Field, 0), // slot ref: the parameter's own shared layer past the slot.
         };
         var value = form.StartsWith("pair", StringComparison.Ordinal) ? MirOperand.Move(Local(body.TypeOf(place)!)) : one; // A payload f's premises do not make Copy (BU-88).
         var rvalue = form switch
@@ -1068,8 +1139,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
         var pair = MirModelTest.Local(body, types.Pair, MirLocalKind.Arg);
-        PairBinder.Collect(types.Generic, body.Binders);
-        var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
+        var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var copied = form == "owned" ? MirModelTest.Local(body, types.Point) : MirModelTest.Local(body, BoundType.I32);
         var (entry, exit) = (body.AddBlock(), body.AddBlock());
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, body.TypeOf(layer)!)));
@@ -1125,7 +1196,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var admitted = form switch
         {
             "acquire copy" => SemanticsMask.Ref,
@@ -1137,8 +1208,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var exclusive = c.Types.Reference(SemanticsKind.Uniq, BoundType.I32);
         var target = c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [exclusive]); // s/(uniq/i32)
         MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
-        MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
+        MirPlace Deref(MirPlace place) => body.Project(c.Types, place, MirProjectionKind.Deref, 0);
         MirPlace Payload(SemanticsKind semantics) => body.Project(
+            c.Types,
             Deref(Local(semantics == SemanticsKind.ObjRef ? c.Types.Reference(semantics, types.Point) : c.Types.Intern(BoundTypeKind.Semantics, null, semantics, [types.Point]))),
             MirProjectionKind.Field,
             0);
@@ -1149,13 +1221,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "uniq objref" => Payload(SemanticsKind.ObjRef),
             "uniq rc" => Payload(SemanticsKind.Rc),
             "uniq arc" => Payload(SemanticsKind.Arc),
-            "uniq slice" => body.Project(Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
-            "uniq pair" or "adapt own" => body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0),
-            "uniq raw" => Deref(body.Project(Deref(Local(c.Types.Reference(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
+            "uniq slice" => body.Project(c.Types, Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
+            "uniq pair" or "adapt own" => body.Project(c.Types, Local(types.Pair), MirProjectionKind.PairLayer, 0),
+            "uniq raw" => Deref(body.Project(c.Types, Deref(Local(c.Types.Reference(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
             "acquire ref" or "acquire copy" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, types.Pair))),
             "acquire target past ref" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, target))),
             "acquire target" => Local(target),
-            "acquire own" => body.Project(Local(c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [types.Pair])), MirProjectionKind.PairLayer, 0),
+            "acquire own" => body.Project(c.Types, Local(c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [types.Pair])), MirProjectionKind.PairLayer, 0),
             _ => Deref(Local(c.Types.Reference(SemanticsKind.Ref, payload!))), // adapt ref: T of s/T, past ref.
         };
         var type = body.TypeOf(place)!;
@@ -1530,7 +1602,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-        Assert.Equal(BoundTypeKind.Parameter, f.Locals[1].Type.Kind);
+        Assert.Equal(BoundTypeKind.Parameter, f.Locals[1].Type!.Kind);
         Assert.Contains(f.Consts.ToArray(), x => x.Kind == MirConstKind.Integer && ReferenceEquals(x.Type, BoundType.Primitives[type]) && x.Bits == bits);
     }
 
@@ -1638,6 +1710,62 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.True(reported || findings.Length == 0);
     }
 
+    // R7 plan Z23 (SPEC 8.14, 4.7.1 step 3; the owner's O-446 (a)): a CaseSwitch's decider is a TypeToken constant (else Operation) of a
+    // pair layer of the body's binders or of a case-free Type (a default's copy, decided by its own Type); a pair layer of no binder of the
+    // body is a Binder finding.
+    [Theory]
+    [InlineData("binder", "")]
+    [InlineData("caseFree", "")]
+    [InlineData("foreign", "Binder")]
+    [InlineData("operand", "Operation")]
+    public void ACaseSwitchDecidesByATypeTokenOfItsBinders(string decider, string expected)
+    {
+        var binders = new List<PairBinder>();
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var flag = MirModelTest.Local(body, BoundType.Boolean);
+        var (entry, exclusive, shared, join) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var token = decider == "caseFree" ? BoundType.ISize : Fixture.Value.Types.Pair;
+        var operand = decider == "operand" ? MirOperand.Copy(flag) : MirOperand.Const(body.Const(new(MirConstKind.TypeToken, token)));
+        body.Terminate(entry, MirTerminator.CaseSwitch(operand, body.AddCase(1, exclusive), shared, At));
+        body.Terminate(exclusive, MirTerminator.Goto(join, At));
+        body.Terminate(shared, MirTerminator.Goto(join, At));
+        body.Terminate(join, MirTerminator.Return(At));
+        if (decider != "foreign")
+        {
+            body.Binders.AddRange(binders);
+        }
+
+        Assert.Equal(expected, string.Join(", ", Validate(body).Select(static x => x.Rule)));
+        Assert.Equal(1, body.CaseSwitches); // Terminate, their one writer, counts them.
+    }
+
+    // R7 plan Z4 (SPEC 7.7.3; PLAN G13): a value call whose Closure receiver is by case borrows its callee exclusively only in the views
+    // whose case receiver is Exclusive (MirBuilder.Calls' case branch), so the built body is valid; with the branch's sides swapped, each
+    // call breaks it in the view that now reaches it (MirValidator.Types' Receivers), an Operation finding each: the owner view's `uniq/C`
+    // callee where C's case admits a Shared receiver, and the uniq view's `ref/C` callee, which supplies no Exclusive call.
+    [Fact]
+    public void EachViewBorrowsAClosureCalleeInTheReceiverItsCaseAdmits()
+    {
+        var c = MirBuildTest.Compile("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
+            "    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var blocks = body.Blocks.ToArray();
+        var at = Array.FindIndex(blocks, static x => x.Terminator.Kind == MirTerminatorKind.CaseSwitch);
+        var calls = blocks.Select(static x => x.Terminator).Where(static x => x is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value }).ToArray();
+        Assert.Equal(1, body.CaseSwitches);
+        Assert.Equal(2, calls.Length); // The call on each side, into one destination.
+        var branch = blocks[at].Terminator;
+        body.Terminate(at, MirTerminator.CaseSwitch(branch.Operand, body.AddCase(1, branch.Target), body.Cases[branch.Start].Target, branch.Source));
+        Assert.Equal(
+            [(MirViolation.Operation, body.Subject(calls[0].Source)), (MirViolation.Operation, body.Subject(calls[1].Source))],
+            Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // SPEC 8.15, 23.1.1, 8.3.4: Binding publishes no part of a definition beyond PairBinder.CaseBound views or whose binders admit no case
     // (Binding.CaseLimits), so a body with more views or none is a Binder finding at the body, which is not checked further: six binders of
     // two cases, 64 views, are valid but for an Adapt no view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views
@@ -1646,7 +1774,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     public void ViewsOutsideTheCaseBoundAreAFinding()
     {
         var binders = new List<PairBinder>();
-        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
         var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
         var body = new MirBody();
         body.Reset(new(null, MirBodyKind.Fn), default);
@@ -1675,7 +1803,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var validator = new MirValidator(Fixture.Value.Compilation.Types);
         var findings = new List<MirFinding>();
         var binders = new List<PairBinder>();
-        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
         var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
         Assert.True(Verdict(Typed("assign")));
         var unordered = Build(null);
@@ -1941,6 +2069,116 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null or "destructor" ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
+    // PLAN G1073 (SPEC 23.1.2; the design's R1-2): a slot of no Type is Binding's failed slot, read by no location that judges its Type:
+    // the builder's body of a function with a parameter of unresolved Type, an Arg of no Type, is valid; _0 or a typed parameter of no
+    // Type, the failed parameter typed (the signature's slot is the fact), and a local of no Type read into a typed temp, are Local
+    // findings.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("result")]
+    [InlineData("typed")]
+    [InlineData("parameter")]
+    [InlineData("read")]
+    public void ASlotOfNoTypeIsBindingsFailedSlot(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f(n: Missing, m: i32) -> i32\n    let k = m\n    return k\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var locals = body.Locals.ToArray();
+        var at = Array.FindIndex(locals, x => x.Name == broken switch { "typed" => "n", "parameter" => "m", "read" => "k", _ => null });
+        Assert.Null(locals.Single(static x => x.Name == "n").Type);
+        if (broken == "result")
+        {
+            Unsafe.AsRef(in body.Locals[0]) = locals[0] with { Type = null };
+        }
+        else if (broken is not null)
+        {
+            Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Type = broken == "typed" ? BoundType.I32 : null };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+    }
+
+    // PLAN G1184 (SPEC 23.1.2, rule W; the Z28 design's C1 and D1): a Field step over a stored Field whose slot failed is admitted, of no
+    // Type (MirBody.Selects), and only written: an Assign's destination, also of a write's value in transit, an Assigned
+    // temp of no Type its Use places (the builder's Replace). Its FakeRead, Copy, Ref, Drop, Move into _0 and a propagating read of it (the
+    // step of an Unknown temp) are Local findings, on a first step (`n.w`) as on a deeper one (`(*r).w`); an Assigned temp of no Type moved
+    // into a typed destination is one too; a step below it is not admitted, a Projection finding only.
+    [Theory]
+    [InlineData("write", "")]
+    [InlineData("placing", "")]
+    [InlineData("placing typed", "Local")]
+    [InlineData("read", "Local")]
+    [InlineData("copy", "Local")]
+    [InlineData("borrow", "Local")]
+    [InlineData("drop", "Local")]
+    [InlineData("deliver", "Local")]
+    [InlineData("propagate", "Local")]
+    [InlineData("deeper", "Local")]
+    [InlineData("below", "Projection")]
+    public void AFieldStepOfNoTypeIsOnlyWritten(string form, string expected)
+    {
+        var c = MirBuildTest.Compile("struct N\n    public var w: Weak<rc/N> = 5\n    public var v: i32 = 0\n    public init() => ()\n");
+        var n = c.Semantics.SelfType(c.Kotonoha.RootKoto.NestedContainers.Single(static x => x.Name == "N").SymbolOf()!);
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, At));
+        var (owner, k, reference) = (MirModelTest.Local(body, n), MirModelTest.Local(body, BoundType.I32), MirModelTest.Local(body, c.Types.Reference(SemanticsKind.Ref, n)));
+        var (held, unknown) = (new MirPlace(body.AddLocal(new(null, MirLocalKind.Temp, At, Role: MirLocalRole.Assigned))), MirModelTest.Local(body, n, MirLocalKind.Temp));
+        var (block, next) = (body.AddBlock(), body.AddBlock());
+        var w = body.Project(c.Types, owner, MirProjectionKind.Field, 0);
+        Assert.Null(body.TypeOf(w));
+        MirRvalue Use(MirOperand operand) => MirRvalue.Use(AddOperands(body, [operand]));
+        body.Push(block, MirStatement.Assign(held, Use(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 5)))), At));
+        body.Push(block, MirStatement.Assign(unknown, MirRvalue.Opaque(n, body.AddOpaque(default, [], 0, 0)), At));
+        MirStatement? broken = form switch
+        {
+            "write" => MirStatement.Assign(w, Use(MirOperand.Copy(k)), Broken),
+            "placing" => MirStatement.Assign(w, Use(MirOperand.Move(held)), Broken),
+            "placing typed" => MirStatement.Assign(k, Use(MirOperand.Move(held)), Broken),
+            "read" => MirStatement.Of(MirStatementKind.FakeRead, w, Broken),
+            "copy" => MirStatement.Assign(k, Use(MirOperand.Copy(w)), Broken),
+            "borrow" => MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.Shared, w, body.TypeOf(reference)), Broken),
+            "deliver" => MirStatement.Assign(new(0), Use(MirOperand.Move(w)), Broken),
+            "propagate" => MirStatement.Assign(k, Use(MirOperand.Copy(body.Project(c.Types, unknown, MirProjectionKind.Field, 0))), Broken),
+            "deeper" => MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, body.Project(c.Types, reference, MirProjectionKind.Deref, 0), MirProjectionKind.Field, 0), Broken),
+            "below" => MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, w, MirProjectionKind.Field, 0), Broken),
+            _ => null,
+        };
+        if (broken is { } statement)
+        {
+            body.Push(block, statement);
+        }
+
+        body.Terminate(block, form == "drop" ? MirTerminator.Drop(w, next, Broken) : MirTerminator.Goto(next, At));
+        body.Terminate(next, MirTerminator.Return(At));
+        Assert.Equal(expected.Split(' ', StringSplitOptions.RemoveEmptyEntries), Validate(body, c.Types).Select(static x => x.Rule.ToString()));
+    }
+
+    // PLAN G1073 (SPEC 23.1.2; BU-240): an EndBorrow ends the Loans a reference local holds. An Index over a receiver Binding rested (a use of
+    // a failed getter, D-823) lends the receiver's Opaque temp of no Type through a stand-in of no Type, which holds none and agrees with a
+    // reference: no finding (fail-before: EndBorrowLocal, InternalInvariant_Kd at the Index); the stand-in typed as no reference is one.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnEndBorrowOfALocalOfNoTypeEndsNothing(bool typed)
+    {
+        var c = MirBuildTest.Compile(
+            "struct P\n    public var x: i32 = 0\n    public var items: Array<i32> = []\n    public init() => ()\nstruct W\n" +
+            "    public var fa: [2 of P] = [P.init(), P.init()]\n        get() -> [2 of P] => storage\n    public init() => ()\n" +
+            "func run(w: uniq/W) -> i32\n    return match (w.fa[0])\n        _ => 1\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "run");
+        var ended = body.Statements.ToArray().Single(static x => x.Kind == MirStatementKind.EndBorrow).Place.Root;
+        Assert.Null(body.Locals[ended].Type);
+        if (typed)
+        {
+            Unsafe.AsRef(in body.Locals[ended]) = body.Locals[ended] with { Type = BoundType.I32 };
+        }
+
+        var rules = Validate(body, c.Types).Select(static x => x.Rule).ToArray();
+        Assert.Equal(typed, rules.Contains(MirViolation.EndBorrowLocal));
+        Assert.True(typed || rules.Length == 0, string.Join(", ", rules));
+    }
+
     // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,
     // as a raw layer or inside a Tuple, is a Local finding; the builder's locals over unstated pointers are valid.
     [Theory]
@@ -2000,6 +2238,53 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.True(counter.Places > 0);
     }
 
+    // DECISIONS Z17 (B3): an Opaque site's undecided use at a projected Place through a shared layer (a failed call's kept part through a
+    // ref parameter's or a ref self's Deref, a Slice's Index or an rc payload) is judged at its root by every rule but A1's
+    // (MirDescriptors.Judged), so SharedPath reads no write through the layer: no finding and no InternalInvariant_Kd beside Binding's
+    // records, also beside a limit on a valid program (downgrade). A group let's static kept is undecided at its Place, and one located is
+    // read by a FakeRead after its ensure (rule (2)), no use. A kept Copy part the form reads is secured by its Copy, an ordinary read, so
+    // its site names the temp (DECISIONS Z17c; fail-before: the projected Place), while a non-Copy part stays undecided at its Place,
+    // through each layer (a ref parameter's and a ref self's Deref, a Slice's Index, an rc payload).
+    [Theory]
+    [InlineData(StructP + "func g(n: i32, m: i32) -> i32 => n\nfunc f(p: ref/P) -> i32\n    return g(p.n, missing)\n", "UnresolvedBinding_Kd", false)]
+    [InlineData(StructP + "func f(p: ref/P)\n    missing(p.s)\n", "UnresolvedBinding_Kd", true)]
+    [InlineData("func f(r: ref/i32)\n    missing(r@follow)\n", "UnresolvedBinding_Kd", false)]
+    [InlineData("func f(r: ref/string)\n    missing(r@follow)\n", "UnresolvedBinding_Kd", true)]
+    [InlineData(
+        "func g(n: i32, m: i32) -> i32 => n\nstruct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+        "    public func m(self: ref/Self) -> i32 => g(self.n, missing)\n",
+        "UnresolvedBinding_Kd UnresolvedBinding_Kd",
+        false)]
+    [InlineData(
+        "struct Item\n    public var id: i32\n    public init(id: i32) => self.id = id\nstruct Holder\n    public var item: rc/Item\n" +
+        "    public init(item: rc/Item) => self.item = item@move\nfunc f(h: ref/Holder)\n    let w = Kimi.Intrinsics.downgrade(h.item)\n",
+        "Unsupported_Kd",
+        true)]
+    [InlineData(
+        "struct Q\n    public var s: string\n    public init(s: string) => self.s = s@move\n    public func m(self: ref/Self) => missing(self.s)\n",
+        "UnresolvedBinding_Kd",
+        true)]
+    [InlineData("func f(s: Slice<i32>, i: isize)\n    missing(s[i])\n", "UnresolvedBinding_Kd", false)]
+    [InlineData("func f(s: Slice<string>, i: isize)\n    missing(s[i])\n", "UnresolvedBinding_Kd", true)]
+    [InlineData("struct Q\n    public var s: string\n    public init(s: string) => self.s = s@move\nfunc f(h: rc/Q)\n    missing(h.s)\n", "UnresolvedBinding_Kd", true)]
+    [InlineData(
+        "struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc g(n: i32, m: i32) -> i32 => n\nfunc f(h: rc/Q) -> i32\n" +
+        "    return g(h.n, missing)\n",
+        "UnresolvedBinding_Kd",
+        false)]
+    [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing(G.s)\n", "UnresolvedBinding_Kd", false)]
+    [InlineData("group G\n    public let s: i32 = 1\nfunc f()\n    missing = G.s\n", "UnresolvedBinding_Kd", false)]
+    public void AnUndecidedUseThroughASharedLayerIsJudgedAtItsRoot(string source, string binding, bool projected)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Equal(binding, string.Join(" ", c.Binding.Issues.Select(static x => x.Code)));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == Kimi.DiagnosticCode.InternalInvariant_Kd);
+        var uses = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueUses.ToArray());
+        Assert.Equal(projected, uses.Any(static x => x.Projection != 0));
+    }
+
     // The Type tier's body: each form it checks in a valid use, or the named form broken at Broken.
     internal static MirBody Typed(string? broken)
     {
@@ -2051,12 +2336,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var storage = MirRvalue.Storage(broken == "storage" ? lent : array, body.TypeOf(pointer)!);
         Assign(pointer, broken == "storage-op" ? storage with { Op = (byte)MirRefKind.Shared } : storage, broken == "storage-op" ? broken : "storage");
         Assign(index, MirRvalue.Discriminant(shape));
-        Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(pair, MirProjectionKind.Field, 0)))), "assign");
+        Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(c.Types, pair, MirProjectionKind.Field, 0)))), "assign");
         var lost = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
-        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [])));
+        Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [], 0, 0)));
         Assign(a, MirRvalue.Use(Operands(MirOperand.Move(lost))), "opaque");
         MirOperand Token(BoundType type) => MirOperand.Const(body.Const(new(MirConstKind.TypeToken, type)));
-        var (acquired, payload) = (broken == "token" ? flag : a, body.Project(handle, MirProjectionKind.Deref, 0));
+        var (acquired, payload) = (broken == "token" ? flag : a, body.Project(c.Types, handle, MirProjectionKind.Deref, 0));
         var adapt = MirRvalue.Adapt(Operands(broken == "acquisition" ? one : MirOperand.Copy(acquired), Token(BoundType.I32)), acquired, body.TypeOf(adapted)!, shorthand: false, input: false);
         Assign(adapted, broken == "shorthand" ? adapt with { Op = 4 } : adapt, broken is "acquisition" or "token" or "shorthand" ? broken : "adapt");
         var borrow = MirRvalue.Adapt(Operands(MirOperand.Copy(handle), Token(body.TypeOf(handle)!)), broken == "payload" ? handle : payload, body.TypeOf(borrowed)!, shorthand: false, input: false);
@@ -2114,7 +2399,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
         var parent = MirModelTest.Local(body, types.Base);
 
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var scope = body.AddScope(0, MirScopeKind.Unsafe, default);
         var shared = body.Static(new(types.Function, BoundType.I32, false, false));
         if (broken == MirViolation.NoBlocks)
@@ -2125,7 +2410,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (entry, abort, call, drop, exit, ensure, done) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
         var check = body.AddBlock();
         var result = new MirPlace(0);
-        var x = body.Project(pairs, MirProjectionKind.Field, 0);
+        var x = body.Project(c.Types, pairs, MirProjectionKind.Field, 0);
         void Push(MirStatementKind kind, MirPlace place, SourceInfo? source = null) => body.Push(entry, MirStatement.Of(kind, place, source ?? At));
         void Assign(MirPlace place, MirRvalue rvalue, SourceInfo? source = null) => body.Push(entry, MirStatement.Assign(place, rvalue, source ?? At));
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
@@ -2137,15 +2422,15 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(index, MirRvalue.Use(Operands(Const(MirConstKind.Integer, BoundType.ISize, 2))));
         Assign(result, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Copy(x), one), false));
         Assign(reference, MirRvalue.Ref(MirRefKind.Shared, x, body.TypeOf(reference)!));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(reference, MirProjectionKind.Deref, 0)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, reference, MirProjectionKind.Deref, 0)))));
         Push(MirStatementKind.EndBorrow, reference);
-        Push(MirStatementKind.FakeRead, body.Project(pair, MirProjectionKind.PairLayer, 0));
+        Push(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.TwoPhaseUniq));
-        var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
+        var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
-        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [point.Root])));
+        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root), x], 0, 0))); // Z17: an undecided use at a Place.
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));
@@ -2154,10 +2439,10 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(), 0, types.Array)); // SPEC 4.3.4 noinit: no element stored.
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.Fill, Operands(one), 1, types.Array)); // SPEC 4.3.3: every element a copy of one.
         Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(MirOperand.Move(parent), one, Const(MirConstKind.Bool, BoundType.Boolean, 1)), 3, types.Point));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.ConstIndex, 2)))));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(body.Project(shape, MirProjectionKind.Downcast, 1), MirProjectionKind.Field, 1)))));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(body.Project(point, MirProjectionKind.Base, 1), MirProjectionKind.Field, 0)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, array, MirProjectionKind.Index, index.Root)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, array, MirProjectionKind.ConstIndex, 2)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, body.Project(c.Types, shape, MirProjectionKind.Downcast, 1), MirProjectionKind.Field, 1)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, body.Project(c.Types, point, MirProjectionKind.Base, 1), MirProjectionKind.Field, 0)))));
         Assign(result, MirRvalue.Unary(MirUnaryOp.Neg, Operands(MirOperand.Copy(result)), false));
         Assign(index, MirRvalue.Cast(MirCastKind.Integer, Operands(MirOperand.Copy(result)), BoundType.ISize));
         switch (broken)
@@ -2178,7 +2463,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
                 Push(MirStatementKind.FakeRead, new(99), Broken);
                 break;
             case MirViolation.Projection:
-                Push(MirStatementKind.FakeRead, body.Project(index, MirProjectionKind.Field, 0), Broken);
+                Push(MirStatementKind.FakeRead, body.Project(c.Types, index, MirProjectionKind.Field, 0), Broken);
                 break;
             case MirViolation.Const:
                 Assign(result, MirRvalue.Use(Operands(MirOperand.Const(99))), Broken);
@@ -2214,7 +2499,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
                 Push(MirStatementKind.FakeRead, body.Static(new(types.Generic.SymbolOf()!, BoundType.I32, false, false)), Broken);
                 break;
             case MirViolation.SharedPath: // W1 rule 1: a write through the shared reference.
-                Assign(body.Project(reference, MirProjectionKind.Deref, 0), MirRvalue.Use(Operands(one)), Broken);
+                Assign(body.Project(c.Types, reference, MirProjectionKind.Deref, 0), MirRvalue.Use(Operands(one)), Broken);
                 break;
         }
 
@@ -2276,14 +2561,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         return body;
     }
 
-    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597): its key the named
-    // parameter's Type of a generic k; "flag" a bool start under the key R and "value" an Integer constant for the token; of its three
-    // operands (the token twice) the count given.
-    internal static (MirBody Body, TyCtxt Types) KeyedStorage(string form, int count)
+    // A body of one keyed Storage at Broken, `_2 = storage(_1, copy _3, const type K)` over an Array<i32> (PLAN G597), or over the named
+    // parameter's local after them (_4: "p" a raw/i32, "n" an i32): its key the named parameter's Type of a generic k; "flag" a bool start
+    // under the key R and "value" an Integer constant for the token; of its three operands (the token twice) the count given.
+    internal static (MirBody Body, TyCtxt Types, Compilation Compilation) KeyedStorage(string sequence, string form, int count)
     {
         var c = MirBuildTest.Compile(
             "func k<R, S, E>(v: Array<i32>, r: R, from: Range<S, End>, both: Range<S, E>, full: Range<Start, End>, to: Range<Start, E>, " +
-            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange) -> ()\n" +
+            "at: Range<i32, E>, back: Range<FromEnd<i32>, End>, resolved: ResolvedRange, p: raw/i32, n: i32) -> ()\n" +
             "    R is PositionRange\n    S is Position\n    E is Position\n    return ()\n");
         Assert.True(c.Binding.Result.IsComplete);
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "k");
@@ -2295,11 +2580,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var start = MirOperand.Copy(MirModelTest.Local(body, form == "flag" ? BoundType.Boolean : BoundType.ISize));
         MirConst key = form == "value" ? new(MirConstKind.Integer, BoundType.ISize, 0) : new(MirConstKind.TypeToken, Of(form == "flag" ? "r" : form));
         var token = MirOperand.Const(body.Const(key));
+        var place = sequence == "v" ? array : MirModelTest.Local(body, Of(sequence));
         var block = body.AddBlock();
-        var keyed = MirRvalue.Storage(array, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
+        var keyed = MirRvalue.Storage(place, body.TypeOf(pointer)!, AddOperands(body, [start, token, token])) with { Count = count };
         body.Push(block, MirStatement.Assign(pointer, keyed, Broken));
         body.Terminate(block, MirTerminator.Return(At));
-        return (body, c.Types);
+        return (body, c.Types, c);
     }
 
     // The compilation of a PrimitiveInteger T and a PrimitiveInteger projection U.(HasItem).Item, and eight Types: its parameters' T,

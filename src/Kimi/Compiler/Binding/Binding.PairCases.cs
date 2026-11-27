@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Numerics;
 using System.Text;
 using Kimi.Compiler.Parsing;
 
@@ -19,7 +18,6 @@ public sealed partial class Binding
 
     // The binders in scope of one PairSlotCondition query, reused, and whether a query is collecting them.
     private readonly List<PairBinder> pairConditionBinders = new();
-    private readonly List<PairBinder> copyCaseBinders = new(); // The binders of one CopiesInEveryCase query, reused.
     private bool pairConditionActive;
 
     /// <summary>Appends the Semantics of a mask in bit order, separated.</summary>
@@ -40,7 +38,7 @@ public sealed partial class Binding
     }
 
     /// <summary>Gets the point whose Semantics premises give one pair binder's admitted set where a relation is judged (SPEC 8.3.4,
-    /// 8.8.2; PLAN G801): the relation's scope (<see cref="RelationScope"/>) when the binder is in scope there, its declaring scope on
+    /// 8.8.2; PLAN G801): the relation's scope (<see cref="RelationScope(ref UseScope, in CallableInstance)"/>) when the binder is in scope there, its declaring scope on
     /// that scope's chain (a conforming Type's binder in its conformance scope, a body's or its Type's binder at a use). Any other
     /// binder a relation meets belongs to another signature (a requirement's own, an implementation's own before correspondence, a
     /// callee's), whose clauses are all its premises: its declaring scope. A declaration's own relation has no scope and reads that
@@ -93,12 +91,28 @@ public sealed partial class Binding
     }
 
     /// <summary>Gets the scope a relation is judged in (SPEC 8.3.4, 8.8.2; PLAN G801): its comparison's own (a conformance scope),
-    /// else its use's; none for a declaration's own relation.</summary>
+    /// else its use's, which the holder of the use finds once (<see cref="UseScope"/>).</summary>
+    /// <param name="use">The use the relation is judged at.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <returns>The relation's scope.</returns>
+    internal BindingScope RelationScope(ref UseScope use, in CallableInstance comparison)
+        => comparison.Scope ?? use.Scope(this);
+
+    /// <summary>Gets the scope a relation is judged in (<see cref="RelationScope(ref UseScope, in CallableInstance)"/>) for a use held
+    /// as syntax; a declaration's own relation has no use, so only its comparison's scope, if any.</summary>
     /// <param name="use">The use the relation is judged at; none for a declaration's own relation.</param>
     /// <param name="comparison">The comparison the relation belongs to.</param>
     /// <returns>The relation's scope, or null.</returns>
     internal BindingScope? RelationScope(Koto? use, in CallableInstance comparison)
-        => comparison.Scope ?? (use is null ? null : this.ConstraintScope(use));
+    {
+        if (use is null)
+        {
+            return comparison.Scope;
+        }
+
+        var at = new UseScope(use);
+        return this.RelationScope(ref at, comparison);
+    }
 
     /// <summary>Gets the admitted set of a pair layer's binder (SPEC 8.3), from its declaring scope, which every occurrence of the layer
     /// shares; None for another Type.</summary>
@@ -106,6 +120,16 @@ public sealed partial class Binding
     /// <returns>The admitted Semantics.</returns>
     internal SemanticsMask LayerAdmitted(BoundType type)
         => TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } ? this.AdmittedSemantics(whole, scope) : SemanticsMask.None;
+
+    /// <summary>Tests whether a Type has a borrow value's outer Semantics (SPEC 3.4.1, 10.2.2 item 2): <c>ref</c>, <c>uniq</c>,
+    /// <c>objref</c> or <c>objuniq</c>, or a pair layer whose binder's admitted set lies within <c>borrow</c> (SPEC 8.3.4,
+    /// <see cref="LayerAdmitted"/>; PLAN G924, the owner's O-416 (b)).</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>Whether its outer Semantics is a borrow's.</returns>
+    internal bool HasBorrowSemantics(BoundType type)
+        => TryPairLayer(type, out _, out _)
+            ? this.LayerAdmitted(type) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0
+            : type.Kind == BoundTypeKind.Semantics && IsBorrow(type.Semantics);
 
     /// <summary>Gets the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1): one fixed Origin per pair binder, shared by every
     /// occurrence of the original <c>s/T</c>, present only in the admitted borrow cases and never written in source. The whole Type
@@ -134,22 +158,25 @@ public sealed partial class Binding
         => occurrence.Origin ?? (occurrence.Kind == BoundTypeKind.Parameter && occurrence.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } target ? this.PairOuterOrigin(target) : null);
 
     /// <summary>Gets the Semantics-case condition under which a pair layer's outer-Origin slot exists at a use (SPEC 8.1.2, 15.6.5):
-    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders(Koto, List{PairBinder})"/> at
-    /// the use when its admitted set mixes borrows with other Semantics, and null when no admitted case is a borrow, so the slot
-    /// never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
+    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of
+    /// <see cref="PairBinders(BindingScope, List{PairBinder})"/> in the use's scope when its admitted set mixes borrows with other
+    /// Semantics, and null when no admitted case is a borrow, so the slot never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
-    /// <param name="use">The use whose binders give the bits.</param>
-    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <param name="use">The use whose binders give the bits; only a pair layer finds its scope.</param>
+    /// <param name="comparison">The comparison the relation belongs to, whose scope gives the admitted set
+    /// (<see cref="RelationScope(ref UseScope, in CallableInstance)"/>);
+    /// every caller states it, <c>default</c> for a relation outside any comparison.</param>
     /// <returns>The condition, or null when the slot never exists.</returns>
-    internal ulong? PairSlotCondition(BoundType layer, Koto use, in CallableInstance comparison = default)
+    internal ulong? PairSlotCondition(BoundType layer, ref UseScope use, in CallableInstance comparison)
     {
         if (!TryPairLayer(layer, out var whole, out _))
         {
             return 0;
         }
 
-        var admitted = this.AdmittedSemantics(whole, AdmittedScope(whole.Symbol!, this.RelationScope(use, comparison)));
+        // The relation's scope gives the admitted set; the use's scope the bits.
+        var admitted = this.AdmittedSemantics(whole, AdmittedScope(whole.Symbol!, this.RelationScope(ref use, comparison)));
         if ((admitted & SemanticsMask.Borrow) == 0)
         {
             return null;
@@ -166,7 +193,7 @@ public sealed partial class Binding
         this.pairConditionActive = true;
         try
         {
-            this.PairBinders(use, binders);
+            this.PairBinders(use.Scope(this), binders);
             for (var i = 0; i < binders.Count && i < 64; i++)
             {
                 if (ReferenceEquals(binders[i].Target.WholeType, whole))
@@ -190,10 +217,9 @@ public sealed partial class Binding
     /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
     /// <param name="use">The use whose binders give the condition's bits.</param>
     /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
-    /// <param name="comparison">The comparison the relation belongs to, whose scope gives the admitted set (<see cref="RelationScope"/>);
-    /// every caller states it, <c>default</c> for a relation outside any comparison.</param>
+    /// <param name="comparison">The comparison the relation belongs to, as <see cref="PairSlotCondition"/> takes it; every caller states it.</param>
     /// <returns>The stored outer Origin, or null when no case stores one.</returns>
-    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition, in CallableInstance comparison)
+    internal BoundOrigin? StoredSlot(BoundType type, ref UseScope use, out ulong condition, in CallableInstance comparison)
     {
         condition = 0;
         if (!type.ContainsPairLayer)
@@ -201,7 +227,7 @@ public sealed partial class Binding
             return type.Origin;
         }
 
-        if (this.PairSlotCondition(type, use, comparison) is not { } slot)
+        if (this.PairSlotCondition(type, ref use, comparison) is not { } slot)
         {
             return null;
         }
@@ -218,7 +244,7 @@ public sealed partial class Binding
     /// <param name="use">The use whose binders give the condition's bits.</param>
     /// <param name="comparison">The comparison the relation belongs to, as <see cref="StoredSlot"/> takes it; every caller states it.</param>
     /// <returns>The layer's target, its outer Origin and the Semantics case it exists in, or null when no case forms a layer.</returns>
-    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, Koto use, in CallableInstance comparison)
+    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, ref UseScope use, in CallableInstance comparison)
     {
         BoundType target;
         if (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice)
@@ -235,7 +261,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return this.StoredSlot(type, use, out var condition, comparison) is { } outer ? (target, outer, condition) : null;
+        return this.StoredSlot(type, ref use, out var condition, comparison) is { } outer ? (target, outer, condition) : null;
     }
 
     /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.15): every pair layer of a binder in
@@ -265,7 +291,7 @@ public sealed partial class Binding
 
         // DECISIONS BU-60: the Type instance a closure's context holds takes the cases with the Closure Type.
         var context = TyCtxt.HeldType(type) is { } held && this.CaseType(held, cases) is var image && !ReferenceEquals(image, held)
-            ? this.types.HeldContext(type.Symbol!, image) : type.ClosureContext;
+            ? this.types.HeldContext(type.Symbol!, image) : type.InstanceContext;
         if (type.Components.Count == 0)
         {
             return this.WithContext(type, context);
@@ -312,77 +338,6 @@ public sealed partial class Binding
     /// <returns>The admitted cases that neither Copy nor Reborrow; None when every case has a plan.</returns>
     internal SemanticsMask BareAcquisition(BoundType type, Koto node, out SemanticsMask reborrow) => this.BareAcquisition(type, node, [], out reborrow);
 
-    /// <summary>Tells whether a Type Copies in every Semantics case of the pair binders in scope (SPEC 8.14, 8.15.2, 3.5): its
-    /// complete Type in each case (<see cref="CaseType"/>) is proven Copy by SPEC 8.3, which no case adds a premise to. The 8.3 proof
-    /// decides alone where it is not Unknown or the Type holds no pair layer, and where the cases exceed
-    /// <see cref="PairBinder.CaseBound"/> (64 cases are analyzed; 65 are not), whose definition records <c>OwnershipCaseLimit_Kd</c>
-    /// (<c>CheckCaseBound</c>), so no case is answered unchecked. The one Copy evidence of an
-    /// acquisition: BareAcquire, a Consuming call, <c>@copy</c>, a same-Type acquisition, a bare-Place adaptation or object view, a
-    /// Pattern binding, a special receiver's part, an omitted capture list (Transfers' S3), and <c>TyCtxt.CopyFacts</c>, which MIR reads
-    /// (DECISIONS BU-88).</summary>
-    /// <param name="type">The complete Type.</param>
-    /// <param name="scope">The scope whose premises and pair binders apply.</param>
-    /// <returns>Whether every case Copies.</returns>
-    internal bool CopiesInEveryCase(BoundType type, BindingScope scope)
-    {
-        var proof = this.ProveCopy(type, scope);
-        if (proof != ConstraintProof.Unknown || !type.ContainsPairLayer)
-        {
-            return proof == ConstraintProof.Proven;
-        }
-
-        // A query nested in a case's proof takes its own list, as PairSlotCondition's does.
-        var binders = this.copyCaseBinders.Count == 0 ? this.copyCaseBinders : new List<PairBinder>();
-        this.PairBinders(scope, binders);
-        var resolved = 0;
-        var count = 1L;
-        for (var b = 0; b < binders.Count; b++)
-        {
-            if (binders[b].Resolved)
-            {
-                count *= BitOperations.PopCount((uint)binders[b].Admitted);
-                resolved++;
-            }
-        }
-
-        if (resolved == 0 || count > PairBinder.CaseBound)
-        {
-            binders.Clear();
-            return false;
-        }
-
-        Span<SemanticsKind> digits = stackalloc SemanticsKind[resolved];
-        var scratch = this.caseScratch.Rent(resolved);
-        try
-        {
-            var assignment = scratch.AsSpan(0, resolved);
-            for (var index = 0; index < count; index++)
-            {
-                CaseDigits(binders, index, digits);
-                for (int j = 0, b = 0; b < binders.Count; b++)
-                {
-                    if (binders[b].Resolved)
-                    {
-                        assignment[j] = new(binders[b].Target, digits[j]);
-                        j++;
-                    }
-                }
-
-                if (this.ProveCopy(this.CaseType(type, assignment), scope) != ConstraintProof.Proven)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-        finally
-        {
-            this.caseScratch.Return(scratch, clearArray: true);
-            binders.Clear();
-        }
-    }
-
     // PairBinder.Collect.
     internal void PairBinders(Koto entry, List<PairBinder> binders) => this.PairBinders(this.ConstraintScope(entry), binders);
 
@@ -392,9 +347,14 @@ public sealed partial class Binding
         binders.Clear();
         for (var current = scope; current is not null; current = current.Parent)
         {
+            if (current.Parameters is not { } parameters)
+            {
+                continue;
+            }
+
             // Each scope's binders go to the front, in slot order, so outer scopes precede inner ones.
             var count = 0;
-            foreach (var symbol in current.Types.Values)
+            foreach (var symbol in parameters.Types.Values)
             {
                 if (symbol.Kind != BindingSymbolKind.SemanticsTarget || symbol.WholeType is not { } whole)
                 {
@@ -463,15 +423,8 @@ public sealed partial class Binding
             return this.BareAcquisition(type, node, assignment, out reborrow) == SemanticsMask.None ? HirAcquire.ByCase : HirAcquire.Move;
         }
 
-        // SPEC 8.14, 8.15.2: a Type that holds a pair layer, not itself one, has one plan in every case, as no case Type of it is a
-        // `uniq` reference: it Copies where every case does.
-        if (proof == ConstraintProof.Unknown && this.CopiesInEveryCase(type, this.ConstraintScope(node)))
-        {
-            return HirAcquire.Copy;
-        }
-
         return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
-                PathAuthority(node, assignment) != SemanticsKind.Ref ? HirAcquire.Reborrow : HirAcquire.Move;
+                this.PathAuthority(node, assignment) != SemanticsKind.Ref ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
     // BareAcquisition under a case assignment (BareAcquire's): every pair layer, an adaptation family included (TryAdaptationSelector),
@@ -513,5 +466,25 @@ public sealed partial class Binding
         {
             this.caseScratch.Return(scratch, clearArray: true);
         }
+    }
+
+    /// <summary>A use whose constraint scope (<see cref="ConstraintScope"/>) a pair layer's slot condition reads: found when the first
+    /// pair layer at the use needs it and kept for the Types its holder judges there, since every other Type's slot is the same in
+    /// every scope (SPEC 15.6.5; PLAN G778).</summary>
+    internal struct UseScope
+    {
+        private BindingScope? scope;
+
+        /// <summary>Initializes a new instance of the <see cref="UseScope"/> struct.</summary>
+        /// <param name="use">The use.</param>
+        internal UseScope(Koto use) => this.Use = use;
+
+        /// <summary>Gets the use.</summary>
+        internal Koto Use { get; }
+
+        /// <summary>Gets the use's constraint scope, found on the first call.</summary>
+        /// <param name="binding">The Binding whose scopes the use is in.</param>
+        /// <returns>The scope.</returns>
+        internal BindingScope Scope(Binding binding) => this.scope ??= binding.ConstraintScope(this.Use);
     }
 }

@@ -4,20 +4,21 @@ namespace Kimi.Compiler.Mir;
 
 // Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71, R5-M166).
 // - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function (a Requirement
-//   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
-//   compiler function it serves (none for $abort, TyCtxt.Abort), its arity, no target when it diverges, staticEnsure's static slot by
-//   Ensures, MirValidator.Statics' Slot, testRecordValue's recorded value a Scalar by Records); and its destination:
-//   a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
-//   no Never value written by a returning Call; a constant record only as an input of a Fn call that keeps nothing of it
-//   (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee, whole-Temp Moves and
-//   construction borrow, no value the construction's temp (Placed, which MirValidator.Blocks' Terminator calls with the block; PLAN G442).
+//   callee's comparison mode, Compares), none a Form one (DispositionKind.Form: the builder writes its MIR form), a Value callee's
+//   TypeToken constant, an intrinsic's row (defined, the library declaration of the compiler function it serves (none for $abort,
+//   TyCtxt.Abort), its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
+//   testRecordValue's recorded value a Scalar by Records); and its destination: a diverging Call's, which MirUses does not report, a
+//   Place the body names (MirValidator.Tables' Names) with its write bit for G131, no Never value written by a returning Call; a constant
+//   record only as an input of a Fn call that keeps nothing of it (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text
+//   (Defers); a Places Call's Fn callee, whole-Temp Moves and construction borrow, no value the construction's temp (Placed, which
+//   MirValidator.Blocks' Terminator calls with the block; PLAN G442).
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
 //   StaticSlot, Type, NeverWrite, Operation, Place and Projection findings; a callee with a signature goes to MirValidator.Signatures
 //   and the Call's inputs to MirValidator.Inputs (G136).
 // - Invariants: Call returns false when its arguments are out of range, and the location is then not walked; an intrinsic row after
 //   the arity row sees the row's operand count.
 // - Prohibitions: no argument or result Type of a signature (MirValidator.Signatures); an intrinsic row's Type only through the Type
-//   tier's TypeOf and SPEC 3.1's one Scalar predicate (ScalarTypes.Supports, which the builder's records read too).
+//   tier's TypeOf and SPEC 3.1's one Scalar predicate (BoundType.IsScalar, which the builder's records read too).
 internal sealed partial class MirValidator
 {
     // A whole local's index, -1 for another Place.
@@ -29,15 +30,15 @@ internal sealed partial class MirValidator
         private readonly bool Ensures(in MirTerminator call) => Slot(body, call) >= 0 ||
             (body.Operands[call.Start] is { Kind: MirOperandKind.Const } operand && (uint)operand.Arg >= (uint)body.Consts.Length);
 
-        // SPEC 17.6.3 (F8b, DECISIONS R5-M136): a testRecordValue records a Scalar (SPEC 3.1, ScalarTypes.Supports), its value (operand 1
+        // SPEC 17.6.3 (F8b, DECISIONS R5-M136): a testRecordValue records a Scalar (SPEC 3.1, BoundType.IsScalar), its value (operand 1
         // of its row's 2, after its side) of a Scalar Type or of one the Type tier reads as unknown: an Opaque temp's, which code generation
         // never sees, or the Never value, which fits any operand (SPEC 3.8) and which the builder never records.
         private readonly bool Records(in MirTerminator call)
-            => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || ScalarTypes.Supports(type);
+            => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || type.IsScalar;
 
         // DECISIONS R5-M166: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement (Reversed only
         // Comparable's) through its own Contract (Contract null) on a Self whose comparison under source operators TyCtxt.Comparison composes
-        // as a Composite node (not a Limit, not a leaf), the node A4, the collector and code generation read.
+        // as a Composite node (not a leaf), the node A4, the collector and code generation read.
         private readonly bool Compares(in MirCallee callee)
         {
             var contract = (ComparisonMode)callee.Arg switch
@@ -81,8 +82,8 @@ internal sealed partial class MirValidator
         // its declaration (its row's Retained), and nothing is built with a record at a Requirement or Virtual call.
         private readonly bool Clears(in MirCallee callee, int position)
             => callee is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } function } && MirCallee.Slot(function, position) is var slot &&
-                TyCtxt.Signature(function, callee.Subst, slot, out _) is { Origin.Kind: not OriginKind.Static } &&
-                !types.Retains(function, callee.Subst, body.Key.Decl).Keeps(slot);
+                types.Signature(function, callee.Subst, slot, out _) is { Origin.Kind: not OriginKind.Static } &&
+                !types.Retains(function, callee.Subst, body.Key.Decl, []).Keeps(slot);
 
         // False when the arguments are out of range.
         private bool Call(in MirTerminator call)
@@ -101,6 +102,10 @@ internal sealed partial class MirValidator
                 case MirCalleeKind.Requirement when callee.Arg != 0 && !this.Compares(callee):
                 case MirCalleeKind.Value when (uint)callee.Arg >= (uint)body.Consts.Length || body.Consts[callee.Arg].Kind != MirConstKind.TypeToken:
                     this.Report(MirViolation.Callee);
+                    break;
+                // The builder writes a Form function's call as its MIR form (MirBuilder.Calls), never a Call.
+                case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Virtual when callee.Symbol!.Definition.Kind == DispositionKind.Form:
+                    this.Report(MirViolation.Operation);
                     break;
                 case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Virtual or MirCalleeKind.Value:
                     this.Signature(call);

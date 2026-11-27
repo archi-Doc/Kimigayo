@@ -68,7 +68,7 @@ public sealed partial class FunctionCodegenTest
     private const string WholeIncomplete =
         "func f()\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n    for i in a.indices\n        Console.writeLine(\"i\")\nf()\n";
 
-    // The same form in a default, expanded inline into its caller f, where MirReport drops the copy's problem as its template's (R4-M69).
+    // The same form in a default, expanded inline into its caller f; MirDrops.Problem omits the copy's problem as its template's (R4-M69).
     private const string CopiedIncomplete =
         "func g(n: i32 = (label v: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n    var c: i32 = 0\n" +
         "    for i in a.indices\n        c += 1\n    exit to v c\n)) -> i32 => n\nfunc f() -> i32\n    let k = \"kept\"\n    return g()\nlet r = f()\n";
@@ -382,8 +382,8 @@ public sealed partial class FunctionCodegenTest
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
     }
 
-    // R4-M102, R4-M69: a problem found in an inline default copy, which MirReport drops as its template's, marks the caller; check rejects the
-    // program with the template's code at the template's subject, and generation adds no record.
+    // R4-M102, R4-M69: a problem found in an inline default copy, which MirDrops.Problem omits as its template's, marks the caller; check
+    // rejects the program with the template's code at the template's subject, and generation adds no record.
     [Fact]
     public void ACopysProblemRefusesItsCaller()
     {
@@ -407,17 +407,18 @@ public sealed partial class FunctionCodegenTest
         var ends = bodies.Select(x => (Rows: table.RowsOf(x.Ordinal).ToArray(), Points: table.PointsOf(x.Ordinal).ToArray(),
             Flags: table.FlagsOf(x.Ordinal), Views: table.ViewsOf(x.Ordinal), Fact: table.Incomplete(x.Ordinal))).ToArray();
         table.Clear();
+        table.EndLibrary(); // The bodies are the program store's, as the version's stepping left them.
         for (var i = 0; i < bodies.Length; i++)
         {
             if (bodies[i].Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" })
             {
-                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default));
+                table.Close(bodies[i].Ordinal, 0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default));
                 continue;
             }
 
             table.Rows.AddRange(ends[i].Rows);
             table.Points.AddRange(ends[i].Points);
-            table.Close(ends[i].Flags, ends[i].Views, ends[i].Fact);
+            table.Close(bodies[i].Ordinal, ends[i].Flags, ends[i].Views, ends[i].Fact);
         }
 
         Assert.False(c.Generate(TextWriter.Null));
@@ -443,7 +444,7 @@ public sealed partial class FunctionCodegenTest
     {
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.ProgramBodies.ToArray().Where(x => x.Ordinal < body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length); // In the program's store.
+        var first = program.VersionBodies.ToArray().Where(x => x.Ordinal < body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length); // In the program's store.
         var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
         program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
     }

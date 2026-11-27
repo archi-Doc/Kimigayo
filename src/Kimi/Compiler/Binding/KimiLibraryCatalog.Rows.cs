@@ -18,8 +18,8 @@ internal readonly record struct WithinRow(KimiDeclarationId Id, sbyte Within);
 // than its receiver that its element storage retains at a raw layer without an Origin (the transfer rule, Binding.Retention.Transfers.cs).
 internal readonly record struct AddedRow(KimiDeclarationId Id, byte Mask);
 
-// SPEC 5.2 Placement, 5.6 (C-189): the inputs through which an operation contract stores no value, by parameter slot (bit i: slot i);
-// read by call retention (no output there, TyCtxt.Retention.cs) and the pun rule (no store there), one meaning.
+// SPEC 5.2 Placement, 5.6, 15.7 (C-189): the inputs through which an operation contract stores no value, by parameter slot (bit i: slot
+// i); read by call retention (no output there, TyCtxt.Retention.cs) and the pun rule (no store there), one meaning.
 internal readonly record struct NoStoreRow(KimiDeclarationId Id, byte Mask);
 
 // The rows a library operation publishes beyond its signature, by its catalog ID (the recognition entries,
@@ -38,13 +38,15 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryInsertOrReplace, 0b110),
     ];
 
-    // The operation contracts' inputs they store no value through (NoStoreRow): `slice` its storage, `initialize` its value, `release` its
-    // storage (it ends the storage, writing no Place), `transferBytes` its source (read, its values relocated); KimiLibraryShapeTest pins
-    // each row to a bodiless contract's named parameters.
+    // The operation contracts' inputs they store no value through (NoStoreRow): `slice` and `readVolatile` their storage, `initialize` its
+    // value, `release` its storage (it ends the storage, writing no Place), `transferBytes` its source (read, its values relocated),
+    // `replace` and `exchange` their value, which they place in their target (SPEC 15.7: each writes only its target, by its identity's
+    // rules, never its body's); KimiLibraryShapeTest pins each row to a named parameter of a bodiless contract or a 15.7 declaration.
     private static readonly NoStoreRow[] NoStoreRows =
     [
         new(KimiDeclarationId.RawSlice, 0b1), new(KimiDeclarationId.RawInitialize, 0b10), new(KimiDeclarationId.RawRelease, 0b1),
-        new(KimiDeclarationId.StorageTransferBytes, 0b10),
+        new(KimiDeclarationId.StorageTransferBytes, 0b10), new(KimiDeclarationId.Replace, 0b10), new(KimiDeclarationId.Exchange, 0b10),
+        new(KimiDeclarationId.RawReadVolatile, 0b1),
     ];
 
     // The library functions code generation keeps out of line (`noinline`: it steers O2 inlining only and is inert at O0), a closed set, each
@@ -92,7 +94,8 @@ internal static partial class KimiLibraryCatalog
     internal static bool KeepsOutOfLine(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Array.IndexOf(OutOfLineRows, id) >= 0;
 
-    // SPEC 5.2 Placement, 5.6: whether an operation contract stores no value through parameter slot `input` (NoStoreRows); false otherwise.
+    // SPEC 5.2 Placement, 5.6, 15.7: whether an operation contract stores no value through parameter slot `input` (NoStoreRows); false
+    // otherwise.
     internal static bool NoStore(BindingSymbol? symbol, int input)
     {
         foreach (var row in NoStoreRows)

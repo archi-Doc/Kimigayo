@@ -62,6 +62,9 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
         NativeAllocationAudit.WriteFixture("GenericIdentityOptedOutOwner", Source, 1, 1, 20);
     }
 
+    // Without owner evidence `U.(C).Item` binds keep's pair alone, which forms no Type (PLAN G886): the call's verdict rests on that
+    // unformed split, so its one record is the located Unsupported_Kd at the call (DECISIONS BU-240, the owner's O-332 (a)) until the
+    // representation lands; 2f4bec489 gave the unproven `s is owner` for U.Item (UnprovenConstraint_Kd).
     [Theory]
     [InlineData("", false)]
     [InlineData(" and ObjectPayload", true)]
@@ -88,24 +91,14 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
         {
             c.Binding.ReportDiagnostics();
             var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-            Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
-            Assert.Contains("cannot be proven", error.Message, StringComparison.Ordinal);
+            Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), error.Code);
             Assert.Equal("keep(value)", error.Text);
             c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
             var result = c.Diagnostics.Finalize(rejected: true);
             var record = Assert.Single(result.Diagnostics);
-            Assert.Equal(DiagnosticCategory.Proof, record.Category);
-            Assert.Contains(record.Reason!, x => x.Name == "subject" && x.Value == "U.Item");
-            Assert.Contains(record.Reason!, x => x.Name == "member" && x.Value == "keep");
-            Assert.Contains(record.Reason!, x => x.Name == "constraint" && x.Value == "s is owner");
-            Assert.Equal("constraint", Assert.Single(record.Related!).Role);
             Assert.Equal(new SourceRange(new(8, 11), new(8, 22)), record.Display!.Range);
-            Assert.Contains("s is owner", record.Note!, StringComparison.Ordinal);
-            Assert.Contains("U.Item", record.Note!, StringComparison.Ordinal);
             var console = new DiagnosticContractTest.DiagnosticConsole();
             new Kimigayo(console).Render(result, string.Empty);
-            Assert.Contains("s is owner", console.Text, StringComparison.Ordinal);
-            Assert.Contains("U.Item", console.Text, StringComparison.Ordinal);
             output.WriteLine(console.Text);
             var identity = SourceIdentity.FromPath(path);
             foreach (var related in new[] { false, true })
@@ -113,8 +106,6 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
                 var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
                 Assert.Equal(record.Code, sent.Code);
                 Assert.Equal(record.Display.Range, sent.Range);
-                Assert.Contains("s is owner", sent.Message, StringComparison.Ordinal);
-                Assert.Contains("U.Item", sent.Message, StringComparison.Ordinal);
                 output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
             }
 

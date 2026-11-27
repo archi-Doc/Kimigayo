@@ -18,10 +18,12 @@ public sealed partial class Binding
         this.BindNodeCore(name, scope, null);
         if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
-            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
+            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call; at an
+            // unresolved name the reference rests on the name's own record (SPEC 23.1.2).
             this.BindUnknownChildren(reference, scope);
-            var resolved = name.BindingState == BindingState.Resolved;
-            return this.Fail(reference, resolved ? BindingFailure.NoApplicableCandidate : BindingFailure.Unsupported, !resolved);
+            return name.BindingState == BindingState.Resolved
+                ? this.Record(reference, BindingFailure.NoApplicableCandidate, [])
+                : this.Fail(reference, BindingFailure.Unsupported, true);
         }
 
         for (var i = 0; i < reference.TypeArguments.Count; i++)
@@ -53,10 +55,47 @@ public sealed partial class Binding
         var symbol = this.Lookup(node.IdentifierName, scope, node);
         if (symbol is null)
         {
-            return this.Fail(node, BindingFailure.MissingName, true);
+            return this.FailUnselected(node, BindingFailure.MissingName);
         }
 
         return this.BindReference(node, symbol, scope);
+    }
+
+    // A value's declaration queried for its Type as a use reads it: a Property's header (its and its storage's Types belong there; a
+    // use never re-enters accessor bodies; a demand of the header while it is computed is its re-entry, which the Signature kind's rule
+    // answers in BindHeader: DECISIONS BU-105, G812 ruling 167), another variable's declaration.
+    private void QueryValueType(BindingSymbol symbol)
+    {
+        if (symbol.Type is not null || symbol.Declaration is not VariableKoto variable)
+        {
+            return;
+        }
+
+        if (variable is not PropertyKoto)
+        {
+            // A use binds a declaration this pass has not bound yet (BindReference), which consults it there (BindVariable); a bound one
+            // without a Type is the failed slot, which its use consults and rests on (SPEC 23.1.2; PLAN G1110, D-865).
+            if (this.RecordedState(variable) == BindingState.Unvisited)
+            {
+                this.BindVariable(variable, symbol.Scope);
+            }
+            else
+            {
+                this.Consulted(variable);
+            }
+
+            return;
+        }
+
+        this.BindHeader(variable.BoundSymbol!);
+    }
+
+    // A value's declared Type for a member step (SPEC 9.6): its declaration queried (QueryValueType); none for a Property its header
+    // refused, or whose header is re-entered before its Type is formed (its cycle, recorded at the declaration); the Type only after.
+    private BoundType? DeclaredValueType(BindingSymbol symbol)
+    {
+        this.QueryValueType(symbol);
+        return symbol.Property?.Refusal is null ? symbol.Type : null;
     }
 
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
@@ -65,13 +104,13 @@ public sealed partial class Binding
         if (Receiver(node) is { } receiver && ((symbol.Declaration is FunctionKoto { BaseInitializer: { } initializer } && IsWithin(node, initializer)) ||
             (!receiver.Whole && (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))))
         {
-            return this.Fail(node, BindingFailure.InvalidAssignment);
+            return this.Record(node, BindingFailure.InvalidAssignment, []);
         }
 
         if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
-            var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
+            var proof = this.ProveMemberConditions(symbol, conditionalType, scope, node);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(node, proof, this.capabilityMode);
@@ -80,12 +119,12 @@ public sealed partial class Binding
         }
 
         // SPEC 7.7.2: a static Property's storage there is a static access, never a capture (StaticStorageAccess).
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function &&
+        if (IsRuntimeBinding(symbol) && scope.Function != symbol.Scope.Function &&
             !StaticStorageAccess(symbol, scope))
         {
             if (this.CaptureOuterUse(node, symbol, scope) is not { } capture)
             {
-                return this.Fail(node, BindingFailure.Capture);
+                return null; // Its refusal is recorded at the use (CaptureOuterUse).
             }
 
             symbol = capture;
@@ -103,10 +142,15 @@ public sealed partial class Binding
                     return null;
                 }
 
+                if (group.Single is { } single && this.LacksRequirementSubject(node, single))
+                {
+                    return this.FailUnselected(node, BindingFailure.MissingName); // A group of one is its selection (N1-13 B3).
+                }
+
                 if (group.Single is { Declaration: FunctionKoto { IsAnonymous: false } named } && DirectCallOnly(named))
                 {
                     // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.
-                    return this.Fail(node, BindingFailure.DirectCallFunctionValue);
+                    return this.Record(node, BindingFailure.DirectCallFunctionValue, []);
                 }
             }
 
@@ -117,28 +161,12 @@ public sealed partial class Binding
 
         if (symbol.Type is null && symbol.Declaration is VariableKoto variable)
         {
-            if (variable is PropertyKoto)
+            // SPEC 23.1.2 (DECISIONS BU-105): a use of a failed header (Error, its re-entry's cycle) rests on the declaration's record in
+            // every binding of the pass; one of a header without a Type, on the part that gives it.
+            this.QueryValueType(symbol);
+            if (symbol.Type is null && variable is PropertyKoto)
             {
-                // Property and storage Types belong to the header. A use never re-enters accessor bodies.
-                var declaration = variable.BoundSymbol!;
-                // Interim until R7-D2 d2 (Binding.DeclQuery): the Signature re-entry's cycle record moves into the kind's rule.
-                if (this.QueryState(declaration, DeclQueryKind.Signature) == DeclState.Running)
-                {
-                    this.Fail(variable, BindingFailure.Cycle, true);
-                }
-                else
-                {
-                    this.BindHeader(declaration);
-                }
-
-                if (symbol.Type is null)
-                {
-                    this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
-                }
-            }
-            else
-            {
-                this.BindVariable(variable, symbol.Scope);
+                this.Consulted(this.QueryRecord(variable.BoundSymbol!, DeclQueryKind.Signature) ?? variable.TypeKoto ?? variable.InitializerKoto ?? variable);
             }
         }
 
@@ -157,16 +185,14 @@ public sealed partial class Binding
         if (symbol.Property is { } property)
         {
             var target = Grouped(node);
-            var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-            var write = assignment && target.Parent!.Akind == KotoKind.Equals;
-            var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+            var update = IsWriteTarget(node, out var write) && !write;
             if (IsSpecialField(node, out var specialFunction) && specialFunction.IsConstructor)
             {
                 if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
                     (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
                 {
                     // SPEC 6.3.4, 11.7: construction forbids inherited Field and computed access and custom accessor calls on self.
-                    return this.Fail(node, BindingFailure.InvalidAssignment);
+                    return this.Record(node, BindingFailure.InvalidAssignment, []);
                 }
 
                 return Complete(node, this.MemberRead(node, symbol, scope));
@@ -174,22 +200,21 @@ public sealed partial class Binding
 
             var operation = write ? property.Setter : property.Getter;
             var sourceReceiver = (node as MemberAccessKoto)?.Left;
-            if ((write || update) && sourceReceiver is not null && SharesOwnLayer(sourceReceiver))
+            if ((write || update) && sourceReceiver is not null && this.SharesOwnLayer(sourceReceiver))
             {
                 return this.FailWrite(node, node);
             }
 
-            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
+            // SPEC 9.4, 11.3.2: an absent or inaccessible accessor at a use: the use located, the Property related (an accessor's access
+            // word is part of its Property's declaration).
+            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType) ||
+                (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType))))
             {
-                return this.Fail(node, BindingFailure.Access);
+                this.RecordAccess(node, symbol, null);
+                return null;
             }
 
-            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType)))
-            {
-                return this.Fail(node, BindingFailure.Access);
-            }
-
-            if (!operation.IsStandard || (update && !property.Setter.IsStandard))
+            if (!DirectAccess(node, property))
             {
                 if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
                     (pathSelection.Path is not null || this.ObjectCases(sourceType, scope, out _) != SemanticsMask.None) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
@@ -207,7 +232,7 @@ public sealed partial class Binding
                         return this.Fail(node, objectProjection ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, objectProjection);
                     }
 
-                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol, operation);
+                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : this.ProjectedReceiverProof(symbol, operation);
                     this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
                 }
 
@@ -217,8 +242,8 @@ public sealed partial class Binding
                     input = this.PropertyUpdateInput(node, updateExpression);
                 }
 
-                if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
-                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
+                if ((!StorageAccess(node, operation) && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
+                    (update && !StorageAccess(node, property.Setter) && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
                 {
                     return null;
                 }

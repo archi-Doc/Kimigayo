@@ -83,6 +83,9 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal SourceSpan DispatchModifierSpan { get; }
 
+    // The largest signature FindParameter scans; a larger one has its ordinal index (ParameterIndices).
+    private const int ScannedParameters = 8;
+
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;
@@ -100,7 +103,7 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         // Small signatures are cheaper to scan. Larger signatures share one ordinal index.
-        if (parameters.Count <= 8)
+        if (parameters.Count <= ScannedParameters)
         {
             for (var i = 0; i < parameters.Count; i++)
             {
@@ -113,6 +116,21 @@ public sealed class FunctionKoto : DeclarationKoto
             return -1;
         }
 
+        return this.ParameterIndices(parameters).GetValueOrDefault(name, -1);
+    }
+
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields()
+    {
+        if (this.parameters is { Count: > ScannedParameters } parameters)
+        {
+            _ = this.ParameterIndices(parameters);
+        }
+    }
+
+    // A larger signature's one ordinal index (FindParameter), formed on its first lookup.
+    private Dictionary<string, int> ParameterIndices(List<FunctionParameterKoto> parameters)
+    {
         if (this.parameterIndices is null)
         {
             this.parameterIndices = new(parameters.Count, StringComparer.Ordinal);
@@ -122,7 +140,7 @@ public sealed class FunctionKoto : DeclarationKoto
             }
         }
 
-        return this.parameterIndices.GetValueOrDefault(name, -1);
+        return this.parameterIndices;
     }
 
     /// <summary>Gets the return type, if specified.</summary>
@@ -143,11 +161,11 @@ public sealed class FunctionKoto : DeclarationKoto
     internal bool MissingBody { get; set; }
 
     /// <summary>Gets a value indicating whether the declaration omits its Body because the compiler supplies its definition (SPEC 22.1,
-    /// IMPL 21.3.4): a function or constructor carrying <c>#Intrinsic</c> or <c>#Unsupported</c>, or a constructor carrying <c>#Lang</c>
-    /// (a linked constructor). Those kinds exist only in the Kimi library (<see cref="AttributeKoto"/>'s classification), so no user
-    /// declaration omits its Body.</summary>
+    /// IMPL 21.3.4): a function or constructor carrying <c>#Intrinsic</c>, <c>#Unsupported</c> or <c>#Lang</c> (a linked constructor, or
+    /// a function whose call the MIR builder writes as a form). Those kinds exist only in the Kimi
+    /// library (<see cref="AttributeKoto"/>'s classification), so no user declaration omits its Body.</summary>
     internal bool OmitsBody => this.FindAttribute(AttributeKind.Intrinsic) is not null || this.FindAttribute(AttributeKind.Unsupported) is not null ||
-        (this.IsConstructor && this.FindAttribute(AttributeKind.Lang) is not null);
+        this.FindAttribute(AttributeKind.Lang) is not null;
 
     private List<string>? origins;
 
@@ -220,10 +238,10 @@ public sealed class FunctionKoto : DeclarationKoto
         }
     }
 
-    /// <summary>Gets the closure's definition (DECISIONS R5-M63 (1), R4-M152): its latest binding's plan once that binding bound the
-    /// inputs, the result and the environment, whatever the creation's outcome; null for a named function and until the signature is
-    /// bound. Binding's forwarding to <see cref="BoundClosure.Of(FunctionKoto)"/>, the literal route every reader outside Binding
-    /// takes (BoundClosure's contract; DECISIONS R5-M193).</summary>
+    /// <summary>Gets the closure's definition (DECISIONS R5-M63 (1) as amended, R4-M152): its latest binding's plan once that binding
+    /// published it, whatever the creation's outcome, with no Signature where a slot failed; null for a named function and until it is
+    /// published. Binding's forwarding to <see cref="BoundClosure.Of(FunctionKoto)"/>, the literal route every reader outside Binding
+    /// takes (BoundClosure's contract, its Access paragraph; DECISIONS R5-M193).</summary>
     [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundClosure? ClosureDefinition => BoundClosure.Of(this);
 

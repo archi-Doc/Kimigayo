@@ -6,9 +6,53 @@ namespace Kimi.Compiler;
 
 // The Origin of a layer in a Type annotation (SPEC 15.3.1, 15.4.2, 15.4.4): its Type position (TypeContext), a written Origin
 // (BindOrigin, BindOriginName, through the candidate a name resolves to: OriginCandidate) or an omitted one (OmittedOrigin), and a
-// binder's inputs, whose atoms the omitted Origins of its signature are.
+// binder's inputs, whose atoms the omitted Origins of its signature are. A result slot's default (SPEC 15.4.3 rule 3) whose inputs'
+// Owned read a region with no answer while a body is bound is judged at Final (R7-O2 O2-F: ProveDefaultOwned, the slot's
+// DeferredDefaults row and its obligation, JudgeDeferredDefault). Until then the slot's provisional Origin is its own pending atom (the
+// atom PendingOrigin forms), which every reader names; Final proves it, and the atom reads as its completion at the intakes every Origin
+// passes (CompletedOrigin: DeclaredAtUse and SuppliedAtUse, ReadValueIn, the C1-F4 view's InternAtom, the Hover printer), or
+// refutes it, and the atom stays Unbound resting on the failed slot (UnboundCause's path b). Before Final, DeferredIn and DeferredAtomIn
+// are the one reading of "names an uncompleted deferred atom" (a comparison's row, LeavesBodyRows; an erasure's deferral).
+// Must not: publish `static` or any other Origin for a deferred slot before Final, or complete a refuted atom.
 public sealed partial class Binding
 {
+    private readonly DeferredDefaultRows deferredDefaults;
+
+    // The deferred defaults Final proved this pass (CompletedOrigin's gate: no reading changes while it is 0).
+    private int completedDefaults;
+
+    // SPEC 15.4.4 (R7-O2 O2-F): `origin` with each deferred slot's atom that Final proved read as the default it completes to, a meet
+    // operand by operand; an atom not proven, and any other Origin, as it is. The one completion reading: every reader of an Origin after
+    // the slot's resolution passes through it (DeclaredAtUse, SuppliedAtUse, ReadValueIn, InternAtom, HoverTypeName, SemanticQuery.OriginOf).
+    internal BoundOrigin CompletedOrigin(BoundOrigin origin)
+    {
+        if (this.completedDefaults == 0)
+        {
+            return origin;
+        }
+
+        if (origin.Kind == OriginKind.Unbound)
+        {
+            return this.DeferredAtom(origin) is { Proven: true } row ? row.Completion : origin;
+        }
+
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return origin;
+        }
+
+        var result = BoundOrigin.Static;
+        var changed = false;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            var operand = this.CompletedOrigin(origin.Operands[i]);
+            changed |= !ReferenceEquals(operand, origin.Operands[i]);
+            result = this.Meet(result, operand);
+        }
+
+        return changed ? result : origin;
+    }
+
     private static int InputCount(Koto owner) => owner is FunctionKoto f ? f.Parameters.Count : owner is PropertyAccessorKoto ? 2 : owner is FunctionTypeKoto t ? t.Parameters is TupleTypeKoto tuple ? tuple.ElementNodes.Count : 1 : 0;
 
     private static int InputOriginCount(Koto owner) => InputCount(owner) + (owner.BoundSymbol?.AggregateInputOrigins?.Count ?? 0);
@@ -49,20 +93,6 @@ public sealed partial class Binding
 
         slot = ProjectedSlot(ref type, target.IdentifierName);
         return slot < 0 ? null : type!.Kind == BoundTypeKind.Slice ? type.Origin : slot < type.OriginArguments.Count ? type.OriginArguments[slot] : null;
-    }
-
-    // An atom of a body local (a FieldKoto's Type or region), or a meet with one.
-    private static bool LocalAtom(BoundOrigin origin)
-    {
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (LocalAtom(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto;
     }
 
     // SPEC 8.13.1: whether a node is one of a `specialize func` header's Type arguments.
@@ -157,7 +187,12 @@ public sealed partial class Binding
             return BoundOrigin.Static;
         }
 
-        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier, out var repeated))
+        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier, out var repeated) is not { } candidate)
+        {
+            return null; // SPEC 15.3.4, 23.1.2: the lookup failed the use (its DuplicateBinding_Kd); the Origin reads that failed input.
+        }
+
+        if (candidate)
         {
             if (repeated is not null)
             {
@@ -172,7 +207,7 @@ public sealed partial class Binding
 
             if (SelectedOrigin(use, ref carrier, out _) is { } origin)
             {
-                return origin;
+                return this.UnmergedSelection(origin, use, use.BoundSymbol);
             }
 
             if (use.BoundSymbol is { Slot: ReceiverSlot } receiver)
@@ -180,21 +215,56 @@ public sealed partial class Binding
                 return this.ReceiverOrigin(receiver); // SPEC 5.7, 15.2.1: in a constructor or drop, `self` is the receiver's Origin.
             }
 
-            this.Fail(use, BindingFailure.InvalidOrigin);
+            this.Record(use, BindingFailure.InvalidOrigin, []);
             return null;
         }
 
-        this.Fail(use, BindingFailure.MissingOrigin, true);
+        this.Record(use, BindingFailure.MissingOrigin, [], unresolved: true);
         return null;
     }
 
+    // Interim, the owner's O-534 (a) (PLAN G922 U1; DECISIONS R8-M56 as amended): a written name whose selection (SelectedOrigin's
+    // result, a plain name's and a projection's alike) is or meets a region that a `let` local's opening merged (LocalRegion.Merged),
+    // outside that local's body, through a binding the name's Closure does not carry (CarriesBinding), is the located Unsupported_Kd at
+    // the name, with no Origin; any other selection is `origin`. Removed once PLAN G922 U2/U3 give each merged part its own regions. The
+    // name's body (BodyOwner) is found only at a merged region.
+    private BoundOrigin? UnmergedSelection(BoundOrigin origin, Koto use, BindingSymbol? symbol)
+    {
+        Koto? body = null;
+        var merged = MergedElsewhere(origin);
+        for (var i = 0; !merged && i < origin.Operands.Count; i++)
+        {
+            merged = MergedElsewhere(origin.Operands[i]);
+        }
+
+        if (!merged || CarriesBinding(body, symbol))
+        {
+            return origin;
+        }
+
+        this.RecordLocated(use, use.Span);
+        return null;
+
+        bool MergedElsewhere(BoundOrigin region)
+            => SlotRegion(region) && this.Region(region) is { Merged: true } row && !ReferenceEquals(row.Body, body ??= BodyOwner(use));
+    }
+
     // SPEC 15.3.1, 23.1.2: a written Origin expression. A parenthesis or meet whose operand did not resolve has no Origin for that
-    // reason alone and rests on the operand (CompleteDependent), which reports the cause; only a failure of its own is its record.
+    // reason alone and rests on the operand (CompleteDependent), which reports the cause; only a failure of its own is its record. It binds
+    // as the slot it names (SlotAtUse): a `let` region's value is read at each use (PLAN G492-a (ii); Binding.LocalRegions.cs's contract).
+    // A node bound again is decided again, as a header bound ahead of its locals is at its function's statement (BindFunction's Q-B row):
+    // the earlier attempt's failure leaves first, so the node keeps this attempt's outcome alone and a Resolved node no failure
+    // (Binding.Problems' invariant). Only this binder's own checks record at a written Origin node while it can be bound again.
     private BoundOrigin? BindOrigin(Koto syntax, BindingScope scope)
     {
+        if (this.RecordedFailure(syntax) != BindingFailure.None)
+        {
+            this.ClearFailure(syntax);
+        }
+
         if (IsRecovery(syntax, out _))
         {
-            this.Fail(syntax, BindingFailure.InvalidOrigin);
+            this.Record(syntax, BindingFailure.InvalidOrigin, []);
             return null;
         }
 
@@ -221,7 +291,7 @@ public sealed partial class Binding
         }
         else if (syntax is MemberAccessKoto member && member.Left is IdentifierNameKoto input && member.Right is IdentifierNameKoto target)
         {
-            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated))
+            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated) is true)
             {
                 result = SelectedOrigin(syntax, ref type, out var slot);
                 var schema = type?.Symbol?.Schema;
@@ -234,35 +304,56 @@ public sealed partial class Binding
                 }
                 else if (result is not null)
                 {
-                    input.BindingState = target.BindingState = BindingState.Resolved;
-                    target.BoundOrigin = result;
+                    // The limit decides before the writes, so a rejected projection leaves no Origin on its target.
+                    result = this.UnmergedSelection(result, syntax, input.BoundSymbol);
+                    if (result is not null)
+                    {
+                        input.BindingState = target.BindingState = BindingState.Resolved;
+                        target.BoundOrigin = result;
+                    }
                 }
-                else if (type?.Symbol?.Schema is not null)
+                else if (type?.Symbol is { Schema: not null } symbol)
                 {
-                    this.RecordAbsentSlot(syntax, type);
+                    // SPEC 15.3.2: a slot the Type does not declare, with the Type's declaration related (role 1, "header" or "type").
+                    this.Record(syntax, BindingFailure.InvalidOrigin, [new(ProblemFactKind.Related, this.FactSite(symbol.Declaration!), 1)]);
                 }
             }
         }
 
         if (result is not null)
         {
-            result = this.OriginAtUse(result, syntax);
+            result = this.SlotAtUse(result, syntax);
             syntax.BindingState = BindingState.Resolved;
             syntax.BoundOrigin = result;
         }
 
         if (result is null || !OriginVisible(result, syntax))
         {
+            // Transitional, R7-E5 (E4c, B1): a null result reads BindOriginName's, OriginCandidate's DuplicateBinding_Kd or the absent
+            // slot's record at this node, or the operand's (OriginCandidate's InvalidOrigin or DuplicateBinding_Kd, its MissingOrigin, an
+            // absent slot's), so it keeps `Fail`, which adds no record there, until R7-E5's per-problem inputs; only an invisible Origin is
+            // its own failure.
             _ = failedOperand is null ? this.Fail(syntax, BindingFailure.InvalidOrigin) : this.CompleteDependent(syntax, failedOperand);
         }
 
         return result;
 
-        static Koto? FailedOperand(Koto operand) => IsUnresolvedPrerequisite(operand) ? operand : null;
+        Koto? FailedOperand(Koto operand) => this.IsUnresolvedPrerequisite(operand) ? operand : null;
     }
 
+    // True when the name has an Origin-context candidate (its Origin, carrier or set in the outputs), false when it has none, and null when
+    // the lookup itself failed the use: a same-scope conflict among value, Origin and set roles (SPEC 15.3.4), its DuplicateBinding_Kd.
     // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
-    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
+    // SPEC 15.3.4, 15.4.4 (PLAN G230-H, rule D): a name of a local, its value or its set, outside that local's own declaration reads the
+    // local's declared Type, so it demands the declaration as a value use does (QueryValueType); the local forms in its declaring body
+    // (FormingBodyOf), so a header bound before that body (R4-M101 E3) selects the Type and the regions the body forms. A local's own
+    // declaration (its Type and clauses) reads its declared Type as it forms and is never demanded from inside it (SPEC 9.3). Asked once,
+    // where the name's candidate is found (G230H-6, G230H-8, G230H-11 C-2): a name that a not-ready literal itself declares (its
+    // parameter, a body local, set or Origin, a written entry not yet formed), for a header bound ahead of that literal's environment
+    // (AheadOfEnvironment), rests. The name selects nothing, so the header fails there and is bound again at the function's statement
+    // (BindFunction); a clause keeps that failure (Q-B's class). A formed written entry selects its environment binding, whose Type its
+    // entry fixes (SPEC 7.7.2, C-1), and a name of a named function's scope is selected normally (SPEC 9.3, 15.3.4).
+    private bool? OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
         carrier = null;
@@ -279,13 +370,23 @@ public sealed partial class Binding
         for (var current = scope; current is not null; current = current.Parent)
         {
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
-                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
-                (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
+                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture && Visible(competing);
             var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name);
+
+            // SPEC 15.3.4's Local set row: a local set is visible in its Type, its clauses and the following scope.
+            var visibleSet = current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
+                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start) ? local : null;
+            var entry = current.Owner is FunctionKoto { IsAnonymous: true } literal && CaptureEntryOf(literal, name) is not null;
+            if ((entry || visibleValue || set is not null || visibleSet is not null || current.Origins?.ContainsKey(name) == true) &&
+                this.AheadOfEnvironment(owner, current) && !(entry && current.Values.GetValueOrDefault(name) is { Kind: BindingSymbolKind.Capture }))
+            {
+                return true; // G230H-6: the demand rests; nothing the environment forms is read before it is ready (a formed entry is, C-1).
+            }
+
             if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);
-                return true;
+                return null;
             }
 
             if (set is not null)
@@ -295,22 +396,28 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
-                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
+            if (visibleSet is not null)
             {
-                carrier = this.BindOriginSetType(local, current);
-                repeated = RepeatedSet(local) ? local : null;
-                if (repeated is null && this.UnlinkedLocalType(use, carrier))
+                if (OriginOwner(visibleSet) is { } setOwner && !ReferenceEquals(setOwner, owner) && setOwner.BoundSymbol is { } setLocal)
                 {
-                    carrier = null;
+                    this.QueryValueType(setLocal);
                 }
 
+                carrier = this.BindOriginSetType(visibleSet, current);
+                repeated = RepeatedSet(visibleSet) ? visibleSet : null;
                 return true;
             }
 
             if (current.Origins?.TryGetValue(name, out scalar) == true)
             {
                 return true;
+            }
+
+            // SPEC 7.2.3 with 15.3.4 (the owner's D-1236 (A)): a parameter the position may not name, a later one in its function's
+            // default, is no candidate, as for a value (ParameterVisible).
+            if (competing is not null && !ParameterVisible(competing, use))
+            {
+                continue;
             }
 
             var count = InputCount(current.Owner);
@@ -332,46 +439,30 @@ public sealed partial class Binding
             if (current.Values.TryGetValue(name, out var symbol) &&
                 symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture)
             {
-                if (symbol.Kind == BindingSymbolKind.Local && !ReferenceEquals(symbol.Declaration, owner) && symbol.Declaration.Span.End > use.Span.Start)
+                // Read again: the environment may have formed it since visibleValue (AheadOfEnvironment's demand, C-1).
+                if (!Visible(symbol))
                 {
                     continue;
                 }
 
                 (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
-                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
-                if (symbol is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { TypeKoto: not null } } && this.UnlinkedLocalType(use, carrier))
+                if (!ReferenceEquals(symbol.Declaration, owner))
                 {
-                    carrier = null;
+                    this.QueryValueType(symbol);
                 }
 
+                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
                 return true; // An unsuitable nearest candidate never falls through.
             }
         }
 
         return false;
-    }
 
-    // SPEC 15.3.4 (DECISIONS BU-56, an interim until PLAN G230's (A)): a declaration's written Origin (a name or projection, bound with
-    // no body outside a local's own declaration) that names a body local's written Type (its set's Type or its annotation) reads that
-    // annotation's atoms, formed outside every body, or the local's region where the body binds the header again (BindFunction):
-    // nothing links either to the local in its body. Where the Origin the name selects is a body local's atom, not a parameter's or a
-    // contract's, the name is a located Unsupported_Kd and resolves to nothing a judge could read; a name that selects no Origin keeps
-    // its own failure. A Closure's header is bound in its evaluating body and keeps EnclosingAtom's rule; an unannotated local has the
-    // Type its body gives it before the header is bound there again. A re-query over the annotation (WrittenProjection) decides nothing.
-    private bool UnlinkedLocalType(Koto use, BoundType? type)
-    {
-        if (this.formingBody.IsBody || use is not (IdentifierNameKoto or MemberAccessKoto) || OriginOwner(use) is FieldKoto)
-        {
-            return false;
-        }
-
-        if (SelectedOrigin(use, ref type, out _) is not { } selected || !LocalAtom(selected))
-        {
-            return false;
-        }
-
-        this.Fail(use, BindingFailure.Unsupported);
-        return true;
+        // The lookup's visibility (VisibleAt; SPEC 15.8.2: the literal's own header never sees its environment bindings), and SPEC 15.4.4's
+        // Origin-name rule: a local's own attached clauses and annotation name its declared Type's slots ("in them, `view.source` names the
+        // declared Type's slot").
+        bool Visible(BindingSymbol candidate)
+            => (candidate.Kind == BindingSymbolKind.Local && ReferenceEquals(candidate.Declaration, owner)) || this.VisibleAt(candidate, use);
     }
 
     private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref, int aggregateSlot = -1, BindingSymbol? borrowCondition = null)
@@ -459,6 +550,11 @@ public sealed partial class Binding
 
         if (context.Position == TypePosition.Result)
         {
+            if (this.deferredDefaults[use] is not null)
+            {
+                this.deferredDefaults[use] = null; // This resolution is the slot's last so far (ProveDefaultOwned).
+            }
+
             BoundOrigin? meet = null;
             var guaranteedBorrow = false;
             var inputCount = InputCount(context.Owner);
@@ -479,12 +575,12 @@ public sealed partial class Binding
             {
                 if (!guaranteedBorrow && requirement == LoanRequirement.Uniq)
                 {
-                    this.Fail(use, BindingFailure.MissingOrigin);
+                    this.Record(use, BindingFailure.MissingOrigin, []);
                     return null;
                 }
 
-                return !guaranteedBorrow && aggregateSlot >= 0 && OwnedWithoutConditionalBorrows() is not ConstraintProof.Proven and var unowned
-                    ? this.MissingOrigin(use, unowned) : meet;
+                return !guaranteedBorrow && aggregateSlot >= 0 && OwnedWithoutConditionalBorrows(meet) is not ConstraintProof.Proven and var unowned
+                    ? this.MissingOrigin(use, unowned) : this.deferredDefaults[use]?.Atom ?? meet;
             }
 
             if (InSpecializationArgument(context.Owner))
@@ -504,14 +600,14 @@ public sealed partial class Binding
                     this.failedCause = null;
                     for (var i = 0; i < inputCount; i++)
                     {
-                        if (this.BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) is not ConstraintProof.Proven and var proof)
+                        if (this.BoundInputType(context.Owner, i) is { } input && this.ProveDefaultOwned(input, use, aggregateSlot, BoundOrigin.Static) is not ConstraintProof.Proven and var proof)
                         {
                             return this.MissingOrigin(use, proof);
                         }
                     }
                 }
 
-                return BoundOrigin.Static;
+                return this.deferredDefaults[use]?.Atom ?? BoundOrigin.Static;
             }
         }
 
@@ -528,10 +624,15 @@ public sealed partial class Binding
             return this.OriginAtom(use, OriginKind.ConstraintSet, aggregateSlot, set);
         }
 
-        this.Fail(use, BindingFailure.MissingOrigin);
+        if (use is TypeSemanticsKoto repeated && RepeatedSet(repeated))
+        {
+            return null; // SPEC 15.3.1, 23.1.2: a set that failed as a repeat declares nothing; its slot's omission rests on that DuplicateBinding_Kd (RestOnRepeatedSet's rule).
+        }
+
+        this.Record(use, BindingFailure.MissingOrigin, []);
         return null;
 
-        ConstraintProof OwnedWithoutConditionalBorrows()
+        ConstraintProof OwnedWithoutConditionalBorrows(BoundOrigin completion)
         {
             this.failedCause = null;
             var count = InputCount(context.Owner);
@@ -543,7 +644,7 @@ public sealed partial class Binding
                     input = input.Components[0];
                 }
 
-                if (input is not null && this.ProveOwned(input, use) is not ConstraintProof.Proven and var proof)
+                if (input is not null && this.ProveDefaultOwned(input, use, aggregateSlot, completion) is not ConstraintProof.Proven and var proof)
                 {
                     return proof;
                 }
@@ -552,6 +653,116 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
     }
+
+    // SPEC 15.4.3 rule 3, 15.4.4, 8.3.3 (R7-O2 O2-F): an input's Owned for a result slot's default `completion` (static, or the
+    // borrowed inputs' meet). A proof that is not Proven and whose reading met ValueIn's deferral fact (a local region of a body being
+    // bound, or a deferred slot's atom not yet completed) while a body is bound is no verdict: the slot takes its own pending atom, the
+    // input joins the slot's row and the slot's obligation (one per slot and body, Discharge ResultDefault) has JudgeObligations judge
+    // the row at Final, in a candidate trial as at a commitment. Each resolution of the slot clears the row where it starts, so the
+    // row is the slot's last resolution's: a commitment after trials replaces theirs, and a literal a trial reads and nothing commits keeps
+    // the trial's. This rests on one order, which call selection keeps: within a pass no resolution of a slot follows its literal's
+    // commitment (a probe after it would make the probe's inputs, for a literal with inferred parameters, the judged row). An input two
+    // parameters share may be appended twice; its one verdict is judged twice at most.
+    private ConstraintProof ProveDefaultOwned(BoundType input, Koto use, int slot, BoundOrigin completion)
+    {
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
+        var proof = this.ProveOwned(input, use);
+        var deferred = proof == ConstraintProof.Unknown && this.readsUnboundedRegion && this.formingBody.IsBody;
+        this.readsUnboundedRegion = held;
+        if (!deferred)
+        {
+            return proof;
+        }
+
+        var row = this.deferredDefaults[use] ??= new(this.OriginAtom(use, OriginKind.Unbound, slot), completion);
+        row.Inputs.Add(input);
+        this.AddObligation(new(BindingObligationKind.Owned, use, BindingDeadline.BodyOrigins, Discharge: OriginDischarge.ResultDefault));
+        return ConstraintProof.Proven;
+    }
+
+    // SPEC 15.4.4, 8.3.3, 23.1.2 (R7-O2 O2-F): at Final, a slot whose last default resolution deferred (its row) completes as a
+    // pending Origin does: proven Owned over complete candidates, its atom reads as the default (CompletedOrigin); not, it records its
+    // missing Origin as at the header and its atom stays Unbound, resting on the failed slot (UnboundCause, path b), so a relation or
+    // Type that names it rests by what it names (Rests, rule W; A5's Dependent end).
+    private void JudgeDeferredDefault(in BindingObligation obligation)
+    {
+        var slot = obligation.Use;
+        if (slot.BindingFailure != BindingFailure.None || this.deferredDefaults[slot] is not { } row)
+        {
+            return;
+        }
+
+        foreach (var input in row.Inputs)
+        {
+            this.failedCause = null;
+            if (this.ProveOwned(input, slot) is not ConstraintProof.Proven and var proof)
+            {
+                _ = this.MissingOrigin(slot, proof);
+                return;
+            }
+        }
+
+        row.Proven = true;
+        this.completedDefaults++;
+        this.valueInVersion = -1; // ValueIn's reads of the atom so far are stale.
+    }
+
+    // The first deferred slot's atom that Final has not completed in `type`'s Origins (the result's, its arguments', its components'), or
+    // null: before Final every deferred atom, at Final a refuted one.
+    private BoundOrigin? DeferredAtomIn(BoundType type)
+    {
+        if (!type.CarriesAnyOrigin)
+        {
+            return null;
+        }
+
+        if (type.Origin is { } origin && this.DeferredIn(origin) is { } atom)
+        {
+            return atom;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (this.DeferredIn(type.OriginArguments[i]) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.DeferredAtomIn(type.Components[i]) is { } component)
+            {
+                return component;
+            }
+        }
+
+        return null;
+    }
+
+    // The first deferred atom Final has not completed in an Origin, itself or a meet's operand, or null.
+    private BoundOrigin? DeferredIn(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Unbound)
+        {
+            return this.DeferredAtom(origin) is { Proven: false } ? origin : null;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (this.DeferredIn(origin.Operands[i]) is { } operand)
+            {
+                return operand;
+            }
+        }
+
+        return null;
+    }
+
+    // The row whose provisional Origin `atom` is (a deferred slot's own pending atom), or null.
+    private DeferredDefault? DeferredAtom(BoundOrigin atom)
+        => atom is { Kind: OriginKind.Unbound, Binder: { } slot } && this.deferredDefaults[slot] is { } row && ReferenceEquals(row.Atom, atom) ? row : null;
 
     // SPEC 15.4.2, 23.1.2: a result Origin needs its inputs Owned; one that is not is a missing Origin, unless its Error rests on a cause.
     private BoundOrigin? MissingOrigin(Koto use, ConstraintProof unowned)
@@ -562,9 +773,34 @@ public sealed partial class Binding
         }
         else
         {
-            this.Fail(use, BindingFailure.MissingOrigin);
+            this.Record(use, BindingFailure.MissingOrigin, []);
         }
 
         return null;
+    }
+
+    /// <summary>The `deferredDefaults` family's one accessor (DECISIONS BU-220): a pass family, a result slot's deferred default
+    /// (ProveDefaultOwned), kept in its node's module's NodeColumns at its SyntaxId; absent after a pass until the column's first write.</summary>
+    private readonly struct DeferredDefaultRows(Binding binding)
+    {
+        internal DeferredDefault? this[Koto slot]
+        {
+            get => slot.SyntaxOwner is { } table ? table.Hir.Families.DeferredDefaults.Get(slot.SyntaxId, binding) : null;
+            set => HirTables.Of(slot).Families.DeferredDefaults.Ref(slot.SyntaxId, binding) = value;
+        }
+    }
+
+    /// <summary>A result slot's last default resolution when it deferred (R7-O2 O2-F): the slot's own pending atom, its provisional
+    /// Origin every reader names until Final; the default it completes to (static, or the borrowed inputs' meet); the inputs whose Owned
+    /// it deferred; and whether Final proved them (then CompletedOrigin reads the atom as the default).</summary>
+    internal sealed class DeferredDefault(BoundOrigin atom, BoundOrigin completion)
+    {
+        internal BoundOrigin Atom => atom;
+
+        internal BoundOrigin Completion => completion;
+
+        internal List<BoundType> Inputs { get; } = new(1);
+
+        internal bool Proven { get; set; }
     }
 }

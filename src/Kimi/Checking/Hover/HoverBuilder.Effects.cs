@@ -15,14 +15,6 @@ internal sealed partial class HoverBuilder
 
     private HoverInfo? Call(InvocationKoto syntax)
     {
-        for (var scope = query.ConstraintScope(syntax); scope is not null; scope = scope.Parent)
-        {
-            if (scope.Constraints is { Invalid: true })
-            {
-                return null;
-            }
-        }
-
         HoverInfo info;
         List<EffectEvidence>? evidence = null;
         StringBuilder? text = null;
@@ -52,7 +44,8 @@ internal sealed partial class HoverBuilder
                 WriteBounds(text, available);
             }
         }
-        else if (query.ValueCallOf(syntax) is { CalleeType: { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType } virtualItem)
+        else if (query.ValueCallOf(syntax) is { } virtualItem &&
+            query.CallableCore(virtualItem.CalleeType) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType)
         {
             info = new(
                 [this.Declaration(originalSlot)],
@@ -126,9 +119,11 @@ internal sealed partial class HoverBuilder
             previous = item;
             var declaring = (Koto?)query.DeclaringContract(item.Bound) ?? item.Context;
             text.Append("Declared by: ").AppendLine(this.Qualified(declaring));
-            if (item.Context is FunctionKoto { IsVirtual: true } evidenceSlot)
+            if (item is { Premise: null, Clause: null })
             {
-                text.Append("Public guarantee: ").Append(this.Qualified(evidenceSlot)).Append(" effect ").AppendLine(Constants.ConfinedKeyword);
+                // A virtual slot's public guarantee (AvailableEffectBounds), the one evidence without a premise or a clause: its Context
+                // is the slot. A premise's evidence names its declaration, which may be a virtual function too.
+                text.Append("Public guarantee: ").Append(this.Qualified(item.Context)).Append(" effect ").AppendLine(Constants.ConfinedKeyword);
             }
             else
             {

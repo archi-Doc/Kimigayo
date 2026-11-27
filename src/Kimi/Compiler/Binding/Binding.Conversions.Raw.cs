@@ -12,7 +12,7 @@ public sealed partial class Binding
     // SPEC 5.4: the expected Type of a pointer cast's input: an integer literal is first fitted to usize, and null@raw/U is Typed Null
     // Formation, a null of the target Type (SPEC 5.1); none for any other input or target.
     private static BoundType? PointerInput(BoundType? target, bool literal, Koto operand)
-        => !ReferenceTypes.IsPointer(target) ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
+        => target is not { IsPointer: true } ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
 
     // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and converts the
     // borrowed address, which keeps no Loan. The operation's borrow is recorded on the operator. SPEC 5.7 (Typed paths): the pointer
@@ -25,14 +25,14 @@ public sealed partial class Binding
             return Complete(conversion, null);
         }
 
-        if (IsNeverValue(conversion.Left, stored))
+        if (this.IsNeverValue(conversion.Left, stored))
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, stored);
         }
 
         BoundType borrowed;
-        if (ElementAccess.IsRawRooted(conversion.Left))
+        if (this.IsRawRooted(conversion.Left))
         {
             // SPEC 5.4, 5.2.2: the address of a raw Place or a part of one borrows that Place as a fresh anchor.
             borrowed = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);
@@ -40,7 +40,7 @@ public sealed partial class Binding
         else if (!BorrowsWrittenSlot(stored) ||
             !this.AdaptInput(conversion.Left, FixedPattern.Open(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored])), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
         {
-            return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false));
+            return this.RecordWrite(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false), conversion.Left);
         }
 
         var path = this.PathOrigin(conversion.Left);
@@ -59,11 +59,11 @@ public sealed partial class Binding
     // claim, which records no relation, inside one.
     private BoundType? CompletePointerConversion(ConversionKoto conversion, BoundType source, BoundType target)
     {
-        if ((ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
-            (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)))
+        if ((source.IsPointer && (target.IsPointer || ReferenceEquals(target, BoundType.USize))) ||
+            (ReferenceEquals(source, BoundType.USize) && target.IsPointer))
         {
             conversion.ConversionBinding = ConversionBinding.Pointer;
-            if (target.RawOrigin is null && source.RawOrigin is { } kept && ReferenceTypes.IsPointer(target))
+            if (target.RawOrigin is null && source.RawOrigin is { } kept && target.IsPointer)
             {
                 return Complete(conversion, this.types.Pointer(target.Components[0], kept));
             }
@@ -76,7 +76,7 @@ public sealed partial class Binding
             return Complete(conversion, target);
         }
 
-        return this.Fail(conversion, BindingFailure.TypeMismatch);
+        return this.RecordTypeMismatch(conversion, conversion, source, target);
     }
 
     // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its Origin is RawAnchor's, which fits every destination, a
@@ -84,9 +84,9 @@ public sealed partial class Binding
     // the pointee: no raw Origin denies an access (SPEC 5.7).
     private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
     {
-        if (semantics == SemanticsKind.Uniq && ReachedThroughShared(conversion.Left))
+        if (semantics == SemanticsKind.Uniq && this.ReachedThroughShared(conversion.Left))
         {
-            return this.Fail(conversion, AccessFailure(conversion.Left, out _));
+            return this.RecordWrite(conversion, this.AccessFailure(conversion.Left, out _), conversion.Left);
         }
 
         var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: this.RawAnchor(conversion, conversion.Left));

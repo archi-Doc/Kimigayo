@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -43,6 +44,165 @@ public class MinimalEmissionTest
         Assert.DoesNotContain("__kimi_write_line", ir);
         Assert.Contains(module.Functions.SelectMany(static x => x.Instructions), x => x.Callee == module.Function("__kimi_destroy_string"));
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
+    }
+
+    // The Tatara plan's B7b2a: Hello's linux-x64 module in the row's frame: its header without a float marker, its footer (#0 with
+    // "probe-stack"="inline-asm"; no PIC Level module flag, a static row's), the libc-free start (module asm defining __kimi_start, which
+    // calls the internal start body, which sets the process up before the startup body), no dllimport, the memory part and the Linux
+    // layer's own routines defined; Windows' module defines neither routine. B7b2b's twin of the C path: the module requires no library
+    // (the Kimi library imports nothing on linux-x64), so it defines no main.
+    [Fact]
+    public void HelloOnTheLinuxRowIsLibcFree()
+    {
+        const string Hello = "::Kimi.Console.writeLine(\"Hello, world!\")";
+        var hello = Analyze(TargetProfile.Linux, Hello, "Hello.kimi", OutputKind.Application);
+        var ir = CompilationTestHelper.WriteIr(hello);
+        Assert.Empty(hello.Generated.Libraries);
+        Assert.Equal(TargetProfile.Linux.EntrySymbol, hello.Generated.Entry);
+        Assert.StartsWith(
+            "; Kimigayo checked pre-optimization IR (linux-x64-v1)\ntarget triple = \"x86_64-unknown-linux-musl\"\ntarget datalayout = \"" +
+            TargetProfile.Linux.DataLayout + "\"\n%kimi.string = type { ptr, i64, i8 }\n@",
+            ir,
+            StringComparison.Ordinal);
+        const string Profile = "uwtable(async) \"target-cpu\"=\"x86-64\" \"target-features\"=\"+sse2\" \"denormal-fp-math\"=\"ieee,ieee\" \"probe-stack\"=\"inline-asm\"";
+        Assert.EndsWith($"}}\nattributes #0 = {{ {Profile} }}\nattributes #1 = {{ {Profile} \"no-builtins\" }}\n", ir, StringComparison.Ordinal);
+        Assert.Contains(
+            "module asm \".globl __kimi_start\"\nmodule asm \".type __kimi_start, @function\"\nmodule asm \"__kimi_start:\"\n" +
+            "module asm \"  xorl %ebp, %ebp\"\nmodule asm \"  andq $-16, %rsp\"\nmodule asm \"  callq __kimi_start_body\"\nmodule asm \"  ud2\"\n" +
+            "@llvm.used = appending global [1 x ptr] [ptr @__kimi_start_body], section \"llvm.metadata\"\n" +
+            "define internal void @__kimi_start_body() noreturn #0 {\nentry:\n  call void @__kimi_platform_start()\n",
+            ir,
+            StringComparison.Ordinal);
+        Assert.Contains("  call void @__kimi_exit(i32 0)\n  unreachable\n}\n", ir, StringComparison.Ordinal);
+        Assert.Contains(LlvmModuleText.MemoryRuntime, ir, StringComparison.Ordinal);
+        Assert.Contains(RuntimeAbi.PlatformStart.GetDefinition(exported: false), ir, StringComparison.Ordinal);
+        Assert.Contains(RuntimeAbi.Clock.GetDefinition(exported: false), ir, StringComparison.Ordinal);
+        foreach (var absent in new[] { "define void @__kimi_start(", "@main(", "_fltused", "dllimport", "PIC Level", "llvm.module.flags" })
+        {
+            Assert.DoesNotContain(absent, ir, StringComparison.Ordinal);
+        }
+
+        var windows = CompilationTestHelper.WriteIr(Analyze(Hello));
+        Assert.DoesNotContain("@__kimi_platform_start(", windows, StringComparison.Ordinal);
+        Assert.DoesNotContain("@__kimi_clock(", windows, StringComparison.Ordinal);
+    }
+
+    // The Tatara plan's B7b2a: a test build on the Linux row, whose layer runs no test build (B7b8 refuses a Linux test before any build),
+    // is a broken contract at generation.
+    [Fact]
+    public void ATestBuildOnTheLinuxRowIsABrokenContract()
+    {
+        var c = Compilation.CreateForTest();
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(TargetProfile.Linux.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", "#Test\nfunc sample() => $expect(true)"));
+        c.Bind();
+        c.Binding.CheckTestStartup();
+        Assert.True(c.Analyze().IsVerified, Describe(c));
+        c.Tests.Discover(c);
+        Assert.Throws<InvalidOperationException>(() => c.Generate(TextWriter.Null));
+    }
+
+    // IMPL 21.6: Kernel's module on the staged none row defines the platform storage of Board's layout and one adapter per Platform
+    // requirement (PlatformRows' records), each calling its witness's function through the entry call: the storage as start's result
+    // slot and as every receiver, the loader's boot passed through, write's text a Utf8Slice slot of the template's data and length,
+    // terminate's call followed by unreachable. The start is the layer's libc-free form: the global module asm entry, and the start body
+    // calling the platform start (the layer's StartCalls) before the startup root.
+    [Fact]
+    public void KernelOnTheNoneRowDefinesItsPlatformsAdapters()
+    {
+        var kernel = Analyze(TargetProfile.None, KernelSources.Hello + KernelSources.Board + KernelSources.BoardTerminate, "Kernel.kimi", OutputKind.Application);
+        var ir = CompilationTestHelper.WriteIr(kernel);
+        Assert.Empty(kernel.Generated.Libraries);
+        Assert.Equal(TargetProfile.None.EntrySymbol, kernel.Generated.Entry);
+        Assert.Contains("@__kimi_platform = internal global [40 x i8] zeroinitializer, align 8\n", ir, StringComparison.Ordinal);
+        const string Call = @"call (\w+) @__kimi_f\d+\(";
+        const string Storage = @"ptr[^,()]* @__kimi_platform";
+        Assert.Matches(@"define internal void @__kimi_platform_member_start\(ptr %boot\) #0 \{\nentry:\n  " + Call.Replace(@"(\w+)", "void", StringComparison.Ordinal) + Storage + @", ptr[^,()]* %boot\)\n  ret void\n\}\n", ir);
+        Assert.Matches(@"define internal ptr @__kimi_platform_member_mapPages\(i64 %bytes\) #0 \{\nentry:\n  %t0 = " + Call + Storage + @", i64[^,()]* %bytes\)\n  ret ptr %t0\n\}\n", ir);
+        Assert.Matches(@"define internal i64 @__kimi_platform_member_releasePages\(ptr %pages, i64 %bytes\) #0 \{\nentry:\n  %t0 = " + Call + Storage + @", ptr[^,()]* %pages, i64[^,()]* %bytes\)\n  ret i64 %t0\n\}\n", ir);
+        Assert.Matches(
+            @"define internal i64 @__kimi_platform_member_write\(i32 %stream, ptr %data, i64 %length\) #0 \{\nentry:\n  %t0 = alloca [^\n]+, align 8\n" +
+            @"  store ptr %data, ptr %t0[^\n]*\n  %t1 = getelementptr i8, ptr %t0, i64 8\n  store i64 %length, ptr %t1[^\n]*\n  %t2 = " + Call + Storage +
+            @", i32[^,()]* %stream, ptr[^,()]* %t0\)\n  ret i64 %t2\n\}\n",
+            ir);
+        Assert.Matches(@"define internal i64 @__kimi_platform_member_clock\(\) #0 \{\nentry:\n  %t0 = " + Call + Storage + @"\)\n  ret i64 %t0\n\}\n", ir);
+        Assert.Matches(@"define internal void @__kimi_platform_member_terminate\(i32 %status\) noreturn #0 \{\nentry:\n  " + Call.Replace(@"(\w+)", "void", StringComparison.Ordinal) + Storage + @", i32[^,()]* %status\)\n  unreachable\n\}\n", ir);
+        Assert.Contains("module asm \".globl __kimi_start\"\n", ir, StringComparison.Ordinal);
+        Assert.Matches(@"define internal void @__kimi_start_body\(\) noreturn #0 \{\nentry:\n  call void @__kimi_platform_start\(\)\n  call void @__kimi_f\d+\(\)\n  call void @__kimi_exit\(i32 0\)\n  unreachable\n\}\n", ir);
+        Assert.Matches(@"attributes #0 = \{[^}\n]*noredzone", ir);
+        foreach (var absent in new[] { "@main(", "_fltused", "dllimport", "PIC Level", "\"probe-stack\"", "declare ptr @__kimi_platform_member_" })
+        {
+            Assert.DoesNotContain(absent, ir, StringComparison.Ordinal);
+        }
+    }
+
+    // IMPL 21.6.3: a field-less platform's storage is zero-sized, and its start passes no result slot.
+    [Fact]
+    public void AFieldlessPlatformsStorageIsZeroSized()
+    {
+        var ir = CompilationTestHelper.WriteIr(Analyze(TargetProfile.None, KernelSources.Hello + KernelSources.FieldlessBoard, "Kernel.kimi", OutputKind.Application));
+        Assert.Contains("@__kimi_platform = internal global [0 x i8] zeroinitializer, align 1\n", ir, StringComparison.Ordinal);
+        Assert.Matches(@"define internal void @__kimi_platform_member_start\(ptr %boot\) #0 \{\nentry:\n  call void @__kimi_f\d+\(ptr[^,()]* %boot\)\n  ret void\n\}\n", ir);
+    }
+
+    // IMPL 20.3.2, 21.6: a Library for the none row has no platform, so its module declares the six adapters the layer's routines call
+    // and defines none, without the platform storage.
+    [Fact]
+    public void ALibraryOnTheNoneRowDeclaresThePlatformsAdapters()
+    {
+        var ir = CompilationTestHelper.WriteIr(Analyze(TargetProfile.None, "public group Twice\n    public func twice(x: i64) -> i64 => x + x\n", "Twice.kimi", OutputKind.Library));
+        foreach (var row in PlatformRows.Rows)
+        {
+            using var declaration = new StringWriter();
+            LlvmModuleText.WriteDeclaration(declaration, row.Adapter);
+            Assert.Contains("\ndeclare " + declaration, ir, StringComparison.Ordinal);
+            Assert.DoesNotContain("define internal " + row.Adapter.Result + " @" + row.Adapter.Name + "(", ir, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("@__kimi_platform =", ir, StringComparison.Ordinal);
+    }
+
+    // SPEC 22.6, IMPL 21.6: every platform witness is a body, so generation roots each one's Body item. An import has no receiver and
+    // takes no struct by value (LibraryImportTargetBindingTest's `(value: S)` row is the by-value `start`'s record): Board's `clock` as a
+    // receiver member import is refused at check. A witness body may call an import: a forwarding `start` over a scalar import from a
+    // group calls it from Board.start's function, and the module requires its library.
+    [Fact]
+    public void APlatformWitnessIsABodyThatMayCallAnImport()
+    {
+        var board = KernelSources.Board + KernelSources.BoardTerminate;
+        const string Clock = "    public func clock(self: uniq/Self) -> i64\n        self.ticks += 1\n        return self.ticks\n";
+        const string Start = "        let window = boot.directMapOffset\n        return Board.init(window + 0x0100_0000, window + 0x0300_0000, (window + 0xB_8000)@raw/u16)\n";
+        Assert.Contains(Clock, board, StringComparison.Ordinal);
+        Assert.Contains(Start, board, StringComparison.Ordinal);
+        var import = ForeignEmissionTest.AnalyzeAs(
+            TargetProfile.None,
+            KernelSources.Hello + board.Replace(Clock, "    #LibraryImport(\"codec\", \"codec_clock\")\n    public func clock(self: uniq/Board) -> i64\n", StringComparison.Ordinal),
+            "static",
+            OutputKind.Application);
+        Assert.False(import.Accepts, Describe(import));
+        Assert.Equal(["InvalidLibraryImport_Kd"], import.Binding.Issues.Select(static x => x.Code.ToString()));
+        var seeded = board.Replace(Start, "        let window = boot.directMapOffset + Native.seed()@usize\n        return Board.init(window, window, window@raw/u16)\n", StringComparison.Ordinal);
+        const string Seed = "group Native\n    #LibraryImport(\"codec\", \"codec_seed\")\n    public func seed() -> u64\n";
+        var forwarding = ForeignEmissionTest.AnalyzeAs(TargetProfile.None, KernelSources.Hello + seeded + Seed, "static", OutputKind.Application);
+        var ir = CompilationTestHelper.WriteIr(forwarding);
+        Assert.Equal([("codec", "static")], forwarding.Generated.Libraries);
+        var start = Regex.Match(ir, @"define internal void @__kimi_platform_member_start\(ptr %boot\) #0 \{\nentry:\n  call void @(__kimi_f\d+)\(").Groups[1].Value;
+        Assert.Matches(@"\ndefine [^\n]*@" + start + @"\([^\n]*\n(?:(?!\})[^\n]*\n)*?[^\n]*call i64 @codec_seed\(\)", ir);
+    }
+
+    // SPEC 22.8: a Stopwatch's start and stop read the platform's clock: the program's clock call is the layer's __kimi_clock, whose
+    // adapter calls Board.clock's function (the one adding 1 to `ticks`, Board's Field at offset 32).
+    [Fact]
+    public void AStopwatchReadsTheBoardsClock()
+    {
+        var source = "var watch = Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nlet elapsed = watch.elapsed()\n" + KernelSources.Board + KernelSources.BoardTerminate;
+        var ir = CompilationTestHelper.WriteIr(Analyze(TargetProfile.None, source, "Kernel.kimi", OutputKind.Application));
+        Assert.Matches(@"\ndefine internal [^\n]*@__kimi_f\d+\([^\n]*\n(?:(?!\})[^\n]*\n)*?[^\n]*call i64 @__kimi_clock\(\)", ir);
+        var clock = Regex.Match(ir, @"define internal i64 @__kimi_platform_member_clock\(\) #0 \{\nentry:\n  %t0 = call i64 @(__kimi_f\d+)\(").Groups[1].Value;
+        Assert.Matches(
+            @"\ndefine [^\n]*@" + clock + @"\([^\n]*\n(?:(?!\})[^\n]*\n)*?[^\n]*getelementptr i8, ptr %\w+, i64 32\n(?:(?!\})[^\n]*\n)*?[^\n]*@llvm\.sadd\.with\.overflow\.i64\(i64 %\w+, i64 1\)\n",
+            ir);
     }
 
     [Theory]
@@ -240,23 +400,21 @@ public class MinimalEmissionTest
     {
         var file = new ProjectFile
         {
-            Targets = [WindowsProfile.Target],
-            LlvmBin = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin",
+            Targets = [TargetProfile.Windows.Target],
             OutputPath = "bin/Hello.ll",
             Optimization = "O0",
             NativeLibraries = new()
             {
-                [WindowsProfile.Target] = new()
+                [TargetProfile.Windows.Target] = new()
                 {
                     ["kernel32"] = new() { Name = "kernel32", Kind = "import", Input = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin/kernel32.lib" },
                 },
             },
         };
         var read = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(TinyhandSerializer.SerializeToUtf8(file))!;
-        Assert.Equal(file.LlvmBin, read.LlvmBin);
         Assert.Equal(file.OutputPath, read.OutputPath);
         Assert.Equal(file.Optimization, read.Optimization);
-        Assert.Equal(file.NativeLibraries[WindowsProfile.Target]["kernel32"], read.NativeLibraries[WindowsProfile.Target]["kernel32"]);
+        Assert.Equal(file.NativeLibraries[TargetProfile.Windows.Target]["kernel32"], read.NativeLibraries[TargetProfile.Windows.Target]["kernel32"]);
     }
 
     [Fact]
@@ -264,9 +422,8 @@ public class MinimalEmissionTest
     {
         var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../docs/examples/Hello/Hello.kimiproj"));
         var read = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(File.ReadAllBytes(path))!;
-        Assert.Equal(WindowsProfile.Target, Assert.Single(read.Targets));
+        Assert.Equal(TargetProfile.Windows.Target, Assert.Single(read.Targets));
         Assert.Empty(read.NativeLibraries);
-        Assert.Null(read.LlvmBin);
     }
 
     [Fact]
@@ -293,11 +450,15 @@ public class MinimalEmissionTest
         }
     }
 
-    // A program analyzed for `output`, an Application unless the caller names another.
+    // A program analyzed for `output`, an Application unless the caller names another, on the Windows row.
     internal static Compilation Analyze(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
+        => Analyze(TargetProfile.Windows, source, path, output);
+
+    // A program analyzed for `output` on a target row.
+    internal static Compilation Analyze(TargetProfile row, string source, string path, OutputKind output)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(row.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();
         c.Binding.CheckStartup(output);
@@ -306,12 +467,17 @@ public class MinimalEmissionTest
         return c;
     }
 
-    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published.
+    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published, on the Windows
+    // row.
     internal static Compilation Check(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
+        => Check(TargetProfile.Windows, source, path, output);
+
+    // A program checked for `output` on a target row as a build checks it.
+    internal static Compilation Check(TargetProfile row, string source, string path, OutputKind output)
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = output;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(row.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Check();
         Assert.Equal(0, c.Binding.IdlessFactSites);

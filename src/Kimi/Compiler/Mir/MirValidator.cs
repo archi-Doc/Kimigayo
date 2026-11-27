@@ -24,9 +24,11 @@ internal enum MirViolation : byte
     Entry, // An edge into a region, the body or an Inlined scope's locations, elsewhere than its first location, or from it into that block.
     Diverged, // A read, move or borrow, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
     NeverWrite, // A Temp of Type Never written by other than an unadapted Copy or Move of a Never Place, an Opaque value or a diverging Call.
-    Local, // Local 0 is not the Return local, an Arg local does not directly follow it, a local has no Type or one stating Unstated (a kept
-    // part's mark only, DECISIONS BU-46), or a Result local is no Temp of local 0's Type or is read other than by the whole Move into _0
-    // that delivers it (R4-M132).
+    Local, // Local 0 is not the Return local, an Arg local does not directly follow it, a local has a Type stating Unstated (a kept part's
+    // mark only, DECISIONS BU-46), or a Result local is no Temp of local 0's Type or is read other than by the whole Move into _0 that
+    // delivers it (R4-M132); _0 or an Arg of no Type other than exactly where Binding failed its signature slot, a receiver of no Type,
+    // a slot of no Type accessed other than whole as no reader judges its Type (PLAN G1073), or a Field step of no Type other than
+    // written (PLAN G1184).
     Scope, // A scope that its outer scope does not precede, or a source outside the scopes.
     StorageLocal, // StorageLive or StorageDead of a Place other than a Var or Temp local.
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.
@@ -84,10 +86,11 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 internal sealed partial class MirValidator(TyCtxt types)
 {
     private readonly MirCases cases = new(types);
-    private readonly List<(MirRvalue Site, SourceInfo Source)> caseSites = []; // The body's case sites, its Adapts and PairAcquire Uses (Views).
+    private readonly List<(MirRvalue Site, SourceInfo Source, int Block)> caseSites = []; // The body's case sites, its Adapts and PairAcquire Uses (Views).
     private readonly MirReach reach = new();
     private readonly HashSet<BoundType> parts = new(ReferenceEqualityComparer.Instance); // StatesUnstated's scratch (the Local row).
     private byte[] writes = []; // Per local, its writes' kinds.
+    private ulong[] blockViews = []; // In a body with a case branch, per block the views whose walk reaches it (Views).
 
     /// <summary>Validates a body and sets its verdict (<see cref="MirBody.HasFinding"/>): whether it added a finding.</summary>
     /// <param name="body">The body.</param>
@@ -130,9 +133,11 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
 
         checker.Finish();
-        checker.Views(this.cases);
+        var reached = walked && body.CaseSwitches > 0 ? this.BlockViews(body) : null; // Successors in range only.
+        checker.Views(this.cases, reached);
         if (walked)
         {
+            checker.Receivers(this.cases, reached);
             this.Diverged(body, findings);
             this.Reach(body, findings);
             this.Unensured(body, findings);
@@ -148,13 +153,37 @@ internal sealed partial class MirValidator(TyCtxt types)
 
     // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports; it
     // records each local's writes.
+    // R7 plan Z23 (SPEC 8.14): per block of a body with a case branch, the views whose walk from the entry, every edge followed, reaches
+    // it (MirReach under the view): one walk per view, so a case site is checked in the views that reach it at a cost linear in the body.
+    private ulong[] BlockViews(MirBody body)
+    {
+        if (this.blockViews.Length < body.Blocks.Length)
+        {
+            this.blockViews = new ulong[Math.Max(body.Blocks.Length, this.blockViews.Length * 2)];
+        }
+
+        Array.Clear(this.blockViews, 0, body.Blocks.Length);
+        for (var view = 0L; view < MirCases.Count(body); view++)
+        {
+            _ = this.cases.Select(body, view);
+            this.reach.Clear(body.Blocks.Length);
+            this.reach.Walk(body, 0, checks: true, this.cases);
+            for (var block = 0; block < body.Blocks.Length; block++)
+            {
+                this.blockViews[block] |= this.reach[block] ? 1UL << (int)view : 0;
+            }
+        }
+
+        return this.blockViews;
+    }
+
     private partial struct Checker(
         MirBody body,
         List<MirFinding> findings,
         bool[] unknown,
         bool[] ensured,
         List<(int Block, int Slot, SourceInfo Source)> accesses,
-        List<(MirRvalue Site, SourceInfo Source)> caseSites,
+        List<(MirRvalue Site, SourceInfo Source, int Block)> caseSites,
         byte[] writes,
         HashSet<BoundType> parts,
         TyCtxt types) : IMirUses
@@ -167,6 +196,9 @@ internal sealed partial class MirValidator(TyCtxt types)
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
         private bool calling; // Whether they are a Call's, whose constant records it checks itself (ConstantRecords).
         private bool delivering; // Whether they are a Move's into _0's whole Place, a Result local's one read (MirValidator.Tables).
+        private bool placing; // Whether they are a Use's into a destination of no Type, a write's value in transit placed (MirValidator.Tables' Bounded).
+        private bool returning; // Whether they are a Return's, _0's one Move (MirValidator.Tables' Bounded).
+        private bool propagating; // Whether they are an rvalue's that takes its Type from them (Propagates; MirValidator.Tables' Bounded).
         private bool byCase; // Whether they are a case site's, which its views acquire (Views), the Copy rule's one exemption (BU-88).
 
         // Gets a value indicating whether the scope table or a location's scope cannot be walked, a Scope finding; only Entries needs them.

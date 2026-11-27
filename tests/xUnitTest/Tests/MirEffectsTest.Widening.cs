@@ -9,7 +9,7 @@ namespace XunitTest;
 /// on a projection with a recursive base; it has unknown environment effects instead.</summary>
 public sealed partial class MirEffectsTest
 {
-    private const string Visited = "IncompatibleContractImplementation_Kd Self is Visit 1";
+    private const string Visited = "IncompatibleContractImplementation_Kd Self is Visit 18446744073709551615";
 
     private const string RecursiveTree = "contract Tree\n    associate Child is Tree\n    func child(self: ref/Self) -> Option<Self.Child>\n        effect confined\n";
 
@@ -121,7 +121,8 @@ public sealed partial class MirEffectsTest
                 "public func main() => ()\n");
             var program = c.BuildMir();
             Assert.Empty(Problems(c, program));
-            var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+            var cases = new MirCases(c.Types);
+            var flow = new MirDataflow(new MirReach(), cases);
             var effects = new MirEffects(c.Types, cases, flow);
             Analyze(effects, flow, cases, program, new MirReport(), All);
             evaluations[i] = effects.Evaluations;

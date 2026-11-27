@@ -33,6 +33,18 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Mk2Call = "func mk2<T>(w: Option<ref/T during static>) -> T => $abort(\"mk2\")\n";
 
+    private const string Mk2RefCall = "func mk2r<T>(w: Option<ref/T during static>) -> ref/T during static => $abort(\"mk2r\")\n";
+
+    private const string Mk2TupleCall = "func mk2t<T>(w: Option<ref/T during static>) -> (T, i32) => $abort(\"mk2t\")\n";
+
+    private const string MkAnyCall = "func mkAny<U>() -> U => $abort(\"any\")\n";
+
+    private const string PairK = "func k<s/X>(a: ref/(s/X)) -> i32\n";
+
+    private const string PairLet = "    let y: ref/(s/X) during a = mkAny()\n    return 0\n";
+
+    private const string RunCall = "func run<T>(f: (T) -> i32, s: T) -> i32 => 0\n";
+
     private const string NnHead = "func k(q: ref/i32, r: ref/i32, c: bool, d: bool) -> ref/i32 during r\n";
 
     private const string NnInner = "    func inner(p: (Option<ref/(ref/i32 during q) during r>, i32), x: ref/i32 during q) -> ref/i32 during r => x\n";
@@ -152,14 +164,15 @@ public partial class OriginRelationDiagnosticTest
     // valid and stay ClosureEnvironmentOriginTest's rows (not repeated). Their twins store a Closure local's Borrow toward the enclosing `q`
     // through the same shapes: a Refuted relation. A Case whose expected Type the parameter fixes (r03_n, r04_n, r06_n) is judged by its own
     // fit, at the payload; only a position the call opens records at the argument (r05_n's `.None`; D-1's scope, decided 2026-10-29).
-    // r03_n's, r04_n's and r06_n's payload record has the MIR's twin at the same span until R7 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
-    // r05_n also has A5's Loan conflict at `let short = 2`: `*s` may retain `short`'s Loan through the aggregate argument, which is neither
-    // the borrow nor a Copy, so the record is independent by SPEC 15.6.5 rule W's letter (family F-b, class 4; R4's verdict, R6-check H5).
+    // Each payload record is A5's one (R7-O1 H; the MIR's twin at the same span, H0b §5.4, R4-M108, went with Binding's record). Each
+    // also has A5's Loan conflict at `short`'s declaration: `*s` may retain `short`'s Loan through the aggregate argument, which is neither
+    // the borrow nor a Copy, so the record is shown by SPEC 15.6.5 rule W's letter (family F-b, class 4; R4's verdict, R6-check H5; r03_n,
+    // r04_n and r06_n since R7-O1 H built their payloads, F-H1-1's aggregate class).
     [Theory]
-    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
-    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@uniq; UnsatisfiedOriginRelation_Kd short@uniq", null)]
+    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd var short = 2; UnsatisfiedOriginRelation_Kd short@uniq", null)]
     [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
-    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     public void AContextualPartInsideAClosureIsJudged(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
 
@@ -178,24 +191,26 @@ public partial class OriginRelationDiagnosticTest
         => AssertRecords(form, body, records, null);
 
     // Explicit qualifiers and Cases with payload (d3 §6): `Option.Some(v)` types itself from `v`, whose signature Type gives q outlives r
-    // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument. cs1's contextual inner `Option.None` is judged at
+    // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument, and cv3_n's literal records its element's place
+    // fit at `Option.Some(v)` beside it (PLAN G1379; R4-M164 U2 S1 as amended). cs1's contextual inner `Option.None` is judged at
     // the argument; when an annotation settles the construction (cs1_ty), the annotation proves its contextual payload at its written Type,
     // as in ea1 (R4-M164 U1d; the payload's record waits for R7). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
     // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
-    // cr5's and cr6's payload record has the MIR's twin at the same span until R7 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
+    // cr5's and cr6's payload record is A5's one (R7-O1 H; the MIR's twin at the same span, H0b §5.4, R4-M108, went with Binding's), beside
+    // A5's Loan conflict at `let short = 2` that the stored payload derives (F-H1-1's aggregate class, SPEC 15.6.5 rule W).
     [Theory]
     [InlineData("cv1", PayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "", null)]
     [InlineData("cv1_n", WeakPayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "UnprovenOriginRelation_Kd Option.Some(v)", null)]
     [InlineData("cv2", PayloadHead + InnerPair + "    return inner((Option.Some(v), 1), q)\n", "", null)]
     [InlineData("cv2_n", WeakPayloadHead + InnerPair + "    return inner((Option.Some(v), 1), q)\n", "UnprovenOriginRelation_Kd (Option.Some(v), 1)", null)]
     [InlineData("cv3", PayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "", null)]
-    [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
+    [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd Option.Some(v); UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
     [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
-    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
-    [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr6_ok", "func good(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    p@follow = .Some(v)\n    return 0\n", "", null)]
     public void AnArgumentsCaseIsJudgedAtTheArgument(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
@@ -266,11 +281,51 @@ public partial class OriginRelationDiagnosticTest
     // until that unit lands and removes the marker. `dotnet xUnitTest.dll -class <class> -explicit only` runs those.
     [Theory]
     // SPEC 15.6.1, 15.6.4 (PLAN G388, closed): a Signature position inside a Result-position aggregate (rb) and a layer around the slot the expected
-    // result solves (mk2) are judged; each with its valid twin.
+    // result solves (mk2t) are judged; each with its valid twin. SPEC 10.2.2 item 2 (PLAN G924, K's revision; F's ruling 74): at an expected
+    // `ref/U` a declared result `T` is a returned value, matched against U, so mk2's `T` is `i32` and its result a temporary whose borrow
+    // is not `during q` (mk2, mk2_bare: invalid, where the earlier text bound `T = ref/i32 during q`); a declared `ref/T` result is matched
+    // against `ref/U` (mk2_ref, valid). Inside a Tuple the expected result still binds `T` to the reference Type (mk2t, mk2t_ok).
     [InlineData("guard", "rb", RbCall + "func k(q: ref/i32) -> i32\n    let short = 2\n    let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), short@ref)")]
     [InlineData("guard", "rb_ok", RbCall + "func k(q: ref/i32, v: ref/i32 during q) -> i32\n    let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), v)\n    return 0\n", "")]
-    [InlineData("guard", "mk2", Mk2Call + "func k(q: ref/i32) -> i32\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "UnprovenOriginRelation_Kd: let y: ref/i32 during q = mk2(.None)")]
-    [InlineData("guard", "mk2_ok", Mk2Call + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "")]
+    [InlineData("guard", "mk2", Mk2Call + "func k(q: ref/i32) -> i32\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/i32 during q = mk2(.None)")]
+    [InlineData("guard", "mk2_bare", Mk2Call + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/i32 during q = mk2(.None)")]
+    [InlineData("guard", "mk2_ref", Mk2RefCall + "func k(q: ref/i32) -> i32\n    let y: ref/i32 during q = mk2r(.None)\n    return 0\n", "")]
+    [InlineData("guard", "mk2t", Mk2TupleCall + "func k(q: ref/i32) -> i32\n    let y: (ref/i32 during q, i32) = mk2t(.None)\n    return 0\n", "UnprovenOriginRelation_Kd: let y: (ref/i32 during q, i32) = mk2t(.None)")]
+    [InlineData("guard", "mk2t_ok", Mk2TupleCall + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let y: (ref/i32 during q, i32) = mk2t(.None)\n    return 0\n", "")]
+
+    // SPEC 10.2.2 item 2, 10.2, 14.9.2 step 3 (PLAN G924, the owner's O-407 (a)): at an expected `ref/U` whose U is itself a borrow Type
+    // there is no owner temporary, so a returned value is matched against `ref/U` by structure (mkAny's U' the whole `ref/U`), at a
+    // closure-bound slot (q1_run), a join (q1_join), inside a Tuple (q1_jelem), a fixed parameter (q1_arg) and a declared binding
+    // (q1_let); at an owner U it is matched against U (q1_own: the statement temporary does not outlive `a`; q1_ownarg: an argument
+    // temporary through the call).
+    [InlineData("guard", "q1_run", MkAnyCall + RunCall + "func k(a: ref/i32) -> i32\n    return run(func [] (p: ref/(ref/i32 during a)) -> i32 => 0, mkAny())\n", "")]
+    [InlineData("guard", "q1_join", MkAnyCall + RunCall + "func k(a: ref/i32, c: bool) -> i32\n    return run(func [] (p: ref/(ref/i32 during a)) -> i32 => 0, if c => mkAny() else => mkAny())\n", "")]
+    [InlineData("guard", "q1_jelem", MkAnyCall + RunCall + "func k(a: ref/i32, c: bool) -> i32\n    return run(func [] (p: (ref/(ref/i32 during a), i32)) -> i32 => 0, (if c => mkAny() else => mkAny(), 1))\n", "")]
+    [InlineData("guard", "q1_arg", MkAnyCall + "func look(x: ref/(ref/i32 during a)) -> i32 => 0\nfunc k(a: ref/i32) -> i32\n    return look(mkAny())\n", "")]
+    [InlineData("guard", "q1_let", MkAnyCall + "func k(a: ref/i32) -> i32\n    let y: ref/(ref/i32 during a) during a = mkAny()\n    return 0\n", "")]
+    [InlineData("guard", "q1_own", MkAnyCall + "func k(a: ref/i32) -> i32\n    let y: ref/i32 during a = mkAny()\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/i32 during a = mkAny()")]
+    [InlineData("guard", "q1_ownarg", MkAnyCall + "func look(x: ref/i32) -> i32 => 0\nfunc k() -> i32\n    return look(mkAny())\n", "")]
+
+    // SPEC 10.2.2 item 2, 15.6.5 (PLAN G924, the review's N6): at a borrow U the structural match keeps the declared Origins, with no
+    // temporary to fail at the `let`; a result that needs another Origin then fails at the return (q1_bor_i), its twin passes (q1_bor).
+    [InlineData("guard", "q1_bor", MkAnyCall + "func k(a: ref/i32, b: ref/i32) -> ref/(ref/i32 during a) during a\n    let y: ref/(ref/i32 during a) during a = mkAny()\n    return y\n", "")]
+    [InlineData("guard", "q1_bor_i", MkAnyCall + "func k(a: ref/i32, b: ref/i32) -> ref/(ref/i32 during b) during b\n    let y: ref/(ref/i32 during a) during a = mkAny()\n    return y\n", "UnprovenOriginRelation_Kd: return y")]
+
+    // SPEC 10.2.2 item 2, 8.3.4 (PLAN G924, the owner's O-416 (b); K's revision 12): a pair `s/X` has a borrow value's outer Semantics
+    // exactly when its binder's admitted set lies within `borrow`: then there is no owner temporary and the returned value is matched
+    // against `ref/U` by structure (o_ref, o_refuniq), as at their concrete spellings (o_ref_c, o_refuniq_c); a set admitting `owner`
+    // (o_ownref, o_none) or another Semantics outside `borrow` (o_refraw, o_refobj) is matched against U, whose statement temporary does
+    // not outlive `a`, as at the owner and raw spellings (o_owner_c, o_raw_c).
+    [InlineData("guard", "o_ref", MkAnyCall + PairK + "    s is ref\n" + PairLet, "")]
+    [InlineData("guard", "o_ref_c", MkAnyCall + "func k<X>(a: ref/X) -> i32\n    let y: ref/(ref/X during a) during a = mkAny()\n    return 0\n", "")]
+    [InlineData("guard", "o_refuniq", MkAnyCall + PairK + "    s is ref or uniq\n" + PairLet, "")]
+    [InlineData("guard", "o_refuniq_c", MkAnyCall + "func k<X>(a: uniq/X) -> i32\n    let y: ref/(uniq/X during a) during a = mkAny()\n    return 0\n", "")]
+    [InlineData("guard", "o_ownref", MkAnyCall + PairK + "    s is owner or ref\n" + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_none", MkAnyCall + PairK + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_refraw", MkAnyCall + PairK + "    s is ref or raw\n" + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_refobj", MkAnyCall + PairK + "    s is ref or obj\n" + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_owner_c", MkAnyCall + "func k<X>(a: ref/X) -> i32\n    let y: ref/X during a = mkAny()\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/X during a = mkAny()")]
+    [InlineData("guard", "o_raw_c", MkAnyCall + "func k<X>(a: ref/(raw/X)) -> i32\n    let y: ref/(raw/X) during a = mkAny()\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/(raw/X) during a = mkAny()")]
 
     // SPEC 10.5.1, 14.9.2, 15.6.1 (PLAN G390, closed): the selected call judges a nested join's positions (nn in a Tuple, nd alone).
     [InlineData("guard", "nn", NnHead + NnInner + "    return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)\n", "UnprovenOriginRelation_Kd: return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)")]

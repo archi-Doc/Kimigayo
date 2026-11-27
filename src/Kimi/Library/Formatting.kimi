@@ -407,10 +407,16 @@ public group Text
             // Held so that the compiler does not destroy the buffer whose allocation this call releases or transfers
             // (SPEC 5.2.3).
             var held = Storage.InlineStorage<Text.HeapBuffer>.init(self@move)
-            let data = held.value.data
-            let length = held.value.length
-            let validated = held.value.validated
+            // The handover: the allocation's pointer is taken out of the held buffer through its address (SPEC 5.2.3),
+            // never read through `data`'s own step, whose pointers end with `held` (SPEC 5.2.1 condition 3).
+            let words = held@raw@raw/Storage.BufferRepr
+            let data: raw/u8
+            let length: isize
+            let validated: isize
             unsafe
+                data = (*words).data@move
+                length = (*words).length
+                validated = (*words).validated
                 if not Text.validSuffix(data, validated, length)
                     Raw.release(data)
                     return .Err(Text.InvalidUtf8.init())
@@ -692,8 +698,8 @@ internal group IntegerFormat
         // ASCII digits and `-` are valid UTF-8 (Utf8Slice.init's contract).
         return writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))
 
-    // SPEC 22.10.2: a 128-bit value's digits come from Storage.formatInteger128 (interim by RQ16 (a): the backend
-    // generates no 128-bit division, IMPL 21.3.3), its sign from the body; i128's minimum has 39 digits and its `-`.
+    // SPEC 22.10.2: a 128-bit value's digits come from Storage.formatInteger128 (interim by RQ16 (a): R8 formats no i128
+    // in Kimigayo; post-reduction, by measurement), its sign from the body; i128's minimum has 39 digits and its `-`.
     specialize func format<i128>(self: ref/i128, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         let value = self@follow
         // `-(value + 1)` fits i128 for every negative value, so the magnitude is computed without overflow.

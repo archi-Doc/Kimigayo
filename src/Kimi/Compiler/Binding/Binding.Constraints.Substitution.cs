@@ -37,10 +37,11 @@ public sealed partial class Binding
         var subject = this.Substitute(constraint.Subject, substitution);
         var required = constraint.RequiredType is null ? null : this.Substitute(constraint.RequiredType, substitution);
         var contract = constraint.Contract;
-        if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract))
+        if (contract?.Type is not null)
         {
-            // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own.
-            var substituted = this.Substitute(reference, substitution);
+            // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own. The
+            // declaration's own reference (`R<A>` written in R) is substituted as any reference is (ContractReferenceType, SPEC 8.4.1).
+            var substituted = this.Substitute(this.ContractReferenceType(contract), substitution);
             subject = substituted is null && incomplete ? null : subject;
             contract = substituted is null ? contract : this.BoundContractReference(substituted);
         }
@@ -48,20 +49,32 @@ public sealed partial class Binding
         return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(incomplete ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
     }
 
+    // R7-C3 (F's C2 rulings 271 (3), 273): a clause list judged at a use reads its declaration's clauses, each a premise of that
+    // declaration's environment, through the one consult (AvailableConstraintFact): a failed one is the obligation's Error resting on
+    // the declaration's record (RestOnFailure), a derived obligation of the list (DerivedObligation: `S<i32>.f(1)` over f's `U is Missing`).
+    // None at once while nothing failed (premiseFailures, the Failed state's census).
+    private PremiseFailure? FailedClauseRead(IsKoto clause, BoundConstraint fact)
+        => this.premiseFailures != 0 && clause.Parent is { } declaration && this.scopes.TryGetValue(declaration, out var scope) &&
+            scope.Constraints is { } environment && environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _)
+            ? environment.CauseOf(fact) : null;
+
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, BoundType? self = null, bool incomplete = false, bool skipUnresolved = false)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, QuerySite site, BoundType? self = null, bool incomplete = false, bool skipUnresolved = false)
     {
         var binder = substitution.Binder;
-        this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
+        this.BeginProof(site); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
+        var derived = false;
         ClauseFact? best = null;
         for (var i = 0; i < clauses.Count; i++)
         {
             var constraint = (IsKoto)clauses[i];
-            // A bound Contract reference supplies its parameters; its associated requirements
-            // are obligations of a conforming Self, not of forming the reference (SPEC 8.4.3).
-            if (binder is ContractKoto && constraint.IsAssociatedConstraint)
+            var bound = constraint.BoundConstraint;
+            // A bound Contract reference supplies its parameters; forming it judges only a clause's reference input condition, never its
+            // implementation requirements, obligations of a conforming Self (SPEC 6.1.4, 8.4.3): an associated requirement whole, its
+            // failed or unbound clause included, any other clause by its conditions (ReferenceInputCondition).
+            if (binder is ContractKoto && (constraint.IsAssociatedConstraint || (bound is { } stated && (bound = this.ReferenceInputCondition(stated)) is null)))
             {
                 continue;
             }
@@ -72,7 +85,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (constraint.BoundConstraint is not { } bound)
+            if (bound is null)
             {
                 result = ConstraintProof.Error;
                 best = FirstAtVerdict(best, new(constraint, null, ConstraintProof.Error, Limit: false));
@@ -85,7 +98,11 @@ public sealed partial class Binding
             substituted = this.ContractConstraint(substituted, scope, self);
             var unknown = this.ScopeReads.Unknown;
             var limit = this.ScopeReads.Limit;
-            var proof = this.ProveConstraint(substituted, scope);
+            var error = this.ScopeReads.Error;
+            this.ScopeReads.Conformance = null; // The R fact is the clause's own proof's (PLAN G1386), taken below: the list hands none on.
+            var proof = this.FailedClauseRead(constraint, bound) is { } failed ? this.RestOnFailure(failed) : this.ProveConstraint(substituted, scope, QuerySite.Nested);
+            var conformance = this.ScopeReads.Conformance;
+            this.ScopeReads.Conformance = null;
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
@@ -97,15 +114,22 @@ public sealed partial class Binding
             }
 
             var outcome = bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof;
+            if (this.DerivedObligation(outcome, error))
+            {
+                derived = true;
+                continue;
+            }
+
             if (outcome != ConstraintProof.Proven)
             {
                 var onLimit = outcome == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
-                best = FirstAtVerdict(best, new(constraint, substituted, outcome, onLimit));
+                best = FirstAtVerdict(best, new(constraint, substituted, outcome, onLimit) { Conformance = conformance });
             }
 
             result = CombineProof(result, outcome, true);
         }
 
+        result = this.DerivedVerdict(result, derived);
         var verdict = this.EndProof(result);
         this.LeaveClause(best, result);
         return verdict;
@@ -113,7 +137,7 @@ public sealed partial class Binding
 
     // SPEC 10.5, 8.3: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
     // neither applicability nor negation even while a waiting argument is still open.
-    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, BoundType? self)
+    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, BoundType? self, QuerySite site)
     {
         for (var i = 0; i < clauses.Count; i++)
         {
@@ -124,7 +148,7 @@ public sealed partial class Binding
 
             var substituted = this.SubstituteConstraint(bound, substitution, true);
 
-            if (!substituted.HasUnresolved && this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope) == ConstraintProof.Unknown)
+            if (!substituted.HasUnresolved && this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope, site) == ConstraintProof.Unknown)
             {
                 return true;
             }

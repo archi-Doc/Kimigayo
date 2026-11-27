@@ -105,7 +105,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|Unsupported_Kd uniq/((ref/i32) -> i32) during q"
+            "UnprovenOriginContract_Kd r0@move"
         },
         // a4v (valid, SPEC 15.3.5, 3.8): R<T> contravariant; let; value FX(b), declared FX(b), outer Origins differ.
         {
@@ -139,7 +139,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd uniq/((ref/i32) -> i32) during q"
+            "UnprovenOriginContract_Kd r0@move"
         },
         // a5j (invalid, SPEC 15.3.5, 10.7, 3.8): R<T> contravariant; return; value PC, result FX(b) (rq1r).
         {
@@ -566,7 +566,8 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
-        // f2j (invalid, SPEC 10.7, 15.3.5): Closure; header (b: ref/i32, u: uniq/FX(b)), required (ref/i32, uniq/PC).
+        // f2j (invalid, SPEC 10.7, 15.3.5): Closure; header (b: ref/i32, u: uniq/FX(b)), required (ref/i32, uniq/PC). u's `b` names the
+        // literal's per-call Origin in its own input (SPEC 15.3.4, 8.10; PLAN G972, the owner's O-403 (b)): its record beside the fit's.
         {
             "f2j",
             """
@@ -576,7 +577,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0"
+            "InvalidOriginBinding_Kd b|UnprovenOriginContract_Kd func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0"
         },
         // g1i (invalid, SPEC 15.3.5, 10.7, 3.8): raw layer; argument; arg raw/PC, param raw/FX(c).
         {
@@ -800,7 +801,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: R2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // rn3s (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): rn3k with the slots exchanged: the position first.
         {
@@ -819,7 +820,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: R2<uniq/(ref/i32 during d) during q, uniq/((ref/i32 during b) -> i32) during q> = r0@move"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // rn3n (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): C2<T, U> covariant; let; slot 1 PC against FX(b), slot 2 c == d (review B1).
         {
@@ -841,7 +842,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: C2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // n3f (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): rn3k without d outlives q (G492-a (i)'s n3f): also the declared Type's own record.
         {
@@ -859,9 +860,10 @@ public partial class TypeBindingTest
                 return 0
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: R2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move|UnprovenOriginRelation_Kd uniq/(ref/i32 during d) during q"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move|UnprovenOriginRelation_Kd uniq/(ref/i32 during d) during q"
         },
-        // rn3m (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): rn3k's other orientation (slot 1 FX(b) against PC); the declared Type's limit beside them.
+        // rn3m (invalid twice, SPEC 15.3.5, 10.7, 23.1.2): rn3k's other orientation (slot 1 FX(b) against PC); the declared Type relates
+        // no per-call Origin of slot 1 (SPEC 15.2.3).
         {
             "rn3m",
             """
@@ -880,7 +882,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: C2<uniq/((ref/i32) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move|Unsupported_Kd uniq/((ref/i32) -> i32) during q"
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // rn3g (invalid twice, review): rn3k at an argument.
         {
@@ -1136,7 +1138,9 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
-        // rt2i (invalid, review): a generic caller g<T>(x: T, y: T), uniq/PC then uniq/FX(b).
+        // rt2i (invalid, review): a generic caller g<T>(x: T, y: T), uniq/PC then uniq/FX(b). SPEC 10.8 as revised (G1128): the Function
+        // Type's input Origin in T is a slot variable that only FX's `b` bounds (PC's per-call input is bound by its own Type, 15.3.4), so
+        // T is uniq/FX(b) and PC's argument is the one that does not fit it, in either order (rt2j).
         {
             "rt2i",
             """
@@ -1148,7 +1152,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd y0@move"
+            "UnprovenOriginContract_Kd x0@move"
         },
         // rt2j (invalid, review): rt2i with FX(b) first.
         {
@@ -1171,6 +1175,32 @@ public partial class TypeBindingTest
             func g<T>(x: T, y: T) -> i32 => 0
 
             func f(q: ref/i32, x0: uniq/((ref/i32) -> i32) during q, y0: uniq/((ref/i32) -> i32) during q) -> i32
+                return g(x0@move, y0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rt2c, rt2d (valid, G1128): rt2i's bindings at covariant positions, in either order: T is FX(b), whose input Origin only FX's
+        // `b` bounds, and PC's value instantiates its per-call input to `b` (SPEC 10.7, 10.8 as revised).
+        {
+            "rt2c",
+            """
+            func g<T>(x: T, y: T) -> i32 => 0
+
+            func f(b: ref/i32, x0: (ref/i32) -> i32, y0: (ref/i32 during b) -> i32) -> i32
+                return g(x0@move, y0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        {
+            "rt2d",
+            """
+            func g<T>(x: T, y: T) -> i32 => 0
+
+            func f(b: ref/i32, x0: (ref/i32 during b) -> i32, y0: (ref/i32) -> i32) -> i32
                 return g(x0@move, y0@move)
 
             public func main() => ()
@@ -1264,9 +1294,10 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd u0@move|UnprovenOriginRelation_Kd uniq/((uniq/(ref/i32 during b)) -> i32)|Unsupported_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
+            "UnprovenOriginContract_Kd u0@move|UnprovenOriginRelation_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
         },
-        // rp1w (valid, review): Exposure: rp1v at a declared local, rejected only by the located limit at the declared Type (base and head).
+        // rp1w (valid, SPEC 15.3.4, 15.2.3, 15.6.1, 15.3.7): rp1v at a declared local. The declared Type's well-formedness relates the
+        // fixed `b` to the local's region (u0's premise and the fit give it), never the held Function Type's per-call input.
         {
             "rp1w",
             """
@@ -1276,9 +1307,21 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "Unsupported_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
+            string.Empty
         },
-        // rp2v (valid, review): Exposure: as rp1w.
+        // rp1w_ref (valid, as rp1w): shared layers.
+        {
+            "rp1w_ref",
+            """
+            func f(b: ref/i32, u0: ref/((ref/(ref/i32 during b)) -> i32)) -> i32
+                let u: ref/((ref/(ref/i32 during b)) -> i32) = u0
+                return 0
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rp2v (valid, as rp1w): `a == b` makes the two Function Types equal.
         {
             "rp2v",
             """
@@ -1289,7 +1332,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "Unsupported_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
+            string.Empty
         },
         // ri2v (valid, review): i1i's twin: a local region on both sides.
         {
@@ -1360,7 +1403,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "TypeMismatch_Kd r0@move|UnprovenOriginRelation_Kd let r: (uniq/(ref/i32 during d) during q, uniq/i64 during q) = r0@move"
+            "TypeMismatch_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
         },
         // s3 (invalid twice, re-review): N6: a Function part, then a Type mismatch, then c == d: the mismatch ends the decomposition; as dev.
         {
@@ -1400,7 +1443,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
         // k2 (invalid twice, re-review): (local@ref, g) at return t: unchanged.
         {
@@ -1413,7 +1456,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
         // k3 (invalid twice, re-review): the H11 move: two body chains after g.
         {
@@ -1426,7 +1469,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
         // k6 (invalid twice, re-review): the H11 move: a declared local after t.
         {
@@ -1440,7 +1483,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t@move|UnprovenOriginRelation_Kd ref/((ref/i32 during x) -> i32)|UnsatisfiedOriginRelation_Kd let u: (ref/((ref/i32 during x) -> i32), ref/i32 during x) = t@move"
+            "UnprovenOriginContract_Kd t@move|UnprovenOriginRelation_Kd ref/((ref/i32 during x) -> i32)|UnsatisfiedOriginRelation_Kd t@move"
         },
         // rq2av (invalid, re-review): rq2a through a var local (G492-a (i)'s implementation review).
         {
@@ -1461,6 +1504,7 @@ public partial class TypeBindingTest
         },
     };
 
+    // R7-O1 H: a local annotation's fit is A5's record at its initializer (D5), and the twin at `return t` went (rn3*, n3f, s2, k*).
     [Theory]
     [MemberData(nameof(InvariantFunctionRows))]
     public void AnInvariantFunctionPartRelatesBothWays(string row, string source, string records)
@@ -1476,12 +1520,12 @@ public partial class TypeBindingTest
         var c = Parse("func f(b: ref/i32, x: uniq/((ref/i32) -> i32) during b, y: uniq/((ref/i32 during b) -> i32) during b, z: uniq/((ref/i32 during static) -> i32) during b, s: ref/((ref/i32) -> i32) during b, t: ref/((ref/i32 during b) -> i32) during b) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var types = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters.Select(x => x.Type.TypeOf()!).ToArray();
-        Assert.True(Binding.FitsType(types[4], types[5]));  // A shared layer is covariant: PC <: FX(b).
-        Assert.False(Binding.FitsType(types[5], types[4])); // The required per-call input is rigid.
-        Assert.False(Binding.FitsType(types[1], types[2])); // An exclusive layer: PC and FX(b) are not equal, either way.
-        Assert.False(Binding.FitsType(types[2], types[1]));
-        Assert.False(Binding.FitsType(types[1], types[3]));
-        Assert.False(Binding.FitsType(types[3], types[1]));
-        Assert.True(Binding.FitsType(types[1], types[1]));
+        Assert.True(c.Binding.FitsType(types[4], types[5]));  // A shared layer is covariant: PC <: FX(b).
+        Assert.False(c.Binding.FitsType(types[5], types[4])); // The required per-call input is rigid.
+        Assert.False(c.Binding.FitsType(types[1], types[2])); // An exclusive layer: PC and FX(b) are not equal, either way.
+        Assert.False(c.Binding.FitsType(types[2], types[1]));
+        Assert.False(c.Binding.FitsType(types[1], types[3]));
+        Assert.False(c.Binding.FitsType(types[3], types[1]));
+        Assert.True(c.Binding.FitsType(types[1], types[1]));
     }
 }

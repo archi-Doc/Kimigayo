@@ -41,6 +41,21 @@ public class ConstructorTypeInferenceTest
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 10.2.2 step 1, 3.5.3 (valid): a parameter of a read Type binds the terminal referent of a `ref` argument, which is value-read;
+    // whether T is a read Type is decided under the binder's Constraints: a constructor's own clause (its conditional member, SPEC 7.5)
+    // as its structure's (the solve's binder, SolveBinder).
+    [Theory]
+    [InlineData("struct Cell<T>\n    public let value: T\n    public init(value: T)\n        T is PrimitiveInteger\n        self.value = value\n")]
+    [InlineData("struct Cell<T>\n    T is PrimitiveInteger\n    public let value: T\n    public init(value: T) => self.value = value\n")]
+    public void AReadTypeSlotOfAConstructorBindsTheReferent(string cell)
+    {
+        var c = MinimalEmissionTest.Analyze(cell + "func k(n: ref/i32) -> i32\n    let c = Cell.init(n)\n    return c.value\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true });
+        var plan = Assert.IsType<CallPlan>(call.CallOf());
+        Assert.Equal("i32", Assert.Single(plan.DeclaringType!.Components).Name);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
@@ -195,15 +210,16 @@ public class ConstructorTypeInferenceTest
     [InlineData("struct H {a}\n    public let n: i32\n    public init(x: ref/i32 during a) => self.n = 1\n    public init(x: ref/i64 during a) => self.n = 2\nfunc f() -> i32\n    let h = H.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.AmbiguousBinding_Kd) })]
     [InlineData("struct G<T> {a}\n    public let r: ref/T during a\n    public init(x: ref/T during a) => self.r = x\nfunc f() -> i32\n    let g = G.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
     [InlineData(Optional + "func f() -> bool\n    var v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    v = 2\n    return h.has()\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
-    [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    return H2.init(.Some(v@ref))\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    return H2.init(.Some(v@ref))\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     // SPEC 15.6.5's call clause (DECISIONS R4-M104): the retained argument `.Some(v@ref)` is an aggregate holding the borrow, not a Copy,
     // so the conflict at `let v` is independent (MirBorrowsTest's g526-agg-arg). The qualified `Option.Some` twin's return is rejected by
     // Binding and lowered Opaque, so it reports the relation only (until R7, R4-M122).
     [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
-    [InlineData(Optional + "func g(p: ref/i32) -> H2 during p\n    let v: i32 = 1\n    let h: H2 during p = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    [InlineData(Optional + "func g(p: ref/i32) -> H2 during p\n    let v: i32 = 1\n    let h: H2 during p = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     [InlineData(Invariant + "func g(p: ref/i32) -> U during p\n    let v: i32 = 1\n    var w = v@ref\n    return U.init(.Some(w@uniq))\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     [InlineData("struct H {a}\n    public let r: ref/i32 during a\n    public init(x: ref/i32 during a, y: i32) => self.r = x\nfunc f() -> i32\n    let h = H.init($abort(\"x\"), true)\n    return 0\n", new[] { nameof(DiagnosticCode.NoApplicableOverload_Kd) })]
     [InlineData("enum E {a}\n    A(ref/i32 during a)\n    B\nfunc f() -> i32\n    let e = E.A($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.MissingOriginBinding_Kd) })]
+    // R7-O1 H: the twins went; the Loan conflict at `let v` that the failed node hid is a counted dependent (Q13).
     public void TheTwinsOfAnUnfixedOwnOriginSlotKeepTheirRecords(string body, string[] codes)
         => Assert.Equal(codes, DiagnosticCorpus.Check(body + Main).Diagnostics.Select(static x => x.Code));
 
@@ -241,7 +257,7 @@ public class ConstructorTypeInferenceTest
     [InlineData("struct Gu<T, U>\n    public let t: T\n    public let o: Option<U>\n    public init(x: T, o: Option<U>)\n        self.t = x@move\n        self.o = o@move\nfunc g() -> i32\n    let n: i32 = 1\n    let x = Gu.init(n, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
     [InlineData("struct W<T>\n    public let t: T\n    public init(x: T, o: Option<T>)\n        self.t = x@move\n    public init(x: T, o: Option<i64>)\n        self.t = x@move\nfunc g() -> i32\n    let n: i32 = 1\n    let w = W.init(n, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.AmbiguousBinding_Kd) })]
     [InlineData("struct V<T>\n    public let k: i32\n    public init(x: ref/i32, y: ref/T, o: Option<T>)\n        self.k = 0\n    public init(x: ref/T, y: ref/T, o: Option<T>)\n        self.k = 1\nfunc g(x: ref/(ref/i32 during w), y: ref/i32) -> i32\n    let c = V.init(x, y, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.ConstructorSelectionChanged_Kd) })]
-    [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc.init(n, .Some(true))\n    return 0\n", new[] { nameof(DiagnosticCode.TypeMismatch_Kd) })]
+    [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc.init(n, .Some(true))\n    return 0\n", new[] { nameof(DiagnosticCode.NoApplicableOverload_Kd) })]
     [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var v: i32 = 1\n    let x = G2.init(q, .Some(v@ref))\n    v = 2\n    let k = x.r\n    return 0\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
     [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var n: i32 = 1\n    let x = G2.init(q, .Some(n))\n    n = 2\n    let k = x.s\n    return 0\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
     public void TheTwinsOfAWaitingArgumentAtTheFixedConstructionKeepTheirRecords(string body, string[] codes)

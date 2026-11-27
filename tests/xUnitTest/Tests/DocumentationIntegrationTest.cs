@@ -130,6 +130,20 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
         Assert.Same(comment, Assert.Single(tree.Compilation.Binding.GetDocumentation(comment.Declaration!)));
     }
 
+    // GetDocumentation documents a declaration of its own compilation, whose module the compilation holds; another compilation's
+    // declaration, even of the same source, is rejected.
+    [Fact]
+    public void AnotherCompilationsDeclarationIsRejected()
+    {
+        const string Source = "/// d\npublic struct S";
+        var (tree, other) = (DocumentationCommentTest.Parse(Source), DocumentationCommentTest.Parse(Source));
+        Assert.True(tree.Compilation.Bind().IsComplete);
+        Assert.True(other.Compilation.Bind().IsComplete);
+        var comment = Assert.Single(Assert.Single(other.DocumentationSources).Comments);
+        Assert.Same(comment, Assert.Single(other.Compilation.Binding.GetDocumentation(comment.Declaration!, true)));
+        Assert.Throws<ArgumentException>(() => tree.Compilation.Binding.GetDocumentation(comment.Declaration!, true));
+    }
+
     [Fact]
     public void DocumentationDoesNotChangeBindingAnalysisLoweringOrEmission()
     {
@@ -143,7 +157,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
         {
             var c = Compilation.CreateForTest();
             c.CollectDocumentation = collect;
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("same.kimi", source));
             Assert.True(c.Bind().IsComplete);
             if (collect)
@@ -204,7 +218,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
     {
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n        /// windows\n        public struct S\n    #case _\n        /// other\n        public struct S"));
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         var target = Compilation.CreateForTest();

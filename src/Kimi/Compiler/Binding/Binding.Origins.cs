@@ -7,7 +7,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Origin expressions (SPEC 15.3.1, 15.3.6): atoms interned per binder, kind and slot (OriginAtom, kept in the binder's module's
-// NodeColumns: OriginAtomRows, DECISIONS BU-220), meets interned in one canonical operand order (Meet, CompareOrigins) and the
+// NodeColumns: OriginAtomRows, DECISIONS BU-220), meets interned in one canonical operand order (Meet, CompareOrigins; over the library
+// layer's frozen level and the compilation's, PassPart.Levels, PLAN G949 Stage 2 U4) and the
 // context-free outlives facts (OriginOutlives); an obligation's record is
 // Binding.Obligations.cs's. Declaration schemas are Binding.Origins.Schemas.cs's; a Type position's written and omitted Origins
 // Binding.Origins.Annotations.cs's.
@@ -19,6 +20,11 @@ public sealed partial class Binding
     private readonly OriginAtomRows originAtoms;
     private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
     private long originRowProbes;
+
+    // The program's atoms at binders of the frozen library table (OriginAtomRows; ruling 203 (4)): the family's column form over the
+    // library's ids (DECISIONS BU-220), outside the frozen layer; emptied where the item contexts are (Invalidate), whose memoized plans
+    // hold its atoms, never per pass, so one key keeps one atom object across Binds until an edit (G949 ruling 205 N4).
+    private PagedColumn<BoundOrigin?[]?> programAtoms;
 
     /// <summary>Gets the entries the owner-keyed Origin interners' row searches (KeyedRow: originAtoms, openOrigins) probed over the
     /// Binding's lifetime, which a scaling check reads.</summary>
@@ -209,35 +215,46 @@ public sealed partial class Binding
                 hash.Add(RuntimeHelpers.GetHashCode(scratch[i]));
             }
 
+            // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4).
             var key = hash.ToHashCode();
-            if (!this.originExpressions.TryGetValue(key, out var bucket))
+            var levels = PassPart.Interned(this.Library, this.Library.Layer.Intersections, this.originExpressions);
+            foreach (var level in levels)
             {
-                this.originExpressions.Add(key, bucket = new(1));
+                if (level.TryGetValue(key, out var bucket) && Match(bucket, scratch, count) is { } found)
+                {
+                    return found;
+                }
             }
 
-            for (var i = 0; i < bucket.Count; i++)
+            var open = levels.Open;
+            if (!open.TryGetValue(key, out var into))
             {
-                var candidate = bucket[i];
-                if (candidate.Operands.Count != count)
-                {
-                    continue;
-                }
-
-                var equal = true;
-                for (var j = 0; j < count; j++)
-                {
-                    equal &= ReferenceEquals(candidate.Operands[j], scratch[j]);
-                }
-
-                if (equal)
-                {
-                    return candidate;
-                }
+                open.Add(key, into = new(1));
             }
 
             var created = new BoundOrigin(OriginKind.Intersection, operands: scratch.AsSpan(0, count).ToArray());
-            bucket.Add(created);
+            into.Add(created);
             return created;
+
+            static BoundOrigin? Match(List<BoundOrigin> bucket, BoundOrigin[] scratch, int count)
+            {
+                for (var i = 0; i < bucket.Count; i++)
+                {
+                    var candidate = bucket[i];
+                    var equal = candidate.Operands.Count == count;
+                    for (var j = 0; equal && j < count; j++)
+                    {
+                        equal = ReferenceEquals(candidate.Operands[j], scratch[j]);
+                    }
+
+                    if (equal)
+                    {
+                        return candidate;
+                    }
+                }
+
+                return null;
+            }
 
             void Add(BoundOrigin origin)
             {
@@ -269,17 +286,42 @@ public sealed partial class Binding
     }
 
     /// <summary>The `originAtoms` family's one accessor (DECISIONS BU-220): a kept interner, a binder's atoms in its module's NodeColumns
-    /// at its SyntaxId, one KeyedRow of them by kind and slot, never reset; a renumbering moves the row with its binder. Its members keep
-    /// the names and the tuple key its readers use.</summary>
+    /// at its SyntaxId, one KeyedRow of them by kind and slot, never reset; a renumbering moves the row with its binder. From the freeze
+    /// (PLAN G949 S1-1; ruling 203 (4)) an atom a later step interns at a binder of the frozen library table, such as a library
+    /// requirement member's Input atoms that an Item's call context interns at MIR time (RequirementItemContext, `Body` the forming body),
+    /// is a program fact: a row of the program's (programAtoms: the same KeyedRow form at the binder's library id, emptied with the item
+    /// contexts at an edit), found after the library's column, so the frozen layer holds no row a later step made. Its members keep the
+    /// names and the tuple key its readers use.</summary>
     private readonly struct OriginAtomRows(Binding binding)
     {
         internal BoundOrigin this[(Koto Binder, OriginKind Kind, int Slot) key]
         {
-            set => KeyedRow.Put(ref HirTables.Of(key.Binder).Families.OriginAtoms.Ref(key.Binder.SyntaxId), Interned(value, key.Binder, (key.Kind, key.Slot)), AtomKey, ref binding.originRowProbes);
+            set
+            {
+                var atom = Interned(value, key.Binder, (key.Kind, key.Slot));
+                if (key.Binder.SyntaxOwner is { Frozen: true } library)
+                {
+                    binding.programAtoms.Grow(library.Count); // A frozen table's count is final.
+                    KeyedRow.Put(ref binding.programAtoms.Ref(key.Binder.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
+                }
+                else
+                {
+                    KeyedRow.Put(ref HirTables.Of(key.Binder).Families.OriginAtoms.Ref(key.Binder.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
+                }
+            }
         }
 
         internal bool TryGetValue((Koto Binder, OriginKind Kind, int Slot) key, [NotNullWhen(true)] out BoundOrigin? origin)
-            => (origin = key.Binder.SyntaxOwner is { } table ? KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes) : null) is not null;
+        {
+            var table = key.Binder.SyntaxOwner;
+            origin = table is null ? null : KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
+            if (origin is null && table is { Frozen: true })
+            {
+                origin = KeyedRow.Find(binding.programAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
+            }
+
+            return origin is not null;
+        }
 
         internal void Add((Koto Binder, OriginKind Kind, int Slot) key, BoundOrigin origin)
         {

@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the published shape of a selected call and its ordered operands.
-// Input: Binding's selection, arguments and default declarations. Output: CallPlan.Of(node, ordinal).
+// Input: Binding's selection, arguments and default declarations. Output: CallPlan.Of(binding, node, ordinal), read through the reader's
+// Binding.
 // The selected callee, acquisition and omitted defaults come from the same Binding decision.
 // Must not resolve a call again or make consumers inspect syntax to recover its meaning.
 
@@ -28,7 +29,7 @@ public readonly record struct BoundDefaultArgument(Koto Expression, BindingSymbo
 /// <summary>The default of parameter <paramref name="Index"/> of a function (DefaultDecl, plan 5.6.2): one template per declaration and
 /// default, owned by the declaration a call selects statically, never an override or a specialization. It reads each earlier parameter
 /// i as the slot its call prepared (Res PreparedParam) of the declared Type <see cref="Parameter"/>(i) and produces
-/// <see cref="Parameter"/>(<paramref name="Index"/>); at a call each is <c>TyCtxt.Apply(Parameter(i), SubstOf(call))</c>.</summary>
+/// <see cref="Parameter"/>(<paramref name="Index"/>); at a call each is <c>TyCtxt.Apply(Parameter(i), SubstOf(call)).Type</c>.</summary>
 /// <param name="Function">The declaration.</param>
 /// <param name="Index">The parameter's slot.</param>
 internal readonly record struct DefaultDecl(FunctionKoto Function, int Index)
@@ -114,6 +115,17 @@ public sealed class CallPlan
     /// <summary>Gets a value call's receiver acquisition.</summary>
     public SemanticsKind ReceiverKind { get; internal set; } = SemanticsKind.Ref;
 
+    /// <summary>Gets the decider of a value call whose Closure receiver is by case (SPEC 7.7.3, 8.15.2; PLAN G13): the callee's Closure
+    /// Type whose <c>Receiver</c> gave the call's Exclusive mode while its <c>CaseFreeReceiver</c> is Shared, so that each admitted case
+    /// acquires the callee as that Type's case receiver gives it. Null for any other call: the one presence of
+    /// <see cref="SharedReceiver"/>. Consumers read it through <see cref="HirTables.CaseDecider"/>.</summary>
+    public BoundType? CaseDecider { get; private set; }
+
+    /// <summary>Gets a by-case value call's Shared receiver acquisition, beside the Exclusive <see cref="ReceiverOperation"/> in
+    /// <see cref="ReceiverKind"/>: the callee as a Shared call acquires it (default for an owned callee, whose take borrows it shared);
+    /// default where <see cref="CaseDecider"/> is null.</summary>
+    public BoundArgumentOperation SharedReceiver { get; private set; }
+
     // The position in ArgumentOperations of the argument that stands for an operand its expansion already evaluated (ExpansionPlan's
     // Evaluated): a key resolution's length of the receiver the selection evaluated, an update setter's computed value; -1 for any other
     // call. Binding fixes it where it creates the call, with the argument list.
@@ -123,6 +135,14 @@ public sealed class CallPlan
     internal bool TupleOperator { get; set; }
 
     internal ConversionKoto? AdaptationSource { get; set; }
+
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; G812 ruling 159): the selected candidate's premise was Unknown at a split's mark
+    // (its trial's Unknown proof read the split, premiseReadsSplit, at a Type argument holding a mark, Binding.HoldsMark: the call is
+    // below a split call's open position), written with the
+    // selection (Binding.Calls): the call's obligation rests at its verdict (Binding.Check), whose record is the split call's located
+    // Unsupported_Kd, and is never judged again at the published, unmarked Type. An unformed binding's premise is judged there
+    // (SPEC 8.3.4: pt8p's UnprovenConstraint_Kd).
+    internal bool PremiseReadsMark { get; set; }
 
     // The Contract reference whose requirement the call selected: a bound reference (Indexable<Name>) when the Contract
     // takes Type arguments, else the Contract itself. Every instance dispatches through the conformance to that reference
@@ -146,12 +166,12 @@ public sealed class CallPlan
     /// Property's getter and setter, an index expression's key resolution, indexer and view range, the construction of a range or
     /// <c>^</c> value, a for loop's iterator entry and step, a dictionary literal's key lookup, and the calls of a formatting plan
     /// (an interpolation's buffer and adapter, then its writes; a <c>$tryWrite</c>'s writes, then its status).</summary>
+    /// <param name="binding">The reader's Binding, whose current pass's plans are read.</param>
     /// <param name="node">The node.</param>
     /// <param name="ordinal">The position of the call among the node's calls, in evaluation order.</param>
     /// <returns>The call, or null when the node has no call at that position.</returns>
-    internal static CallPlan? Of(Koto node, int ordinal = 0)
+    internal static CallPlan? Of(Binding binding, Koto node, int ordinal = 0)
     {
-        var binding = node.CodeContext.Compilation.Binding;
         if (node.Formatting is { } format)
         {
             // A $tryWrite's acquisition is no call: it only acquires the writer operand.
@@ -164,7 +184,7 @@ public sealed class CallPlan
         {
             InvocationKoto call => Nth(ordinal, Plan(call)),
             MacroKoto { Operand: InvocationKoto call } => Nth(ordinal, Plan(call)),
-            ConversionKoto conversion => Nth(ordinal, Plan(conversion.CreationCall)),
+            ConversionKoto conversion => Nth(ordinal, Plan(binding.CreationOf(conversion))),
             IndexKoto index => Nth(ordinal, Plan(binding.ResolvedKeyCall(index)), Plan(binding.IndexerCall(index, false)), Plan(binding.IndexerCall(index, true)), Plan(binding.ViewRangeCall(index))),
             RangeKoto or FromEndIndexKoto => Nth(ordinal, Plan(binding.RangeValueCall(node))),
             MemberAccessKoto or IdentifierNameKoto => Nth(ordinal, Plan(binding.PropertyCall(node, PropertyAccessorKind.Get)), Plan(binding.PropertyCall(node, PropertyAccessorKind.Set))),
@@ -195,23 +215,25 @@ public sealed class CallPlan
     /// <summary>Gets a declaration a node's own selection calls, which a node resting on a failed target reads (SPEC 23.1.2): an
     /// invocation's selected target as presented (SPEC 22.1), a Property use's accessors, getter then setter (SPEC 11.3; the accessor
     /// declarations, not their executing functions). One row per form; a form whose selection calls a declaration adds a row.</summary>
+    /// <param name="binding">The reader's Binding, whose current pass's plans are read.</param>
     /// <param name="node">The node.</param>
     /// <param name="ordinal">The position among the declarations the node calls, in evaluation order.</param>
     /// <returns>The declaration, or null when the node calls none at that position.</returns>
-    internal static Koto? Called(Koto node, int ordinal = 0) => node switch
+    internal static Koto? Called(Binding binding, Koto node, int ordinal = 0) => node switch
     {
-        InvocationKoto invocation => ordinal == 0 && invocation.BoundCall is { } call ? node.CodeContext.Compilation.Binding.Library.PresentedTarget(call.Target).Declaration : null,
+        InvocationKoto invocation => ordinal == 0 && binding.CallOf(invocation) is { } call ? binding.Library.PresentedTarget(call.Target).Declaration : null,
         MemberAccessKoto or IdentifierNameKoto when node.BoundSymbol?.Property is not null =>
-            Of(node, ordinal)?.Target.Declaration is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : null,
+            Of(binding, node, ordinal)?.Target.Declaration is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : null,
         _ => null,
     };
 
     /// <summary>Gets the function that executes a custom accessor (SPEC 11.3), which its calls target: its Type is the accessor's result,
     /// and its parameters (<see cref="Parameter"/>) are the receiver <c>self</c>, then the input <c>value</c>.</summary>
+    /// <param name="binding">The reader's Binding, whose executing functions are read.</param>
     /// <param name="accessor">An accessor with a body.</param>
     /// <returns>The executing function's symbol.</returns>
-    internal static BindingSymbol Accessor(PropertyAccessorKoto accessor)
-        => accessor.CodeContext.Compilation.Binding.AccessorFunction(Binding.Accessor(accessor)).BoundSymbol!;
+    internal static BindingSymbol Accessor(Binding binding, PropertyAccessorKoto accessor)
+        => binding.AccessorFunction(Binding.Accessor(accessor)).BoundSymbol!;
 
     /// <summary>Gets how a call of a function is selected (SPEC 6.4.6, 8.4): a virtual slot dispatches on its receiver's Type, a requirement
     /// to its conforming Type's witness, any other function is called directly.</summary>
@@ -226,14 +248,37 @@ public sealed class CallPlan
 
     /// <summary>Gets a function's parameter as its body reads it: slot <paramref name="index"/>, an accessor's <c>self</c> and <c>value</c>
     /// included, or at -1 the receiver <c>self</c> a constructor initializes or a destructor destroys (SPEC 6.3).</summary>
+    /// <param name="binding">The reader's Binding, whose parameter symbols are read.</param>
     /// <param name="function">A function, a closure or an accessor's executing function.</param>
     /// <param name="index">The parameter slot, or -1.</param>
     /// <returns>The parameter, or null at -1 of another function.</returns>
-    internal static BindingSymbol? Parameter(BindingSymbol function, int index)
+    internal static BindingSymbol? Parameter(Binding binding, BindingSymbol function, int index)
     {
         var declaration = (FunctionKoto)function.Declaration;
-        var binding = declaration.CodeContext.Compilation.Binding;
         return index < 0 ? binding.SpecialReceiver(declaration) : binding.ParameterSymbol(declaration, index);
+    }
+
+    /// <summary>Gets the number of parameters a function's signature declares, an accessor's <c>self</c> and <c>value</c> included
+    /// (SPEC 7.3): the one count a call's coverage (<see cref="Covers"/>) and a body's parameters read. The function's declaration is a
+    /// <see cref="FunctionKoto"/> (a closure and an accessor's executing function are too); a declaration of another kind is a broken
+    /// contract, whose failure is the cast's <see cref="InvalidCastException"/>.</summary>
+    /// <param name="function">A function, a closure or an accessor's executing function.</param>
+    /// <returns>The count.</returns>
+    internal static int Arity(BindingSymbol function) => ((FunctionKoto)function.Declaration).Parameters.Count;
+
+    /// <summary>Gets the number of parameters the call passes: its function's (<see cref="Arity(BindingSymbol)"/>), or a value call's
+    /// signature's.</summary>
+    /// <returns>The count.</returns>
+    internal int Arity() => this.Kind == CalleeKind.Value ? this.Signature.Components[0].Components.Count : Arity(this.Target);
+
+    /// <summary>Gets whether the call's operations, omitted defaults and receiver cover its parameters (SPEC 7.3), a receiver only where
+    /// its function takes one (a value call has none): the one coverage rule, which HasFacts states for a call the builder builds as it
+    /// is and the builder's call assembly checks.</summary>
+    /// <returns>Whether they cover them.</returns>
+    internal bool Covers()
+    {
+        var receiver = this.Kind != CalleeKind.Value && this.Receiver is not null;
+        return this.ArgumentOperations.Length + this.DefaultArguments.Length + (receiver ? 1 : 0) == this.Arity() && (!receiver || this.Target.ReceiverIndex >= 0);
     }
 
     internal void SetReceiverProjection(BoundArgumentOperation operation, BoundMemberPath path)
@@ -269,7 +314,9 @@ public sealed class CallPlan
         this.DeclaringType = null;
         this.BasePath = null;
         this.ReceiverOperation = default;
+        this.SetCaseReceiver(null, default);
         this.TupleOperator = false;
+        this.PremiseReadsMark = false;
         this.RequirementContract = null;
         this.VirtualSlotType = null;
         this.VirtualBaseLookupType = null;
@@ -285,7 +332,7 @@ public sealed class CallPlan
         this.inputOriginCount = 0;
     }
 
-    internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    internal void Set(Binding binding, BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         this.Kind = KindOf(target);
         this.AdaptationSource = null;
@@ -294,10 +341,12 @@ public sealed class CallPlan
         this.receiver = receiver;
         this.ConformingType = conformingType;
         this.TupleOperator = false;
+        this.PremiseReadsMark = false;
         this.RequirementContract = null;
         this.DeclaringType = declaringType;
         this.BasePath = basePath;
         this.ReceiverOperation = receiverOperation;
+        this.SetCaseReceiver(null, default);
         this.SetOperations(operations);
         if (this.defaultArguments.Length != defaults.Length)
         {
@@ -347,7 +396,7 @@ public sealed class CallPlan
         lengthArguments.CopyTo(this.lengthArguments);
         if (target.Declaration is FunctionKoto { IsVirtual: true } original)
         {
-            original.CodeContext.Compilation.Binding.SelectVirtualCall(this, original); // The virtual fields are read only for this kind.
+            binding.SelectVirtualCall(this, original); // The virtual fields are read only for this kind.
         }
     }
 
@@ -360,7 +409,16 @@ public sealed class CallPlan
         this.DeclaredSignature = declaredSignature;
         this.ReturnType = signature.Components[1];
         this.ReceiverKind = receiverKind;
+        this.SetCaseReceiver(null, default);
         this.SetOperations(arguments);
+    }
+
+    // A value call's by-case receiver (CaseDecider, SharedReceiver), written together by BindValueCall after SetValue, which resets them as
+    // Set and Clear do: the storage is reused on a rebind, so a call rebound as a case-free or a named one keeps neither.
+    internal void SetCaseReceiver(BoundType? decider, in BoundArgumentOperation shared)
+    {
+        this.CaseDecider = decider;
+        this.SharedReceiver = shared;
     }
 
     private void SetOperations(ReadOnlySpan<BoundArgumentOperation> operations)

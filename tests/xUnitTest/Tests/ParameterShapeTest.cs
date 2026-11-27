@@ -5,6 +5,7 @@ using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -16,27 +17,27 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
     private const string Game = "func bumped(score: Score) -> Score\n    var result = score\n    result.points += 1\n    return result\nfunc bump(score: uniq/Score) -> () => score.points += 10\nstruct Game\n    public var score: Score = Score.init()\n";
 
     [Theory]
-    [InlineData("func bump(score: Score) -> Score => score\nfunc bump(score: uniq/Score) -> () => ()", "uniq/Score", "Exclusive", "ByValue", "position 0 of an unbound call", "Value(Score)", false)]
-    [InlineData("func inspect(value: ref/i32) -> () => ()\nfunc inspect(value: uniq/i32) -> () => ()", "uniq/i32", "Exclusive", "Shared", "position 0 of an unbound call", "Value(i32)", false)]
-    [InlineData("func select(value: Node ! flag: bool) -> () => ()\nfunc select(value: ref/Node ! flag: i32) -> () => ()", "ref/Node", "Shared", "ByValue", "position 0 of an unbound call", "Value(Node)", false)]
-    [InlineData("func g<T>(value: T) -> () => ()\nfunc g(value: uniq/Node) -> () => ()", "uniq/Node", "Exclusive", "ByValue", "position 0 of an unbound call", "Value(Node)", true)]
-    [InlineData("func route(value: obj/Node) -> () => ()\nfunc route(value: objref/Node) -> () => ()", "objref/Node", "Shared", "ByValue", "position 0 of an unbound call", "Object(Node)", false)]
-    [InlineData("struct Api<A, B>\n    public func inspect(value: Array<A>) -> () => ()\n    public func inspect(value: ref/Array<B>) -> () => ()", "ref/Array<B>", "Shared", "ByValue", "position 0 of an unbound call", "Value(Array<B>)", true)]
-    [InlineData("func fill<length N>(value: [(N + 1) of i32], witness: [N of i32]) -> () => ()\nfunc fill<length M>(value: ref/[2 of i32], witness: [M of i32]) -> () => ()", "ref/[2 of i32]", "Shared", "ByValue", "position 0 of an unbound call", "Value([2 of i32])", true)]
-    [InlineData("struct Point\n    public func inspect(self: ref/Self) -> () => ()\n    public func inspect(value: Self) -> () => ()", "Self", "ByValue", "Shared", "position 0 of an unbound call", "Value(Point)", false)]
-    [InlineData("func choose<T>(value: T, items: ref/Array<T>) -> () => ()\nfunc choose<T>(value: Node, items: ref/Array<T>) -> () => ()", "Node", "ByValue", "Shared", "position 0 of an unbound call", "Value(Node)", true)]
-    [InlineData("struct Box<A>\n    public func f(value: A) -> () => ()\n    public func f(value: Node) -> () => ()", "Node", "ByValue", "Shared", "position 0 of an unbound call", "Value(Node)", true)]
-    [InlineData("func tag(! value: Value, count: i32) -> () => ()\nfunc tag(! count: i32, value: ref/Value) -> () => ()", "ref/Value", "Shared", "ByValue", "the external name value", "Value(Value)", false)]
-    [InlineData("struct Point\n    public var x: i32 = 0\n    public func scale(self: uniq/Self, by: i32) -> () => ()\n    public func scale(self: uniq/Self, by: ref/i32) -> () => ()", "ref/i32", "Shared", "ByValue", "position 0 of a bound call", "Value(i32)", false)]
-    [InlineData("contract Api\n    func f(self, value: Node) -> ()\n    func f(self, value: ref/Node) -> ()", "ref/Node", "Shared", "ByValue", "position 0 of a bound call", "Value(Node)", false)]
-    public void TheLaterDeclarationIsRejectedAtItsParameter(string source, string parameter, string mode, string other, string correspondence, string key, bool conservative)
+    [InlineData("func bump(score: Score) -> Score => score\nfunc bump(score: uniq/Score) -> () => ()", "uniq/Score", "Exclusive", "ByValue", "position 0 of an unbound call", "Value(Score)")]
+    [InlineData("func inspect(value: ref/i32) -> () => ()\nfunc inspect(value: uniq/i32) -> () => ()", "uniq/i32", "Exclusive", "Shared", "position 0 of an unbound call", "Value(i32)")]
+    [InlineData("func select(value: Node ! flag: bool) -> () => ()\nfunc select(value: ref/Node ! flag: i32) -> () => ()", "ref/Node", "Shared", "ByValue", "position 0 of an unbound call", "Value(Node)")]
+    [InlineData("func g<T>(value: T) -> () => ()\nfunc g(value: uniq/Node) -> () => ()", "uniq/Node", "Exclusive", "ByValue", "position 0 of an unbound call", "Value(Node)")]
+    [InlineData("func route(value: obj/Node) -> () => ()\nfunc route(value: objref/Node) -> () => ()", "objref/Node", "Shared", "ByValue", "position 0 of an unbound call", "Object(Node)")]
+    [InlineData("struct Api<A, B>\n    public func inspect(value: Array<A>) -> () => ()\n    public func inspect(value: ref/Array<B>) -> () => ()", "ref/Array<B>", "Shared", "ByValue", "position 0 of an unbound call", "Value(Array<B>)")]
+    [InlineData("func fill<length N>(value: [(N + 1) of i32], witness: [N of i32]) -> () => ()\nfunc fill<length M>(value: ref/[2 of i32], witness: [M of i32]) -> () => ()", "ref/[2 of i32]", "Shared", "ByValue", "position 0 of an unbound call", "Value([2 of i32])")]
+    [InlineData("struct Point\n    public func inspect(self: ref/Self) -> () => ()\n    public func inspect(value: Self) -> () => ()", "Self", "ByValue", "Shared", "position 0 of an unbound call", "Value(Point)")]
+    [InlineData("func choose<T>(value: T, items: ref/Array<T>) -> () => ()\nfunc choose<T>(value: Node, items: ref/Array<T>) -> () => ()", "Node", "ByValue", "Shared", "position 0 of an unbound call", "Value(Node)")]
+    [InlineData("struct Box<A>\n    public func f(value: A) -> () => ()\n    public func f(value: Node) -> () => ()", "Node", "ByValue", "Shared", "position 0 of an unbound call", "Value(Node)")]
+    [InlineData("func tag(! value: Value, count: i32) -> () => ()\nfunc tag(! count: i32, value: ref/Value) -> () => ()", "ref/Value", "Shared", "ByValue", "the external name value", "Value(Value)")]
+    [InlineData("struct Point\n    public var x: i32 = 0\n    public func scale(self: uniq/Self, by: i32) -> () => ()\n    public func scale(self: uniq/Self, by: ref/i32) -> () => ()", "ref/i32", "Shared", "ByValue", "position 0 of a bound call", "Value(i32)")]
+    [InlineData("contract Api\n    func f(self, value: Node) -> ()\n    func f(self, value: ref/Node) -> ()", "ref/Node", "Shared", "ByValue", "position 0 of a bound call", "Value(Node)")]
+    public void TheLaterDeclarationIsRejectedAtItsParameter(string source, string parameter, string mode, string other, string correspondence, string key)
     {
         var c = Analyze(Types + source);
         var error = Assert.Single(Errors(c));
         Assert.Equal(nameof(DiagnosticCode.ParameterShapeMismatch_Kd), error.Code);
         Assert.Equal(parameter, error.Text);
         Assert.Equal($"{correspondence} is acquired {mode} here and {other} there", error.Label);
-        Assert.Equal(conservative, error.Note is not null);
+        Assert.Null(error.Note); // R7-E2 E2-3b (ruling 7, D3): the conservative overlap Note is removed (M3; the five generic rows had it).
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
@@ -121,6 +122,20 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         Assert.Equal("read", error.Text);
     }
 
+    // SPEC 7.4, 8.4.3, 23.1.2: each inherited requirement whose parameter conflicts is its own failed requirement, reported at the refining
+    // Contract (M1: dev reported only the first, ParameterShapes.cs:391); a second requirement whose declarations agree adds none (its twin).
+    [Theory]
+    [InlineData("func h(self, value: ref/Node) -> ()", 2)]
+    [InlineData("func h(self, value: Node) -> ()", 1)]
+    public void ARefiningContractReportsEachConflictingInheritedRequirement(string second, int records)
+    {
+        var c = Analyze(Types + "contract A\n    func f(self, value: Node) -> ()\n    func h(self, value: Node) -> ()\ncontract B\n    func f(self, value: ref/Node) -> ()\n    " + second + "\ncontract C: A, B");
+        var errors = Errors(c);
+        Assert.Equal(Enumerable.Repeat(nameof(DiagnosticCode.ParameterShapeMismatch_Kd), records), errors.Select(static x => x.Code));
+        Assert.Equal(Enumerable.Repeat("ref/Node", records), errors.Select(static x => x.Text));
+        Assert.Equal(records, c.Diagnostics.Finalize().Diagnostics.Count(static x => x.Severity == DiagnosticSeverity.Error));
+    }
+
     // SPEC 8.4.3: requirements inherited by refinement join the refining Contract's group.
     [Fact]
     public void RefinedRequirementsJoinTheGroup()
@@ -196,6 +211,49 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         var c = CompilationTestHelper.ParseSuccess(Types + Game + "func f(value: Node) -> i32 => 1\nfunc f<T>(value: T) -> i32 => 2\nvar game = Game.init()\nbump(game.score@uniq)\n_ = bumped(game.score)\n_ = f(Node.init())");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // SPEC 7.4, 9.5.1 (R7-N5 B7; the Front's C-518 C2): a pass judges each pair of corresponding parameters once, whatever reaches it again
+    // (its position and its name; each use of a gathered group), and keeps one shape contract per pair: n constructors of one Type
+    // ("candidates", one call) and a group gathered at the alias stage from n groups of `f<T>(value: T, tag: ref/TagK)` at each of `uses`
+    // uses judge their n(n - 1) parameter pairs (`value` and `tag` of each of the n(n - 1) / 2 function pairs) once per warm pass at every
+    // `uses`, linear in the pairs, and keep one contract per `value` pair (the `tag` pairs never overlap). Without the pass's memo: 2n(n - 1) and `uses` times as many judgments,
+    // each scanning the later function's contracts for its own (C-518: cubic in n).
+    [Theory]
+    [InlineData("candidates", 8, 1)]
+    [InlineData("candidates", 16, 1)]
+    [InlineData("gathered", 4, 8)]
+    [InlineData("gathered", 4, 16)]
+    [InlineData("gathered", 8, 16)]
+    public void EachParameterPairIsJudgedOncePerPass(string shape, int n, int uses)
+    {
+        var c = CompilationTestHelper.ParseSuccess(shape == "candidates" ? ConstructorInferenceWorkloads.Create(shape, n) : Gathered());
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var cold = c.Binding.ShapeJudgmentWork;
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(n * (n - 1L), c.Binding.ShapeJudgmentWork - cold);
+        Assert.Equal(n * (n - 1) / 2, c.Binding.InferenceMetrics.Contracts);
+
+        string Gathered()
+        {
+            var text = new System.Text.StringBuilder();
+            for (var i = 0; i < n; i++)
+            {
+                text.Append($"alias G{i}\n");
+            }
+
+            for (var i = 0; i < n; i++)
+            {
+                text.Append($"struct Tag{i}\n    public var v: i32\ngroup G{i}\n    public func f<T>(value: T, tag: ref/Tag{i}) -> i32 => 1\n");
+            }
+
+            for (var u = 0; u < uses; u++)
+            {
+                text.Append($"func use{u}(n: i32, t: ref/Tag{u % n}) -> i32 => f(n, t)\n");
+            }
+
+            return text.ToString();
+        }
     }
 
     private static Compilation Analyze(string source)

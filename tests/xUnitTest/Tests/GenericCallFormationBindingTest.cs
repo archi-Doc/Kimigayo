@@ -9,6 +9,103 @@ namespace XunitTest;
 
 public class GenericCallFormationBindingTest
 {
+    // PLAN G464, E3e ruling 13 (SPEC 23.1.2, 15.3.4, 8.3): a use whose own syntax holds a written Type with a failed occurrence inside a
+    // Function Type rests on it, as an explicit argument's call does (below): a reference's explicit Type argument (t5), a constructor's
+    // (t6), a Case's (t6e) and a payload-less Case's (t10) Type-application qualifier, a member call's explicit Type argument (t7). Each
+    // records only the written `Box<string>`'s UnsatisfiedConstraint_Kd (DECISIONS Q13, rule W: dev's restating UnsatisfiedConstraint_Kd
+    // or NoApplicableOverload_Kd at the use goes) and publishes no decision of its own. Its readers rest too (ruling 18 P1): a value call
+    // of a resting call (d1), of a resting group around it (d1p: no InternalInvariant_Kd, ruling 22 (2)) and a call whose argument is a
+    // reference awaiting it (f6) record no NoApplicableOverload_Kd.
+    [Theory]
+    [InlineData("func inc(x: i32) -> i32 => x\nfunc make<U>() -> (i32) -> i32 => inc\nfunc host() -> i32\n    return make<() -> Box<string>>()(1)\n", "make<() -> Box<string>>()")] // d1
+    [InlineData("func inc(x: i32) -> i32 => x\nfunc make<U>() -> (i32) -> i32 => inc\nfunc host() -> i32\n    return (make<() -> Box<string>>())(1)\n", "make<() -> Box<string>>()")] // d1p
+    [InlineData("func ku2<U>(x: i32) -> i32 => x\nfunc apply(f: (i32) -> i32, x: i32) -> i32 => f(x)\nfunc host() -> i32\n    return apply(ku2<() -> Box<string>>, 1)\n", "ku2<() -> Box<string>>")] // f6
+    [InlineData("func ku<U>(f: U) -> i32 => 0\nfunc host() -> i32\n    let g = ku<() -> Box<string>>\n    return 0\n", "ku<() -> Box<string>>")] // t5
+    [InlineData("struct Holder<U>\n    public let u: i32\n    public init(u: i32) => self.u = u\nfunc host() -> i32\n    let h = Holder<() -> Box<string>>.init(u: 1)\n    return 0\n", "Holder<() -> Box<string>>.init(u: 1)")] // t6
+    [InlineData("enum E<U>\n    C(i32)\n    N\nfunc host() -> i32\n    let e = E<() -> Box<string>>.C(1)\n    return 0\n", "E<() -> Box<string>>.C(1)")] // t6e
+    [InlineData("enum E<U>\n    C(i32)\n    N\nfunc host() -> i32\n    let e = E<() -> Box<string>>.N\n    return 0\n", "E<() -> Box<string>>.N")] // t10
+    [InlineData("struct S\n    public init() => ()\n    public func take<V>(self: ref/Self) => ()\nfunc host(s: ref/S) -> i32\n    s.take<() -> Box<string>>()\n    return 0\n", "s.take<() -> Box<string>>()")] // t7
+    public void AFailedOccurrenceInAUsesWrittenTypeRestsTheUse(string program, string use)
+    {
+        var source = "struct Box<T>\n    T is i32\n" + program;
+        Assert.Equal("1*UnsatisfiedConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
+        var c = MinimalEmissionTest.Analyze(source);
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).First(x => x is InvocationKoto or GenericsKoto or MemberAccessKoto && x.Span.Length == use.Length && source.Substring(x.Span.Start, x.Span.Length) == use);
+        Assert.NotEqual(BindingState.Resolved, node.StateOf());
+    }
+
+    // PLAN G144 F1 (SPEC 23.1.2, 9.6, 18.1): a decision's one read inside its own unheld frame is a read of that frame, so the frame's
+    // end keeps it. The Case call's frame reads its callee (resting on the written list) before the call rests on the written
+    // `Kimi.Option<i32, i64>`, so both are its causes; dev's frame end kept the callee alone (f1-o). The argument `missing` reads
+    // neither, so its record stays beside the written Type's (f1-o2).
+    [Theory]
+    [InlineData("Kimi.Option<i32, i64>.Some(1)", "InvalidTypeFormation_Kd Kimi.Option<i32, i64>")] // f1-o
+    [InlineData("Kimi.Option<i32, i64>.Some(missing)", "InvalidTypeFormation_Kd Kimi.Option<i32, i64>|UnresolvedBinding_Kd missing")] // f1-o2
+    public void ADecisionsReadInItsOwnFrameIsAReadOfTheFrame(string use, string records)
+    {
+        var c = CompilationTestHelper.Parse("func f()\n    let e = " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var written = nodes.OfType<GenericsKoto>().Single(x => x.ToString() == "Kimi.Option<i32, i64>");
+        var call = nodes.OfType<InvocationKoto>().Single(x => x.ToString() == use);
+        Assert.Contains(c.Binding.FailureCauses(call)!, x => ReferenceEquals(x.Subject, written));
+    }
+
+    // PLAN's open issue on a decision's inline-bound callee or reference path (E3e ruling 23; SPEC 23.1.2, 8.3): a static member's call
+    // (r2l) or reference (r2r) whose failed Type-application qualifier sits under its explicit-Type-argument name, a member access its
+    // binder binds inline, is read by no decision, so the use keeps its Type and its reader records a dependent TypeMismatch_Kd beside
+    // the written `Box<string>`'s record: today's records, pinned until the issue closes (then the reader rests: the record alone).
+    // Controls: without explicit Type arguments the call rests (r2bl); with a valid qualifier only the reader's mismatch (r2vl, r2rv).
+    [Theory]
+    [InlineData("Holder<() -> Box<string>>.make<i32>(v: 1)", "TypeMismatch_Kd x|UnsatisfiedConstraint_Kd Box<string>")] // r2l
+    [InlineData("Holder<() -> Box<string>>.make<i32>", "TypeMismatch_Kd x|UnsatisfiedConstraint_Kd Box<string>")] // r2r
+    [InlineData("Holder<() -> Box<string>>.make(v: 1)", "UnsatisfiedConstraint_Kd Box<string>")] // r2bl
+    [InlineData("Holder<() -> Box<i32>>.make<i32>(v: 1)", "TypeMismatch_Kd x")] // r2vl
+    [InlineData("Holder<() -> Box<i32>>.make<i32>", "TypeMismatch_Kd x")] // r2rv
+    public void AnInlineBoundQualifierUnderAnExplicitArgumentNameKeepsTheUsesType(string use, string records)
+    {
+        var source = "struct Box<T>\n    T is i32\nstruct Holder<U>\n    public let u: i32\n    public init(u: i32) => self.u = u\n" +
+            "    public func make<V>(v: V) -> i32 => 0\nfunc host() -> i32\n    let x = " + use + "\n    let y: bool = x\n    return 0\npublic func main() => ()\n";
+        Assert.Equal(records, string.Join('|', DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Span is { } span ? $"{x.Code} {source.Substring(span.Start, span.Length)}" : x.Code).Order(StringComparer.Ordinal)));
+    }
+
+    // PLAN G464, E3e ruling 15 (a) (SPEC 23.1.2, 15.2.3; R7-C2e2 e2-5a): a use rests only on the written Type syntax under its own
+    // syntax; a declaration's written Type keeps the states its occurrences' judgments give it. `needOwned(r)` proves R<i32> Owned by
+    // reading R's stored Type, whose `S<R<Wrap<T>>>` is unproven under an Array layer, so the use keeps its own UnprovenConstraint_Kd
+    // beside the Field's and the written occurrence's (rf3; ComponentSummaryTest counts the family's records).
+    [Fact]
+    public void AUseReadingADeclarationsWrittenTypeKeepsItsRecord()
+    {
+        var source = "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n" +
+            "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n";
+        Assert.Equal(
+            ["UnprovenConstraint_Kd let next: Array<S<R<Wrap<T>>>>", "UnprovenConstraint_Kd S<R<Wrap<T>>>", "UnprovenConstraint_Kd needOwned(r)"],
+            DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Span is { } span ? $"{x.Code} {source.Substring(span.Start, span.Length)}" : x.Code));
+    }
+
+    // PLAN G464, E3e rulings 15 (b) and 18 (SPEC 23.1.2): a conversion's target is written Type syntax under its own syntax, so a
+    // conversion whose target has failed, for any cause, when the conversion is decided rests on it: here each `objref/Base` is
+    // MissingOriginBinding_Kd at its own binding (a moved value supplies no Origin), the conversion writes nothing and the Loans over it
+    // record nothing (DECISIONS Q13: dev's two ComparisonLoanConflict_Kd, dependent records, go; MirValidatorTest's R5-M72 row borrows
+    // instead). A target failing by a later check keeps dev's records (MirBorrowsTest's uSliceBad3; ruling 18, PLAN's open issue).
+    [Fact]
+    public void AFailedConversionTargetRestsTheConversion()
+    {
+        var source = "open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\nfunc own(x: objref/Base) -> () => ()\n" +
+            "func probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n    own(if flag => a@move@objref/Base else => b@move@objref/Base)\n";
+        Assert.Equal("2*MissingOriginBinding_Kd", DiagnosticCorpus.RecordProfile(source));
+    }
+
+    // PLAN G464, O-8 (a) (SPEC 23.1.2, 15.3.4, 8.3): an explicit Type argument whose written occurrence inside a Function Type failed
+    // rests the call (no plan, InvalidExplicitArgumentCannotPublishCall) and the call records nothing of its own (DECISIONS Q13, rule W:
+    // dev's NoApplicableOverload_Kd at the call, from the call's own formation of the nested result, goes), inside an Option too (o8c2).
+    [Theory]
+    [InlineData("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<() -> Box<string>>()\n", "1*UnsatisfiedConstraint_Kd")] // o8c
+    [InlineData("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<Option<() -> Box<string>>>()\n", "1*UnsatisfiedConstraint_Kd")] // o8c2
+    [InlineData("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<() -> Box<i32>>()\n", "clean")] // o8v
+    public void AFailedOccurrenceInAnExplicitArgumentRestsTheCall(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("Box<string>")]
     [InlineData("(i32, Box<string>)")]
