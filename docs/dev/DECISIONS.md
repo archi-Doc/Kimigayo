@@ -34573,7 +34573,7 @@ Closure row of `MirCases.Branch`).
 
 - **R9-M13 The command line's one option table** (Middle, 2026-11-24; PLAN G1236, G1237; Q-750, D-1246; Major; the owner's O-525, O-526,
   O-527 (a); design review REVISE then ACCEPT WITH CONDITIONS, implementation review ACCEPT WITH CONDITIONS)
-  - `KimiOptions` owns the options of every command but lsp's (PLAN G1251): one table, a row per option (name as IMPL spells it, kind
+  - `KimiOptions` owns the options of every command after lsp's debugger option has been consumed (G1251 supersedes T-M15's consequence 1): one table, a row per option (name as IMPL spells it, kind
     `Value`/`Boolean`/`BareBoolean`/`Flag`/`Removed`, the commands that take it, the values IMPL lists for it), and one reader,
     `KimiOptions.Read(command, args)`: the values by row name, the inputs, the invalid options' texts in order. `KimiOptions.From` gives
     the compiler options (`Manifest`, `NoBuild`, `Report` added).
@@ -35194,7 +35194,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     no `--` boundary, and no Kimi command forwards arguments after it: `run` takes no program arguments, IMPL 20.3).
   - **N4-2:** each occurrence is one text (SPEC 23.1.2: independent), in order, where the command layer reads the arguments; **N4-3:**
     the texts go to standard error, nothing to standard output, and no file is written.
-  - **Accepted consequences (T's ruling (A)):** (1) `lsp` reads no arguments, so it reports no removal (PLAN G1251); (2) a help
+  - **Accepted consequences (T's ruling (A)):** (1) superseded by G1251 under R9-M13: `lsp` now reports removed options; (2) a help
     request (`kimi help ...`, `kimi build help ...`) runs no command and reports none; (3) a quoted `"--ToolchainRoot"` is reported:
     the parser hands the command the word unwrapped; (4) a line whose other option fails to parse (`--Target --ToolchainRoot`) shows
     only the parser's error, since it runs no command; (5) `test` reports its first invalid option, as for every `test` option error
