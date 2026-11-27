@@ -14,17 +14,23 @@ namespace Kimi.Compiler;
 // find (Region) and written through one create (WrittenRegion).
 // The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's D-9 line): the find reads the library layer's part first, then the
 // running pass's, and a new row goes into the running pass's. The Types that carry the regions are Binding.LocalRegions.Types.cs's.
-// Output (PLAN G492-a (ii); R7-O2 A1): a `let` local's region has a value, the Origin its declaration fixes for the slot
-// (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region,
-// an inclusion (the value outlives the region); a slot that the local's equality fixes, `let` or `var`, is a region whose value is the
-// equality's other end as the body reads it, an equality, or an inclusion where that end holds a region published as one (FixedRegion,
-// LocalRegion.Equality; SPEC 15.3.6 "Unless fixed by equality", PLAN G1369). Its
+// Output (PLAN G492-a (ii); R7-O2 A1, A4-L): a `let` local's region has a value, the Origin its declaration fixes for the slot
+// (PublishRegionValue: an unwritten slot's, the initializer's Origin there, LocalBorrowType; a slot its written Type omits, the
+// candidate of SPEC 15.3.6's table over the bounds its declaration recorded, FixDeclaredRegions, or none), also recorded as a bound of
+// the region, an inclusion (the value outlives the region); a slot that the local's equality fixes, `let` or `var`, is a region whose
+// value is the equality's other end as the body reads it, an equality, or an inclusion where that end holds a region published as one
+// (FixedRegion, LocalRegion.Equality; SPEC 15.3.6 "Unless fixed by equality", PLAN G1369). Its
 // readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type),
 // RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
 // one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
 // body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
-// proved it, and before as a reading with no answer yet (the deferral fact).
+// proved it, and before as a reading with no answer yet (the deferral fact). A `let` region that merges a stored part met on several
+// of the local's paths is marked so (LocalRegion.Merged, LocalBorrowType), read by the name limit alone (PLAN G922 U1).
+// FixDeclaredRegions (R7-O2 A4-L) reads a local's declaration once its last bound is recorded (its fit, its Type's well-formedness, its
+// clauses, which it records itself as region bounds) and publishes each of a `let` local's regions with no value with its own
+// candidate, or leaves it without one; a sibling region that reads back to it stays that variable (FixWaiting; the owner's O-544 (b)).
+// It adds no obligation row.
 // Invariants: a value holds no region of its own body that publishes a value (each is read through once, when published), so a read at
 // a use is one step; it may hold a `var` region of its own body that publishes none (a `let` initializer, or an equality, naming a `var`
 // local), which a use in that body reads as the region and RegionValue as its candidate, whose walk reads each bound's region with a
@@ -50,13 +56,20 @@ public sealed partial class Binding
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
 
-    // RegionValue's scratch (its walk, the bound atoms it reads, and ReachesRegion's walk, which runs inside it), reused.
+    // UpperBound's scratch (its walk, the bound atoms it reads, and ReachesRegion's walk, which runs inside it), reused.
     private readonly List<BoundOrigin> valueWork = new();
     private readonly List<BoundOrigin> valueAtoms = new();
     private readonly HashSet<BoundOrigin> valueRead = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundOrigin> reachWork = new();
     private readonly List<BoundOrigin> reachAtoms = new();
     private readonly HashSet<BoundOrigin> reachSeen = new(ReferenceEqualityComparer.Instance);
+
+    // FixDeclaredRegions' scratch, its own as the candidates and proofs it runs use the lists above: each waiting `let` region's visit
+    // index (-1 unvisited, int.MaxValue fixed), the visit's stack of the regions not yet fixed, and a closing set's candidates, one per
+    // member in the stack's order, reused.
+    private readonly Dictionary<BoundOrigin, int> waitingIndex = new(ReferenceEqualityComparer.Instance);
+    private readonly List<BoundOrigin> waitingSet = new();
+    private readonly List<BoundOrigin?> waitingCandidates = new();
 
     // ValueIn's reads once no body is being bound, per (Origin, body) and region-graph version (valueInVersion; stale at each run's start,
     // BeginRun): a DAG of regions is read in turn, so an unmemoized reading is exponential in its depth; reused. The body is keyed by its
@@ -80,12 +93,22 @@ public sealed partial class Binding
     internal static bool IsLocalRegion(BoundOrigin origin)
         => origin.Open || (origin is { Kind: OriginKind.Inference, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder));
 
-    // SPEC 14.8.2, 14.6.1, 15.4.4, 15.6.5: the declarations whose Types have region slots, the body locals: every local, every Pattern
-    // binding (a BindingPattern form) and every for slot (a name a ForKoto declares, never its Iterable), and a Subject borrowed in place
-    // (its match or for construct; SPEC 15.1.6).
-    internal static bool IsRegionOwner(Koto declaration)
-        => declaration is VariableKoto or MatchKoto or ForKoto or SyntaxFormKoto { Akind: KotoKind.BindingPattern } ||
-            (declaration is IdentifierNameKoto { Parent: ForKoto loop } && !ReferenceEquals(loop.Iterable, declaration));
+    // SPEC 14.8.2, 14.6.1, 15.4.4, 15.6.5, 15.1.6: the declarations whose Types have region slots, the body locals (DeclaringPart).
+    internal static bool IsRegionOwner(Koto declaration) => DeclaringPart(declaration) is not null;
+
+    // The region owners, one row each, and each one's declaring part, the node a use within is "the one being declared" (LocalRegionOf;
+    // ruling G922-34): every local, every Pattern binding (a BindingPattern form) and every for slot (a name a ForKoto declares, never its
+    // Iterable) is its own; a Subject borrowed in place (SPEC 15.1.6) is owned by its match or for construct and declared by its Subject,
+    // the match's Expression or the for construct's Iterable. Any other declaration owns no region: null.
+    internal static Koto? DeclaringPart(Koto declaration)
+        => declaration switch
+        {
+            VariableKoto or SyntaxFormKoto { Akind: KotoKind.BindingPattern } => declaration,
+            IdentifierNameKoto { Parent: ForKoto loop } when !ReferenceEquals(loop.Iterable, declaration) => declaration,
+            MatchKoto match => match.Expression,
+            ForKoto loop => loop.Iterable,
+            _ => null,
+        };
 
     internal bool RegionContains(BoundOrigin expression, BoundOrigin origin)
     {
@@ -333,6 +356,12 @@ public sealed partial class Binding
     private static bool OwnVarRegion(BoundOrigin origin, Koto? body)
         => SlotRegion(origin) && IsMutableDeclaration(origin.Binder!) && ReferenceEquals(BodyOwner(origin.Binder!), body);
 
+    // SPEC 15.3.6: whether a row's candidate is its strongest lower bound rather than `upper`, the meet of its upper bounds: a
+    // contravariant row, and an invariant one or one at no position without an upper bound; a covariant row reads only `upper`. The one
+    // reading of which bounds the table takes: VarCandidate's candidate and FixWaiting's edges.
+    private static bool ReadsLowerBounds(OriginVariance row, BoundOrigin? upper)
+        => row == OriginVariance.Contravariant || (row != OriginVariance.Covariant && upper is null);
+
     // The innermost function whose body holds `node`: a Closure's and a nested function's signature and body are their own.
     private static Koto? BodyOwner(Koto node)
     {
@@ -421,7 +450,9 @@ public sealed partial class Binding
     // a named function's: the EvaluatingBody chain, R7-O3 O3-A), or its body is a Closure whose binding has ended
     // (BoundClosure.Classified; its publication's fit re-enters it), or it is a call's region that its call completed (R1-a:
     // CallRegionComplete, Binding.OpenOrigins). The one gate of a candidate's Binding-time reading: RegionValue, ValueIn's deferral fact,
-    // SolvedStatic and the erasure's Final class (RegionLeaf) read it.
+    // SolvedStatic and the erasure's Final class (RegionLeaf) read it, and UpperBound's walk (ReadThrough), which reads a `var` region
+    // without an answer as an atom: so a `let` declaration's regions (FixDeclaredRegions) read a `var` region of their own body as itself
+    // (R7-O2 A4-L, F's B1).
     private bool RegionBounded(BoundOrigin region)
     {
         var owner = region.Binder is { } binder ? BodyOwner(binder) : null;
@@ -441,20 +472,29 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 15.3.6's table for a local region's candidate (R7-O2 A1; RegionValue): a `var` region's candidate by its row over its recorded
-    // bounds, its own body's `var` regions that reach back to it read through their bounds: covariant the meet of its upper bounds (none
-    // without one: "never replaced by static"), contravariant its strongest lower bound (LowerBound), invariant the proven equality, which
-    // its upper bounds' meet is where it has one (an equality records both directions), otherwise the covariant, else the contravariant
-    // candidate. The strongest lower bound is read only for a row that takes it. The call solve's reading departs from the table
-    // (OriginInference's RowCandidate, until PLAN G1208). Null with no candidate.
-    private BoundOrigin? VarCandidate(BoundOrigin origin, LocalRegion region, Koto? body, Koto binder)
+    // SPEC 15.3.6's table for a local region's candidate (R7-O2 A1, A4-L): one variable's candidate by its row over its recorded bounds,
+    // a `var` region's (RegionValue) or a waiting `let` region's (FixWaiting), a bound that is another variable staying that variable:
+    // covariant the meet of its upper bounds (UpperBound; none without one: "never replaced by static"), contravariant its strongest
+    // lower bound (LowerBound), invariant the proven equality, which its upper bounds' meet is where it has one (an equality records both
+    // directions), otherwise, and at no position (Unused), the covariant, else the contravariant candidate (ReadsLowerBounds). The
+    // strongest lower bound is read only for a row that takes it. The call solve's reading departs from the table (OriginInference's
+    // RowCandidate, until PLAN G1208). Null with no candidate.
+    private BoundOrigin? VarCandidate(BoundOrigin variable, LocalRegion region, Koto? body, Koto binder)
+    {
+        var upper = this.UpperBound(variable, body);
+        return ReadsLowerBounds(region.Row, upper) ? this.LowerBound(variable, region, body, binder) : upper;
+    }
+
+    // The meet of the upper bounds recorded on `variable` (VarCandidate), each read as BoundAtoms reads it; a region read through
+    // (ReadThrough) that reaches back to `variable` is read through its bounds, one variable with it. Null with none.
+    private BoundOrigin? UpperBound(BoundOrigin variable, Koto? body)
     {
         var (value, bounded) = (BoundOrigin.Static, false);
         (var work, var read) = (this.valueWork, this.valueRead);
         work.Clear();
         read.Clear();
-        work.Add(origin);
-        read.Add(origin);
+        work.Add(variable);
+        read.Add(variable);
         while (work.Count != 0)
         {
             var current = work[^1];
@@ -463,29 +503,31 @@ public sealed partial class Binding
             for (var i = 0; i < atoms.Count; i++)
             {
                 var atom = atoms[i];
-                if (!OwnVarRegion(atom, body) || !this.ReachesRegion(atom, origin, body))
+                if (read.Contains(atom))
+                {
+                    continue;
+                }
+
+                if (this.ReadThrough(atom, body) && this.ReachesRegion(atom, variable, body))
+                {
+                    read.Add(atom);
+                    work.Add(atom);
+                }
+                else
                 {
                     (value, bounded) = (this.Meet(value, atom), true);
-                }
-                else if (read.Add(atom))
-                {
-                    work.Add(atom);
                 }
             }
         }
 
-        var upper = bounded ? value : null;
-        return region.Row switch
-        {
-            OriginVariance.Contravariant => this.LowerBound(region, body, binder),
-            OriginVariance.Invariant when upper is null => this.LowerBound(region, body, binder),
-            _ => upper,
-        };
+        return bounded ? value : null;
     }
 
-    // A `var` region's strongest recorded lower bound (RegionValue), each read as stored with its receivers resolved and a `let` region of
-    // `body` as its value, proven at the region's declaration; null with none.
-    private BoundOrigin? LowerBound(LocalRegion region, Koto? body, Koto binder)
+    // The strongest of the lower bounds recorded on `variable`'s `region` (VarCandidate), each read as stored with its receivers resolved
+    // and a `let` region of `body` as its value, proven at the region's declaration; null with none, and wherever one names another
+    // waiting region, a sole one included (FixWaiting: a member of the variable's reading cycle, which stays that variable and is no
+    // proven lower bound, so no lower bound is proven to outlive it; the owner's O-544 (b), whose SPEC 15.3.6 sentence has no exception).
+    private BoundOrigin? LowerBound(BoundOrigin variable, LocalRegion region, Koto? body, Koto binder)
     {
         if (region.Targets.Count == 0)
         {
@@ -498,6 +540,10 @@ public sealed partial class Binding
             for (var i = 0; i < region.Targets.Count; i++)
             {
                 lowers[i] = this.RegionValueIn(this.ReceiverAtUse(region.Targets[i], region.TargetValues[i]), body);
+                if (this.NamesWaiting(lowers[i], variable))
+                {
+                    return null;
+                }
             }
 
             return this.StrongestLowerBound(lowers.AsSpan(0, region.Targets.Count), binder, default, out _);
@@ -508,10 +554,12 @@ public sealed partial class Binding
         }
     }
 
-    // The atoms of a region's recorded bounds as RegionValue reads them, into `atoms` (cleared; RegionValue and ReachesRegion each pass
+    // The atoms of a region's recorded bounds as UpperBound reads them, into `atoms` (cleared; UpperBound and ReachesRegion each pass
     // their own, as they nest): each bound as stored, its receivers resolved, a `let` region of `body` as its value, a meet as its operands.
+    // Counted (CandidateSteps).
     private List<BoundOrigin> BoundAtoms(BoundOrigin region, Koto? body, List<BoundOrigin> atoms)
     {
+        this.OriginProofMetrics?.CandidateStep();
         atoms.Clear();
         for (var i = 0; this.Region(region) is { } bounds && i < bounds.Parents.Count; i++)
         {
@@ -525,7 +573,7 @@ public sealed partial class Binding
         return atoms;
     }
 
-    // Whether the recorded bounds of `var` regions of `body` lead from `from` back to `target` (a cycle of definitions; RegionValue).
+    // Whether the recorded bounds of regions read through (ReadThrough) lead from `from` back to `target` (UpperBound).
     private bool ReachesRegion(BoundOrigin from, BoundOrigin target, Koto? body)
     {
         (var work, var seen) = (this.reachWork, this.reachSeen);
@@ -546,10 +594,40 @@ public sealed partial class Binding
                     return true;
                 }
 
-                if (OwnVarRegion(atom, body) && seen.Add(atom))
+                if (this.ReadThrough(atom, body) && seen.Add(atom))
                 {
                     work.Add(atom);
                 }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a region UpperBound's walk meets is read through its bounds where they reach back to the variable read (ReachesRegion), one
+    // variable with it ("variables in a cycle being one"): a `var` region of `body` with an answer (RegionBounded; a cycle of definitions,
+    // which share one solved value), or a waiting `let` region not at a contravariant row (a contravariant position gives a lower
+    // bound), whose upper bounds then close an outlives cycle, read through as one variable (SPEC 15.3.6, chapter 15 :442: "Variables
+    // connected by a cycle of `outlives` relations are equal and solved as one"). Any other is read as itself, a member that does not
+    // reach back among them (FixWaiting). The contravariant exclusion departs from :442's text, which joins every member of a cycle and
+    // solves a variable at both positions as invariant: this reading joins only a cycle's non-contravariant members, an open gap
+    // (R7-O2 A4-L; its review's C3 twin, a covariant and a contravariant slot in one cycle, is accepted as before A4-L).
+    private bool ReadThrough(BoundOrigin origin, Koto? body)
+        => OwnVarRegion(origin, body) ? this.RegionBounded(origin)
+            : this.Waiting(origin) && this.Region(origin)!.Row != OriginVariance.Contravariant;
+
+    // Whether `origin` is a `let` region FixDeclaredRegions is fixing that has no value fixed yet: at a set's close, the set's members.
+    private bool Waiting(BoundOrigin origin) => this.waitingIndex.TryGetValue(origin, out var visit) && visit != int.MaxValue;
+
+    // Whether `origin`, an atom or a meet's operand, is a waiting region other than `variable` (LowerBound).
+    private bool NamesWaiting(BoundOrigin origin, BoundOrigin variable)
+    {
+        for (var k = 0; k < (origin.Kind == OriginKind.Intersection ? origin.Operands.Count : 1); k++)
+        {
+            var atom = origin.Kind == OriginKind.Intersection ? origin.Operands[k] : origin;
+            if (!ReferenceEquals(atom, variable) && this.Waiting(atom))
+            {
+                return true;
             }
         }
 
@@ -606,7 +684,7 @@ public sealed partial class Binding
     {
         var record = this.WrittenRegion(region);
         record.Body = BodyOwner(region.Binder!);
-        (record.Value, record.Equality) = (null, false);
+        (record.Value, record.Equality, record.Merged) = (null, false, false);
         record.Value = this.RegionValueIn(value, record.Body);
         this.regionValues++;
         this.RecordRegionBound(record.Value, region, evidence);
@@ -622,6 +700,160 @@ public sealed partial class Binding
         var region = this.LocalRegionSlot(owner, slot, row);
         this.PublishRegionValue(region, value, evidence);
         return region;
+    }
+
+    // SPEC 15.4.4, 15.3.6 (R7-O2 A4-L): `local`'s declaration fixes its regions once its last bound is recorded (BindVariableCore: after
+    // its fit and its Type's well-formedness). (a) Each of its clauses but an equality (whose slot FixedRegion fixed) and one with an
+    // Unstated end (SPEC 15.6.1: a failed relation adds no constraint; UnstatedRelation) is recorded as a region bound, `let` or `var`
+    // alike: the clause's row (LocalClauseRow) stamped as AddObligation stamps it, with no obligation (JudgeLocalClause judges the clause
+    // after the body). (b) A `let` local's regions that have no value, the slots its written Type omits (InferLocalOrigins), are
+    // published with their candidates (VarCandidate), complete at the declaration (15.4.4), or stay regions with no value (DECISIONS
+    // R4-M112). (c) Waiting regions whose candidates read each other, a reading cycle (a strongly connected set over the bounds
+    // VarCandidate reads; FixWaiting), are each their own variable, a bound that is another member staying that variable and no proven
+    // lower bound (the owner's O-544 (b)); the sets close sinks first and each set's candidates are read before any is published, so a
+    // value names no region with a value (the invariant above) and the result is the same in every slot order. It is not reentrant:
+    // ReadThrough and Waiting read the per-declaration scratch (waitingIndex) that this call clears and fills, so no call may start
+    // while another declaration's fix runs.
+    private void FixDeclaredRegions(VariableKoto local)
+    {
+        if (this.originDeclarations.GetValueOrDefault(local) is not { } declaration)
+        {
+            return;
+        }
+
+        foreach (var relation in declaration.Relations)
+        {
+            // AddObligation's Unstated test, read through the same predicate (UnstatedRelation): a clause with an Unstated end bounds
+            // no region, and its record, if Refuted, is AddObligation's when JudgeLocalClause judges the clause.
+            if (!relation.Equality && UnstatedRelation(relation.Longer, relation.Shorter) is null)
+            {
+                this.RecordLocalRegionBound(this.Stamped(this.LocalClauseRow(declaration, relation)));
+            }
+        }
+
+        if (IsMutableDeclaration(local))
+        {
+            return;
+        }
+
+        var index = this.waitingIndex;
+        index.Clear();
+        foreach (var (_, region) in declaration.SubstitutionPairs)
+        {
+            if (SlotRegion(region) && ReferenceEquals(region.Binder, local) && this.Region(region) is { Value: null })
+            {
+                index.TryAdd(region, -1);
+            }
+        }
+
+        var counter = 0;
+        foreach (var (_, region) in declaration.SubstitutionPairs)
+        {
+            if (index.GetValueOrDefault(region) < 0)
+            {
+                this.FixWaiting(region, local, ref counter);
+            }
+        }
+
+        index.Clear();
+    }
+
+    // One waiting `let` region's visit (FixDeclaredRegions; Tarjan's strongly connected sets, the reading cycles): the region is the root
+    // of a set of its own until a bound reaches below it. The visit follows the bounds VarCandidate reads for the region (SPEC 15.3.6):
+    // its upper bounds unless its row is contravariant, then its lower bounds where ReadsLowerBounds takes them over its UpperBound, every
+    // region its upper bounds name being visited by then. So a set's edges are its members' own reads, with no rule of the set as a
+    // whole and no joined row. The root closes the set: each member's own candidate (VarCandidate) is read
+    // while every member is still waiting, so no member is read through another's candidate and no slot order enters, and each is then
+    // published (PublishWaiting). Returns the region's low link.
+    private int FixWaiting(BoundOrigin region, VariableKoto local, ref int counter)
+    {
+        var (index, set, body) = (this.waitingIndex, this.waitingSet, BodyOwner(local));
+        var (own, start, record) = (counter++, set.Count, this.Region(region)!);
+        index[region] = own;
+        set.Add(region);
+        var low = own;
+        for (var i = 0; record.Row != OriginVariance.Contravariant && i < record.Parents.Count; i++)
+        {
+            low = this.VisitWaiting(record.Parents[i], record.Values[i], local, body, low, ref counter);
+        }
+
+        var lowers = ReadsLowerBounds(record.Row, this.UpperBound(region, body));
+        for (var i = 0; lowers && i < record.Targets.Count; i++)
+        {
+            low = this.VisitWaiting(record.Targets[i], record.TargetValues[i], local, body, low, ref counter);
+        }
+
+        if (low != own)
+        {
+            return low;
+        }
+
+        var candidates = this.waitingCandidates;
+        candidates.Clear();
+        for (var m = start; m < set.Count; m++)
+        {
+            candidates.Add(this.VarCandidate(set[m], this.Region(set[m])!, body, local));
+        }
+
+        for (var m = 0; m < candidates.Count; m++)
+        {
+            this.PublishWaiting(m, start, local);
+        }
+
+        candidates.Clear();
+        set.RemoveRange(start, set.Count - start);
+        return own;
+    }
+
+    // A closing set's member at `start + m` (FixWaiting), fixed, and published with its candidate (waitingCandidates at `m`) once each
+    // member that candidate names is, so that its value reads theirs through (PublishRegionValue) and names no region with a value. A
+    // member named is an upper bound that does not reach back (ReadThrough), so none waits on itself. With no candidate the member stays
+    // a region with no value. Every set's candidates are read before any of its members is published, so this order changes no value.
+    private void PublishWaiting(int m, int start, VariableKoto local)
+    {
+        var (set, member) = (this.waitingSet, this.waitingSet[start + m]);
+        if (this.waitingIndex[member] == int.MaxValue)
+        {
+            return;
+        }
+
+        this.waitingIndex[member] = int.MaxValue;
+        if (this.waitingCandidates[m] is not { } candidate)
+        {
+            return;
+        }
+
+        for (var k = 0; k < (candidate.Kind == OriginKind.Intersection ? candidate.Operands.Count : 1); k++)
+        {
+            var atom = candidate.Kind == OriginKind.Intersection ? candidate.Operands[k] : candidate;
+            for (var named = 0; named < this.waitingCandidates.Count; named++)
+            {
+                if (ReferenceEquals(set[start + named], atom))
+                {
+                    this.PublishWaiting(named, start, local);
+                }
+            }
+        }
+
+        this.PublishRegionValue(member, candidate, local);
+    }
+
+    // FixWaiting's visit of one recorded bound, read as VarCandidate reads it (its receivers resolved, a `let` region of `body` as its
+    // value, a meet as its operands): each waiting region it names is visited, or, on the stack, lowers `low` to its index (a fixed
+    // one's is int.MaxValue). Returns the low link.
+    private int VisitWaiting(BoundOrigin bound, Koto evidence, VariableKoto local, Koto? body, int low, ref int counter)
+    {
+        var read = this.RegionValueIn(this.ReceiverAtUse(bound, evidence), body);
+        for (var k = 0; k < (read.Kind == OriginKind.Intersection ? read.Operands.Count : 1); k++)
+        {
+            var atom = read.Kind == OriginKind.Intersection ? read.Operands[k] : read;
+            if (this.waitingIndex.TryGetValue(atom, out var seen))
+            {
+                low = Math.Min(low, seen < 0 ? this.FixWaiting(atom, local, ref counter) : seen);
+            }
+        }
+
+        return low;
     }
 
     // O25 (PLAN G949 S1-1, R): every row of the running part has its sources for the run's version, so no later pass forms a source
@@ -660,7 +892,7 @@ public sealed partial class Binding
             region.Sources.Clear();
             region.Row = OriginVariance.Unused;
             region.Version = -1;
-            (region.Value, region.Equality) = (null, false);
+            (region.Value, region.Equality, region.Merged) = (null, false, false);
             region.Body = null;
             region.Solved = null;
             (region.Solution, region.SolutionVersion) = (null, -1);
@@ -874,6 +1106,11 @@ public sealed partial class Binding
         // Written with the value (PublishRegionValue resets it, FixedRegion sets it); read through ReadsLetValue alone (O-400 (b)'s limit,
         // and FixedRegion's reading of an equality's end).
         internal bool Equality { get; set; }
+
+        // A `let` local's region that merges a stored part met on several of its paths (DECISIONS R8-M56; LocalBorrowType's MarkMerged), read
+        // by the name limit alone (UnmergedSelection, the owner's O-534 (a) interim; PLAN G922 U1). Written with the value (PublishRegionValue
+        // resets it).
+        internal bool Merged { get; set; }
 
         internal Koto? Body { get; set; }
 

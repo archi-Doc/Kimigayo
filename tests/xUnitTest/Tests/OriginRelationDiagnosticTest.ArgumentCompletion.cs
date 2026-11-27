@@ -218,11 +218,14 @@ public partial class OriginRelationDiagnosticTest
     // Tuple results sc_tov; 10.4); one candidate completes it at its Type, where a typed source that does not fit is its own record (sc_fi,
     // sc_elem, and the value call sc_h; 23.1.2), a Tuple source that awaits its position still the join's (sc_tfi), and Tuple results of
     // another length fit no candidate (sc_len; 10.5.1's last paragraph). Outside a call argument the conflict is the join's (sc_let).
+    // A misfit is its delivery's, so sc_h's join is typed i64 and a double move on its other path is its own record (sc_h_mv, G103 C;
+    // fail-before: `b` only).
     [Theory]
     [InlineData("U1.6g", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
     [InlineData("U1.6g", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
     [InlineData("U1.6g", "sc_elem", FI64 + KXB + "    return f((if c => x else => b))\n", "NoApplicableOverload_Kd f((if c => x else => b))")]
     [InlineData("U1.6g", "sc_h", FI64 + KXB + "    let h = f\n    return h(if c => x else => b)\n", "TypeMismatch_Kd b")]
+    [InlineData("U1.6g", "sc_h_mv", "func take(v: string) -> i64 => 0\n" + FI64 + "func k(c: bool, s: string, b: bool) -> i32\n    let h = f\n    return h(if c => take(s@move) + take(s@move) else => b)\n", "MovedPlace_Kd s; TypeMismatch_Kd b")]
     [InlineData("U1.6g", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]

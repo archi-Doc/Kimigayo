@@ -13,7 +13,7 @@ internal sealed partial class MirBuilder
     // another callee.
     private MirOperand? Extra(in IntrinsicDisposition disposition) => disposition.Id switch
     {
-        IntrinsicId.Fail => this.Code(disposition.Code!),
+        IntrinsicId.Fail => this.Code(disposition.Member!),
         IntrinsicId.RawSlice => this.UnitOperand(),
         _ => null,
     };

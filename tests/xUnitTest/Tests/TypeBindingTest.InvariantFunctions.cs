@@ -394,7 +394,9 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
-        // d4i (invalid, SPEC 15.3.5, 3.8): uniq layer; let; FX(a) to FX(b), only a outlives b.
+        // d4i (invalid, SPEC 15.3.5, 3.8): uniq layer; let; FX(a) to FX(b), only a outlives b. The annotation's well-formedness bounds its
+        // omitted outer slot, whose value satisfies it, so only the invariant part's record stays (R7-O2 A4-L under the owner's O-544 (b),
+        // the Middle's Q-A; SPEC 15.6.1, 23.1.2).
         {
             "d4i",
             """
@@ -405,7 +407,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd u0@move|UnprovenOriginRelation_Kd uniq/((ref/i32 during b) -> i32)"
+            "UnprovenOriginContract_Kd u0@move"
         },
         // d4j (invalid, SPEC 15.3.5, 3.8): uniq layer; let; FX(a) to FX(b), only b outlives a.
         {
@@ -1283,7 +1285,8 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
-        // rp1i (invalid, review): rp1v's invalid twin at a declared local.
+        // rp1i (invalid, review): rp1v's invalid twin at a declared local. As d4i, the annotation's well-formedness bounds its omitted outer
+        // slot, whose value satisfies it, so only the invariant part's record stays (R7-O2 A4-L under the owner's O-544 (b), Q-A).
         {
             "rp1i",
             """
@@ -1294,7 +1297,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd u0@move|UnprovenOriginRelation_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
+            "UnprovenOriginContract_Kd u0@move"
         },
         // rp1w (valid, SPEC 15.3.4, 15.2.3, 15.6.1, 15.3.7): rp1v at a declared local. The declared Type's well-formedness relates the
         // fixed `b` to the local's region (u0's premise and the fit give it), never the held Function Type's per-call input.
@@ -1472,7 +1475,8 @@ public partial class TypeBindingTest
             """,
             "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
-        // k6 (invalid twice, re-review): the H11 move: a declared local after t.
+        // k6 (invalid twice, re-review): the H11 move: a declared local after t. The first component's well-formedness bounds its omitted
+        // outer slot, whose value satisfies it, so t's two records stay (R7-O2 A4-L under the owner's O-544 (b), Q-A).
         {
             "k6",
             """
@@ -1484,7 +1488,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t@move|UnprovenOriginRelation_Kd ref/((ref/i32 during x) -> i32)|UnsatisfiedOriginRelation_Kd t@move"
+            "UnprovenOriginContract_Kd t@move|UnsatisfiedOriginRelation_Kd t@move"
         },
         // rq2av (invalid, re-review): rq2a through a var local (G492-a (i)'s implementation review).
         {

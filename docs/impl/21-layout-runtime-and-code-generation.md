@@ -105,7 +105,9 @@ At every call into and return from foreign code, the floating-point control stat
 
 On linux-x64 an import uses the System V x86-64 C calling convention (LLVM `ccc`) with no `inreg`, `byval` or `sret`; the borrow, `Option` and Unit rules above apply. An `i8` or `i16` parameter or result is sign-extended, and a `u8` or `u16` one zero-extended, to 32 bits (`signext`, `zeroext`), as C compilers for that ABI expect. Each call extends by the Types of the import it calls, so two imports of one symbol that differ only in an 8- or 16-bit Type's signedness share one external declaration and each extend by their own Types. The floating-point control state at every foreign call is the same as on windows-x64.
 
-The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library (one reserved supply, or one native logical name of one Kotonoha, [§20.4](20-compilation-configuration.md#204-native-libraries)). Signatures agree when their parameters and results agree in physical form: integer Types of one width count as equal, as do all pointers. On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
+On x86_64-unknown-none an import uses the same System V x86-64 C calling convention (LLVM `ccc`) under the profile's ABI ([§21.6.7](#2167-native-imports-and-backend-support)), with no `inreg`, `byval` or `sret`; the borrow, `Option` and Unit rules above apply. Every function of the module disables MMX, SSE and AVX and enables soft float, so a floating-point argument or result passes as an integer of its size holding its bits: the first `f64` argument in `rdi`, the second in `rsi`, the result in `rax`. Generated code reads or writes no floating-point register at a foreign call. No floating-point control state crosses the call: generated code and `kimi_backend` read and write none, and `kimi_backend`'s routines round to nearest even (compiler-rt's generic `fp_mode.c` in B9e's pinned source, DECISIONS T-M58).
+
+The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, the names x86_64-unknown-none's `kimi_backend` defines ([§21.6.7](#2167-native-imports-and-backend-support)), and names starting with `__kimi_` or `llvm.`, are reserved on every target. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library (one reserved supply, or one native logical name of one Kotonoha, [§20.4](20-compilation-configuration.md#204-native-libraries)). Signatures agree when their parameters and results agree in physical form: integer Types of one width count as equal, as do all pointers. On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
 
 ```kimi
 group Native
@@ -156,7 +158,7 @@ The Kimi Kotonoha this compiler provides ([§22.1](../spec/22-core-execution-and
 | Attribute | Identifies |
 | --- | --- |
 | `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1; a published operation ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects), [§22.10.1](../spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter)); an internal declaration the compiler calls, lays out or links; or an internal function whose calls the compiler writes as a form, never as a call (below). Each Name is declared once |
-| `#Intrinsic("Name")`, `#Intrinsic("Fail", "Code")` | a function whose definition the compiler generates; a `Fail` intrinsic Aborts with the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) |
+| `#Intrinsic("Name")`, `#Intrinsic("Family", "Member")` | a function whose definition the compiler generates; the family form's second argument names its case: for `Fail`, the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) with which it Aborts; for `Instruction`, the instruction of a row of [§21.6.8](#2168-machine-instructions)'s table by its AT&T mnemonic (`rdtsc`, `inb`) |
 | `#CallerLocation` | a function whose failures report the invoking user expression ([§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location)), which its private ABI carries |
 | `#Unsupported` | a declaration whose every use this implementation reports as Unsupported at the use ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) |
 
@@ -261,7 +263,7 @@ An x86_64-unknown-none Application is a static ELF executable for `x86_64-unknow
 
 ### 21.6.1. Target
 
-The x86_64-unknown-none runtime targets `x86_64-unknown-none` with the baseline x86-64 CPU without MMX or SSE; `f32` and `f64` operations call the backend support archive's routines (soft float). Code is generated for the kernel code model and a static ELF executable linked at 0xFFFFFFFF80000000. Generated functions use no red zone and no stack check or probe: stack exhaustion is undefined behavior ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)'s freestanding exception). Unwind tables are as on linux-x64 ([§21.5.1](#2151-target)).
+The x86_64-unknown-none runtime targets `x86_64-unknown-none` with the baseline x86-64 CPU without MMX or SSE; `f32` and `f64` addition, subtraction, multiplication, division, comparisons and conversions call the backend support archive's routines (soft float). Code is generated for the kernel code model and a static ELF executable linked at 0xFFFFFFFF80000000. Generated functions use no red zone and no stack check or probe: stack exhaustion is undefined behavior ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)'s freestanding exception). Unwind tables are as on linux-x64 ([§21.5.1](#2151-target)).
 
 ### 21.6.2. Entry and boot
 
@@ -289,8 +291,9 @@ The runtime calls the program's platform members with these meanings:
 - `clock()`: monotonic nanoseconds; a negative result is a failure.
 - `terminate(status)`: never returns.
 
-While a member runs, an allocation, the runtime's call of a member (for pages, `Console` output or a clock read) and an Abort halt
-the processor with interrupts disabled, without a report; a member's own call of another member is an ordinary call.
+While a member runs, an allocation, the runtime's call of a member for `Console` output or a clock read, and an Abort halt the
+processor with interrupts disabled, without a report; a release (whose run may reach `releasePages`) and a member's own call of
+another member are ordinary.
 
 The runtime keeps the platform value that `start` returns, called once before the startup body with the loader's `Boot`
 ([§21.6.2](#2162-entry-and-boot)), in storage of the platform struct's layout, which is not a static slot and is never destroyed
@@ -314,3 +317,23 @@ nanoseconds, with frequency 10^9; its failure is a clock failure (`KIMI_E_CLOCK`
 ### 21.6.6. Integer addresses
 
 On x86_64-unknown-none, a raw pointer converted from an integer address reaches the memory or device at that address, with the provenance and authority the program's platform documents ([§5.5](../spec/05-raw-pointers-and-unsafe-memory.md#55-integer-addresses)). Every value a read of a device location of an integer Type gives is an initialized value of that Type, within that provenance. The guarantee names the storage an access reaches and the values placed within it; it does not fix the number or order of accesses ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)'s volatile accesses do).
+
+### 21.6.7. Native imports and backend support
+
+The runtime imports no function and the profile has no C library: the runtime's platform operations call the program's platform ([§21.6.3](#2163-the-platform)). The runtime defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated code may call ([§21.2](#212-foreign-function-abi) reserves the names), and a module defines no `_fltused`. The profile's backend support archive ([§21.6.1](#2161-target)) is `kimi_backend` ([§20.4](20-compilation-configuration.md#204-native-libraries)), a static library built from compiler-rt 22.1.8's soft-float builtins for the profile's ABI (soft float, no red zone, the kernel code model), with no MMX, SSE or x87 instruction. It defines only the routines that generated floating-point operations call, the comparison routines their members define beside them, and the rounding-mode and inexact-flag helpers their members call: `__adddf3`, `__addsf3`, `__subdf3`, `__subsf3`, `__muldf3`, `__mulsf3`, `__divdf3`, `__divsf3`, `__cmpdf2`, `__cmpsf2`, `__eqdf2`, `__eqsf2`, `__nedf2`, `__nesf2`, `__ltdf2`, `__ltsf2`, `__ledf2`, `__lesf2`, `__gtdf2`, `__gtsf2`, `__gedf2`, `__gesf2`, `__unorddf2`, `__unordsf2`, `__extendsfdf2`, `__truncdfsf2`, `__fixdfsi`, `__fixdfdi`, `__fixsfsi`, `__fixsfdi`, `__fixunsdfsi`, `__fixunsdfdi`, `__fixunssfsi`, `__fixunssfdi`, `__floatsidf`, `__floatdidf`, `__floatsisf`, `__floatdisf`, `__floatunsidf`, `__floatundidf`, `__floatunsisf`, `__floatundisf`, `__fe_getround` and `__fe_raise_inexact`. `kimi_backend` is linked by need: the link loads a member only when a file it loads whole, or a member it has already loaded, references a routine the member defines. A program's static library must be compiled for the same ABI. The executable is linked through a linker script the compiler carries, and a project cannot supply one: it is laid out from [§21.6.1](#2161-target)'s address in three 4,096-aligned loadable segments, code (readable and executable), read-only data (readable) and writable data (readable and writable), and its writable data holds [§21.6.2](#2162-entry-and-boot)'s base-revision tag and requests between Limine's start and end markers.
+
+### 21.6.8. Machine instructions
+
+The group `Kimi.X86` declares x86-64 processor instructions as functions ([§22.1](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). It is declared where the Condition `arch == "x86_64"` holds ([§19.2.1](../spec/19-compile-time-directives.md#1921-built-in-conditions)): `pause` and `readTimestamp` wherever `X86` is declared, since they also run in user mode; the other members, privileged, only where `os == "none"` also holds, since each faults in user mode. Elsewhere `X86` declares no such member. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other member's call (a compiler barrier, not a processor fence).
+
+| Member | Instruction | Safety |
+| --- | --- | --- |
+| `pause()` | `pause`, the spin-wait hint | safe |
+| `readTimestamp() -> u64` | `rdtsc`, the time-stamp counter | safe |
+| `halt()` | `hlt` | safe |
+| `disableInterrupts()` | `cli` | safe |
+| `enableInterrupts()` | `sti` | safe |
+| `readPort8(port: u16) -> u8`, `readPort16(port: u16) -> u16`, `readPort32(port: u16) -> u32` | `in` of one, two or four bytes | `unsafe` |
+| `writePort8(port: u16, value: u8)`, `writePort16(port: u16, value: u16)`, `writePort32(port: u16, value: u32)` | `out` of one, two or four bytes | `unsafe` |
+
+A member is `unsafe` exactly when it accesses a device or changes the processor's address translation, descriptor tables or model-specific state; the others change no storage. A port member's `- safety:` item is its caller's obligation: the device at `port` may change any storage it can reach, and the caller keeps that storage within the program's platform contract ([§21.6.6](#2166-integer-addresses)). Calling an `X86` member is an environment effect ([§8.11.2](../spec/08-generics-constraints-and-contracts.md#8112-confined)): it accesses processor state outside the program. A `confined` implementation calls none of them, `pause` and `readTimestamp` included.

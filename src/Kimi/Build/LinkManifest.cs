@@ -2,8 +2,8 @@
 
 // Owns the link manifest's fixed fields and its readers (schema 6, whose external declarations each name their providing library
 // (NamedProvider) and list the runtime's imports too (LinkAmbiguity); IMPL 20.3.2 leaves the format implementation-defined; R9-B1): the
-// fixed fields, each target row's head (the profile from the row's columns, then the backend supply's identity on a row that reserves
-// it; the Tatara plan's B7b7), built once per row as one table that publication writes for the compilation's row (WriteFixed) and the
+// fixed fields, each target row's head (the profile from the row's columns, then its backend package's identity on a row that reserves
+// the backend supply, ToolchainIdentity.Packages; the Tatara plan's B7b7, B9f), built once per row of the table's array as one table that publication writes for the compilation's row (WriteFixed) and the
 // native build checks in the same order for the row the manifest's target names, which it returns (CheckFixed); the libraries entries of the compiler's supplies (IMPL 20.4's reserved names,
 // ToolchainIdentity.Supplies), each written from its row (WriteCompilerSupply) and checked against it (CheckCompilerSupply); and the
 // readers (Field, Text, OptionalText, NullableText, Items), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
@@ -29,20 +29,8 @@ namespace Kimi.Build;
 /// <summary>The link manifest's fixed fields, the compiler's supplies' entries and the readers (R9-B1).</summary>
 internal static class LinkManifest
 {
-    // The backend supply's identity rows, which a row's head carries when the row reserves the backend supply (windows-x64; linux-x64 has
-    // no backend archive, C1).
-    private static readonly (string Path, object Value)[] BackendRows =
-    [
-        ("backendSupport.packageId", ToolchainIdentity.BackendPackageId),
-        ("backendSupport.abiVersion", ToolchainIdentity.BackendAbiVersion),
-        ("backendSupport.packageVersion", ToolchainIdentity.BackendVersion),
-        ("backendSupport.library", ToolchainIdentity.Backend.Name),
-        ("backendSupport.artifactSha256", ToolchainIdentity.BackendSha256),
-        ("backendSupport.providedSymbols", ToolchainIdentity.Backend.Symbols),
-    ];
-
     // Each row's head, built once, in TargetProfile.Rows' order: the fixed fields in writing and checking order, by path, each a string,
-    // an Int32 or a string list; the common rows from the row's columns, then its compiler-supply identity rows.
+    // an Int32 or a string list; the common rows from the row's columns, then its backend package's identity rows.
     private static readonly (string Path, object Value)[][] Heads = [.. TargetProfile.Rows.Select(static row => Head(row))];
 
     // The root members this compiler no longer accepts, each with its text, checked after the fixed fields. A later removal adds a row.
@@ -224,7 +212,9 @@ internal static class LinkManifest
     /// <returns>The items.</returns>
     internal static JsonElement.ArrayEnumerator Items(JsonElement element, string path) => Field(element, path, JsonValueKind.Array).EnumerateArray();
 
-    // A row's head (Heads): the common rows from the row's columns, then the backend supply's identity rows when the row reserves it.
+    // A row's head (Heads): the common rows from the row's columns, then its backend package's identity rows when the row reserves the
+    // backend supply (windows-x64, none-x64; linux-x64 has no backend archive, C1): the package's id, ABI version and archive hash
+    // (ToolchainIdentity.Packages), the compiler's version, and the row's backend supply's name and symbols.
     private static (string Path, object Value)[] Head(TargetProfile row) =>
     [
         ("schemaVersion", 6),
@@ -236,7 +226,15 @@ internal static class LinkManifest
         ("codegen.relocationModel", row.RelocationModel),
         ("codegen.codeModel", row.CodeModel),
         ("codegen.unwindTables", row.UnwindTables),
-        .. row.Supply(ToolchainIdentity.Backend.Name) is null ? [] : BackendRows,
+        .. ToolchainIdentity.Packages.Where(x => x.Row == row).SelectMany(static x => new (string, object)[]
+        {
+            ("backendSupport.packageId", x.PackageId),
+            ("backendSupport.abiVersion", x.AbiVersion),
+            ("backendSupport.packageVersion", ToolchainIdentity.BackendVersion),
+            ("backendSupport.library", ToolchainIdentity.Backend.Name),
+            ("backendSupport.artifactSha256", x.ArtifactSha256),
+            ("backendSupport.providedSymbols", x.Row.Supply(ToolchainIdentity.Backend.Name)!.Symbols),
+        }),
     ];
 
     // A path's section, empty at the top level, and its field's name.

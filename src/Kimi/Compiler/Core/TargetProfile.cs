@@ -2,21 +2,20 @@
 
 // Owns the target table (IMPL 21.4, 21.5, 21.6, SPEC 22; Tatara r3 §4; DECISIONS R5-M174): one row per executable target profile,
 // windows-x64 (Windows), linux-x64 (Linux, the Tatara plan's B7b2a: static, without a C library, its layer over system calls) and
-// none-x64 (None, the Tatara plan's B9: freestanding, its program supplying its platform), which Binding's native resolution and its
-// startup check (ProgramPlatform), the Backend's module frame and runtime ABI, target selection (Project, Solution, LSP), project
-// configuration and the native build read.
-// None is staged until its link exists (Staged; removal B9g): Find and the reads over every row (AllRows: Rows, then Staged) reach it,
-// selection (Host, Project.ArtifactTarget) and the readers of the selectable rows (Rows) do not.
-// Input: this process's operating system and architecture (HostName, read once). Output: the selectable rows (Rows), the staged rows
-// (Staged), the row of a triple (Find), the host's row (Host: the row whose executables this host runs, or null), and each row's
-// columns: the triple, the profile name, data layout, CPU, features and code generation settings, the module frame's extra function
+// none-x64 (None, the Tatara plan's B9: freestanding, its program supplying its platform, its kimi_backend compiler-rt's soft-float
+// routines, B9e), which Binding's native resolution and its startup check (ProgramPlatform), the Backend's module frame and runtime
+// ABI, target selection (Project, Solution, LSP), project configuration and the native build read.
+// Input: this process's operating system and architecture (HostName, read once). Output: the rows (Rows: the three selectable rows,
+// in the table's order), the row of a triple (Find), the host's row (Host: the row whose executables this host runs, or null), and each
+// row's columns: the triple, the profile name, data layout, CPU, features and code generation settings, the module frame's extra function
 // attributes (FunctionAttributes), the entry and a COFF row's subsystem, float marker and load configuration symbol (null on a row
 // without them), the platform layer (Layer: its template's resource name), the reserved supplies (Supplies: each one's name, kind and
 // symbol set; Supply(name)), the library kinds the row links (Kinds, IMPL 20.4; the Tatara plan's B7b5), the supply a program's C
 // library starts through (CRuntime, null for none; the Tatara plan's B7b2b), the convention by which the row's imports extend their
 // arguments (ArgumentExtension, IMPL 21.2's name, null for none), the extension of a program library's input (InputExtension, IMPL
 // 20.4), the executable format, whose link writer the native build selects (Format, IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's
-// B7b7), the host that runs the row's executables (ExecutionHost, as HostName spells one, null for none; B7b8), whether the program
+// B7b7), the catalog name of the row's linker script, which the native build stages and passes to the ELF link (LinkerScript, an ELF
+// row's fact, null on a COFF row; null: the linker's own layout; the Tatara plan's B9f), the host that runs the row's executables (ExecutionHost, as HostName spells one, null for none; B7b8), whether the program
 // supplies the platform layer's routines (ProgramPlatform, SPEC 22.4.5; the Tatara plan's B9), the runtime's import declarations,
 // and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines (MemorySymbols), the
 // C entry's symbol (MainSymbol), the reserved external names of every target (ReservedSymbols, IMPL 21.2) and the reads over every
@@ -50,12 +49,11 @@ internal sealed class TargetProfile
     /// text order: this before the Windows row's values.</summary>
     internal static readonly string[] MemorySymbols = ["memcmp", "memcpy", "memmove", "memset"];
 
-    // The backend supply's name, which the Windows row's supply and the reserved external names read (IMPL 21.4.7).
+    // The backend supply's name, which the Windows and none rows' supplies and the reserved external names read (IMPL 21.4.7, 21.6.7).
     private const string BackendSupply = "kimi_backend";
 
-    // The Windows row's values that its columns read, stated once. Static initializers run in text order: these before Windows, Windows
-    // and Linux before Rows, None before Staged, Rows and Staged before AllRows, AllRows before ReservedSymbols, Rows and HostName before
-    // Host (a reversed pair reads null).
+    // The Windows row's values that its columns read, stated once. Static initializers run in text order: these before Windows, Windows,
+    // Linux and None before Rows, Rows before ReservedSymbols, Rows and HostName before Host (a reversed pair reads null).
     // The kernel32 declarations the generated runtimes emit, with their import-ABI physical signatures: the ordinary runtime of SPEC
     // 21.4.7, the two test-runtime APIs, which one source can reach in either build, then the platform layer's pages (the Tatara plan's
     // decision 23, B7r2). A null signature marks a declaration no expressible LibraryImport can share: the ExitProcess declaration is
@@ -74,6 +72,18 @@ internal sealed class TargetProfile
 
     // The backend supply's helper symbols in catalog order (IMPL 21.4.7), reserved external names through the supply (ReservedSymbols).
     private static readonly string[] WindowsBackendSymbols = ["__chkstk"];
+
+    // The none row's backend supply's symbols in catalog order (src/backend/none-x64/profile.json's providedSymbols, ToolchainIdentity's
+    // check): compiler-rt 22.1.8's soft-float routines the generated float operations call and the members' own needs (IMPL 21.6.7, the
+    // Tatara plan's decision 33), reserved external names on every target through the supply (ReservedSymbols). Before None (text order).
+    private static readonly string[] NoneBackendSymbols =
+    [
+        "__adddf3", "__addsf3", "__cmpdf2", "__cmpsf2", "__divdf3", "__divsf3", "__eqdf2", "__eqsf2", "__extendsfdf2", "__fe_getround",
+        "__fe_raise_inexact", "__fixdfdi", "__fixdfsi", "__fixsfdi", "__fixsfsi", "__fixunsdfdi", "__fixunsdfsi", "__fixunssfdi",
+        "__fixunssfsi", "__floatdidf", "__floatdisf", "__floatsidf", "__floatsisf", "__floatundidf", "__floatundisf", "__floatunsidf",
+        "__floatunsisf", "__gedf2", "__gesf2", "__gtdf2", "__gtsf2", "__ledf2", "__lesf2", "__ltdf2", "__ltsf2", "__muldf3", "__mulsf3",
+        "__nedf2", "__nesf2", "__subdf3", "__subsf3", "__truncdfsf2", "__unorddf2", "__unordsf2",
+    ];
 
     /// <summary>Gets the windows-x64 row, the pinned, module-local Windows execution profile (IMPL 21.4). Its reserved supplies (IMPL
     /// 20.4), in Ordinal name order: kernel32, the generated import library, whose symbol set is the runtime declarations' symbols, then
@@ -113,6 +123,7 @@ internal sealed class TargetProfile
         ArgumentExtension = null,
         InputExtension = ".lib",
         Format = "COFF",
+        LinkerScript = null,
         ExecutionHost = "windows x64",
         ProgramPlatform = false,
     };
@@ -145,18 +156,16 @@ internal sealed class TargetProfile
         ArgumentExtension = "SystemV",
         InputExtension = ".a",
         Format = "ELF",
+        LinkerScript = null,
         ExecutionHost = null,
         ProgramPlatform = false,
     };
 
-    /// <summary>Gets the table's selectable rows: one per executable target profile (SPEC 22) that selection reads (Host, the artifact
-    /// target), in the order the table states them.</summary>
-    internal static TargetProfile[] Rows { get; } = [Windows, Linux];
-
     /// <summary>Gets the none-x64 row, the freestanding x86-64 profile (IMPL 21.6; the Tatara plan's decision 22): kernel code generation
     /// (the kernel code model, static relocation, no red zone, soft float without SSE or x87 state, and no stack probe: SPEC 17.4.3's
-    /// freestanding exception, decision 44), its program supplying its platform layer's routines (ProgramPlatform, SPEC 22.4.5), no
-    /// runtime declaration, reserved supply, C runtime or host. Staged (<see cref="Staged"/>) until the Tatara plan's B9g.</summary>
+    /// freestanding exception, decision 44), its program supplying its platform layer's routines (ProgramPlatform, SPEC 22.4.5), one
+    /// reserved supply, kimi_backend, compiler-rt's soft-float routines, a static library (IMPL 21.6.7; the Tatara plan's B9e), and no
+    /// runtime declaration, C runtime or host.</summary>
     internal static TargetProfile None { get; } = new()
     {
         Target = "x86_64-unknown-none",
@@ -175,27 +184,20 @@ internal sealed class TargetProfile
         Layer = "NonePlatform.ll.in",
         UnmappedBound = 65536,
         RuntimeDeclarations = [],
-        Supplies = [],
+        Supplies = [new(BackendSupply, "static", NoneBackendSymbols)],
         Kinds = ["static"],
         CRuntime = null,
         ArgumentExtension = "SystemV",
         InputExtension = ".a",
         Format = "ELF",
+        LinkerScript = "kernel.ld",
         ExecutionHost = null,
         ProgramPlatform = true,
     };
 
-    /// <summary>Gets the staged rows: the table's rows outside <see cref="Rows"/>, which <see cref="Find"/> and the reads over every row
-    /// reach and selection does not.</summary>
-    [Transitional("B9g", Reason = "The x86_64-unknown-none row outside Rows until its link exists (the Tatara plan's B9b): B9g appends None to Rows and deletes Staged, AllRows and Project.ArtifactTarget's membership test.")]
-    internal static TargetProfile[] Staged { get; } = [None];
-
-    /// <summary>Gets every row of the table, <see cref="Rows"/> then <see cref="Staged"/>, which <see cref="Find"/> and the reads over
-    /// every row read (<see cref="ReservedSupply"/>, <see cref="Provides"/>, <see cref="TryGetRuntimeDeclaration"/>,
-    /// <see cref="ReservedSymbols"/>' build and the Backend's module frames, LlvmModuleText.Frame); B9g deletes it with
-    /// <see cref="Staged"/>.</summary>
-    [Transitional("B9g", Reason = "Every row while Staged holds the x86_64-unknown-none row (the Tatara plan's B9b): B9g appends None to Rows, so AllRows equals Rows, and its readers read Rows; B9g deletes it.")]
-    internal static TargetProfile[] AllRows { get; } = [.. Rows, .. Staged];
+    /// <summary>Gets the table's rows: one per executable target profile (SPEC 22), each selectable (Host, the artifact target), in the
+    /// order the table states them.</summary>
+    internal static TargetProfile[] Rows { get; } = [Windows, Linux, None];
 
     /// <summary>Gets the reserved external names of every target (IMPL 21.2; the Tatara plan's B7b5): for each row its float marker and
     /// its backend supply's symbols, then <see cref="MemorySymbols"/>, then <see cref="MainSymbol"/>, each name once, built once.</summary>
@@ -283,6 +285,11 @@ internal sealed class TargetProfile
     /// and a load configuration symbol, no other row has.</summary>
     internal required string Format { get; init; }
 
+    /// <summary>Gets the catalog name of the row's linker script (the Tatara plan's decision 31; IMPL 21.6.1-21.6.2), the compiler's own,
+    /// which the native build stages and passes to the ELF link, or null when the row links in the linker's own layout. ToolchainIdentity
+    /// holds its material, the catalog's.</summary>
+    internal required string? LinkerScript { get; init; }
+
     /// <summary>Gets the host whose processes run the row's executables, spelled as <see cref="HostName"/> spells one, or null when no
     /// host Kimi runs on runs them (linux-x64 until the Tatara plan's B8: no Linux host runs Kimi's native build or its launcher).</summary>
     internal required string? ExecutionHost { get; init; }
@@ -292,12 +299,12 @@ internal sealed class TargetProfile
     /// OS.</summary>
     internal required bool ProgramPlatform { get; init; }
 
-    /// <summary>Gets the row of a target triple, staged rows included.</summary>
+    /// <summary>Gets the row of a target triple.</summary>
     /// <param name="triple">The target triple.</param>
     /// <returns>The row whose <see cref="Target"/> is <paramref name="triple"/>, or null when the table has none.</returns>
     internal static TargetProfile? Find(string triple)
     {
-        foreach (var row in AllRows)
+        foreach (var row in Rows)
         {
             if (row.Target == triple)
             {
@@ -313,7 +320,7 @@ internal sealed class TargetProfile
     /// <returns>A row's reserved supply that <paramref name="name"/> names, or null when no row's names it.</returns>
     internal static TargetSupply? ReservedSupply(string? name)
     {
-        foreach (var row in AllRows)
+        foreach (var row in Rows)
         {
             if (row.Supply(name) is { } supply)
             {
@@ -330,7 +337,7 @@ internal sealed class TargetProfile
     /// <returns>True when a row's supply that <paramref name="name"/> names lists <paramref name="symbol"/>.</returns>
     internal static bool Provides(string name, string symbol)
     {
-        foreach (var row in AllRows)
+        foreach (var row in Rows)
         {
             if (row.Supply(name) is { } supply && Array.IndexOf(supply.Symbols, symbol) >= 0)
             {
@@ -349,7 +356,7 @@ internal sealed class TargetProfile
     /// <returns>True when a row's runtime declares <paramref name="symbol"/>.</returns>
     internal static bool TryGetRuntimeDeclaration(string symbol, out string? signature, out string? provider)
     {
-        foreach (var row in AllRows)
+        foreach (var row in Rows)
         {
             foreach (var declaration in row.RuntimeDeclarations)
             {
@@ -395,11 +402,11 @@ internal sealed class TargetProfile
         return null;
     }
 
-    // ReservedSymbols' one build, after AllRows: each part appended as it is (the parts are disjoint).
+    // ReservedSymbols' one build, after Rows: each part appended as it is (the parts are disjoint).
     private static string[] ReservedNames()
     {
         List<string> names = [];
-        foreach (var row in AllRows)
+        foreach (var row in Rows)
         {
             if (row.FloatMarker is { } marker)
             {

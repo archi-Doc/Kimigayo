@@ -49,6 +49,24 @@ public partial class TypeDagScalingTest
         Assert.Equal(form == "enum" ? "g f" : "g f, k h, copies cp", string.Join(", ", calls));
     }
 
+    // PLAN G922 U1 (the owner's O-534 (a) interim): the `ref` chain's last instance read into a `let` local, whose opening merges each
+    // Tuple level met on its two paths (MarkMerged, each distinct part walked once), and a `match` of its copy whose bindings at the
+    // leftmost and rightmost leaf a nested signature names: each name is the located limit, within the chain's bound.
+    [Theory]
+    [InlineData(40)]
+    public void AMergedLeafNamedInANestedSignatureIsTheLimit(int size)
+    {
+        var (left, right) = ("let l", "let r");
+        for (var i = 0; i < size - 2; i++)
+        {
+            (left, right) = ($"({left}, _)", $"(_, {right})");
+        }
+
+        var c = MirBuildTest.Compile(InstanceChain("ref", size) + $"func merged(d: ref/D1<ref/i32 during a>) -> ()\n    let v = d{string.Concat(Enumerable.Repeat(".x", size))}\n" +
+            $"    match v@copy\n        ({left}, {right})\n            func inner(x: ref/i32 during l) -> ref/i32 during r => x\n            return\n    return\n");
+        Assert.Equal("Unsupported_Kd l|Unsupported_Kd r", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {(x.Node as IdentifierNameKoto)?.IdentifierName}").Order(StringComparer.Ordinal)));
+    }
+
     // DECISIONS BU-113: a generic callee's declared input is the chain over its own Type parameter, `fg<T>(d: uniq/D1<T>, …)`, so the
     // retention walks pair every instantiated part of D1<i32> with its declared part of D1<T>, a Tuple DAG of 2^39 leaves on each side;
     // each (part, declared part) pair is walked once, and the contract finishes.

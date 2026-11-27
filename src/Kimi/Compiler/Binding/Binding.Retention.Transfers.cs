@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 // Call retention, the transfer rule (SPEC 15.6.4 as DECISIONS R4-M131 states it; BU-40; contract in TyCtxt.Retention.cs).
 // Responsibility: which published operation transfers values, how it narrows rule A's rows at a raw layer without an Origin, and which
 // stores it writes only where its receiver refers (SPEC 4.9.6; DECISIONS BU-42).
-// Inputs: the callee of the contract being computed, its instantiated inputs, and the premise scope TyCtxt read an instance with an
-// abstract part under, RetentionRows' parameter, which it hands to IteratorTransfer (the library root's for any other).
+// Inputs: the callee of the contract being computed, its instantiated inputs, and the scope TyCtxt read the instance under
+// (TyCtxt.Retains), RetentionRows' parameter, which it hands to IteratorTransfer.
 // Outputs: the contract's Transfer: its declaring-identity key (TransferKey), read by RetentionRows once per contract, and for a callee
 // that key does not name its Iterator key (IteratorTransfer), read once, at the first output whose hold walk meets a written unstated
 // layer, so an ordinary call pays two symbol reads; the outputs it writes (TransferWrites) and what an input keeps there (TransferKept);
@@ -88,8 +88,8 @@ public sealed partial class Binding
         => this.TransferKey(callee) != Transfer.None ||
             callee?.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Replace or KimiDeclarationId.RawInitialize;
 
-    // The Iterator key of a callee TransferKey does not name (the file's contract), its Iterator conformance proven under `premises`
-    // (null: the library root's).
+    // The Iterator key of a callee TransferKey does not name (the file's contract), its Iterator conformance proven under `premises`, the
+    // scope TyCtxt read the instance under: present with a callee (an erased signature has neither).
     private Transfer IteratorTransfer(BindingSymbol? callee, ReadOnlySpan<BoundType> inputs, BindingScope? premises)
     {
         if (callee is not { ReceiverIndex: >= 0 } symbol || this.BorrowReferent(inputs[symbol.ReceiverIndex], out _, out _) is not { } self)
@@ -98,7 +98,7 @@ public sealed partial class Binding
         }
 
         return this.SelectsWitness(symbol, self, this.Library.Iterator) &&
-            this.ResolveConformance(self, this.Library.Iterator, premises ?? this.EffectPremises(null), QuerySite.Nested, out _) == ConstraintProof.Proven
+            this.ResolveConformance(self, this.Library.Iterator, premises!, QuerySite.Nested, out _) == ConstraintProof.Proven
             ? Transfer.Values : Transfer.None;
     }
 

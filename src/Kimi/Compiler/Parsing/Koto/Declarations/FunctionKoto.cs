@@ -37,6 +37,20 @@ public sealed record class FunctionParameterKoto
 
     internal SourceSpan InternalNameSpan { get; init; }
 
+    internal int? DeclarationStart
+    {
+        get
+        {
+            int? start = this.ExternalNameSpan.Length == 0 ? null : this.ExternalNameSpan.Start;
+            for (var attribute = this.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+            {
+                start = attribute.Span.Start;
+            }
+
+            return start;
+        }
+    }
+
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>
@@ -388,12 +402,14 @@ public sealed class FunctionKoto : DeclarationKoto
         this.parameters = new();
         if (accessor.Receiver is not null)
         {
-            this.parameters.Add(new("self", "self", new IdentifierNameKoto(accessor.Declaration, "self"), null));
+            var name = accessor.Declaration.ParameterNames.Receiver;
+            this.parameters.Add(new("self", "self", new IdentifierNameKoto(accessor.Declaration, "self"), null) { ExternalNameSpan = name, InternalNameSpan = name });
         }
 
         if (accessor.Input is not null)
         {
-            this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null));
+            var name = accessor.Declaration.ParameterNames.Value;
+            this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null) { ExternalNameSpan = name, InternalNameSpan = name });
         }
 
         foreach (var parameter in this.parameters)
@@ -407,24 +423,6 @@ public sealed class FunctionKoto : DeclarationKoto
     // SPEC 15.6.4, DECISIONS R4-M154 r2.1: the declaration whose syntax binds this function's Origins and its inputs' Origins, an erased
     // signature's Binder: an accessor view's BoundAccessor.Binder, else the function.
     internal Koto OriginBinder => (Koto?)this.Accessor?.Binder ?? this;
-
-    internal bool IsPropertyWitness { get; private set; }
-
-    internal void SetPropertyWitnessBody(Koto expression, BoundType result)
-    {
-        if (!this.IsPropertyWitness)
-        {
-            this.ReturnType = new IdentifierNameKoto(expression, "result") { Parent = this };
-        }
-
-        this.IsPropertyWitness = true;
-        this.IsRequirement = false;
-        this.Body = null;
-        this.ExpressionBody = expression;
-        expression.Parent = this;
-        this.ReturnType!.BoundType = result;
-        this.ReturnType.BindingState = BindingState.Resolved;
-    }
 
     // An execution view of a static initializer, retaining its original syntax and source location.
     internal FunctionKoto(BoundProperty property)
@@ -501,10 +499,7 @@ public sealed class FunctionKoto : DeclarationKoto
         var accessor = this.Accessor!;
         this.Body = accessor.Declaration!.Body as CodeBlockKoto;
         this.ExpressionBody = this.Body is null ? accessor.Declaration.Body : null;
-        if (!this.IsPropertyWitness)
-        {
-            this.ReturnType = accessor.Declaration.ReturnType;
-        }
+        this.ReturnType = accessor.Declaration.ReturnType;
 
         for (var i = 0; i < this.Parameters.Count; i++)
         {

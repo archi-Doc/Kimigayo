@@ -2,8 +2,8 @@
 
 // Owns substitution interning (Subst): the substitutions of selected calls, closures, function items and the calls the compiler
 // synthesizes, and their application to a Type and composition (SPEC 8.1.3, 8.6.4, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
-// Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
-// substitution and Origin forwarding.
+// Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's length substitution and
+// Origin forwarding; the Self-less substitution tests read (StorageSubst, until R7-P6).
 // Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type in an instance by the substitution alone,
 // with its Formation (Apply); a substitution in an instance by the substitution alone, with its Formation (Compose); a Type in an
 // instance with its storage verdict (Instance: Apply, then Binding's one storage query, Binding.PrepareTypeStorage; DECISIONS BU-36,
@@ -135,19 +135,19 @@ internal sealed partial class TyCtxt
             : this.Intern(closure, null, erased, [], [], [], []);
     }
 
-    // The substitution Binding's storage instantiation of a call applies (Instance(type, StorageSubst(call))): its target's slots,
+    // The Self-less substitution tests read (Instance(type, StorageSubst(call)); R7-P6 re-points them): a call's target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
     // that SubstOf adds, as the old analyses have always instantiated a call's Types. A second substitution per call beside SubstOf, it
-    // goes when its readers apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own (requirement instantiation and
-    // formatting implementations) go with R7's CallPlan pipeline (DECISIONS R5-M36).
-    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of StorageSubst, Binding's requirement instantiation and formatting implementations, to SubstOf.")]
+    // goes when its readers apply SubstOf instead: the old analyses' went at R6-check H10b, the legacy comparison composition's with
+    // R7-P5a and Binding's requirement instantiation with R7-P5b, so only tests read it (DECISIONS R5-M36).
+    [Transitional("R7", Reason = "No src reader; R7-P6 re-points the test reads to SubstOf.")]
     internal Subst StorageSubst(CallPlan call)
         => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 7.3: a function item's substitution, the context its Item Type binds: its function's own Type arguments, the declaring Type its
     // last Component holds and its length arguments, without Origins (an Item keeps its per-call Origins in place); a function of the Type
-    // alone, which caches and prepares nothing (DECISIONS R5-M43). A requirement Item's is its context's call (Binding's): its witness's for a
-    // closed Self, which A4 enters, the requirement's on an abstract one; what an Item runs in the checked set is Witness(item) (R5-M70).
+    // alone, which caches and prepares nothing (DECISIONS R5-M43). A requirement Item's is its context's call (Binding's), the
+    // requirement's on the Item's Self; what it runs is Witness(item), which A4 reads through Require (R5-M70).
     internal Subst? SubstOfItem(BoundType item)
     {
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Declaration: FunctionKoto function } target })
@@ -175,11 +175,11 @@ internal sealed partial class TyCtxt
     internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
         => this.Intern(target, null, declaring, types, lengths, [], []);
 
-    // A requirement call's substitution in a Semantics view (SPEC 8.15; A4's Requires item, for Witnesses): on the case Type of its Self
-    // through that of its Contract reference, which the view's owner gives (MirCases.Type); its own Types, lengths and Origins are the
-    // call's, so it is the call itself where the view changes neither.
+    // A requirement call's substitution in a Semantics view (SPEC 8.15; A4's Requires item, for Witness): on the case Type of its Self
+    // through that of its Contract reference, which the view's owner gives (MirCases.Type), at the call's own Types and lengths; without its
+    // Origins, which A4 never reads, so the calls of one requirement on one Self share one item and one witness answer (R4-M197).
     internal Subst InView(Subst call, BoundType self, BoundType? reference)
-        => this.Intern(call.Target, self, reference, call.Types, call.Lengths, call.Origins, call.Inputs);
+        => this.Intern(call.Target, self, reference, call.Types, call.Lengths, [], []);
 
     // A call of a requirement on a Self through a Contract reference that a compiler function or a requirement's function item makes (a
     // comparison's Requirement leaf, a compiler function's call of a user witness, an Item's call): a bound reference is its declaring Type
@@ -257,7 +257,7 @@ internal sealed partial class TyCtxt
     // Binding's walk (DECISIONS BU-12: Binding.PrepareTypeStorage, the one storage query, a function of the Type alone, a limit taking
     // precedence, memoized per pass by the Type, so a warm query allocates nothing; never queried during a walk, whose guard throws).
     // Rejected keeps its instance, a part Binding rejected holding, placing and destroying nothing (BU-38), so Binding's own readers,
-    // during its passes, read every verdict but a Limit (Binding.Formatting, RequirementInstances, ClosureInstances).
+    // during its passes, read every verdict but a Limit (Binding.ClosureInstances).
     internal (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType type, Subst subst)
     {
         var instance = this.Apply(type, subst).Type;

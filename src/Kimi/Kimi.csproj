@@ -54,6 +54,8 @@
     <EmbeddedResource Include="..\backend\windows-x64\kimi_backend_windows_x64_v1.lib.facts" LogicalName="Kimi.WindowsBackend.lib.facts" />
     <EmbeddedResource Include="..\backend\linux-x64\profile.json" LogicalName="Kimi.LinuxBackendProfile.json" />
     <EmbeddedResource Include="..\backend\linux-x64\crt1.o;..\backend\linux-x64\crti.o;..\backend\linux-x64\crtn.o;..\backend\linux-x64\libc.a;..\backend\linux-x64\crt1.o.facts;..\backend\linux-x64\crti.o.facts;..\backend\linux-x64\crtn.o.facts;..\backend\linux-x64\libc.a.facts;..\backend\linux-x64\COPYRIGHT" LogicalName="Kimi.Linux.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\backend\none-x64\profile.json" LogicalName="Kimi.NoneBackendProfile.json" />
+    <EmbeddedResource Include="..\backend\none-x64\kimi_backend_none_x64_v1.a;..\backend\none-x64\kimi_backend_none_x64_v1.a.facts;..\backend\none-x64\LICENSE-compiler-rt.txt;..\backend\none-x64\kernel.ld" LogicalName="Kimi.None.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\Tatara\tatara.h" LogicalName="Kimi.Tatara.h" />
     <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />

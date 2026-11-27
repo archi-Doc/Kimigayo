@@ -142,10 +142,9 @@ public sealed partial class Binding
     }
 
     // PLAN G778: the anchor of a request at `use`, below which its environment reads nothing: the child on the use's path of the
-    // innermost node the environment reads (a premise frame, a witness bridge among them, a scope stop, a resolving declaration, a local
-    // whose R5 the use is within, the root), as a Property's header and a match arm's body read their parent by child; a generated
-    // function's block itself, whose statements alone bind in their source's scope (NodeScope); the use itself when it is read or is such
-    // a statement. Requests outside a comparison whose uses share an anchor have one environment.
+    // innermost node the environment reads (a premise frame, a scope stop, a resolving declaration, a local whose R5 the use is within,
+    // the root), as a Property's header and a match arm's body read their parent by child; a generated function's block itself, whose
+    // statements alone bind in their source's scope (NodeScope); the use itself when it is read or is such a statement. Requests outside a comparison whose uses share an anchor have one environment.
     private Koto PremiseAnchor(Koto use)
     {
         if (GeneratedStatement(use))
@@ -483,11 +482,12 @@ public sealed partial class Binding
             this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
             !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? stored : null;
 
-    // R5's region: the region `node` is, when it is a slot of a local of the use's own body other than the one being declared; otherwise
-    // null. A nested body or signature has no such premise: there the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
+    // R5's region: the region `node` is, when it is a slot of a body local of the use's own body (a region owner, PLAN G922) other than the
+    // one being declared (the use is not within its DeclaringPart); otherwise null. A nested body or signature has no such premise: there
+    // the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
     private BoundOrigin? LocalRegionOf(OriginPremiseEnvironment environment, int node, Koto? body)
-        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: VariableKoto variable } region && IsLocalRegion(region) &&
-            !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? region : null;
+        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: { } owner } region && DeclaringPart(owner) is { } declared &&
+            IsLocalRegion(region) && !IsWithin(environment.Use, declared) && ReferenceEquals(PremiseSignature(owner), body) ? region : null;
 
     // A required signature's own well-formedness: its inputs' and its result's.
     private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)

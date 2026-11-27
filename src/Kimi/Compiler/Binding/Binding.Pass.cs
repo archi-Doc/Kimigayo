@@ -72,6 +72,7 @@ public sealed partial class Binding
         }
 
         FormedTypeRows.Empty(this.pass);
+        this.localLayerSites.Clear();
         this.nodes.Clear();
         this.aliases.Clear();
         this.ResetAliases();

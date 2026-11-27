@@ -57,16 +57,6 @@ internal sealed partial class TyCtxt
         return (requirement, row.On, row.Destroys, row.InPlace, row.Calls);
     }
 
-    // SPEC 8.11.3: what a requirement call runs on a Self that is not abstract under the Contract reference it recorded (MirCallee.Contract)
-    // and its substitution, as Witness reads them (Binding.Witnesses), appended to a caller-owned list with the instance each target runs
-    // at; false where none resolves. `call` holds the Self, the reference instantiated (Subst.Declaring) and the call's own Types and
-    // lengths, at which a Conformance target's instance is the witness under its declaring instance by position (SPEC 8.6.3), as Witness's
-    // Conformance binds them; a requirement no call names (a published row's) has Synthesized(requirement, self, reference), which binds
-    // no own slot.
-    internal bool Witnesses(
-        BindingSymbol requirement, BindingSymbol? contract, Subst call, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
-        => binding.Witnesses(requirement, contract, call, definition, into);
-
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.
     internal void EffectObligations(List<EffectObligation> rows) => binding.EffectObligations(rows);
 
@@ -85,7 +75,8 @@ internal sealed partial class TyCtxt
     internal BoundType CallsSignature(BindingSymbol operation, int calls)
         => binding.OneCallable(operation, this.Signature(operation, null, calls, out _)!)!.Value.Signature;
 
-    // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
+    // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract), the recorded one for every
+    // Self; null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
 
     // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per definition, whose premises are read at its

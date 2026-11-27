@@ -253,6 +253,18 @@ public enum OriginDischarge : byte
     HeldResult,
 }
 
+/// <summary>The requirement fixed point's walk state at a part of a declaration's stored Type (RequirementPart; PLAN G1456): it changes
+/// at a Function Type's components, as polarity does.</summary>
+public enum StoragePosition : byte
+{
+    /// <summary>Stored content: a borrow, pair or nested layer there is a use of its slot (SPEC 15.3.5).</summary>
+    Stored,
+
+    /// <summary>A stored Function Type's signature, its parameters and result: a variance position and no use, since a callable signature
+    /// alone stores nothing (SPEC 15.2.4), so a slot reached there is marked (OriginParameter.InStoredSignature).</summary>
+    Signature,
+}
+
 /// <summary>A declared slot; a pair consumes one argument and retains its whole type.</summary>
 public sealed class GenericSlot(GenericSlotKind kind, BindingSymbol symbol, BindingSymbol? semantics)
 {
@@ -279,6 +291,11 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
     public OriginVariance Variance { get; internal set; }
 
     public SlotRequirement Requirement { get; internal set; }
+
+    // SPEC 15.3.5: a chain reaches the slot in a stored Function Type's signature, directly or through a nested Type's slot bound to it,
+    // so a slot Phantom in every admitted case keeps its variance from storage (StoragePosition.Signature); the fixed point's, reset with
+    // Variance.
+    public bool InStoredSignature { get; internal set; }
 
     // Joins a use into Requirement (SPEC 15.3.5: the stronger unconditional part, every binder), the requirement fixed point being its one
     // writer; whether it changed.
@@ -558,8 +575,8 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   inference, a function's inherited contract), made only through `Forming` in the formation's files (ArchitectureRulesTest). An
 //   occurrence of that name forms the declaration it names: it reads no other declaration and answers no other component.
 // - Outputs: `Resolves`, `Substitution`, `Substitutions` and `SubstitutionPairs` (ResolveOrigin follows them; a function's inherited
-//   contract copies its original's); `Completed`, `Relations` and `Body`; `PendingCause`; `Set`;
-//   `InferredVariance`. Each is the state as the formation left it, with no judgment.
+//   contract copies its original's, a local's declaration fixes its regions); `Completed`, `Relations` and `Body`; `PendingCause`;
+//   `Set`. Each is the state as the formation left it, with no judgment.
 // - A failed clause's answers (SPEC 15.3.3, 23.1.2; H11b-0 B1): a clause that does not bind fails itself, never its owner or the
 //   declaration's other clauses. A failed clause's bound Origins (the formation's FailedClauses)
 //   are no premise or obligation anywhere and name only the slots it leaves Unbound (RestsOnFailedClause). Every other
@@ -597,10 +614,6 @@ public sealed partial class Binding
         // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68). Kept across binds.
         private List<(BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
 
-        // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
-        // allocated only for a local that has such Origins and kept across binds.
-        private Dictionary<BoundOrigin, OriginVariance>? inferred;
-
         internal Koto Owner { get; } = owner;
 
         // A local's (a FieldKoto, the parser's local declaration), whose clauses are checks that assume nothing (SPEC 15.3.3); every
@@ -621,7 +634,8 @@ public sealed partial class Binding
         // The number of substitutions, ResolveOrigin's bound on a chain.
         internal int Substitutions => this.replacements.Count;
 
-        // Each substitution, an Origin and what replaces it: what a function's inherited contract copies from its original's.
+        // Each substitution, an Origin and what replaces it: what a function's inherited contract copies from its original's, and the
+        // region slots a local's declaration fixes (FixDeclaredRegions).
         internal SubstitutionList SubstitutionPairs => new(this.replacements);
 
         // The clauses that bound, in order, each failed one aside: empty before completion, which adds them one by one.
@@ -636,10 +650,6 @@ public sealed partial class Binding
         // The binding set the declaration holds under `label` (SPEC 15.3.4), whatever its completion's outcome.
         internal TypeSemanticsKoto? Set(string label) => this.sets.GetValueOrDefault(label);
 
-        // The variance of an Origin a local's Type omits and its initializer supplies, or null for any other Origin.
-        internal OriginVariance? InferredVariance(BoundOrigin origin)
-            => this.inferred is { } slots && slots.TryGetValue(origin, out var position) ? position : null;
-
         internal void Reset()
         {
             this.state = 0;
@@ -651,7 +661,6 @@ public sealed partial class Binding
             this.replacements.Clear();
             this.pending.Clear();
             this.relations.Clear();
-            this.inferred?.Clear();
         }
 
         internal readonly struct Formation(OriginDeclaration declaration)
@@ -665,8 +674,6 @@ public sealed partial class Binding
             internal ref Koto? PendingFailure => ref declaration.pendingFailure;
 
             internal ref List<(BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
-
-            internal ref Dictionary<BoundOrigin, OriginVariance>? Inferred => ref declaration.inferred;
 
             internal Dictionary<string, TypeSemanticsKoto> Sets => declaration.sets;
 

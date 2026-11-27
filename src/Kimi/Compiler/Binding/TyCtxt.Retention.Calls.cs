@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // an edit, and the instantiated contract Binding computes it over (Binding.Retention.cs).
 internal sealed partial class TyCtxt
 {
-    // HandedCallables' depth bound, MirTypes.Holding's: past it a growing recursive Type's parts are the Limit its hold walk reports.
+    // HandedCallables' depth bound on its own steps, Type parts (Handed), where Binding's StorageBound counts Holdings entries (a Dictionary
+    // level is one part, two entries): past it a growing recursive Type's parts are the Limit, as MirTypes.Holding's bound reports it.
     private const int HandedBound = 32;
 
     // Per callee, signature or erased destruction's receiver, Type instantiation (a direct call's case key, CaseSubst), the premise scope
@@ -25,24 +26,36 @@ internal sealed partial class TyCtxt
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
     private readonly List<Binding.ErasedSignature> retentionBounds = new();
 
-    // HandedCallables' answers per interned Type, kept as the retentions are, and its walk's scratch.
-    private readonly Dictionary<BoundType, BoundType[]> handedCallables = new(ReferenceEqualityComparer.Instance);
+    // HandedCallables' answers per interned Type (the callables, and the parts left unentered past HandedBound: [] within it), kept as the
+    // retentions are, and its walk's scratch.
+    private readonly Dictionary<BoundType, (BoundType[] Callables, BoundType[] Past)> handedCallables = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> handedFound = new();
     private readonly Dictionary<BoundType, int> handedSeen = new(ReferenceEqualityComparer.Instance); // Each part's shallowest depth (Binding.Enters).
+    private readonly Dictionary<BoundType, bool> handedPast = new(ReferenceEqualityComparer.Instance); // HandedPast's answers, per query.
 
     // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets, or an
     // Intrinsic one's library declaration; its default templates are A5's), called in `definition`, in the Semantics case `cases` (SPEC
     // 8.15; none for a case-free reading): every Type the instance hands its contract is read in the case after the call's substitution,
     // never through a cased substitution (InstanceRetention; DECISIONS R4-M246), so its key holds the substitution's case key (CaseSubst).
+    // A requirement on a Self with no abstract part retains what its witness's instantiated contract retains (SPEC 8.15, 15.6.4): the Body
+    // RequirementImplementation answers, read under its own instance; any other answer keeps the requirement's contract (a shim's
+    // declaration is the requirement, a Storage witness's operation has its signature, a failure is the failed input).
     internal CallRetention Retains(BindingSymbol callee, Subst? subst, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
     {
         Debug.Assert(subst is null || ReferenceEquals(subst.Target, callee));
+        if (subst is not null && this.RequirementImplementation(callee, subst) is { Kind: RequirementTargetKind.Body } runs)
+        {
+            return this.Retains(runs.Target!, runs.Subst, definition, cases);
+        }
 
-        // Steps 1-2: the Types the call instantiates; the callee's own Origins stay its fresh regions. An instance with an abstract part is
-        // read as the calling definition's premises make it (a requirement on an abstract Self: `I.Item`, not `I.LentItem(step)`, under
-        // `I is Iterator`), so its key holds that premise scope; any other reads alike in every definition.
+        // Steps 1-2: the Types the call instantiates; the callee's own Origins stay its fresh regions. The instance is read as TyCtxt.Premised
+        // makes it in the scope of the definition whose abstract Types it names (SPEC 8.2.3: identical Types are one Type there, so one
+        // carrier; PLAN G986): the calling definition's where the call's Subst brings an abstract part (a requirement on an abstract Self:
+        // `I.Item`, not `I.LentItem(step)`, under `I is Iterator`), else the callee's own, whose declaration names every abstract Type left
+        // (its declared signature with no Subst, `T is U`: slot's T and y's U; its enclosing function's). The scope is the computation's
+        // instantiated view (Binding.Retains) and part of the key; the callee's own is one per callee, so it splits no key.
         var types = subst is null ? null : this.Intern(subst.Target, subst.Self, subst.Declaring, subst.Types, subst.Lengths, [], []);
-        var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : null;
+        var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : binding.ConstraintScope(callee.Declaration);
         var key = new RetentionKey(callee, null, types is null ? null : this.CaseSubst(types, cases), scope, null, binding.RetentionState, null);
         if (this.retentions.TryGetValue(key, out var known))
         {
@@ -111,7 +124,7 @@ internal sealed partial class TyCtxt
         {
             inputs = receiver is { } kind ? [binding.ClosureReceiver(owner, kind, closure!), .. inputs] : inputs;
             retention = !binding.HandedSignatures(owner, [.. signature.Components], this.retentionBounds) ? CallRetention.Limit
-                : binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
+                : binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), binding.ConstraintScope(owner));
         }
 
         this.retentions.Add(key, retention);
@@ -193,19 +206,24 @@ internal sealed partial class TyCtxt
     // SPEC 15.6.4, 8.10 (DECISIONS R4-M52, R4-M154): the callables a value of a Type hands a callee's body that holds it, each an erased
     // callable whose relations its retention adds: every Function Type at any depth of its components, a pair layer's target and a
     // Closure part's environment as its body sees it (ClosureEnvironment) included, the Type itself among them; walked once per interned
-    // Type (each part once) and kept until an edit, as the retentions are.
-    internal ReadOnlySpan<BoundType> HandedCallables(BoundType type)
+    // Type (each part once) and kept until an edit, as the retentions are. `past`: the parts the walk met past HandedBound where Handed asks
+    // and never entered within the bound (Binding.Enters), in the order met, so the list may lack a callable in one of them: its reader
+    // (Binding.Handed) makes each a subject of the contract's Limit (G408B-17). It names parts and asks no Binding predicate of them.
+    internal ReadOnlySpan<BoundType> HandedCallables(BoundType type, out ReadOnlySpan<BoundType> past)
     {
         if (!this.handedCallables.TryGetValue(type, out var known))
         {
             this.handedFound.Clear();
             this.handedSeen.Clear();
+            this.handedPast.Clear();
             this.Handed(type, 0);
-            known = this.handedFound.Count == 0 ? [] : [.. this.handedFound];
+            known = (this.handedFound.Count == 0 ? [] : [.. this.handedFound],
+                !Binding.Past(this.handedSeen, HandedBound) ? [] : [.. this.handedSeen.Where(static x => x.Value > HandedBound).Select(static x => x.Key)]);
             this.handedCallables.Add(type, known);
         }
 
-        return known;
+        past = known.Past;
+        return known.Callables;
     }
 
     internal void ResetRetentions()
@@ -266,7 +284,7 @@ internal sealed partial class TyCtxt
     // numbers none): its input 0 is its destruction receiver over the layer the Types instantiate. Each instantiated Type it hands the
     // contract (the result, every input, a bound's signature) is then read in `cases` (CaseType: in the owner case a pair layer's input is
     // its target by value, SPEC 8.14); Binding.Retains keeps the case-free `types` (its target, Origins and declaring Type's clauses).
-    private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope? scope, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
+    private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope scope, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
     {
         if (this.Instance(callee, types, -1, scope, out var count) is not { } instance)
         {
@@ -405,38 +423,31 @@ internal sealed partial class TyCtxt
 
     // HandedCallables' walk, to the depth bound past which a growing recursive Type's parts are a Limit Held reports: each part entered at
     // the shallowest depth it is met at (Binding.Enters, PLAN G571), so a callable within the bound is found whatever route meets its holder
-    // first; each callable found once.
+    // first; each callable found once. Its steps at a part are HandedStep's.
     private void Handed(BoundType? type, int depth)
     {
-        if (type is null || depth > HandedBound)
+        if (type is null || (depth > HandedBound && !this.HandedPast(type)))
         {
-            return;
+            return; // Past the bound, a part where nothing Handed asks at occurs (HandedPast) gets no state.
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.handedSeen, type, out var met);
-        if (!Binding.Enters(ref shallowest, met, depth))
+        if (!Binding.Enters(ref shallowest, ref met, depth, HandedBound))
         {
             return;
         }
 
-        if (type.Kind == BoundTypeKind.Function && !met)
+        if (this.HandedStep(type, out var target, out var parts, out var stored, out var parent) && !met)
         {
             this.handedFound.Add(type);
         }
 
-        if (Binding.TryPairLayer(type, out _, out var target))
-        {
-            this.Handed(target, depth + 1);
-            return;
-        }
-
-        var parts = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
+        this.Handed(target, depth + 1);
         for (var i = 0; parts is not null && i < parts.Components.Count; i++)
         {
             this.Handed(parts.Components[i], depth + 1);
         }
 
-        var stored = this.StoredParts(type, out var parent);
         for (var i = 0; i < stored.Length; i++)
         {
             this.Handed(stored[i], depth + 1);
@@ -445,12 +456,57 @@ internal sealed partial class TyCtxt
         this.Handed(parent, depth + 1);
     }
 
+    // Handed's past test (G408B-4 C-B1, C-S1): whether a form HandedStep names occurs at a part or among its components, where Handed
+    // would ask: a Function, a pair layer, a Closure with a bound environment (ClosureEnvironment's case, G408B-11) or a part with stored
+    // parts or a parent (a plain type parameter has none, C-B2).
+    // Memoized per Type for the HandedCallables query (handedPast); a Type's components end with it (IMPL A.4's height).
+    private bool HandedPast(BoundType? type)
+    {
+        if (type is null)
+        {
+            return false;
+        }
+
+        if (this.handedPast.TryGetValue(type, out var known))
+        {
+            return known;
+        }
+
+        var asks = this.HandedStep(type, out var target, out _, out var stored, out var parent) || target is not null || !stored.IsEmpty ||
+            parent is not null || (type.Kind == BoundTypeKind.Closure && BoundClosure.Of(type)?.EnvironmentType is not null);
+        for (var i = 0; !asks && i < type.Components.Count; i++)
+        {
+            asks = this.HandedPast(type.Components[i]);
+        }
+
+        this.handedPast[type] = asks;
+        return asks;
+    }
+
+    // Handed's step predicate (G408B-4 C-B1), the one place naming the forms of a part at which Handed's body asks: whether the part is a
+    // callable it lists (a Function), and the parts below it: a pair layer's target alone (`target`), else the components of the part, or
+    // of a Closure's environment as its body sees it (`parts`), the part's stored parts and its parent (StoredParts, TyCtxt.Raw.cs).
+    private bool HandedStep(BoundType type, out BoundType? target, out BoundType? parts, out ReadOnlySpan<BoundType?> stored, out BoundType? parent)
+    {
+        if (Binding.TryPairLayer(type, out _, out target))
+        {
+            (parts, parent) = (null, null);
+            stored = default;
+            return false;
+        }
+
+        target = null;
+        parts = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
+        stored = this.StoredParts(type, out parent);
+        return type.Kind == BoundTypeKind.Function;
+    }
+
     // The retention memo's key (R7-N5 B8b; DECISIONS BU-220), each field compared by reference and null where its form has none: Retains
-    // over a callee symbol (Callee) keys its interned Subst's case key (Types, CaseSubst) and the definition's premises where that has an
-    // abstract part (Scope); over a Value callee's declared signature (Signature), an item, or a Closure whose definition did not bind,
-    // keys its owner, a bound Closure its owner, closure context (Types) and the call receiver its Type admits (Receiver, Z4-M; by value),
-    // and an erased callable the calling definition's constraint scope (Scope); an erased destruction keys its receiver (Signature) and
-    // that scope, as an erased call does. The owner is the callee's own symbol (Owner), whose declaration is the owner
+    // over a callee symbol (Callee) keys its interned Subst's case key (Types, CaseSubst) and the scope it reads the instance under (Scope:
+    // the definition's premises where that has an abstract part, else the callee's own constraint scope); over a Value callee's declared
+    // signature (Signature), an item, or a Closure whose definition did not bind, keys its owner, a bound Closure its owner, closure
+    // context (Types) and the call receiver its Type admits (Receiver, Z4-M; by value), and an erased callable the calling definition's
+    // constraint scope (Scope); an erased destruction keys its receiver (Signature) and that scope, as an erased call does. The owner is the callee's own symbol (Owner), whose declaration is the owner
     // (Binding.SignatureOwner): the memo outlives a pass and holds library callees, so it keys a declaration by its symbol (MirDefKey's
     // identity), never by its node. A callee symbol and a Type, a premise scope and an owner, each have their own field, and a symbol names
     // one declaration, so two calls share a key exactly when they share the callee or signature, the instantiation, the scope or owner, the

@@ -16,7 +16,7 @@ namespace XunitTest;
 /// so a structural change shows that it leaves every semantic result unchanged.</summary>
 /// <remarks><c>KIMI_SEMANTIC_SNAPSHOT=write</c> writes one file per case into the directory <c>KIMI_SEMANTIC_BASELINE</c>;
 /// <c>check</c> compares the current snapshot with that directory and, when <c>KIMI_SEMANTIC_OUTPUT</c> names a directory, writes the
-/// current snapshot and its differences there. Without the variable nothing is requested and the test does nothing.
+/// current snapshot and its differences there. Without a mode the test reports a skip and its reason.
 /// <c>KIMI_SEMANTIC_HIR=1</c> publishes the HIR columns before the ownership analysis and adds a <c>.hir.txt</c> file per case: one
 /// line per node with its id, Op, Res, a jump's target, its completion, the Adjust its consumer gives it, its Place and its expansion
 /// (R2b). <c>KIMI_SEMANTIC_MIR=1</c> builds the MIR before the ownership analysis and adds a <c>.mir.txt</c> file per case: the MIR dump of
@@ -36,10 +36,7 @@ public sealed class SemanticSnapshotTest
     public void RequestedSnapshotMatchesTheBaseline()
     {
         var mode = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_SNAPSHOT");
-        if (string.IsNullOrEmpty(mode))
-        {
-            return;
-        }
+        Assert.SkipWhen(string.IsNullOrEmpty(mode), "semantic comparison not configured");
 
         Assert.True(mode is "write" or "check", $"KIMI_SEMANTIC_SNAPSHOT is write or check, not '{mode}'.");
         var baseline = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_BASELINE");
@@ -561,7 +558,7 @@ public sealed class SemanticSnapshotTest
                 text.Append(" map=[").AppendJoin(',', call.ArgumentToParameter.ToArray().Select(static x => x.ToString(CultureInfo.InvariantCulture))).Append(']');
                 if (invocation.Method is RequirementCalleeKoto requirement)
                 {
-                    text.Append(" requirement=").Append(Symbol(requirement.RequirementStorage?.Target)).Append(" implementation=").Append(Symbol(requirement.ImplementationStorage?.Target));
+                    text.Append(" requirement=").Append(Symbol(requirement.RequirementStorage?.Target));
                 }
             }
             else if (this.Query.ValueCallOf(invocation) is { } value)

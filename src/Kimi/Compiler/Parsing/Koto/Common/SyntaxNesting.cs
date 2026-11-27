@@ -5,12 +5,18 @@
 // distance from the module root) that has a child is cut: replaced in its slot by an ErrorKoto, or, where its slot holds only its own
 // form (a body, a name, an attribute), its parent is cut instead; one NestingLimit_Kd record per cut, at the cut's span, which the
 // ErrorKoto rests on.
-// Invariants: a published tree has depth at most L, so every later walk recurses at most L levels and needs no guard of its own;
-// nothing under a cut is walked or recorded; the walk itself recurses at most L + 1 levels; nodes of earlier documents are walked
-// only at the module's merge points (declaration containers, the generated function and its body). One exception: declaration
-// containers nested past L keep their depth (no slot above them takes an ErrorKoto) and are recorded where they stand. The library's
-// trees (KimiLibrarySources) are checked by KimiLibraryShapeTest, not walked at run time: compiler-owned source fixed at build time.
-// Must not decide anything but depth, and must not be bypassed by another parse entry that publishes syntax to later phases.
+// Depth: two places count no level, a directive's marker (its Source slot, the Conditions and excluded parts, is walked at the
+// marker's own depth) and the generated function with its Body (G144-25), so every root item stands at depth 1, and an excluded part
+// or a Condition stands where selected syntax at its place stands (SPEC 19.4). A marker past L is cut like any node.
+// Invariants: every published node lies at depth at most L, and the generated pair stands two levels above the root items, so every
+// later walk recurses at most L + 2 levels and needs no guard of its own; nothing under a cut is walked or recorded; the walk itself
+// recurses at most L + 1 counted levels, with at most one marker above each, as a marker's Source holds no marker (G144-27 N8);
+// nodes of earlier documents are walked only at the module's merge points (declaration containers, the generated function and its
+// body). One exception: declaration containers nested past L keep their depth (no slot above them takes an ErrorKoto) and are
+// recorded where they stand. The library's trees (KimiLibrarySources) are checked by KimiLibraryShapeTest, not walked at run time:
+// compiler-owned source fixed at build time.
+// Must not decide anything but depth, must not be bypassed by another parse entry that publishes syntax to later phases, and must not
+// gain a third uncounted place without a published column.
 
 using Kimi.Diagnostics;
 
@@ -53,9 +59,10 @@ internal sealed class SyntaxNesting : KotoVisitor
 
         var made = this.cuts?.Count ?? 0;
         var first = this.waiting?.Count ?? 0;
-        this.depth++;
+        var level = node is CompileTimeSwitchKoto || this.IsGenerated(node) ? 0 : 1;
+        this.depth += level;
         node.VisitChildren(this);
-        this.depth--;
+        this.depth -= level;
         if (this.deeper)
         {
             this.deeper = false;
@@ -66,6 +73,10 @@ internal sealed class SyntaxNesting : KotoVisitor
             this.Cut(node, waiting, first, made);
         }
     }
+
+    /// <inheritdoc/>
+    public override void VisitSource(IReadOnlyList<Koto> source)
+        => this.VisitMany(source);
 
     /// <summary>Cuts the nodes of one parse that lie deeper than <see cref="Limit"/> and records each cut.</summary>
     /// <param name="parse">The context of the parse, whose document's nodes are bounded.</param>
@@ -120,8 +131,11 @@ internal sealed class SyntaxNesting : KotoVisitor
 
     // A node of this parse, or a merge point of the module, which may hold one.
     private bool InScope(Koto node)
-        => ReferenceEquals(node.CodeContext.SourceDocument, this.document) || node is DeclarationContainerKoto ||
-            (this.generated is { } generated && (ReferenceEquals(node, generated) || ReferenceEquals(node, generated.Body)));
+        => ReferenceEquals(node.CodeContext.SourceDocument, this.document) || node is DeclarationContainerKoto || this.IsGenerated(node);
+
+    // The generated function or its Body, which count no level (G144-25).
+    private bool IsGenerated(Koto node)
+        => this.generated is { } generated && (ReferenceEquals(node, generated) || ReferenceEquals(node, generated.Body));
 
     // A node waiting for its parent's cut; the cuts made under it are cuts[From..To).
     private readonly record struct Waiting(Koto Node, int From, int To);

@@ -37,8 +37,6 @@ public partial class KimiLibraryShapeTest
         ["BoundContract.State"] = "n5: a completion state, not a counter copy (complete in the layer's part: e3)",
         ["BoundContract.EffectState"] = "n5: the effect bounds' completion state (complete in the layer's part: k4)",
         ["ComponentSummary.Epoch"] = "n6: a per-epoch memo of Binding's, the program's, not a library object",
-        ["Binding.comparisonPlans"] = "n7: Binding's per-pass memo keyed by library symbols, refilled by a program pass",
-        ["Binding.requirementCalls"] = "n7: Binding's per-pass memo keyed by library symbols, refilled by a program pass",
         ["Binding.hirVersion"] = "n8: a per-compilation counter of Binding's, on no library object",
         ["Binding.originRowsVersion"] = "n8",
         ["Binding.recursiveVersion"] = "n8",
@@ -77,7 +75,6 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.PartPrerequisites"] = "released at the freeze: the library pass's part prerequisites, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
         ["NodeColumns.Prerequisites"] = "released at the freeze: the library pass's consultation ranges, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
         ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
-        ["NodeColumns.CallableConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UniqIndexing"] = "never written: the library indexes no user Indexable and no view",
         ["NodeColumns.EarlyReads"] = "never written: the library declares no struct with a base (TheLibraryDeclaresNoStructWithABase), so no library lookup sees a clause not ready",
         ["NodeColumns.RequirementGroups"] = "released at the freeze: the library pass's requirement groups, its member lookups' working state, no reader reads after it (R7-N5 B3-2; TheFreezeReleasesTheLibrarysWorkingState)",
@@ -111,19 +108,18 @@ public partial class KimiLibraryShapeTest
 
     // k3 (E4's tripwire; F's ruling 167, Q3), strengthened as t3 (PLAN G949 Stage 2 U3, design R3.7 C2): no library contract declares a
     // Property requirement, so no library conformance path has a Property witness, and so none a standard one (SPEC 11.9.2: a stored Field
-    // witnessing a Property requirement, which a bridge accessor executes): no program makes or refreshes a witness bridge on a frozen
-    // path (PropertyWitnessFunction makes one per path and witness) and S1-1 needs no eager bridge step. The unit that gives a library
-    // contract the first Property requirement routes those writes by U4's two levels, adds the eager step over the base paths (s11-design
-    // section 4, E4) and removes this Fact.
+    // witnessing a Property requirement, its Storage target, TyCtxt.Property, which the collector's PropertyWitness shim executes): no
+    // program reads a standard witness of a frozen path, and S1-1 needs no eager step. The unit that gives a library contract the first
+    // Property requirement routes OperationOrigins' writes by U4's two levels, adds an eager step over the frozen paths' standard
+    // witnesses' Storage targets (s11-design section 4's E4, whose bridge step R7-P5b deleted) and removes this Fact.
     [Fact]
     public void TheLibraryDeclaresNoStandardPropertyWitness()
     {
         var c = Bound(string.Empty);
         var requirements = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<PropertyKoto>().Where(static x => x.DeclarationKind == PropertyDeclarationKind.Requirement).Select(static x => Line(x)).ToArray();
-        var removal = "A library contract declares a Property requirement, so PropertyWitnessFunction (through InstantiatePropertyRequirementCall) " +
-            "creates or refreshes in place a bridge on a frozen path (PropertyBridges; the bridge's receiver, Type, accessor and body) and " +
-            "OperationOrigins extends its PropertyWitnessOrigins: route them by U4's two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), with " +
-            "k3's E4 eager step, then remove this row: ";
+        var removal = "A library contract declares a Property requirement, so a standard witness on a frozen path is a Storage target " +
+            "(TyCtxt.Property, the collector's PropertyWitness shim) and OperationOrigins extends its PropertyWitnessOrigins: route them by " +
+            "U4's two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), with k3's E4 eager step, then remove this row: ";
         Assert.True(requirements.Length == 0, removal + string.Join(", ", requirements));
         var paths = DeclaredSymbols(c)
             .Where(x => x.Kind == BindingSymbolKind.Type && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha))

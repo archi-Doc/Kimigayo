@@ -171,7 +171,8 @@ public sealed partial class Binding
 
         // First discover structural variance. Then close unproven phantom positions as
         // invariant and propagate that fact through all consumers using the same queue:
-        // a Type's slot Phantom in every admitted case too (SPEC 15.3.5; DECISIONS BU-44).
+        // a Type's slot Phantom in every admitted case too (SPEC 15.3.5; DECISIONS BU-44),
+        // unless a stored Function Type's signature reaches it (InStoredSignature).
         for (var phase = 0; phase < 2; phase++)
         {
             if (phase == 1)
@@ -181,7 +182,7 @@ public sealed partial class Binding
                     for (var i = 0; i < item.Schema.Origins.Count; i++)
                     {
                         var origin = item.Schema.Origins[i];
-                        if (origin.Variance == OriginVariance.Unused || (item.Owner is DeclarationContainerKoto && origin.Requirement == default))
+                        if (origin.Variance == OriginVariance.Unused || (item.Owner is DeclarationContainerKoto && origin.Requirement == default && !origin.InStoredSignature))
                         {
                             origin.Variance = OriginVariance.Invariant;
                         }

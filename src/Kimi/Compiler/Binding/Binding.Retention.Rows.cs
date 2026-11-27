@@ -23,7 +23,7 @@ public sealed partial class Binding
     // (by target node: the start and count of its run in retentionClosureNodes), and the storages' kinds, reused.
     private readonly Dictionary<BoundType, RetentionKind[]> retentionHidden = new(ReferenceEqualityComparer.Instance); // HiddenKinds' per Type, per Storages.
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
-    private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // CanCarryLoan's walk, per query: the Types met.
+    private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // MayCarry's walk, per query: the Types met.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
     private readonly HashSet<(HoldAt At, HeldIn In, int Storage)> retentionMet = new();
@@ -177,9 +177,9 @@ public sealed partial class Binding
     // (`within`) retains that argument's own value. The transfer key by declaring identity
     // also gives the stores written only where the receiver refers (ReferentStores). The work is one closure per node a target names, each
     // node with its incoming premises once, and the walks; the identity key is read once per contract, and for a callee it does not name
-    // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance
-    // with an abstract part under (null: none, or an erased callable's, which has no callee). CallRetention.Limit where a walk meets
-    // storage past its limits.
+    // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read the instance
+    // under (null only for an erased callable, which has no callee). CallRetention.Limit where a walk meets
+    // storage past its limits; the rows with CallRetention.IsDeep where a finding a walk left past its bound can carry (G408B-17).
     private CallRetention RetentionRows(
         OriginPremiseEnvironment environment,
         int[] nodes,
@@ -251,8 +251,8 @@ public sealed partial class Binding
         this.BeginStorages();
         this.storageResultLeaves.Clear();
         this.storageResultSeen.Clear();
-        this.ResultLeaves(result, 0);
-        var site = this.OpenRetentionSite(callee, -1); // PLAN G651 U2b R11 OP1: the result's walk.
+        var site = this.OpenRetentionSite(callee, -1); // PLAN G651 U2b R11 OP1: the result's walk, and the leaves it reads (ResultLeaves).
+        this.ResultLeaves(result);
         this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true) with { Signature = this.SignatureResult });
         this.Restore(site);
         var kept = this.Kept(inputs.Length);
@@ -269,7 +269,9 @@ public sealed partial class Binding
                 !this.Reaches(environment, nodes[i], links);
         }
 
+        site = this.OpenRetentionSite(callee, -1); // The fits asked at the positions the result's walk names (CanHold) read its owner.
         this.Storages(environment, links, kept, CallRetention.ResultOutput);
+        this.Restore(site);
         var resultKinds = this.retentionKinds[ResultStorage];
         var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);
         var resultWrites = this.ResultWrites(environment, links, inputs, result, (key, callee, premises), ref transfer) is { } past
@@ -297,8 +299,10 @@ public sealed partial class Binding
             }
         }
 
+        // Deep is read first: its CanCarryLoan walks may leave a carrier walk incomplete (MayCarry), which is the Limit.
+        var deep = !this.retentionLimit && this.retentionPast.Count > 0 && this.HolderCarries(result) && this.AnyCarries(this.retentionPast);
         return this.retentionLimit ? CallRetention.Limit
-            : new(resultRecord, resultWrites, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs), composes: !this.StatesWrites(callee));
+            : new(resultRecord, resultWrites, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs), composes: !this.StatesWrites(callee), deep);
     }
 
     // The result read as an output (CallRetention.ResultWrites; G841's H2, PLAN G935): the walk an input's output takes, from the result's
@@ -319,7 +323,9 @@ public sealed partial class Binding
         this.Restore(site);
         var kept = this.Kept(inputs.Length);
         var untied = this.Hold(environment, CallRetention.ResultOutput, CollectionsMarshal.AsSpan(this.storageHolds), inputs, call, ref transfer);
+        site = this.OpenRetentionSite(call.Callee, -1); // As in RetentionRows: the fits read the result's walk's owner.
         this.Storages(environment, links, kept, CallRetention.ResultOutput);
+        this.Restore(site);
         return this.Written(CallRetention.ResultOutput, untied) is { Reached.Length: > 0 } past ? past : null;
     }
 
@@ -340,6 +346,8 @@ public sealed partial class Binding
     {
         var kinds = this.retentionKinds;
         kinds.Clear();
+        this.retentionHoldAnswers.Clear(); // Holds' and Borrows' answers hold for one output's positions (CanHold), in its view.
+        this.retentionBorrowAnswers.Clear();
         for (var s = 0; s < this.storageTypes.Count; s++)
         {
             if (s == this.retentionKindPool.Count)
@@ -519,6 +527,10 @@ public sealed partial class Binding
             {
                 this.retentionHiddenSeen.Clear();
                 known[i] = this.HiddenKind(this.SignatureInput(i), hidden, RetentionKind.Value, 0);
+                if (Past(this.retentionHiddenSeen, StorageBound))
+                {
+                    this.retentionPast.Add(this.retentionArguments[i]); // A kind set: no yes decides the kinds not found. Its subject: the argument.
+                }
             }
         }
 
@@ -534,19 +546,39 @@ public sealed partial class Binding
     // MirTypes.HoldsLoans' Loan fact, which Binding does not read (MIR); HoldsLoans keeps its own walk for its modes and its write fact.
     // They disagree only at a part Binding did not bind (HoldsLoans: no Loan; here: carries, failing closed); PLAN's open issue: one
     // publisher, TyCtxt, that both read. It decides no Loan, holder or write. At Binding's Limit it answers true and makes the contract
-    // the Limit (retentionLimit, as HiddenKind); past StorageBound it answers true and reports nothing, as the input fold's walk stops
-    // there silently (StorageWalk). Each Type is walked once per query (retentionCarried), so a recursive Type ends; its repeat adds
-    // nothing its first meeting lacks.
+    // the Limit (retentionLimit, as HiddenKind). A walk over a Type's storage, it has no bound (G408B-9 R1, G408B-16): each Type is
+    // walked once per query (retentionCarried), so a recursive Type ends; its repeat adds nothing its first meeting lacks.
     private bool CanCarryLoan(BoundType type)
     {
         this.retentionCarried.Clear();
-        return this.MayCarry(type, 0);
+        return this.MayCarry(type);
+    }
+
+    // G408B-6 (3), G408B-16: whether a holder the rows name can carry a Loan or an address (CanCarryLoan), where a walk of the computation
+    // was undecided past its bound (retentionPast): the result and each holder the output walks entered (retentionHolders). Where none
+    // can, no retention verdict reads the undecided answer, and the rows decide.
+    private bool HolderCarries(BoundType result) => this.CanCarryLoan(result) || this.AnyCarries(this.retentionHolders);
+
+    // G408B-17 (SPEC 15.6.4: retention is per argument): whether a value of one of a list's Types can carry a Loan or an address
+    // (CanCarryLoan): the holders (HolderCarries), or the subjects of the findings a walk left undecided past its bound (retentionPast),
+    // where none that can carry means that what a holder would retain there carries nothing, whatever the walk would have found, so the
+    // rows decide. One query: a Type met for one entry, a repeated one included, adds nothing for another.
+    private bool AnyCarries(List<BoundType?> types)
+    {
+        this.retentionCarried.Clear();
+        var carries = false;
+        for (var i = 0; !carries && i < types.Count; i++)
+        {
+            carries = this.MayCarry(types[i]);
+        }
+
+        return carries;
     }
 
     // CanCarryLoan's fold over Holdings: a Type and, through the entries that pass on, its parts.
-    private bool MayCarry(BoundType? type, int depth)
+    private bool MayCarry(BoundType? type)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null)
         {
             return true;
         }
@@ -562,7 +594,7 @@ public sealed partial class Binding
         for (var i = run.Start; !carries && i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
-            carries = !Passes(entry) || this.MayCarry(entry.Part, depth + 1);
+            carries = !Passes(entry) || this.MayCarry(entry.Part);
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
@@ -599,13 +631,13 @@ public sealed partial class Binding
     // members' referents are read through it too (`p: raw/u8 during a` beside `n: uniq/(K<T> during a)` reads K's kept T).
     private RetentionKind HiddenKind(BoundType? declared, BoundType hidden, RetentionKind kind, int depth)
     {
-        if (declared is null || depth > StorageBound)
+        if (declared is null)
         {
             return RetentionKind.None;
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionHiddenSeen, (declared, kind), out var met);
-        if (!Enters(ref shallowest, met, depth))
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
             return RetentionKind.None; // Entered at this depth or shallower: what lies below it is counted there (the bounded walks' rule).
         }
@@ -723,11 +755,12 @@ public sealed partial class Binding
 
     // Whether a value of an input's Type hands the body a callable (Filled; SPEC 15.6.4 "a callable value an input holds"): one of the
     // callables TyCtxt.HandedCallables lists for the Type, Origins erased: a Function part at any depth, a nominal Field's included
-    // (`Maker<E, T>`'s `make: (E) -> T`), which the Type's components alone do not name.
+    // (`Maker<E, T>`'s `make: (E) -> T`), which the Type's components alone do not name. `argument` is an input or its declared Type,
+    // which RetentionPremises has handed (Handed), so the parts it leaves unentered past HandedBound are already subjects (retentionPast).
     private bool Hands(BoundType argument, BoundType callable)
     {
         var erased = this.types.Erase(callable);
-        foreach (var handed in this.types.HandedCallables(argument))
+        foreach (var handed in this.types.HandedCallables(argument, out _))
         {
             if (ReferenceEquals(this.types.Erase(handed), erased))
             {
@@ -766,6 +799,11 @@ public sealed partial class Binding
             }
         }
 
+        if (Past(this.retentionReaches, StorageBound))
+        {
+            this.retentionPast.Add(position); // Undecided past the bound (Enters). Its subject: the Type written.
+        }
+
         return false;
     }
 
@@ -782,13 +820,13 @@ public sealed partial class Binding
     // makes the contract the Limit, never "writes nothing".
     private bool WrittenThrough(BoundType? type, BoundType position, HoldStep reach, int depth, BindingScope? view)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null)
         {
             return false;
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionReaches, (type, reach), out var met);
-        if (!Enters(ref shallowest, met, depth))
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
             return false;
         }
@@ -920,6 +958,11 @@ public sealed partial class Binding
         }
 
         var hidden = this.storagePositions.Exists(static x => x.Storage == AbstractStorage) || this.retentionFilled;
+        if (hidden)
+        {
+            this.retentionHolders.Add(null); // What an abstract part hides may be any Type (HolderCarries).
+        }
+
         if (hidden)
         {
             reached.Add((null, new([.. kinds[AbstractStorage]], this.Pairs(kinds[AbstractStorage], AbstractStorage), untied)));

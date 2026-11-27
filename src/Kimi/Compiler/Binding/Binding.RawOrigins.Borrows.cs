@@ -33,7 +33,7 @@ namespace Kimi.Compiler;
 //   Check has run, Complete afterwards.
 // - Invariants: an atom's forming Borrow is formed before any Type stating the atom can be read (a typed path, a Field read or a
 //   substitution states the atom only from a Type that carries it), except where the fact is not written yet while a part that states
-//   its atom binds: a call's operations while its waiting Closure parts bind (CompleteWaiting, before the selection completes): the
+//   its atom binds: a call's operations while its waiting Closure parts bind (CompleteAtSelectedParameters, before the selection completes): the
 //   part's inferred return Type is never outer evidence (SPEC 10.5.4), so such a call fails and its operations are never formed (ap3,
 //   ap4, invalid); and a payload's operation while an awaiting payload before it binds (CompletePayloads completes the payloads in
 //   source order: pl4, invalid). A reader there finds no row; every program that reaches it is invalid (the erasure whose retention

@@ -18,7 +18,8 @@ namespace Kimi.Compiler.Mir;
 // abstract part not proven Copy, a Function value, a handle whose payload is not proven Sealed, Copy or not;
 // TyCtxt.RetainsErasedDestruction). Each drop's retention (TyCtxt.Retains over the drop and
 // its declaring layer) stores through its output as a Call's does (MirBorrows.Calls' Keep, W from the receiver, so an abstract part's
-// store reaches what R4-M170's reach rule lets it write, SPEC 15.6.4); a Limit retention is the depth limit at the location (R4-M153).
+// store reaches what R4-M170's reach rule lets it write, SPEC 15.6.4); a Limit retention, and a Deep one's part past the bound beside
+// the rows it stores through, is the depth limit at the location (R4-M153).
 // A published operation's cleanup is the destruction its row lists (SPEC 4.9.6; PublishedRow.Destroys, DECISIONS BU-70), composed at the
 // call after its own rows over the destroying argument's value (Destroying), which replaces C3's referent guard (R4-M143).
 // Input: the view's kept Drops, A2's verdicts (Dropping), Binding's drop retention, the published rows and A4's Type below a parameter
@@ -96,7 +97,7 @@ internal sealed partial class MirBorrows
         for (var i = start; i < start + count; i++)
         {
             var retention = this.dropRows[i];
-            this.deep |= this.replaying && retention.IsLimit;
+            this.deep |= this.replaying && (retention.IsLimit || retention.IsDeep);
             if (this.writeCount > 0 && !retention.IsLimit && !retention.Writes.IsEmpty)
             {
                 this.SourceSlots(call, retention.Result.Kinds.Length, 0); // Its receiver at position 0, for Keep's Sourcing.
