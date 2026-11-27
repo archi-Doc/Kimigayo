@@ -41,11 +41,14 @@ internal sealed partial class TyCtxt
     {
         Debug.Assert(subst is null || ReferenceEquals(subst.Target, callee));
 
-        // Steps 1-2: the Types the call instantiates; the callee's own Origins stay its fresh regions. An instance with an abstract part is
-        // read as the calling definition's premises make it (a requirement on an abstract Self: `I.Item`, not `I.LentItem(step)`, under
-        // `I is Iterator`), so its key holds that premise scope; any other reads alike in every definition.
+        // Steps 1-2: the Types the call instantiates; the callee's own Origins stay its fresh regions. The instance is read as TyCtxt.Premised
+        // makes it in the scope of the definition whose abstract Types it names (SPEC 8.2.3: identical Types are one Type there, so one
+        // carrier; PLAN G986): the calling definition's where the call's Subst brings an abstract part (a requirement on an abstract Self:
+        // `I.Item`, not `I.LentItem(step)`, under `I is Iterator`), else the callee's own, whose declaration names every abstract Type left
+        // (its declared signature with no Subst, `T is U`: slot's T and y's U; its enclosing function's). The scope is the computation's
+        // instantiated view (Binding.Retains) and part of the key; the callee's own is one per callee, so it splits no key.
         var types = subst is null ? null : this.Intern(subst.Target, subst.Self, subst.Declaring, subst.Types, subst.Lengths, [], []);
-        var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : null;
+        var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : binding.ConstraintScope(callee.Declaration);
         var key = new RetentionKey(callee, null, types is null ? null : this.CaseSubst(types, cases), scope, null, binding.RetentionState, null);
         if (this.retentions.TryGetValue(key, out var known))
         {
@@ -114,7 +117,7 @@ internal sealed partial class TyCtxt
         {
             inputs = receiver is { } kind ? [binding.ClosureReceiver(owner, kind, closure!), .. inputs] : inputs;
             retention = !binding.HandedSignatures(owner, [.. signature.Components], this.retentionBounds) ? CallRetention.Limit
-                : binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
+                : binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), binding.ConstraintScope(owner));
         }
 
         this.retentions.Add(key, retention);
@@ -274,7 +277,7 @@ internal sealed partial class TyCtxt
     // numbers none): its input 0 is its destruction receiver over the layer the Types instantiate. Each instantiated Type it hands the
     // contract (the result, every input, a bound's signature) is then read in `cases` (CaseType: in the owner case a pair layer's input is
     // its target by value, SPEC 8.14); Binding.Retains keeps the case-free `types` (its target, Origins and declaring Type's clauses).
-    private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope? scope, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
+    private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope scope, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
     {
         if (this.Instance(callee, types, -1, scope, out var count) is not { } instance)
         {
@@ -492,11 +495,11 @@ internal sealed partial class TyCtxt
     }
 
     // The retention memo's key (R7-N5 B8b; DECISIONS BU-220), each field compared by reference and null where its form has none: Retains
-    // over a callee symbol (Callee) keys its interned Subst's case key (Types, CaseSubst) and the definition's premises where that has an
-    // abstract part (Scope); over a Value callee's declared signature (Signature), an item, or a Closure whose definition did not bind,
-    // keys its owner, a bound Closure its owner, closure context (Types) and the call receiver its Type admits (Receiver, Z4-M; by value),
-    // and an erased callable the calling definition's constraint scope (Scope); an erased destruction keys its receiver (Signature) and
-    // that scope, as an erased call does. The owner is the callee's own symbol (Owner), whose declaration is the owner
+    // over a callee symbol (Callee) keys its interned Subst's case key (Types, CaseSubst) and the scope it reads the instance under (Scope:
+    // the definition's premises where that has an abstract part, else the callee's own constraint scope); over a Value callee's declared
+    // signature (Signature), an item, or a Closure whose definition did not bind, keys its owner, a bound Closure its owner, closure
+    // context (Types) and the call receiver its Type admits (Receiver, Z4-M; by value), and an erased callable the calling definition's
+    // constraint scope (Scope); an erased destruction keys its receiver (Signature) and that scope, as an erased call does. The owner is the callee's own symbol (Owner), whose declaration is the owner
     // (Binding.SignatureOwner): the memo outlives a pass and holds library callees, so it keys a declaration by its symbol (MirDefKey's
     // identity), never by its node. A callee symbol and a Type, a premise scope and an owner, each have their own field, and a symbol names
     // one declaration, so two calls share a key exactly when they share the callee or signature, the instantiation, the scope or owner, the

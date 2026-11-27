@@ -980,6 +980,45 @@ public sealed partial class RetentionTest
         Assert.True(keepsY == call.Split(", reached")[0].Contains("1 Value", StringComparison.Ordinal), call);
     }
 
+    // SPEC 8.2.3 ("All Type checking in the scope treats identical Types as one Type"; the meaning does not depend on the spelling of
+    // premises), 15.6.4 (PLAN G986; a class 1 with MIR's storing gate): a function's declared record, the contract MirBorrows.BeginStoring
+    // reads, takes its own Types as its premises make them, so it is the record of the twin spelling the identified Types alike: y kept
+    // under `T is V` (P1), by a handed `mk: (E) -> U` (Rb) and a writer `set: (uniq/U, E)` (K9's) under `T is U`, inside a nested Type,
+    // through a premise giving a nested form and a second premise, and under a method's `V is T`, its own Type identified with its
+    // enclosing Type's (the scope chain); under `T is raw/u8` the raw layer t's referent holds (MirBorrowsTest.Storing's `direct` form:
+    // untied). The identity an associated Type's requirement supplies (`associate Item is V`) and a premise on a projection keep y alike.
+    // Fail-before on 7c258a4f50: each premised record but the associated Type's kept only `0 Content` (the method's `0 Content, 1 Content`,
+    // the raw row `own {0 Content}, reached {0 Content}`).
+    [Theory]
+    [InlineData("func f<T, V>(slot: uniq/T, y: V) -> ()\n    T is V\n    return", "func f<T>(slot: uniq/T, y: T) -> ()\n    return", "1 Value")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> U) -> ()\n    T is U\n    return", "func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> T) -> ()\n    return", "1 Value, 2 Value")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, set: (uniq/U, E) -> ()) -> ()\n    T is U\n    return", "func f<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) -> ()\n    return", "1 Value, 2 Value")]
+    [InlineData(Box + "func f<T, V>(slot: uniq/B<T>, y: B<V>) -> ()\n    T is V\n    return", Box + "func f<T>(slot: uniq/B<T>, y: B<T>) -> ()\n    return", "1 Value")]
+    [InlineData(Box + "func f<T, V>(slot: uniq/T, y: V) -> ()\n    T is B<V>\n    return", Box + "func f<V>(slot: uniq/B<V>, y: V) -> ()\n    return", "1 Value")]
+    [InlineData("func f<T, U, V>(slot: uniq/T, y: V) -> ()\n    T is U\n    U is V\n    return", "func f<T>(slot: uniq/T, y: T) -> ()\n    return", "1 Value")]
+    [InlineData(Box + "    public func f<V>(self: ref/Self, slot: uniq/T, y: V) -> ()\n        V is T\n        return", Box + "    public func f(self: ref/Self, slot: uniq/T, y: T) -> ()\n        return", "2 Value")]
+    [InlineData("func f<T>(t: uniq/(uniq/T during a))\n    T is raw/u8\n    t@follow@follow = t@follow@raw@raw/u8", "func f(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@raw@raw/u8", "untied")]
+    [InlineData("contract HoldsV<V>\n    associate Item is V\nfunc f<I, V>(slot: uniq/I.Item, y: V) -> ()\n    I is HoldsV<V>\n    return", "contract HoldsV<V>\n    associate Item is V\nfunc f<I, V>(slot: uniq/V, y: V) -> ()\n    I is HoldsV<V>\n    return", "1 Value")]
+    [InlineData("contract HasItem\n    associate Item\nfunc f<I, V>(slot: uniq/I.Item, y: V) -> ()\n    I is HasItem\n    I.Item is V\n    return", "contract HasItem\n    associate Item\nfunc f<I>(slot: uniq/I.Item, y: I.Item) -> ()\n    I is HasItem\n    return", "1 Value")]
+    public void AFunctionsDeclaredRecordReadsItsOwnTypesUnderItsPremises(string premised, string spelled, string kept)
+    {
+        var record = Declared(Bind(premised + "\n"), "f");
+        Assert.Equal((Declared(Bind(spelled + "\n"), "f"), true), (record, record.Contains(kept, StringComparison.Ordinal)));
+    }
+
+    // SPEC 8.2.3, 15.6.4 (PLAN G986): a call's record reads its instance in the scope of the definition whose abstract Types it names:
+    // the calling definition's where the Subst brings them (a requirement call under h's `X is Y` keeps y as its spelled twin's does,
+    // `put`'s own `A is B` proven at the call), else the callee's own, where a concrete instance names none and reads alike under either
+    // declaration. Neither moves with G986: they pin the two branches of TyCtxt.Retains' choice.
+    [Theory]
+    [InlineData("contract Put\n    func put<A, B>(self: uniq/Self, slot: uniq/A, y: B)\n        A is B\nfunc h<T, X, Y>(t: uniq/T, slot: uniq/X, y: Y) -> ()\n    T is Put\n    X is Y\n    t.put(slot, y@move)", "contract Put\n    func put<A, B>(self: uniq/Self, slot: uniq/A, y: B)\n        A is B\nfunc h<T, X>(t: uniq/T, slot: uniq/X, y: X) -> ()\n    T is Put\n    t.put(slot, y@move)", "2 Value")]
+    [InlineData("func put<T, V>(slot: uniq/T, y: V) -> ()\n    T is V\n    return\nfunc g(x: uniq/u64, v: u64)\n    put(x, v)", "func put<T>(slot: uniq/T, y: T) -> ()\n    return\nfunc g(x: uniq/u64, v: u64)\n    put(x, v)", "1 Value")]
+    public void ACallReadsItsInstanceInTheScopeOfTheDefinitionWhoseTypesItNames(string premised, string spelled, string kept)
+    {
+        var record = string.Join(" | ", Calls(Bind(premised + "\n"), "put"));
+        Assert.Equal((string.Join(" | ", Calls(Bind(spelled + "\n"), "put")), true), (record, record.Contains(kept, StringComparison.Ordinal)));
+    }
+
     // SPEC 15.6.4's abstract-storage sentence (the owner's O-360 (a); PLAN G935, the design review's open point 2; class 1 for a binding
     // such as Wn): inside the binding of the callee's kept T the rows are the callee's terms', whatever Type the call binds T to. f's
     // declared record keeps `p` in dst's own storage by `make`'s result (and past T's hidden references by `setQ`, where the contract
