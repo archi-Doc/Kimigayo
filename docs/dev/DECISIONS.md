@@ -13231,7 +13231,8 @@ resumed by R4-M86 (2026-10-20).
     lints (rows 10 and the discard rows), `StructuralCompletion.CloseTransfers`, and the HIR publication (Adjust, Group,
     `Discards`). A closure whose body infers Unit publishes that body as its result, as a named function's value body.
   - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
-    result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
+    result contexts (static readers; a pooled context stays mapped after a fixed rebinding; for InfersUnit superseded by BU-275); a
+    copy of the fixed Type on the plan.
 
 - **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; its "and its plan Invalid" and
   `AcquireBinding`'s Coverage write superseded by R4-M179; PLAN G439, unit bu174; Major;
@@ -20057,6 +20058,20 @@ resumed by R4-M86 (2026-10-20).
     rule.
   - **Rejected:** a `MayCarry` call at each site (a clause per Past read, and a walk where no holder carries); TyCtxt calling
     `MayCarry` (Binding's predicate); the argument as Handed's subject (dv's `uniq/((T^31) -> i32)` carries, so the Limit would stay).
+- **BU-275 Unintended Unit inference reads one fact for every target: its result context (PLAN G470)** (2026-11-27). SPEC 17.5.2,
+  10.5.4.
+  - **Rule.** `Binding.InfersUnit` reads the target's result context's `Inferred` for every target. A Closure has a context only where
+    its signature fixes no result (`BindClosureBody`), so the fact needs no clause for functions. `BindClosure`'s reset removes the
+    previous binding's row (`ResultContextRows.Remove`) beside Signature, Published and Classified, so a Closure's row is always its
+    latest binding's: the one its body opened, or none.
+  - **Supersedes in part** BU-109's rejection of an instance rule over the result contexts, for InfersUnit only. The reason that no
+    longer holds: a rebinding no longer leaves its predecessor's row mapped. Its other reason stands: the static readers
+    (`DiscardsFunctionBody`, and `TypedByHeader` before the body) read no pass-local family (BU-220), so `BoundClosure.InfersResult`
+    stays for them. Where a Closure's latest binding bound its body, InfersResult equals whether that body opened a context; a
+    binding that binds no body (a failed header, FailClosureHeader, or a failed environment) keeps the previous flag and no row, and
+    leaves the literal failed, so InfersUnit reads false either way.
+  - **Rejected:** InfersUnit reading `InfersResult` for a function and the context otherwise (a clause per form, two stores for one
+    fact); clearing the row only where the rebinding fixes the result (a second copy of BindClosureHeader's rule).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -22227,6 +22242,12 @@ structure is recorded here by the unit that first implements it.
 
 - **R5-M93 The requirement calls and the caller location of MIR code generation** (2026-10-21; plan C3b; under R5-M61, R5-M67,
   R5-M70, R5-M89 and R5-M92)
+  - G1017 refines a scope-exit Drop's runtime location to the start of a written parameter declaration (SPEC 22.5.1).
+    The builder carries the syntax-provided offset from registration into the Drop's own `MirTerminator.Offset` (-1 for the
+    syntax site); a Drop's `Count` stays the zero inputs MirBorrows composes its destruction over. The MIR dump omits the offset,
+    as it omits every terminator's source. Copies preserve it. The argument local retains its Type site for layout. Code generation still forwards
+    the caller location when required. SourceLocationTable renders the offset in the site's document. Retargeting the parameter
+    Type's SourceRef would also move unrelated layout diagnostics.
   - Requirement row: a Requirement callee is called by the collector's target at the call, as a Fn callee is (`FunctionCodegen.Function`):
     a Body witness (a conformance's, an inherited one, a generic Type's instance, one through a bound Contract reference, an accessor's
     Getter or Setter, a fixed array's entry member, Position's i32 specialization) under its own signature (`ModuleCodegen.Signature`),
@@ -34573,14 +34594,15 @@ Closure row of `MirCases.Branch`).
 
 - **R9-M13 The command line's one option table** (Middle, 2026-11-24; PLAN G1236, G1237; Q-750, D-1246; Major; the owner's O-525, O-526,
   O-527 (a); design review REVISE then ACCEPT WITH CONDITIONS, implementation review ACCEPT WITH CONDITIONS)
-  - `KimiOptions` owns the options of every command but lsp's (PLAN G1251): one table, a row per option (name as IMPL spells it, kind
+  - `KimiOptions` owns the options of every command after lsp's debugger option has been consumed (G1251 supersedes T-M15's consequence 1): one table, a row per option (name as IMPL spells it, kind
     `Value`/`Boolean`/`BareBoolean`/`Flag`/`Removed`, the commands that take it, the values IMPL lists for it), and one reader,
     `KimiOptions.Read(command, args)`: the values by row name, the inputs, the invalid options' texts in order. `KimiOptions.From` gives
     the compiler options (`Manifest`, `NoBuild`, `Report` added).
   - Rule (O-525, O-526): an option word (`SimpleParserHelper.IsOptionName`) names the row whose name equals it after its leading dashes,
     ignoring case; a word of dashes alone is an input; a value is never an option word; a Boolean value reads as `bool.TryParse` reads it
     and a listed value exactly but ignoring case; `--no-build` and `--locked` stand alone. An unknown option, a removed one (its removal
-    text), a missing value, a value outside the listed set and a repeated option in any spelling are invalid. `CommandExecution.Execute`
+    text), a missing value, a value outside the listed set and a repeated option in any spelling (by its name, before its value: G1368)
+    are invalid. `CommandExecution.Execute`
     prints each on standard error before the action (exit 1); `TestOptions.Read` binds first, so `kimi test` reads `--Format`, and
     `TestOptions.Validate` raises the first (exit 2). `restore` takes `--Target` (O-527 (a)); a quoted option word is an option on every
     command; a help request runs no command and lists no options (PLAN G1367).
@@ -35194,7 +35216,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     no `--` boundary, and no Kimi command forwards arguments after it: `run` takes no program arguments, IMPL 20.3).
   - **N4-2:** each occurrence is one text (SPEC 23.1.2: independent), in order, where the command layer reads the arguments; **N4-3:**
     the texts go to standard error, nothing to standard output, and no file is written.
-  - **Accepted consequences (T's ruling (A)):** (1) `lsp` reads no arguments, so it reports no removal (PLAN G1251); (2) a help
+  - **Accepted consequences (T's ruling (A)):** (1) superseded by G1251 under R9-M13: `lsp` now reports removed options; (2) a help
     request (`kimi help ...`, `kimi build help ...`) runs no command and reports none; (3) a quoted `"--ToolchainRoot"` is reported:
     the parser hands the command the word unwrapped; (4) a line whose other option fails to parse (`--Target --ToolchainRoot`) shows
     only the parser's error, since it runs no command; (5) `test` reports its first invalid option, as for every `test` option error

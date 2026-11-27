@@ -24,8 +24,10 @@ internal sealed class SourceLocationTable(Compilation compilation)
     /// non-ASCII and control characters escaped as <c>\u{HEX}</c> and backslash as <c>\\</c> (IMPL 21.4.2), then the site's line and
     /// column.</summary>
     /// <param name="site">The site.</param>
+    /// <param name="offset">The location's offset in the site's document where it is not the site's start (a Drop's
+    /// <c>MirTerminator.Offset</c>), else -1.</param>
     /// <returns>The text, or <see langword="null"/> when the site has no source document, a broken contract its reader reports.</returns>
-    internal string? Text(SourceRef site)
+    internal string? Text(SourceRef site, int offset = -1)
     {
         var root = compilation.Kotonoha.Base;
         if (!ReferenceEquals(this.root, root))
@@ -35,12 +37,13 @@ internal sealed class SourceLocationTable(Compilation compilation)
         }
 
         var node = compilation.SyntaxOf(site);
-        if (node.CodeContext.SourceDocument is not { } source || (uint)node.Span.Start > (uint)source.SourceText.Length)
+        var start = offset < 0 ? node.Span.Start : offset;
+        if (node.CodeContext.SourceDocument is not { } source || (uint)start > (uint)source.SourceText.Length)
         {
             return null;
         }
 
-        var key = (source, node.Span.Start);
+        var key = (source, start);
         if (this.texts.TryGetValue(key, out var text))
         {
             return text;
@@ -65,7 +68,7 @@ internal sealed class SourceLocationTable(Compilation compilation)
             }
         }
 
-        var position = source.GetPosition(node.Span.Start);
+        var position = source.GetPosition(start);
         text = builder.Append(':').Append(position.Line + 1).Append(':').Append(position.Character + 1).ToString();
         this.texts.Add(key, text);
         return text;
