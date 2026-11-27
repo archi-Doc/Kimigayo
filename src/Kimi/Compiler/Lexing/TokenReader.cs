@@ -19,6 +19,8 @@ public readonly record struct TokenContext(AttributeKoto? AttributeKoto, Modifie
 {
     internal SourceSpan PendingExclusion { get; init; }
 
+    internal CompileTimeSwitchKoto? PendingMarker { get; init; }
+
     internal int PendingExclusionStart { get; init; }
 
     internal SourceSpan AccessModifierSpan { get; init; }
@@ -206,8 +208,20 @@ public ref partial struct TokenReader
     /// <summary>Gets or sets the innermost directive that excludes the pending item, meaningful while <see cref="IsExcluded"/> holds.</summary>
     internal SourceSpan PendingExclusion { get; set; }
 
+    /// <summary>Gets or sets the marker of <see cref="PendingExclusion"/>'s directive, meaningful while <see cref="IsExcluded"/> holds.</summary>
+    internal CompileTimeSwitchKoto? PendingMarker { get; set; }
+
     /// <summary>Gets or sets the first source position excluded by the pending directive, after its own header.</summary>
     internal int PendingExclusionStart { get; set; }
+
+    /// <summary>Gets or sets the marker of the innermost directive whose excluded syntax the current item list is in: the owner of the
+    /// list's excluded parts (SPEC 19.4). It is null in selected syntax and in a list that begins inside excluded syntax, which keeps
+    /// its parts (Parser.ParseItemList).</summary>
+    internal CompileTimeSwitchKoto? ExcludingMarker { get; set; }
+
+    /// <summary>Gets or sets the markers of the current item list's directives that no marker owns, which the list's owner adopts
+    /// (Parser.ParseItemList).</summary>
+    internal List<Koto>? ListMarkers { get; set; }
 
     /// <summary>Gets a value indicating whether the current position lies inside excluded syntax.</summary>
     internal readonly bool InExcludedSyntax => this.ExclusionDepth > 0;
@@ -346,6 +360,7 @@ public ref partial struct TokenReader
         var context = new TokenContext(this.AttributeKoto, this.ModifierKind, this.IsExcluded, this.DispatchModifierSpan)
         {
             PendingExclusion = this.PendingExclusion,
+            PendingMarker = this.PendingMarker,
             PendingExclusionStart = this.PendingExclusionStart,
             AccessModifierSpan = this.AccessModifierSpan,
             SecondModifierSpan = this.SecondModifierSpan,
@@ -370,6 +385,7 @@ public ref partial struct TokenReader
         this.SecondModifierSpan = context.SecondModifierSpan;
         this.IsExcluded = context.IsExcluded;
         this.PendingExclusion = context.PendingExclusion;
+        this.PendingMarker = context.PendingMarker;
         this.PendingExclusionStart = context.PendingExclusionStart;
         this.DocumentationExcludedStart = context.DocumentationExcludedStart;
         this.HeaderPosition = context.HeaderPosition;
