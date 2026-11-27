@@ -252,7 +252,9 @@ public sealed partial class Binding
 
     private void ClearCapabilityResults()
     {
-        this.capabilityEpoch++; // Component summaries follow it (ComponentSummary.Epoch): an answer formed over these results ends with them.
+        // Its followers, component summaries (ComponentSummary.Epoch) and inferred bindings' kept evidence answers (AssociatedBinding.Evidence):
+        // an answer formed over these results ends with them.
+        this.capabilityEpoch++;
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
         this.dependentCapabilities.Clear();

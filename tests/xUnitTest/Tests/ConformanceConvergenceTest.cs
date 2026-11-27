@@ -270,6 +270,21 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             public func get(self: ref/Self) -> Box<S> => $abort("x")
         """;
 
+    // R7-C2e2 e2-5b 3b3a-2 (design section 4's twin): the inferred binding on the cycle read by its requirement's evidence (`Item is M`),
+    // after the layouts are judged, so it names no Type there and adds no record of its own.
+    private const string InlineCycleInferredForARequirement = """
+        contract M
+        contract C
+            associate Item is M
+            func get(self: ref/Self) -> Self.Item
+        struct W
+            Self is M
+            let s: S.(C).Item
+        struct S
+            Self is C
+            public func get(self: ref/Self) -> W => $abort("x")
+        """;
+
     // The inferred binding's cycle beside a Resolved body that makes a Box<S> value, and the written binding with S's method returning
     // Box<S> (the inferred row's shape): ruling 261's rows (PLAN G1071 gate 1 publishes S.get's body; F's C2 ruling 261 (2)).
     private const string InlineCycleInferredWithAValue = """
@@ -785,6 +800,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData("two6n", "contract M\ncontract N\ncontract K\n    associate X\ncontract C\n    associate Item is M and N\n    func get(self: ref/Self) -> Item\n    func get2(self: ref/Self) -> Item\nstruct R\n    Self is M\n    Self is N\nstruct Pair<A, B>\n    Self is M when A is M\n    Self is N when B is N\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    public func get(self: ref/Self) -> Pair<Box<S>.(K).X, R> => $abort(\"x\")\n    public func get2(self: ref/Self) -> Pair<Box<S>.(K).X, Box<S>.(K).X> => $abort(\"x\")\n", "IncompatibleContractImplementation_Kd@20:5 UnprovenConstraint_Kd@21:17")] // I
     [InlineData("inffn", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\n    func get(self: ref/Self) -> (ref/Item) -> i32\nstruct R\n    Self is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    public func get(self: ref/Self) -> (ref/Box<S>.(K).X) -> i32 => $abort(\"x\")\n", "AssociatedTypeInferenceFailed_Kd@14:5")] // I
     [InlineData("inffv", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\n    func get(self: ref/Self) -> (ref/Item) -> i32\nstruct R\n    Self is M\nstruct Box<T>\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    public func get(self: ref/Self) -> (ref/Box<S>.(K).X) -> i32 => $abort(\"x\")\n", "AssociatedTypeInferenceFailed_Kd@13:5")] // I
+    // R7-C2e2 e2-5b 3b3a-2 (CC-78 (c); SPEC 8.3.2, 8.7.1, 8.8.2): a capability path whose condition, G is Copy, rests on CP's source state,
+    // Pending in round 1; an evidence answer is kept within its capability epoch only.
+    [InlineData("cep1", "contract M\nstruct R\n    Self is M\ncontract K\n    associate X\ncontract LC\n    associate Y is M\n    func a(self: ref/Self) -> Self.Y\nstruct Box<T>\n    Self is K when T is Copy\n    associate K.X is R\nstruct S<G>\n    G is CP\n    Self is LC\n    public func a(self: ref/Self) -> Box<G>.(K).X => $abort(\"a\")\ncontract CP: Copy\n    H is M\nstruct H\n    R is M\n    Self is M\n", "")] // V
     public void AnInferredBindingIsReadAsWrittenByAnEvidence(string id, string source, string records)
     {
         var errors = Errors(source);
@@ -1058,6 +1076,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleWithAValue, "Application", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleInferred, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferredForARequirement, "Library", "3*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleInTupleAndArray, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughTwoTypes, "Library", "2*InvalidConstraint_Kd 2*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]

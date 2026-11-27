@@ -588,6 +588,7 @@ public sealed partial class Binding
     private void PublishInferred(InferenceEntry entry, AssociatedInference definition, int empty)
     {
         var binding = entry.Binding;
+        binding.Evidence = null; // The kept evidence answer goes with the sources it was formed from.
         var answer = this.inferenceValues[(binding, empty)];
         var index = this.inferenceBindingIndex[binding];
         var own = this.InferenceRun(entry.Batch, this.HoldWith(empty, index, null), index);
@@ -659,6 +660,7 @@ public sealed partial class Binding
             var (binding, batch, path, _) = this.inferenceBindings[i];
             var index = this.inferenceBindingIndex[binding];
             var run = this.InferenceRun(batch, all, index);
+            binding.Evidence = null; // Before its writes and its limit reset, as PublishInferred.
             if (run.Usable.TryGetValue(binding, out var usable))
             {
                 for (var u = 0; u < usable.Count; u++)

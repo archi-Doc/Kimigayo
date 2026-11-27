@@ -724,8 +724,41 @@ public sealed partial class Binding
                     return this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null;
                 }
 
-                return !batch.Published || binding.InferenceConflict || binding.InlineCycle ||
-                    binding.Inferred is null ? null : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
+                if (!batch.Published || binding.InferenceConflict || binding.InlineCycle || binding.Inferred is null)
+                {
+                    return null;
+                }
+
+                if (this.FormationRead)
+                {
+                    return binding.Inferred;
+                }
+
+                // R7-C2e2 e2-5b 3b3a-2 (CC-77 P1, CC-78; PLAN G1497): the answer is kept for every evidence where its computation raised neither
+                // counter, for this evidence's query where it raised only evidenceReads, else not at all, and only within the capability epoch it
+                // was formed in (SourceStates: no answer computed from a Pending read outlives its round). A computation that raised no
+                // unkeyedReads made no hit on an open obligation, so the kept answer depends on none and EndAnswer misses nothing: by induction on
+                // formation time, each cached entry it read (contractParts', this value, IsVerified, a binding's Result) was formed earlier and
+                // itself made no hit. The arm runs inside an evidence only (heldObligations > 0), so evidenceQuery is nonzero here.
+                if (binding.Evidence is { } kept && kept.Epoch == this.capabilityEpoch && (kept.Evidence == 0 || kept.Evidence == this.evidenceQuery))
+                {
+                    if (kept.Evidence != 0)
+                    {
+                        this.evidenceReads++; // A value kept for one evidence is that evidence's read.
+                    }
+
+                    pending = kept.Image is null;
+                    return kept.Image;
+                }
+
+                var (unkeyed, scoped) = (this.unkeyedReads, this.evidenceReads);
+                var image = this.InferredEvidence(binding, batch, out pending);
+                if (unkeyed == this.unkeyedReads)
+                {
+                    binding.Evidence = (image, scoped == this.evidenceReads ? 0 : this.evidenceQuery, this.capabilityEpoch);
+                }
+
+                return image;
             }
 
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
@@ -913,6 +946,13 @@ public sealed partial class Binding
 
         internal BoundType? Inferred { get; set; }
 
+        // SPEC 8.5.5, 8.6.3 (R7-C2e2 e2-5b 3b3a-2; CC-77 P1, CC-78; PLAN G1497): InferredEvidence's answer, written and read only by
+        // ResolveAssociated's inferred arm: its image (null: a pending answer), the evidence it is kept for (0: every evidence; else the
+        // evidenceQuery of that one evidence) and the capability epoch it was formed in (capabilityEpoch). Null: none kept. A kept answer
+        // read no open obligation, each cached entry it read formed earlier without one (induction on formation time; the arm's comment).
+        // Every writer of Inferred and EvidenceSources clears it (Reset, PublishInferred, DecideAtLimit).
+        internal (BoundType? Image, uint Evidence, int Epoch)? Evidence { get; set; }
+
         internal FunctionKoto? InferenceSource { get; set; }
 
         internal bool InferenceConflict { get; set; }
@@ -939,6 +979,7 @@ public sealed partial class Binding
             this.Candidates.Clear();
             this.Result = null;
             this.Inferred = null;
+            this.Evidence = null;
             this.InferenceSource = null;
             this.InferenceConflict = false;
             this.InlineCycle = false;

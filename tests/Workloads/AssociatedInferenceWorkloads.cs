@@ -50,11 +50,14 @@ internal static class AssociatedInferenceWorkloads
     // A diamond ladder of n rungs (Q20 B1 (1)'s shared shape): L_i.X from A_i.X and B_i.X, each from L_{i+1}.X; L_n's b returns `last`:
     // i32 (acyclic: 3n + 1 one-binding components) or L0.(LC).X (the back edge: one component).
     internal static string Ladder(int n, string last)
-        => "contract LC\n    associate X\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\n" +
-            string.Concat(Enumerable.Range(0, n).Select(static i => $"struct L{i}\n    Self is LC\n" +
-                $"    public func a(self: ref/Self) -> A{i}.(LC).X => $abort(\"a\")\n    public func b(self: ref/Self) -> B{i}.(LC).X => $abort(\"b\")\n" +
-                $"struct A{i}\n    Self is LC\n" + Reads($"L{i + 1}") + $"struct B{i}\n    Self is LC\n" + Reads($"L{i + 1}"))) +
+        => "contract LC\n    associate X\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\n" + Rungs(n) +
             $"struct L{n}\n    Self is LC\n    public func a(self: ref/Self) -> i32 => 0\n    public func b(self: ref/Self) -> {last} => $abort(\"b\")\n()";
+
+    // The same ladder read by a requirement (R7-C2e2 e2-5b 3b3a-2, gen.py's L1 and L2): LC's `associate X is M`, R is M, and L_n's a and
+    // b both return `last`, so each L_i is LC's requirement evidence reading its X through A_i's and B_i's, 2^n paths as a tree.
+    internal static string RequirementLadder(int n, string last)
+        => "contract M\nstruct R\n    Self is M\ncontract LC\n    associate X is M\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\n" +
+            Rungs(n) + $"struct L{n}\n    Self is LC\n    public func a(self: ref/Self) -> {last} => $abort(\"a\")\n    public func b(self: ref/Self) -> {last} => $abort(\"b\")\n()";
 
     // A two-value chain of n whose last Y also reads C0.X (the model's `two_chain(n, back=True)`): one component.
     internal static string TwoValueChainBackEdge(int n)
@@ -180,6 +183,12 @@ internal static class AssociatedInferenceWorkloads
 
     private static string Constants(string names)
         => string.Concat(names.Select(static x => $"    public func {x}(self: ref/Self) -> i32 => 0\n"));
+
+    // A ladder's rungs L_0 .. L_{n-1}: L_i.X from A_i.X and B_i.X, each from L_{i+1}.X.
+    private static string Rungs(int n)
+        => string.Concat(Enumerable.Range(0, n).Select(static i => $"struct L{i}\n    Self is LC\n" +
+            $"    public func a(self: ref/Self) -> A{i}.(LC).X => $abort(\"a\")\n    public func b(self: ref/Self) -> B{i}.(LC).X => $abort(\"b\")\n" +
+            $"struct A{i}\n    Self is LC\n" + Reads($"L{i + 1}") + $"struct B{i}\n    Self is LC\n" + Reads($"L{i + 1}")));
 
     private static string Reads(string next)
         => $"    public func a(self: ref/Self) -> {next}.(LC).X => $abort(\"a\")\n    public func b(self: ref/Self) -> {next}.(LC).X => $abort(\"b\")\n";

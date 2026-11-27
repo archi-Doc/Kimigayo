@@ -62,4 +62,38 @@ public partial class TypeDagScalingTest
                 $"struct S\n    Self is C\n    associate C.Item is Pair<L{n}.(D).Y, i32>\n    associate C.Y is Pair<S.(C).Item, i32>\n" +
                 "    public func get(self: ref/Self) -> Pair<S.(C).Item, S.(C).Y> => $abort(\"x\")\n";
     }
+
+    // R7-C2e2 e2-5b 3b3a-2 (CC-77 P1, CC-78; PLAN G1497; SPEC 8.5.5, 8.6.3): a ladder whose requirement reads each rung's inferred X (valid:
+    // every X is R, and R is M). Each binding's evidence answer reads no obligation, so it is kept for every evidence and formed once
+    // (linear), where none kept walks the ladder as a tree (2^n).
+    [Fact]
+    public void ARequirementLadderFormsEachInferredEvidenceOnce()
+    {
+        var (w4, w6, w8) = (Work(4), Work(6), Work(8));
+        Assert.True(w4 < w6 && w8 - w6 <= 2 * (w6 - w4), $"{w4} at 4, {w6} at 6, {w8} at 8");
+
+        static int Work(int n)
+        {
+            var c = MinimalEmissionTest.Analyze(Verification.AssociatedInferenceWorkloads.RequirementLadder(n, "R"));
+            Assert.Empty(CompilationTestHelper.BindingErrors(c));
+            return c.Binding.InferredEvidenceWork;
+        }
+    }
+
+    // The same ladder over `Box<G>.(K).X` (valid: Box's `T is C` holds at G): each answer opens (G, C) fresh, so it is kept for its
+    // evidence alone and each binding is formed once per evidence, 3n + 1 evidences (n^2), where none kept is 2^n.
+    [Fact]
+    public void AGenericConstrainedLadderFormsEachInferredEvidenceOncePerEvidence()
+    {
+        var (w4, w6, w8) = (Work(4), Work(6), Work(8));
+        Assert.True(w4 < w6 && w8 - w6 <= 2 * (w6 - w4), $"{w4} at 4, {w6} at 6, {w8} at 8");
+
+        static int Work(int n)
+        {
+            var c = MinimalEmissionTest.Analyze("contract C\nstruct G\n    Self is C\ncontract K\n    associate X\nstruct Box<T>\n    T is C\n    Self is K\n" +
+                "    associate K.X is R\n" + Verification.AssociatedInferenceWorkloads.RequirementLadder(n, "Box<G>.(K).X"));
+            Assert.Empty(CompilationTestHelper.BindingErrors(c));
+            return c.Binding.InferredEvidenceWork;
+        }
+    }
 }

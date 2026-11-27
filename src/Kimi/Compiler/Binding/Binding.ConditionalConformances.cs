@@ -522,6 +522,7 @@ public sealed partial class Binding
         }
 
         depth = this.openObligations.Count - 1;
+        this.evidenceReads++; // A fresh open: the same throughout the evidence in progress (CC-77 P1).
         return true;
     }
 

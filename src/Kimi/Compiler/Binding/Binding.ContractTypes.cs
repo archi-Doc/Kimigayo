@@ -19,7 +19,8 @@ public sealed partial class Binding
     // associated collection's batch, without the guard set (R7-C2e2 e2-5b), so a requirement's evidence (BeginEvidence) keeps an entry
     // for its evidence query (evidenceQuery) where its formation made no unkeyed read (unkeyedReads), and any other for its call's query.
     // A hit on an entry an evidence kept for its call counts as an unkeyed read, as its formation did, so an image formed over it is kept
-    // for its call too (CC-53 B1); the batch's entries likewise (BatchedContractType).
+    // for its call too (CC-53 B1); the batch's entries likewise (BatchedContractType). A hit on one it kept for itself is that evidence's
+    // read (evidenceReads).
     private readonly TypeMemo<(BoundType Part, BindingScope Scope, BoundType? Self, bool Normalize, BindingSymbol? Contract), (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
 
     // SPEC 8.6.3 (R7-C2e2 e2-5b, design R3.1.1): the query of contractParts the innermost requirement's evidence began (BeginEvidence),
@@ -33,6 +34,12 @@ public sealed partial class Binding
     // inferred (ProjectionSpecification). An entry whose formation raised none is the same under every guard set and in every call of
     // its evidence; any other keeps its call's query. Only ever raised: a store compares it before and after a formation.
     private int unkeyedReads;
+
+    // The reads a formation made that are the same throughout the evidence in progress but can differ in another (R7-C2e2 e2-5b 3b3a-2,
+    // CC-77 P1): an obligation it opened (OpenObligation's open arm) and an entry that evidence kept (a contractParts entry stamped with
+    // evidenceQuery, an inferred binding's value kept for it: AssociatedBinding.Evidence). No site raises it and unkeyedReads both. Only
+    // ever raised: ResolveAssociated's inferred arm compares it before and after InferredEvidence.
+    private int evidenceReads;
 
     // The scaling rows' measure: the parts ContractType rewrote past its memo in this compilation (ContractTypeCore's runs).
     internal int ContractPartWork { get; private set; }
@@ -141,6 +148,10 @@ public sealed partial class Binding
         else if (this.evidenceQuery != 0 && stamp == query)
         {
             this.unkeyedReads++; // An entry the evidence kept for its call: its formation's unkeyed read.
+        }
+        else if (stamp == this.evidenceQuery)
+        {
+            this.evidenceReads++; // An entry the evidence kept for itself: the same throughout it.
         }
 
         return answer;
