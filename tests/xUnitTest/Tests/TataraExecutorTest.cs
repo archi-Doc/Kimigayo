@@ -44,6 +44,9 @@ public sealed class TataraExecutorTest : IDisposable
 
     private static readonly string[] Levels = ["O0", "O2"];
 
+    // An llvm-objdump --no-show-raw-insn line using an XMM register or an x87 instruction (the none row's soft float, design §5 row 14).
+    private static readonly Regex FloatInstruction = new(@"^\s*[0-9a-f]+:\s+(f\w*|\S.*(xmm|%st))", RegexOptions.Multiline);
+
     private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
 
     // The tool control's two formats. The archive's ld.lld.exe and llvm-readelf.exe are the toolchain's lld-link.exe and llvm-readobj.exe
@@ -80,6 +83,11 @@ public sealed class TataraExecutorTest : IDisposable
         { "Stopwatch", TimeLibraryTest.Measured },
     };
 
+    // Design §5 row 10: Kernel writing a measured Stopwatch's seconds (TimeLibraryTest.Measured reads the platform's clock, so O2 folds
+    // neither the conversion nor the division); its object here, its ELF in NativeToolchainTest (Tatara B9f).
+    internal static string KernelSeconds =>
+        KernelSources.Hello + TimeLibraryTest.Measured + "\nConsole.writeLine(Text.toString(duration.seconds))\n" + KernelSources.Board + KernelSources.BoardTerminate;
+
     private static string Root => Path.Combine(Repository.Root, "toolchain");
 
     private static string? Corpus => Environment.GetEnvironmentVariable("KIMI_TATARA_CORPUS");
@@ -93,11 +101,6 @@ public sealed class TataraExecutorTest : IDisposable
 
     // Both, in ToolchainIdentity.Supplies' order: a link manifest's libraries when the program names none of its own.
     private static string[] CompilerLibraries => [Kernel32, Backend];
-
-    // Design §5 row 10: Kernel writing a measured Stopwatch's seconds (TimeLibraryTest.Measured reads the platform's clock, so O2 folds
-    // neither the conversion nor the division).
-    private static string KernelSeconds =>
-        KernelSources.Hello + TimeLibraryTest.Measured + "\nConsole.writeLine(Text.toString(duration.seconds))\n" + KernelSources.Board + KernelSources.BoardTerminate;
 
     // Probe P0b's module (design §11): a Library group with every floating operation the generator writes, for f32 and f64: the
     // arithmetic and comparison rows (FunctionCodegen.Arithmetic: fadd fsub fmul fdiv fneg; oeq une olt ole ogt oge), the floating
@@ -222,7 +225,7 @@ public sealed class TataraExecutorTest : IDisposable
             Assert.Equal(string.Empty, failure);
             var headers = listing[listing.IndexOf("ProgramHeaders [", StringComparison.Ordinal)..];
             Assert.Equal(elf.Entry, Convert.ToUInt64(Regex.Match(listing, @"(?m)^\s*Entry: 0x([0-9A-F]+)\r?$").Groups[1].Value, 16));
-            Assert.Equal(elf.Segments, Regex.Matches(headers, @"(?m)^\s*Type: \S+ \(0x([0-9A-F]+)\)\r?$").Zip(
+            Assert.Equal(elf.Segments.Select(static x => (x.Type, x.Flags)), Regex.Matches(headers, @"(?m)^\s*Type: \S+ \(0x([0-9A-F]+)\)\r?$").Zip(
                 Regex.Matches(headers, @"(?m)^\s*Flags \[ \(0x([0-9A-F]+)\)\r?$"), (t, f) => (Convert.ToUInt32(t.Groups[1].Value, 16), Convert.ToUInt32(f.Groups[1].Value, 16))));
         }
 
@@ -532,13 +535,16 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
-    // IMPL 21.6: Kernel's module on the none row, and a Library's, optimized at O2 and emitted at O0 and O2, use no xmm register and no
-    // address below rsp (the row's soft float and noredzone), and their float operations call the routines of the row's kimi_backend
+    // IMPL 21.6: Kernel's module on the none row, and a Library's, optimized at O2 and emitted at O0 and O2, use no XMM register, no x87
+    // instruction (FloatInstruction, the archive row's) and no address below rsp (the row's soft float and noredzone; design §5 row 14),
+    // and their float operations call the routines of the row's kimi_backend
     // (IMPL 21.6.7, the Tatara plan's decision 33): Kernel writing a measured Stopwatch's seconds (design §5 row 10; Duration.seconds, a
     // u64 converted to f64 and divided) leaves exactly __floatundidf and __divdf3 undefined at O0, and __floatdidf and __divdf3 at O2,
     // which proves the u64 non-negative (probe P0b); the Library holds every floating operation the generator writes (FloatOperations,
-    // P0b), whose object needs only the supply's symbols and the platform's adapters it declares. Fail-before (B9e): the row's supply
-    // was empty.
+    // P0b), whose object needs only the supply's symbols and the platform's adapters it declares. The Library half is vacuous at O2,
+    // which deletes the internal functions, so its O0 object carries P0b's pin: beside the adapters, exactly P0b's 39 names, the supply
+    // less the five only its members call (comparedf2.c's __cmpdf2, comparesf2.c's __cmpsf2 and __unordsf2, fp_mode.c's two), so every
+    // member is reached. Fail-before (B9e): the row's supply was empty.
     [Theory]
     [InlineData(OutputKind.Application)]
     [InlineData(OutputKind.Library)]
@@ -567,17 +573,22 @@ public sealed class TataraExecutorTest : IDisposable
             {
                 Assert.Equal(["__divdf3", level == "O2" ? "__floatdidf" : "__floatundidf"], undefined.Order(StringComparer.Ordinal));
             }
+            else if (level == "O0")
+            {
+                Assert.Equal(backend.Except(["__cmpdf2", "__cmpsf2", "__fe_getround", "__fe_raise_inexact", "__unordsf2"]), undefined.Where(x => !adapters.Contains(x)).Order(StringComparer.Ordinal));
+            }
 
-            var (failure, disassembly) = await Launch("llvm-objdump", this.directory, "-d", obj);
+            var (failure, disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", obj);
             Assert.Equal(string.Empty, failure);
-            Assert.DoesNotContain("xmm", disassembly, StringComparison.Ordinal);
+            Assert.DoesNotMatch(FloatInstruction, disassembly);
             Assert.DoesNotMatch(@"-0x[0-9a-f]+\(%rsp\)", disassembly);
         }
     }
 
     // IMPL 21.6.7 (the Tatara plan's decision 33; build-compiler-rt.ps1's checks over the committed archive, design §3.6, notes F6): the
     // none row's kimi_backend archive defines exactly the row's supply symbols, every undefined symbol of a member is defined in the
-    // archive, and no member uses an xmm register or an x87 instruction. Fail-before (B9e): no archive.
+    // archive, and no member uses an xmm register, an x87 instruction or an address below rsp (-mno-red-zone). Fail-before (B9e): no
+    // archive.
     [Fact]
     public async Task TheNoneBackendArchiveIsItsRowsSupply()
     {
@@ -592,7 +603,8 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Subset(symbols.ToHashSet(StringComparer.Ordinal), Names(undefined).ToHashSet(StringComparer.Ordinal));
         (failure, var disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", archive);
         Assert.Equal(string.Empty, failure);
-        Assert.DoesNotMatch(new Regex(@"^\s*[0-9a-f]+:\s+(f\w*|\S.*(xmm|%st))", RegexOptions.Multiline), disassembly);
+        Assert.DoesNotMatch(FloatInstruction, disassembly);
+        Assert.DoesNotMatch(@"-0x[0-9a-f]+\(%rsp\)", disassembly);
 
         // llvm-nm -j's symbol names, without its member headers ("<member>:") and blank lines.
         static string[] Names(string listing) => [.. listing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(static x => !x.EndsWith(':'))];

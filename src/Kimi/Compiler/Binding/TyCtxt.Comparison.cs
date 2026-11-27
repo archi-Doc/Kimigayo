@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns how a comparison runs on a Type in MIR terms (Comparison; DECISIONS R5-M68; R5 package F 4.6, 4.7, S2-S4 F 2, F 5, X25), by
-// Binding's one composition rule (Binding.ComparisonKindOf, shared with the legacy plan) with its closed leaves from Witness
+// Binding's one composition rule (Binding.ComparisonKindOf, shared with the comparison built-in rows) with its closed leaves from Witness
 // (TyCtxt.Dispatch.cs); and the operator table's statements of a Type under a Contract, comparison and built-in arithmetic (below).
 // Input: Equatable or Comparable, a Type and the mode (source operators, IEEE for floats, or the Contract's mapping, whose equals is
 // NaN-reflexive); for the statements, a Type and a comparison or arithmetic Contract.
@@ -9,8 +9,8 @@
 // instance without its Origins, a library witness's at the Self's arguments), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every
 // instance, Synthesized on a Self) or None (no answer, a broken contract for a closed accepted Self that its reader records as
 // InternalInvariant_Kd). One node per (contract, self, operators), discarded at an edit (ResetDispatch).
-// Invariants: a comparison of a closed Type has the legacy plan's leaves wherever that plan exists, which it does not for an inherited
-// witness (ComparisonCompositionTest's twin).
+// Invariants: a Requirement leaf has an abstract part and a Witness leaf none; every leaf of a closed accepted Type answers, Builtin or
+// Witness (an inherited witness's included), which A4 reads as its comparison shim's leaves (MirEffects' Require).
 // OperandTerminal: a comparison operand's node and Type to the Type it compares, a read of Binding's decision in that node's scope
 // (Binding.OperandTerminal: the scope's premises by CallableContractType, then each qualifying pair layer, then the ref and uniq layers),
 // the one Binding view the MIR builder's Witnessed asks before Comparison; it resolves nothing.
@@ -122,7 +122,7 @@ internal sealed partial class TyCtxt
             return new(self, kind, requirement, subst, []);
         }
 
-        return this.Witness(requirement, contract, subst) switch
+        return this.Witness(requirement, contract, subst, null) switch
         {
             { Kind: RequirementTargetKind.Body, Target: { } witness, Subst: { } instance }
                 => new(self, kind, witness, this.Intern(witness, null, instance.Declaring, instance.Types, instance.Lengths, [], []), []),

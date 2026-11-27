@@ -1452,7 +1452,7 @@ public sealed partial class FunctionCodegenTest
             "Storage.clockFailure",
         ];
         var library = Compilation.CreateForTest().Library;
-        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Member!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
         Assert.Equal(8, codes.Distinct().Count());
         Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
         Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
@@ -1955,6 +1955,85 @@ public sealed partial class FunctionCodegenTest
         Assert.True(functions[2] - functions[1] <= (2 * (functions[1] - functions[0])) + 8, shown);
     }
 
+    // IMPL 21.6 (the Tatara plan's decisions 36-43; design C-457 4.4): each call of a machine instruction calls its member's routine, which
+    // the module defines once, internal and always inlined, as the row's inline asm under its constraints and the one clobber suffix: the
+    // freestanding row's Board (design 4.1) polls COM1's line status, spins, writes a byte and halts.
+    [Fact]
+    public void AnInstructionCallsItsRoutine()
+    {
+        const string Source = "public func write(bytes: ref/[4 of u8])\n    var i: isize = 0\n    while i < 4\n        unsafe\n" +
+            "            while (X86.readPort8(0x3FD) & 0x20) == 0\n                X86.pause()\n            X86.writePort8(0x3F8, bytes[i])\n        i += 1\n" +
+            "public func stop(status: i32) -> Never\n    unsafe => X86.writePort8(0xF4, status@u8)\n    loop => X86.halt()\n";
+        var text = Instructions(TargetProfile.None, Source);
+        string[] routines =
+        [
+            "define internal void @__kimi_x86_pause() alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"pause\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
+            "define internal void @__kimi_x86_hlt() alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"hlt\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
+            "define internal i8 @__kimi_x86_inb(i16 %port) alwaysinline #0 {\nentry:\n" +
+                "  %r = call i8 asm sideeffect \"inb %dx, %al\", \"={ax},{dx},~{memory},~{dirflag},~{fpsr},~{flags}\"(i16 %port)\n  ret i8 %r\n}\n",
+            "define internal void @__kimi_x86_outb(i16 %port, i8 %value) alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"outb %al, %dx\", \"{dx},{ax},~{memory},~{dirflag},~{fpsr},~{flags}\"(i16 %port, i8 %value)\n  ret void\n}\n",
+        ];
+        Assert.All(routines, x => Assert.Single(Regex.Matches(text, Regex.Escape(x))));
+        Assert.Equal(routines.Length, Regex.Count(text, @"(?m)^define internal \S+ @__kimi_x86_"));
+        Assert.Matches(@"  %t\d+ = call i8 @__kimi_x86_inb\(i16 1021\)\n", text);
+        Assert.Matches(@"  call void @__kimi_x86_outb\(i16 1016, i8 %[\w.]+\)\n", text);
+        Assert.Matches(@"  call void @__kimi_x86_outb\(i16 244, i8 %[\w.]+\)\n", text);
+        Assert.Contains("  call void @__kimi_x86_pause()\n", text, StringComparison.Ordinal);
+        Assert.Contains("  call void @__kimi_x86_hlt()\n", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 19.2, IMPL 21.6 (OSF's row 5): windows-x64's executable executes `rdtsc` through the member's routine and runs to its end; the
+    // counter has counted since the processor's reset, so it is nonzero.
+    [Fact]
+    public void ATimestampReadRuns()
+        => Assert.Contains(
+            "asm sideeffect \"rdtsc\\0A",
+            ScalarEmissionTest.EmitFixture("X86ReadTimestamp", "let stamp = X86.readTimestamp()\nrequire stamp != 0 else => $abort(\"rdtsc\")\nConsole.writeLine(\"rdtsc\")", "rdtsc\n"),
+            StringComparison.Ordinal);
+
+    // IMPL 21.6: a machine instruction is a compiler barrier: its routine's `~{memory}` clobber keeps a port write between two plain stores
+    // to one buffer, in the order the body runs them (keeping it there at O2 is LLVM's guarantee for an asm call: no O2 run).
+    [Fact]
+    public void AnInstructionStaysBetweenTwoStores()
+        => Assert.Matches(
+            @"  store i8 1, ptr [^\n]*\n(?:[^\n]*\n)*?  call void @__kimi_x86_outb\(i16 1016, i8 %[\w.]+\)\n(?:[^\n]*\n)*?  store i8 2, ptr ",
+            Instructions(TargetProfile.None, "public func mark(buffer: uniq/[2 of u8], value: u8)\n    buffer[0] = 1\n    unsafe => X86.writePort8(0x3F8, value)\n    buffer[1] = 2\n"));
+
+    // SPEC 7.7.4 (design C-457 4.4, B C2): an instruction member's Item is a value whose call calls the member's routine, as a direct call
+    // does, on each row that declares it.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("x86_64-unknown-none")]
+    public void AnInstructionItemsCallCallsItsRoutine(string triple)
+    {
+        var text = Instructions(TargetProfile.Find(triple)!, "public func stamp() -> u64\n    let f = X86.readTimestamp\n    return f()\n");
+        Assert.Single(Regex.Matches(text, @"(?m)^define internal i64 @__kimi_x86_rdtsc\(\) alwaysinline #0 \{$"));
+        Assert.Contains("call i64 @__kimi_x86_rdtsc()\n", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 7.7.4, IMPL 21.1.3: an instruction member's Item converted to a Function Type is an adapter whose entry calls the member's
+    // routine, which the value's erased call reaches through its table.
+    [Fact]
+    public void AnInstructionsAdapterEntryCallsItsRoutine()
+    {
+        var text = Instructions(TargetProfile.Windows, "public func stamp() -> u64\n    let g: () -> u64 = X86.readTimestamp\n    return g()\n");
+        var callers = text.Split("\ndefine ").Where(static x => x.Contains("call i64 @__kimi_x86_rdtsc()", StringComparison.Ordinal)).ToArray();
+        Assert.DoesNotContain("call i64 %", Assert.Single(callers), StringComparison.Ordinal);
+        Assert.Matches(@"call i64 %t\d+\(", text);
+    }
+
+    // IMPL 21.6: the module defines a requested routine once, whatever number of calls and functions request it.
+    [Fact]
+    public void AnInstructionsRoutineIsDefinedOnce()
+    {
+        var text = Instructions(TargetProfile.Windows, "public func a() => X86.pause()\npublic func b() => X86.pause()\n");
+        Assert.Single(Regex.Matches(text, @"(?m)^define internal void @__kimi_x86_pause\(\)"));
+        Assert.Equal(2, Regex.Count(text, @"  call void @__kimi_x86_pause\(\)\n"));
+    }
+
     // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
     // the definitions of the body items its generation marks Generated; any record fails (DECISIONS R5-M146).
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
@@ -2017,6 +2096,11 @@ public sealed partial class FunctionCodegenTest
     // The module's internal functions: its generated code and runtime, without the runtime's memory functions, which every module defines
     // with external linkage (IMPL 21.4.7).
     private static IEnumerable<IrFunction> Internal(GeneratedIr ir) => ir.Functions.Where(static x => x.Signature.StartsWith("internal ", StringComparison.Ordinal));
+
+    // A Library program's module text on a target row, the source's functions the members of a public group (a Library generates every
+    // root, K11): a routine's inline asm is not GeneratedIr's.
+    private static string Instructions(TargetProfile row, string source)
+        => CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(row, "public group Board\n" + Regex.Replace(source, "(?m)^(?=.)", "    "), "Hello.kimi", OutputKind.Library));
 
     // The module's functions that body items' texts define.
     private static IrFunction[] Functions(GeneratedIr ir, string[] items)

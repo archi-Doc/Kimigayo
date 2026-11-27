@@ -51,14 +51,14 @@ internal sealed partial class MirEffects
     /// composed but those excluded. Bit 2f is a read and bit 2f + 1 a write of the mutable static Field that <see cref="Field"/> numbers f;
     /// a read bit beside its write bit is the write; a static with several slots whose initialization the site may run has its
     /// <see cref="Slot"/> bit. The classes tell apart what the site runs and A4 does not classify: <see cref="Unknown"/> (an unknown effect,
-    /// or an atom left abstract under the body's premises), which may access any key, <see cref="Limit"/>, <see cref="Deep"/> (past the
+    /// or an atom left abstract under the body's premises), which may access any key, <see cref="Deep"/> (past the
     /// destruction walk's bound) and <see cref="Derived"/> (a dependent of an error).</summary>
     /// <param name="body">A body of the last <see cref="Run"/>'s program, with which the dataflow is begun.</param>
     /// <param name="view">The view, which the case views select (a caller reselects its own afterwards).</param>
     /// <param name="block">The block whose terminator is the Call or the Drop.</param>
     /// <param name="excluded">The initialization bits (<see cref="Initialization"/>) of the statics whose initializations the row leaves
     /// out; empty for none.</param>
-    /// <param name="classes">The site's classes among <see cref="Unknown"/>, <see cref="Limit"/>, <see cref="Deep"/> and <see cref="Derived"/>.</param>
+    /// <param name="classes">The site's classes among <see cref="Unknown"/>, <see cref="Deep"/> and <see cref="Derived"/>.</param>
     /// <returns>The row, valid until the next query or <see cref="Run"/>; no bit for another terminator.</returns>
     internal ReadOnlySpan<ulong> Keys(MirBody body, long view, int block, ReadOnlySpan<ulong> excluded, out byte classes)
     {
@@ -70,7 +70,7 @@ internal sealed partial class MirEffects
         this.Terminator(this.program, body, block, view, body.Blocks[block].Terminator);
         this.Inputs(this.writing, items, this.writing.ItemCount, edges, this.writing.EdgeCount, inits, this.writing.InitCount);
         this.writing.Truncate(items, edges, inits); // The site's inputs are not the body's.
-        classes = (byte)(this.Found & (Unknown | Limit | Derived | Deep)); // With no reader an atom left abstract is Unknown (AddAtom).
+        classes = (byte)(this.Found & (Unknown | Derived | Deep)); // With no reader an atom left abstract is Unknown (AddAtom).
         return this.keyScratch.AsSpan(0, this.keyWords + this.slotWords);
     }
 
@@ -79,12 +79,12 @@ internal sealed partial class MirEffects
     /// <see cref="Unknown"/> here, since a site that composes the body may resolve it so (R4-M92).</summary>
     /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
     /// <param name="view">The view.</param>
-    /// <param name="classes">The summary's classes among <see cref="Unknown"/>, <see cref="Limit"/>, <see cref="Deep"/> and <see cref="Derived"/>.</param>
+    /// <param name="classes">The summary's classes among <see cref="Unknown"/>, <see cref="Deep"/> and <see cref="Derived"/>.</param>
     /// <returns>The row, A4's storage, valid until the next <see cref="Run"/>.</returns>
     internal ReadOnlySpan<ulong> Summary(MirBody body, long view, out byte classes)
     {
         var node = this.Base(body.Ordinal) + (int)view;
-        classes = (byte)(this.Classes(node) & (Unknown | Limit | Derived | Deep));
+        classes = (byte)(this.Classes(node) & (Unknown | Derived | Deep));
         if (this.atomCounts[node] > 0)
         {
             classes |= Unknown;

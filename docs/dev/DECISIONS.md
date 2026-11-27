@@ -6502,6 +6502,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     witness in the copy (a responsibility moved between phases for one consumer).
   - Closes R4-M189's Open sentence ("A requirement call on a closed Self records no own Type arguments, so a witness's
     parameter-dependent atom ...").
+  - Amended by R7-M126 (R7-P5a): the Rejected line's "not before H11" is met (R5-M182's amendment); A4 reads `TyCtxt.Witness` in
+    R7-P5a, a comparison shim's leaves by the entry.
 - **R4-M198 A5's pun rule reads one fact per raw access and entry** (2026-11-11; Middle, A5 and Binding's one reader; Major, an
   acceptance mover; PLAN G667 with G667b's held rule; the owner's O-131 (a), O-135 (c), O-137 (a), O-144 (a), O-159 (a)) SPEC 4.1,
   4.3.3, 4.4.2, 5.2; IMPL 21.1.2. A5's pun rule reads one fact per raw access and entry: the Place the entry names, the value's
@@ -8053,7 +8055,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     for the same purpose); keeping `Limit` with a stage (none exists; R7-M53 removes, not excepts).
   - **Supersedes in part** R4-M139's "Each keeps its own meaning of a Limit (... A4's Limit class ...)" for A4 (A4's atom and
     `Below` read the null as Deep); **amends** R4-M153 (A4's Deep also covers an instance past Binding's storage bound). A4's `Limit`
-    class keeps E5 (Z3), E6 (Z2's rest) and E7 (R7-P5).
+    class keeps E5 (Z3), E6 (Z2's rest) and E7 (R7-P5a).
   - **Rows.** `MirEffectsTest.DepthLimit`'s rel65, rel65-loud, wipe65, clear65 and their twins, and
     `AChainGrowingThroughADestructorEndsAtTheBound`; records move `Unsupported_Kd` -> `OwnershipDepthLimit_Kd` at the obligation on
     programs the base rejects (Q13), none in the snapshot corpus; no acceptance move.
@@ -14103,7 +14105,7 @@ resumed by R4-M86 (2026-10-20).
     "Property, Refused and None give false".
   - **Kept:** `Binding.LeafTarget` (the legacy composition's leaf) answers a library witness with no Types, right only for a row of no
     parameter (String, the one Equatable or Comparable row): no comparison row with a parameter lands before A-12's read of the view, else
-    R7-P5, which removes it.
+    R7-P5a, which removes it.
   - **Rejected:** selecting inside `Witnesses` (the one producer answering a specialization; the agreement check would compare a selected
     target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
     Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
@@ -21510,6 +21512,10 @@ structure is recorded here by the unit that first implements it.
     `ComparisonPlan(CallPlan)` keeps H11 for `ComparisonCompositionTest`.
   - Amended by BU-142 (G589): the comparison view's Witness leaf is the Body's instance without its Origins, not `Synthesized(witness,
     declaring, [])`.
+  - Superseded in part by R7-M126 (R7-P5a): the legacy comparison twin's bullet (`ComparisonPlan`, `BoundComparison`,
+    `comparisonPlans`, `RequirementImplementation` with `requirementCalls`) and R5-M166's amendment line here, which ends "A4 holds
+    both resolvers until then": A4's `Require` reads `TyCtxt.Witness` and a comparison shim by `TyCtxt.Comparison`'s leaves, so A4
+    and codegen hold one resolver; the legacy composition is gone.
 - **R5-M67 Requirement edges of the checked set** (2026-10-19; plan K6; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1;
   `MonoKind.Builtin`, `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11,
   `ExclusiveInheritedWitness` being KD10's and §4.7's OCC-X row; its Builtin key superseded by R5-M70) A Requirement call of an
@@ -23882,6 +23888,9 @@ structure is recorded here by the unit that first implements it.
     stays until G2.
   - Superseded in part by R8-M52 (R8-I1): the `Unproduced` intrinsic row of its broken-contract list; `IntrinsicWriter.Unproduced` is
     deleted, every member having a MIR producer and a writer since R8-S2c (R8-M34).
+  - Superseded in part by T-M59 (OSF1a): its broken-contract item "a compiler function's Item with no single routine (unsafe and
+    internal functions have no Item)" no longer covers the `Instruction` family, whose safe public members have Items: each has one
+    routine, its `InstructionRows` row's. The item stays for every other row.
 - **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29; extends R5-M135) X1
   (plan §4 row X1, §5.3) ran at dev `17cd554ab`: sel fails exactly the 110 decided P42 rows (R5-M144, R5-M145); the native outcomes of all
   6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes both generators, and sel's `.ll` is identical to
@@ -25341,6 +25350,9 @@ structure is recorded here by the unit that first implements it.
     the dev defects D-1 (binder widening) and D-2 (a resting InvalidOrigin masks a later failure); the owner's G1 approval travels
     with H11b (R5-M192's amendment).
   - Amended by R4-M232 (Z17, Q-621): the H3-2 bullet's removal condition, 2g-1 (Z16, R7-M65), becomes PLAN G121.
+  - Amended by R7-M126 (R7-P5a): R4-13's "A-12 does not land before H11" is met: H11a (W-22), H11b-0 (B0 445c1dd17a, B1 512d390301;
+    BU-154, BU-159) and H11b's remainder, R7-O1 H (5230ca5793, R7-M66; R7 plan revision 99), landed before it; A-12 deletes
+    `RequirementImplementation` with its composition in R7-P5a.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -27192,12 +27204,14 @@ R8-M* and R9-M* by the stage of the recording unit.
     Z6, Z8, Z9).
   - **Owner questions, only where named:** OQ-Z7, if SPEC 22.4.3 does not decide whether a live Loan on a static proves it
     initialized; Z6's option (a), if it adds a vocabulary entry; Z23, if its design needs a MIR vocabulary entry; O-445 for Z24.
-  - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5;
+  - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5a;
     X1, X2 with P42's Binding part) and those added since R4's X-2, which keep their own rows (PLAN G1106, G1107 among them).
   - Amended (R7-T1 c4, Q-641, D-1051; the Middle's RP17 C3, the Middle's decision taken by B's ruling 12): the "Not in stream Z" list
     drops B1 (removed by R7-T1 c4, R7-M54's c4 part) and moves B3, E3 and E4 into stream Z, as the Middle's rows: they read
     `Instance`'s verdict (the builder's default copy and A4), not Dispatch's, so their removal stage is R7's stream Z; R7-T1 removes
     none of them. No postponed stage is created, so no owner approval is needed.
+  - Amended by R7-M126 (R7-P5a): E7 was the last producer of A4's `Limit` class, so M5 and M6 went with it in R7-P5a; Z7 keeps M4
+    and M7.
 - **R7-M54 `TyCtxt.Apply` is the substitution alone; the instance collector reads a substitution's formation, never its storage**
   (Back, 2026-11-19; R7-T1 c2 and c3a-c3e, Q-543, D-864; Major unit T1: design review by the Front (Binding), B's reviewer (the
   collector) and the Middle (RP17: `Signature`'s MIR readers, the publication rule, the newly accepted class); the Front's code review
@@ -28900,7 +28914,7 @@ Closure row of `MirCases.Branch`).
   - **Supersedes in part** R4-M22's abstract-input clause, "an abstract input is nothing where its one Callable signature's premises
     declare confined (`TyCtxt.CallableBounds`), a Limit where it has several signatures (Binding chose among them by the call's
     arguments, which MIR does not keep)": A4 now reads the selected signature's premises. That producer of A4's Limit class (E5) is
-    gone; the class stays for E7 (R7-P5; E3 and E4 left it with Z25, R4-M237, and E6 with Q-688, R7-M57).
+    gone; the class stays for E7 (R7-P5a; E3 and E4 left it with Z25, R4-M237, and E6 with Q-688, R7-M57).
   - **Rejected.** (a) A new Binding column (DeclaredSignature already is the choice); (b) re-running the selection in MIR (a second
     owner of SPEC 8.10's choice); (c) the case Type of the signature (the premises are not case-instantiated); (d) a located
     `Unsupported_Kd` for the override path alone (a clause for one form; Z3-B1, R7-M83, fixes its cause).
@@ -31018,6 +31032,28 @@ Closure row of `MirCases.Branch`).
     missing row would accept or refuse what the part past the bound may hold); Storing silent on a Deep own contract, as O-62 (a) is
     for the Limit (it accepts an invalid body with no caller that dev rejects); per-input Deep now (above); a new walk (the Deep fact
     rides section 1's gate; its scaling rows cover it, C7).
+- **R7-M126 A4 reads TyCtxt.Witness; the legacy comparison composition and A4's Limit class go** (2026-11-28, Middle; R7-P5a, R7
+  plan revision 121, D-1324; A-12, G186).
+  - Adopted (option (A)): `TyCtxt.Witness` takes the reading definition; a Self with an abstract part that is not abstract resolves
+    under that definition's premises (`Binding.EffectPremises`), the premise scope in its memo key as `TyCtxt.Retains`' is; a closed
+    Self under the library root's. A4 asks Origin-free (`TyCtxt.InView`; warm 0 B, N8). `Require` reads it by kind: Body entered at
+    its instance without Origins (a virtual one by its slot's bound); a comparison shim by its distinct leaves under the Contract's
+    mapping (`TyCtxt.Comparison`), a Requirement leaf by the entry (an abstract leaf at a call the body writes: the premises' bound,
+    else Unknown, SPEC 8.11.3; a leaf that is not abstract but has an abstract part, `Box<A>`: what its witness runs under the
+    premises, at either entry, 8.6.1; an abstract part of a row or an atom: the requirement on the part, kept for the callers, 4.9.6;
+    R4-M28); another Builtin the compiler function (every built-in target is a Shim, `Binding.PrepareBuiltinTargets`, without a MIR
+    body); Storage a Set's Field destruction (SPEC 11.9.2, 16.3); Refused Derived; None for a closed Self a broken contract, for a
+    Self with an abstract part a conformance only a premise states, which takes the premises' bound (SPEC 8.2.3, 8.11.3; R7-P5a's
+    N1''); HeightLimit Derived (the TypeHeightLimit_Kd at the requesting site, the collector's or Binding's site record, is the
+    failed input's record, SPEC 23.1.2; the Middle's ruling 2).
+  - One per-leaf rule: `MirEffects.Leaves` enumerates a comparison's distinct nodes into the `leaves` stack and answers each leaf once;
+    Local's `Compared` (an Item on a Requirement leaf it returns) and Solve's `Shim` act on what it returns, each in its place's form
+    (ruling 1).
+  - Removed: `Binding.Witnesses`, `TyCtxt.Witnesses`, the legacy comparison composition (`ComparisonPlan`, `comparisonPlans`,
+    `BoundComparison`, `RequirementImplementation`, `requirementCalls`, `Binding.LeafTarget`; R5-M68, BU-142), E7 and A4's `Limit`
+    class with `Verdict`'s Limit arm and M5's and M6's Limit outcomes; Z7 keeps M4 and M7 (A5's `MirOutcome.Limit`, P42).
+  - Reason: one witness rule and one comparison composition serve A4, the collector and codegen; the leaf's reading follows its
+    entry because SPEC 8.11.3 and 4.9.6 part them.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -31123,7 +31159,7 @@ Closure row of `MirCases.Branch`).
   - **`EffectsLimit`, temporary (`[Transitional("R7")]`):** a computed property of the row, `TypeParameter is not null`, so no row states it: a row
     whose functions are generic keeps `Witnesses`' `false`, A4's Limit, a located `Unsupported_Kd` where a default's copy calls the requirement on a
     closed Self under a `confined` obligation (`MirEffectsTest.ALibraryWitnessInADefaultsCopyIsTheLimit`), and a row of no parameter, S1d2's string,
-    has its body read. Removal: R7-P5, which deletes `RequirementInstances`' copies: `Witnesses` answers a witness's instance with its Types (A-12's
+    has its body read. Removal: R7-P5a, which deletes `RequirementInstances`' copies: `Witnesses` answers a witness's instance with its Types (A-12's
     read of the view, else R7, `ComparisonPlan`'s condition). Those valid programs are then accepted, a behavior change with its own tests.
   - R5-M22's sentence "Property, FixedArrayEntry, IntegerPosition, Refused and None give false" reads: "Property, a library witness of a row with
     `EffectsLimit`, Refused and None give false".
@@ -36713,3 +36749,84 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     library's definition meeting the archive's lazy member by link order, B7b's change W5); the whole builtins library (speculative
     members, O1); a CMake build of compiler-rt (a further download and a second build system); committing the tarball; checking the
     none catalog's packageId and abiVersion against new constants (a second copy with no reader before B9f).
+- **T-M59 Machine instructions are one intrinsic family over a Backend table; every call is the row's routine** (Tatara,
+  2026-11-27; OSF1a, Q-830, D-1344; Major; design B10 C-457 Revision 2.1 §4.3-4.4, the owner's O-489 (a) (a), verbatim 「O-489 全てa」,
+  the plan's decisions 36-43; T's rulings 156 and H-162). Supersedes R5-M146 in part.
+  - **The family:** `IntrinsicId.Instruction` (+1, limit 30 → 31 under O-489's approval of OSF's four ids). Binding's
+    `IntrinsicDisposition` column `Code` is `Member` (commit 1, behaviour unchanged): a family id (`IntrinsicDisposition.TakesMember`,
+    a closed switch: `Fail`, `Instruction`) carries its member, `Fail`'s SPEC §22.5.2 code, `Instruction`'s row; `DefinitionOf`
+    checks `TakesMember(id) != (member is not null)`. Binding never reads the Backend; `MirBuilder.Extra` adds `Fail`'s code only.
+  - **`InstructionRows`** (`Backend/InstructionRows.cs`, a canonical component): one row per member, its LLVM inline-asm template,
+    its constraints and its routine's `FunctionAbi` (`__kimi_x86_<row>`, the operands' and result's LLVM Types, no location
+    parameter); the one suffix `~{memory},~{dirflag},~{fpsr},~{flags}` (Clang's x86 default; `rdtsc`'s `shlq`/`orq` change EFLAGS),
+    appended to every row by the one definition writer, no per-row clobber rule; at most 64 rows (the module's request set).
+    OSF1a's rows: `pause`, `rdtsc`, `hlt`, `cli`, `sti`, `inb`/`inw`/`inl`, `outb`/`outw`/`outl`. A member naming no row is a
+    library defect: `KimiLibraryShapeTest` holds every member to its row and each declaration's lowered signature to the row's
+    routine, and the Backend's miss is `InternalInvariant_Kd` at the call.
+  - **The library:** `Kimi.X86` (`X86.kimi`) under `#if arch == "x86_64"`: `pause` and `readTimestamp` on every x86-64 row, the
+    privileged members under `os == "none"` (IMPL §21.6.8). A member is `unsafe` exactly when it accesses a device or changes the
+    processor's address translation, descriptor tables or model-specific state (the port members in OSF1a).
+  - **Every call is the row's routine (design §4.4 (i)):** `IntrinsicRows`' row `Instruction` (Target None, Need None, Writer
+    `Instruction`, Routine null); `IntrinsicWriter.Instruction` is a routine writer: `FunctionCodegen.Routine` takes the row plus the
+    callee's member (the direct call's `Callee.Symbol.Definition.Member`, `Runs`' `item.Symbol.Definition.Member`) and its arm
+    `this.module.Instruction(member)` requests the row and returns its routine. So the direct call, an Item's Value call and its
+    adapter's entry all write `call @__kimi_x86_<row>` through `Invoke`, the one call writer. `ModuleCodegen` keeps the requested rows
+    (one bit per row, cleared per module) and writes each requested routine once, in row order, before the functions: `define
+    internal <result> @__kimi_x86_<row>(<operands>) alwaysinline #0` with the module's entry label, one `call asm sideeffect` and its
+    `ret` (the label: the Back's OSF1a read C2, T's ruling 163). `Abi.Flags.Inline`
+    (`alwaysinline`, recorded as `OutOfLine` is) marks the definition; calls are unchanged. At O2 the routine is inlined at every call
+    and removed; at O0 each call is a call. Hosted modules that call no member are byte-equal.
+  - **MIR:** `MirDescriptors.Of(IntrinsicId.Instruction)` is `Intrinsic(MirEffect.Environment, -1)`; arity −1 now means "the
+    declaration gives the call's shape" (the descriptor's summary rewritten). `MirValidator.Calls` gains one arm: a call of a row with
+    arity −1 that carries no declaration is `MirViolation.Callee`, and one whose operand count differs from the declaration's parameter
+    count is `MirViolation.Arity`. `MirDump` prints such a call `intrinsic Instruction.<member>` (no golden moves).
+  - **The effect class (C-457 C3):** every member is an environment effect (SPEC §8.11.2): it accesses processor state outside the
+    program; a `confined` implementation calls none of them. One class for the family's one MIR row.
+  - **Rejected:** LLVM intrinsics where they exist (`@llvm.x86.rdtsc`: a second lowering form; the asm row gives the same code); one
+    `IntrinsicId` per instruction (the limit would pass 50); rows without `~{memory}` for the pure instructions (a per-row barrier
+    rule, no measured gain); `Kimi.X86` in SPEC §22.1's table (target-specific declarations, IMPL documents them); an `IntrinsicRows`
+    column `Family` (Binding would read the Backend); writing the asm inline at direct calls and a routine only for Items (two forms
+    of one row); a located `Unsupported_Kd` for a member's Item (a valid form unsupported only to save the definition writer, which
+    OSF1b needs regardless); `DirectCallOnly` for the safe members (a Language error for a valid program, SPEC §7.7.4).
+- **T-M60 The none row's linker script and its ELF link** (Tatara, 2026-11-27; the plan's unit B9f; Major; design §3.7; decision 31;
+  rulings w3w5 F4, F7-F9, O5, O6, O11; T's rulings 150 (1), 151, 152).
+  - **Script:** `src/backend/none-x64/kernel.ld`, which the compiler carries, embedded (`Kimi.None.kernel.ld`) and named with its SHA-256 by the
+    none catalog's `linkerScript`. `ENTRY(__kimi_start)`; `PHDRS` text (R+X), rodata (R), data (R+W); linked at 0xFFFFFFFF80000000;
+    `.text`; `ALIGN(0x1000)` (the script's alignment fixes the segments' addresses, and `p_align` 0x1000 is LLD 22.1.8's x86-64
+    default max-page-size, so the line passes no `-z max-page-size`: F7, probe P2 byte-equal to the design's `-z` form, the image row
+    pins `p_align`; the Back's B9f N4);
+    `.rodata` and `.eh_frame` (`KEEP`); `ALIGN(0x1000)`; `.data` beginning with `KEEP` of `.limine_requests_start`, `.limine_requests`,
+    `.limine_requests_end`; `.bss` with `COMMON`; `.symtab 0`, `.strtab 0` and `.shstrtab 0`; `/DISCARD/` of `.note*` and `.comment`.
+  - **Orphans (ruling 152):** the row's line passes `--orphan-handling=error`, so an input section the script does not place is a located
+    link error, never LLD's silent placement (O5). The three tables are the linker's own sections, not input, so the script names them to
+    complete its layout under the flag (the Linux kernel's `ELF_DETAILS` form); without them the flag fails every link
+    ("<internal>:(.symtab) is being placed in '.symtab'"). Run 3: an object with a kept `.kimi_probe` section fails and the record names it.
+    Input `.comment` (each compiler-rt member's clang ident) is placed by `/DISCARD/`, so it is no orphan and the script places no
+    `.comment 0` (T's ruling 155 on the Back's B9e N4): run 3 (`probes\probe-log-run3.txt`) links the seconds program, which pulls
+    `__floatundidf`/`__floatdidf` and `__divdf3`, under the flag, and its image holds no `.comment`.
+  - **Column and material:** `TargetProfile.LinkerScript` (`required string?`: Windows and Linux null, the linker's own layout; None
+    `"kernel.ld"`). Its bytes are the row's material, not a supply's (a script is no library, IMPL 20.4; F9): `ToolchainIdentity.Scripts`,
+    one `SupplyFile` per row with a script, placed `SupplyPlace.Script` (-T's argument) by its member: the catalog's `linkerScript`
+    entry is read in a file entry's form (`CatalogFile`), with the place that member fixes and no `place` datum; a `files` entry
+    placed `script` is refused like any other place (ruling 167); the initializer checks that a row has a script
+    exactly when its column names one, and that the names agree.
+  - **Package identity (ruling 150 (1), F4):** `ToolchainIdentity.PackageIdentities` (Windows `kimi-backend-windows-x64` 3, None
+    `kimi-backend-none-x64` 1) replaces Windows' two constants; each catalog states its row's package id, ABI version and the pinned LLVM
+    version (a row without an identity states no package id); `Packages` gives each row reserving the backend supply its head's
+    `backendSupport.*` (the compiler's version, the row's backend supply's name and symbols, the archive's hash; the row's backend
+    supply is one file). `LinkManifest`'s heads are
+    built over the table's array (`AllRows`), so a staged row's pair is published and built.
+  - **Build:** the script is staged as a supply's file is (`StageSupply`, `.ld` kept), held to the build's end; the ELF line adds
+    `-T <staged> --orphan-handling=error` after `-e` for a row with a script; the record gains `linkerScript` (`path` redacted, `sha256`)
+    only for such a row, so hosted records are byte-equal. The libc-free path already places the program's libraries before the row's
+    `library` files (probe P4). No head row names the script (O6).
+  - **toolchain verify:** each row's script's embedded bytes against the catalog's SHA-256, stated in the supplies' form without facts
+    (VerifyScript, through the supplies' one compare; a script is not inspected); the report's members are unchanged.
+  - **Keying (M's C-597 N2):** `ToolchainIdentity.Of(row, name)` finds a compiler's supply by (row, supply name), not by `TargetSupply`'s
+    record equality (which compared `Symbols` by array reference).
+  - **Inspection (F8):** the object rule with the row's allowed set stays the product's; the image's shape is asserted by tests with the
+    shared `ElfFile` reader (its segments gain offset, address, sizes and alignment, O11), no post-link check in the product.
+  - **Rejected:** a project-supplied script (design §7.2); a post-link ELF check for one row (F8); the script as a supply's file (F9); the
+    page size as a line flag (F7); a fallback to the linker's layout when the row's script is missing (a broken contract, the
+    initializer's error); dropping `--orphan-handling=error` (ruling 152 (b)); placing the three tables by an exception list instead of the
+    script (they are the script's complete layout).

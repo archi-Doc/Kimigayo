@@ -623,6 +623,7 @@ public class LibraryImportTargetBindingTest
     [InlineData("codec", "__divdf3", "codec", "x86_64-unknown-none", "InvalidLibraryImport_Kd")]
     [InlineData("codec", "__fe_getround", "codec", "x86_64-pc-windows-msvc", "InvalidLibraryImport_Kd")]
     [InlineData("codec", "codec_divide", "codec", "x86_64-pc-windows-msvc", "")]
+    [InlineData("codec", "__negdf2", "codec", "x86_64-pc-windows-msvc", "")]
     [InlineData("kimi_backend", "__divdf3", null, "x86_64-unknown-none", "InvalidLibraryImport_Kd")]
     public void ReservedSuppliesAndNamesAreTheTablesOnEveryTarget(string library, string symbol, string? requirement, string target, string code)
     {
