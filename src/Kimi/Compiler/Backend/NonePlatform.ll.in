@@ -3,10 +3,13 @@
 ; limine-protocol c5a7f597a, implemented by Limine v11.2.1), the boot that passes their answers to the program's platform, and the
 ; routines through which the common runtime (Runtime.ll.in) writes and exits, its allocator (HeapRuntime.ll.in) maps and releases pages
 ; and Kimi.Time reads the clock, each over the program's platform member through its adapter (__kimi_platform_member_<member>, which
-; ModuleCodegen's frame defines). A routine tests the busy flag, sets it, calls its adapter, clears it and maps the result: a member
-; call while a member runs, an Abort's report included, halts the processor with interrupts disabled, without a report. The allocator
-; asks the idle test, its allocation call, before it takes a block, so an allocation while a member runs halts the same way (IMPL
-; 21.6.3). No system call, no import and no adapter declaration; the template makes no other call of the program.
+; ModuleCodegen's frame defines). A routine calls its adapter and maps the result. The flag is tested where SPEC 22.4.5 paragraph 3
+; ends the program: the write, clock and exit routines and the allocator call the idle test first, so a Console write, a clock read,
+; an Abort (its report or its end) and an allocation while a member runs halt the processor with interrupts disabled, without a
+; report. A release is ordinary (IMPL 21.6.3). Every run of a member sets the flag on entry and restores it directly above each of its
+; returns, after the result is computed, through the member's own body (__kimi_platform_enter and __kimi_platform_leave, which code
+; generation calls), so the program's own calls hold it too. No system call, no import and no adapter declaration; the template makes
+; no other call of the program.
 
 @__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
 
@@ -68,37 +71,22 @@ answered:
   ret void
 }
 
-; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records. Each routine over an adapter has one shape: the flag's
-; test (set: halt), its set, the adapter's call, its clear, then the result's mapping.
-; The platform's start: the loader's answers in a Boot local, passed to the program's start, which stores the platform value.
+; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records. Each routine over an adapter has one shape: the idle
+; test where the program ends (write, clock, exit), the adapter's call, then the result's mapping.
+; The platform's start: the loader's answers in a Boot local, passed to the program's start, which stores the platform value. Called
+; once, before the startup body and before any member has run, so it has no test.
 {{__kimi_platform_start}}
 entry:
   %boot = alloca [24 x i8], align 8
-  %busy = load i8, ptr @__kimi_platform_busy, align 1
-  %reentered = icmp ne i8 %busy, 0
-  br i1 %reentered, label %halt, label %call
-halt:
-  call void @__kimi_halt()
-  unreachable
-call:
-  store i8 1, ptr @__kimi_platform_busy, align 1
   call void @__kimi_boot(ptr %boot)
   call void @__kimi_platform_member_start(ptr %boot)
-  store i8 0, ptr @__kimi_platform_busy, align 1
   ret void
 }
 
-; The platform's terminate, which never returns; the flag stays set.
+; The platform's terminate, which never returns (the member's body sets the flag and never leaves).
 {{__kimi_exit}}
 entry:
-  %busy = load i8, ptr @__kimi_platform_busy, align 1
-  %reentered = icmp ne i8 %busy, 0
-  br i1 %reentered, label %halt, label %call
-halt:
-  call void @__kimi_halt()
-  unreachable
-call:
-  store i8 1, ptr @__kimi_platform_busy, align 1
+  call void @__kimi_platform_idle()
   call void @__kimi_platform_member_terminate(i32 %code)
   unreachable
 }
@@ -107,16 +95,8 @@ call:
 ; its -1 = failure without an OS error ({{no_os_error}}); any other result is the platform error.
 {{__kimi_write}}
 entry:
-  %busy = load i8, ptr @__kimi_platform_busy, align 1
-  %reentered = icmp ne i8 %busy, 0
-  br i1 %reentered, label %halt, label %call
-halt:
-  call void @__kimi_halt()
-  unreachable
-call:
-  store i8 1, ptr @__kimi_platform_busy, align 1
+  call void @__kimi_platform_idle()
   %result = call i64 @__kimi_platform_member_write(i32 %stream, ptr %data, i64 %length)
-  store i8 0, ptr @__kimi_platform_busy, align 1
   %succeeded = icmp eq i64 %result, 0
   %unexplained = icmp eq i64 %result, -1
   %failure = select i1 %unexplained, i64 {{no_os_error}}, i64 %result
@@ -125,19 +105,11 @@ call:
 }
 
 ; The platform's mapPages: a run below the unmapped bound or not 4,096-aligned is refused as null, so no heap block lies below the
-; bound and every run is page-aligned.
+; bound and every run is page-aligned. It is reached only from the allocator's allocation (__kimi_heap_allocate, and its
+; __kimi_heap_take_run), after its allocation calls, so it has no test of its own.
 {{__kimi_pages}}
 entry:
-  %busy = load i8, ptr @__kimi_platform_busy, align 1
-  %reentered = icmp ne i8 %busy, 0
-  br i1 %reentered, label %halt, label %call
-halt:
-  call void @__kimi_halt()
-  unreachable
-call:
-  store i8 1, ptr @__kimi_platform_busy, align 1
   %run = call ptr @__kimi_platform_member_mapPages(i64 %bytes)
-  store i8 0, ptr @__kimi_platform_busy, align 1
   %address = ptrtoint ptr %run to i64
   %low = icmp ult i64 %address, {{unmapped_bound}}
   %offset = and i64 %address, 4095
@@ -150,16 +122,7 @@ call:
 ; The platform's releasePages of a run the pages routine returned, by its start and byte count; its result mapped as the write's.
 {{__kimi_release_pages}}
 entry:
-  %busy = load i8, ptr @__kimi_platform_busy, align 1
-  %reentered = icmp ne i8 %busy, 0
-  br i1 %reentered, label %halt, label %call
-halt:
-  call void @__kimi_halt()
-  unreachable
-call:
-  store i8 1, ptr @__kimi_platform_busy, align 1
   %result = call i64 @__kimi_platform_member_releasePages(ptr %pages, i64 %bytes)
-  store i8 0, ptr @__kimi_platform_busy, align 1
   %succeeded = icmp eq i64 %result, 0
   %unexplained = icmp eq i64 %result, -1
   %failure = select i1 %unexplained, i64 {{no_os_error}}, i64 %result
@@ -170,22 +133,15 @@ call:
 ; The platform's clock: monotonic nanoseconds, a negative result a failure, returned as it is.
 {{__kimi_clock}}
 entry:
-  %busy = load i8, ptr @__kimi_platform_busy, align 1
-  %reentered = icmp ne i8 %busy, 0
-  br i1 %reentered, label %halt, label %call
-halt:
-  call void @__kimi_halt()
-  unreachable
-call:
-  store i8 1, ptr @__kimi_platform_busy, align 1
+  call void @__kimi_platform_idle()
   %result = call i64 @__kimi_platform_member_clock()
-  store i8 0, ptr @__kimi_platform_busy, align 1
   ret i64 %result
 }
 
-; Whether a platform member runs, which the allocator asks before it takes a block (its allocation call, RuntimeLayer.AllocationCalls;
-; IMPL 21.6.3): a member's allocation halts the processor with interrupts disabled, without a report; otherwise nothing. The flag's
-; test alone: no set and no clear.
+; Whether a platform member runs, which the allocator asks before it takes a block (its allocation call, RuntimeLayer.AllocationCalls)
+; and the write, clock and exit routines ask first (IMPL 21.6.3): an allocation, a Console write, a clock read or an Abort while a
+; member runs halts the processor with interrupts disabled, without a report; otherwise nothing. The flag's test alone: no set and no
+; clear.
 {{__kimi_platform_idle}}
 entry:
   %busy = load i8, ptr @__kimi_platform_busy, align 1
@@ -195,5 +151,21 @@ halt:
   call void @__kimi_halt()
   unreachable
 idle:
+  ret void
+}
+
+; A platform member's run (IMPL 21.6.3: every run of a member, the program's own calls included): code generation calls the enter at
+; the head of the member's body, which sets the flag and returns its value, and passes that value to the leave directly above each of
+; its returns, which restores it, not clears it, so a member's call of another member is an ordinary call.
+{{__kimi_platform_enter}}
+entry:
+  %saved = load i8, ptr @__kimi_platform_busy, align 1
+  store i8 1, ptr @__kimi_platform_busy, align 1
+  ret i8 %saved
+}
+
+{{__kimi_platform_leave}}
+entry:
+  store i8 %saved, ptr @__kimi_platform_busy, align 1
   ret void
 }

@@ -5,7 +5,8 @@
 // Responsibility: the parameter order [environment] [ret] a0..an [context] [location, location_length]; under the internal convention
 // each parameter's kind (a string reference SharedReference, a slot Type OwnedSlot, else Value), the omission of zero-sized parameters,
 // the result slot (a slot Type of nonzero size, or a constructor's or destructor's) and the result Type (void for a slot Type, Unit or
-// Never); the definition's out-of-line attribute (Flags.OutOfLine, `noinline`, which no call reads); under a C convention of
+// Never); the definition's out-of-line attribute (Flags.OutOfLine, `noinline`, which no call reads); a platform witness's body, whose
+// every run the none layer's enter and leave bracket (Flags.PlatformMember, which no call reads; IMPL 21.6.3); under a C convention of
 // #LibraryImport (SPEC 22.6, IMPL 21.2; IsC: Windows x64's C, System V x86-64's SystemV) each parameter is a Value of its argument Type,
 // nothing is omitted and the result is never a slot, and under SystemV an 8- or 16-bit integer parameter or result carries its
 // extension by the Type's signedness (`signext`, `zeroext`; AbiParameter.Extension, FunctionAbi.ResultExtension).
@@ -31,7 +32,7 @@ internal static class Abi
 {
     /// <summary>The flags a signature records as given (<see cref="FunctionAbi.Flags"/>), compared as one value by <see cref="Matches"/>;
     /// it records the others by their effect (a slot, parameters).</summary>
-    internal const Flags Recorded = Flags.CallerLocation | Flags.OutOfLine;
+    internal const Flags Recorded = Flags.CallerLocation | Flags.OutOfLine | Flags.PlatformMember;
 
     /// <summary>A function's calling convention.</summary>
     internal enum Convention : byte
@@ -68,6 +69,10 @@ internal static class Abi
 
         /// <summary>A definition the optimizer keeps out of line (<c>noinline</c>; KimiLibraryCatalog.KeepsOutOfLine); calls are unchanged.</summary>
         OutOfLine = 16,
+
+        /// <summary>A platform witness's body, whose every run the none layer's enter and leave bracket (IMPL 21.6.3; FunctionCodegen's
+        /// frame); calls are unchanged.</summary>
+        PlatformMember = 64,
     }
 
     private static AbiParameter Ret => new("ptr", "ret", AbiParameterKind.ResultSlot);

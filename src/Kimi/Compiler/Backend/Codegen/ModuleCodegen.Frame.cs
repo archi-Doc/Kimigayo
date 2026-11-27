@@ -216,16 +216,15 @@ internal sealed partial class ModuleCodegen
             return true;
         }
 
-        // On a row whose program supplies its platform, roots 1 to 6 are the witnesses' items in PlatformRows' order (OutputRoots, whose
-        // PlatformRoots checks their count); an Application there without a platform (Binding's startup check refuses it) is a broken
-        // contract without a subject.
+        // On a row whose program supplies its platform, the adapters call the witnesses' items (Witnesses: roots 1 to 6, in PlatformRows'
+        // order); an Application there without a platform (Binding's startup check refuses it) is a broken contract without a subject.
         if (this.row.ProgramPlatform && startup.Platform is null)
         {
             return false;
         }
 
         entry = roots[0] < this.signatures.Length ? this.signatures[roots[0]] : null;
-        this.PlatformAdapters(roots[1..]);
+        this.PlatformAdapters();
         return entry is not null || this.Records.Count != 0;
     }
 }

@@ -72,6 +72,8 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
 
     internal bool OutOfLine => (this.Flags & Abi.Flags.OutOfLine) != 0;
 
+    internal bool PlatformMember => (this.Flags & Abi.Flags.PlatformMember) != 0;
+
     /// <summary>Gets this signature under a name, for its definition and calls (<see cref="Abi.Of"/> gives none).</summary>
     /// <param name="name">The physical name.</param>
     /// <returns>A signature with the same parameters, result and flags.</returns>

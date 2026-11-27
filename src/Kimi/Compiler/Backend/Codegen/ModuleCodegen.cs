@@ -133,6 +133,7 @@ internal sealed partial class ModuleCodegen
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
         this.Prune();
         this.IsTestBuild = startup.Kind == StartupKind.Test;
+        this.Witnesses(startup, roots);
         this.Number();
         for (var item = 0; item < this.set.Items.Length; item++)
         {

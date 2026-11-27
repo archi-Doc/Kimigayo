@@ -206,48 +206,42 @@ public sealed class Kernel32ImportsTest
             StringComparison.Ordinal);
     }
 
-    // IMPL 21.6: each platform routine of the none row tests the busy flag (set: the processor halts), sets it, calls its adapter as the
-    // adapter's record spells its result and parameter types, clears it after but in the exit, which never returns, and maps the
-    // adapter's result: a write's and a release's 0 is success (-1), their -1 a failure without an OS error, any other result the error;
-    // a run below the unmapped bound or not 4,096-aligned is refused as null; the clock's result is returned as it is.
+    // IMPL 21.6, 21.6.3: each platform routine of the none row calls its adapter as the adapter's record spells its result and parameter
+    // types and maps the adapter's result: a write's and a release's 0 is success (-1), their -1 a failure without an OS error, any other
+    // result the error; a run below the unmapped bound or not 4,096-aligned is refused as null; the clock's result is returned as it is.
+    // Only where SPEC 22.4.5 ¶3 ends the program (a write, a clock read, an Abort's end) does it first ask the idle test; the start runs
+    // before any member, the pages routine only after the allocator's test, and a release is ordinary (O-545 (a)). No routine sets or
+    // clears the busy flag: every run of a member brackets itself (O-538 (a)).
     [Fact]
-    public void EachNoneRoutineCallsItsAdapterUnderTheBusyFlagAndMapsItsResult()
+    public void NoneRoutinesTestTheBusyFlagWhereTheProgramEndsThenCallTheirAdapter()
     {
         var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
-        const string Clear = "  store i8 0, ptr @__kimi_platform_busy, align 1\n";
-        var outcome = Clear + "  %succeeded = icmp eq i64 %result, 0\n  %unexplained = icmp eq i64 %result, -1\n  %failure = select i1 %unexplained, i64 " +
+        const string Idle = "  call void @__kimi_platform_idle()\n";
+        var outcome = "  %succeeded = icmp eq i64 %result, 0\n  %unexplained = icmp eq i64 %result, -1\n  %failure = select i1 %unexplained, i64 " +
             RuntimeAbi.NoOsError.ToString(CultureInfo.InvariantCulture) + ", i64 %result\n  %error = select i1 %succeeded, i64 -1, i64 %failure\n" +
             "  ret i64 %error\n}\n";
-        (FunctionAbi Routine, FunctionAbi Adapter, string Mapping)[] routines =
+        (FunctionAbi Routine, FunctionAbi Adapter, string Head, string Mapping)[] routines =
         [
-            (RuntimeAbi.PlatformStart, RuntimeAbi.PlatformMemberStart, Clear + "  ret void\n}\n"),
-            (RuntimeAbi.Pages, RuntimeAbi.PlatformMemberMapPages, Clear + "  %address = ptrtoint ptr %run to i64\n" +
+            (RuntimeAbi.PlatformStart, RuntimeAbi.PlatformMemberStart, "  %boot = alloca [24 x i8], align 8\n  call void @__kimi_boot(ptr %boot)\n", "  ret void\n}\n"),
+            (RuntimeAbi.Pages, RuntimeAbi.PlatformMemberMapPages, string.Empty, "  %address = ptrtoint ptr %run to i64\n" +
                 $"  %low = icmp ult i64 %address, {TargetProfile.None.UnmappedBound}\n  %offset = and i64 %address, 4095\n" +
                 "  %misaligned = icmp ne i64 %offset, 0\n  %refused = or i1 %low, %misaligned\n  %result = select i1 %refused, ptr null, ptr %run\n" +
                 "  ret ptr %result\n}\n"),
-            (RuntimeAbi.ReleasePages, RuntimeAbi.PlatformMemberReleasePages, outcome),
-            (RuntimeAbi.Write, RuntimeAbi.PlatformMemberWrite, outcome),
-            (RuntimeAbi.Clock, RuntimeAbi.PlatformMemberClock, Clear + "  ret i64 %result\n}\n"),
-            (RuntimeAbi.Exit, RuntimeAbi.PlatformMemberTerminate, "  unreachable\n}\n"),
+            (RuntimeAbi.ReleasePages, RuntimeAbi.PlatformMemberReleasePages, string.Empty, outcome),
+            (RuntimeAbi.Write, RuntimeAbi.PlatformMemberWrite, Idle, outcome),
+            (RuntimeAbi.Clock, RuntimeAbi.PlatformMemberClock, Idle, "  ret i64 %result\n}\n"),
+            (RuntimeAbi.Exit, RuntimeAbi.PlatformMemberTerminate, Idle, "  unreachable\n}\n"),
         ];
-        foreach (var (routine, adapter, mapping) in routines)
+        foreach (var (routine, adapter, head, mapping) in routines)
         {
+            // The whole body: the entry and its head (the start's Boot local and boot step, or the idle test), the call and the mapping, so
+            // no flag access, no other call of the program and no system call lies in a routine.
             var body = Definition(runtime, routine.GetDefinition(exported: false));
-            const string Guard =
-                "  %busy = load i8, ptr @__kimi_platform_busy, align 1\n  %reentered = icmp ne i8 %busy, 0\n  br i1 %reentered, label %halt, label %call\n" +
-                "halt:\n  call void @__kimi_halt()\n  unreachable\ncall:\n  store i8 1, ptr @__kimi_platform_busy, align 1\n";
-            var guard = body.IndexOf(Guard, StringComparison.Ordinal);
             var arguments = string.Join(", ", adapter.Parameters.Select(static x => Regex.Escape(x.Type) + @" %\w+"));
             var call = Regex.Match(body, $@"\n  (?:%\w+ = )?call {Regex.Escape(adapter.Result)} @{adapter.Name}\({arguments}\)\n");
-            Assert.True(guard >= 0 && call.Success && guard < call.Index, routine.Name);
-
-            // The whole body: the entry (the start's Boot local), the guard, the start's boot step alone between the guard and the call,
-            // the call and the mapping, so no other call of the program or system call lies in a routine.
-            var start = routine == RuntimeAbi.PlatformStart;
-            Assert.Equal(start ? "entry:\n  %boot = alloca [24 x i8], align 8\n" : "entry:\n", body[..guard]);
-            Assert.Equal(start ? "  call void @__kimi_boot(ptr %boot)\n" : string.Empty, body[(guard + Guard.Length)..(call.Index + 1)]);
+            Assert.True(call.Success, routine.Name);
+            Assert.Equal("entry:\n" + head, body[..(call.Index + 1)]);
             Assert.Equal(mapping, body[(call.Index + call.Length)..]);
-            Assert.Equal(adapter.NoReturn ? 0 : 1, body.Split(Clear).Length - 1);
         }
     }
 
@@ -273,6 +267,32 @@ public sealed class Kernel32ImportsTest
             "entry:\n  %busy = load i8, ptr @__kimi_platform_busy, align 1\n  %reentered = icmp ne i8 %busy, 0\n" +
             "  br i1 %reentered, label %halt, label %idle\nhalt:\n  call void @__kimi_halt()\n  unreachable\nidle:\n  ret void\n}\n",
             Definition(runtime, RuntimeAbi.PlatformIdle.GetDefinition(exported: false)));
+    }
+
+    // IMPL 21.6.3 (O-538 (a)): every run of a platform member is the none layer's bracket, which code generation calls in the member's
+    // body: the enter returns the busy flag's value and sets it, and the leave restores that value, so a member's call of another member
+    // is an ordinary call. A hosted row has no platform member, so its runtime names neither.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("x86_64-unknown-linux-musl")]
+    [InlineData("x86_64-unknown-none")]
+    public void ThePlatformMembersRunIsTheNoneLayersBracket(string row)
+    {
+        var profile = TargetProfile.Find(row)!;
+        var runtime = LlvmModuleText.Frame(profile).Runtime;
+        const string Enter = "define internal i8 @__kimi_platform_enter() #0 {\n";
+        const string Leave = "define internal void @__kimi_platform_leave(i8 %saved) #0 {\n";
+        if (profile != TargetProfile.None)
+        {
+            Assert.DoesNotContain("@__kimi_platform_enter", runtime, StringComparison.Ordinal);
+            Assert.DoesNotContain("@__kimi_platform_leave", runtime, StringComparison.Ordinal);
+            return;
+        }
+
+        Assert.Equal(
+            "entry:\n  %saved = load i8, ptr @__kimi_platform_busy, align 1\n  store i8 1, ptr @__kimi_platform_busy, align 1\n  ret i8 %saved\n}\n",
+            Definition(runtime, Enter));
+        Assert.Equal("entry:\n  store i8 %saved, ptr @__kimi_platform_busy, align 1\n  ret void\n}\n", Definition(runtime, Leave));
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,

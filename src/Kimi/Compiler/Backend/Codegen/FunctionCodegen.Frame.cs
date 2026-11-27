@@ -7,9 +7,13 @@ namespace Kimi.Compiler.Backend;
 
 // The function frame of FunctionCodegen (R5 package C 3.2 I2; DECISIONS R5-M65, R5-M89, R5-M102): each local's home and layout under the
 // signature ModuleCodegen gives the item, the entry block (the prologue: the homes' and the copy slots' allocas, the Value arguments'
-// stores) and the return. The argument order and the copy slots are FunctionCodegen.Arguments'.
+// stores) and the return. The argument order and the copy slots are FunctionCodegen.Arguments'. A platform member's body
+// (FunctionAbi.PlatformMember) brackets its every run with the none layer's enter, the entry block's last instruction, and its leave,
+// directly above each `ret` after the result is computed (IMPL 21.6.3); a path that does not return keeps the flag set.
 internal sealed partial class FunctionCodegen
 {
+    private Value run; // A platform member's run: its enter's value, which each return passes to its leave.
+
     // Where a local lives (I2).
     private enum Home : byte
     {
@@ -94,6 +98,11 @@ internal sealed partial class FunctionCodegen
         }
 
         this.Points(new(0, -1));
+        if (this.abi.PlatformMember)
+        {
+            this.run = this.WriteCall(RuntimeAbi.PlatformEnter, default)!.Value;
+        }
+
         output.Write("  br label %b0\n");
     }
 
@@ -124,18 +133,24 @@ internal sealed partial class FunctionCodegen
     }
 
     // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation; the
-    // block's window closed before it (FunctionCodegen.Phases).
+    // block's window closed before it (FunctionCodegen.Phases); a platform member's leave directly above the `ret`, after the value.
     private void Return()
     {
         this.Close();
-        if (this.abi.ResultSlot || this.slots[0].Home == Home.None)
+        var lowering = this.slots[0].Value;
+        var none = this.abi.ResultSlot || this.slots[0].Home == Home.None;
+        var value = none ? default : this.Narrow(lowering, this.Load(0));
+        if (this.abi.PlatformMember)
+        {
+            _ = this.WriteCall(RuntimeAbi.PlatformLeave, [this.run]);
+        }
+
+        if (none)
         {
             this.output.Write("  ret void\n");
             return;
         }
 
-        var lowering = this.slots[0].Value;
-        var value = this.Narrow(lowering, this.Load(0));
         this.output.Write("  ret ");
         this.output.Write(lowering.ComputationType);
         this.output.Write(' ');
