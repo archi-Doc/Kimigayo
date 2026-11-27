@@ -183,7 +183,7 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("O2", false)]
     public async Task AKernelProjectBuildsTheFreestandingImage(string level, bool platform)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native build runs on Windows.");
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         var kimigayo = new Kimigayo(console);
         var project = Path.Combine(this.directory, "Kernel.kimiproj");
