@@ -51,6 +51,10 @@ public abstract partial class Koto
             node.VisitChildren(this);
         }
 
+        // A moved node takes its directives' source along: excluded syntax keeps its recoveries and causes in its module (SPEC 19.4).
+        public override void VisitSource(IReadOnlyList<Koto> source)
+            => this.VisitMany(source);
+
         internal void Run(Koto root)
         {
             this.Visit(root);

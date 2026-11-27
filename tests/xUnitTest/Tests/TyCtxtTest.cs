@@ -1916,6 +1916,56 @@ public sealed partial class TyCtxtTest
         Assert.True(ReferenceEquals(moved.Self, BoundType.I32) && moved.Types.SequenceEqual(subst.Types) && moved.Lengths.SequenceEqual(subst.Lengths));
     }
 
+    // SPEC 4.9.6, 8.8.2, 8.11.3 (R7-P5b N1): Witness's key holds the reading definition's premise scope only for a Self with an abstract
+    // part: one Subst on Box<A>, A inside's, runs Box's equals under inside's `A is Equatable` (Body) and nothing under outside's premises
+    // (None); Box<i32> runs it in inside, in outside and at the library root, one memoized answer. Labelled from SPEC before any run.
+    [Fact]
+    public void AWitnessKeyHoldsThePremiseScopeOnlyForAnAbstractPart()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "struct Box<A>\n    Self is Equatable when A is Equatable\n        public func equals(self: ref/Self, other: ref/Self) -> bool => true\n    public init() => ()\n" +
+            "func inside<A>(b: Box<A>, k: Box<i32>)\n    A is Equatable\n    _ = 1\nfunc outside<A>(b: Box<A>)\n    _ = 1\n");
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.Name is "inside" or "outside").ToDictionary(static x => x.Name);
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
+        var requirement = contract.Contract!.OwnRequirement()!;
+        var open = functions["inside"].Parameters[0].Type.TypeOf()!;
+        var closed = functions["inside"].Parameters[1].Type.TypeOf()!;
+        Assert.Equal(RequirementTargetKind.Body, At(open, "inside").Kind);
+        Assert.Equal(RequirementTargetKind.None, At(open, "outside").Kind);
+        var answers = new[] { At(closed, "inside"), At(closed, "outside"), At(closed, null) };
+        Assert.All(answers, x => Assert.Equal(RequirementTargetKind.Body, x.Kind));
+        Assert.All(answers, x => Assert.Equal(answers[0], x));
+        Assert.All(answers, x => Assert.Same(answers[0].Subst, x.Subst));
+
+        RequirementTarget At(BoundType self, string? definition)
+            => c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!), definition is null ? null : functions[definition].SymbolOf());
+    }
+
+    // PLAN G157 (5) (R7-P5b): TyCtxt is the compilation's and outlives an edit, which discards Witness's memo with the other views
+    // (Binding's ResetViews): Box runs its equals (Body), and after an edit that removes its conformance the same TyCtxt answers None for
+    // the edited Box. Labelled from SPEC 8.6.1 before any run.
+    [Fact]
+    public void AnEditDiscardsTheWitnessMemo()
+    {
+        const string Conforming = "struct Box\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc use(b: Box) => ()\n";
+        var c = MinimalEmissionTest.Analyze(Conforming);
+        var types = c.Types;
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
+        var requirement = contract.Contract!.OwnRequirement()!;
+        Assert.Equal(RequirementTargetKind.Body, At().Kind);
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Conforming.Replace("    Self is Equatable\n", string.Empty, StringComparison.Ordinal));
+        c.Binding.Bind(BindingMode.Final);
+        Assert.Same(types, c.Types);
+        Assert.Equal(RequirementTargetKind.None, At().Kind);
+
+        RequirementTarget At()
+        {
+            var box = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "use").Parameters[0].Type.TypeOf()!;
+            return c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, box, contract.Type!), null);
+        }
+    }
+
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
     // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
     // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).

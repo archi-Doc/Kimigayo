@@ -142,10 +142,9 @@ public sealed partial class Binding
     }
 
     // PLAN G778: the anchor of a request at `use`, below which its environment reads nothing: the child on the use's path of the
-    // innermost node the environment reads (a premise frame, a witness bridge among them, a scope stop, a resolving declaration, a local
-    // whose R5 the use is within, the root), as a Property's header and a match arm's body read their parent by child; a generated
-    // function's block itself, whose statements alone bind in their source's scope (NodeScope); the use itself when it is read or is such
-    // a statement. Requests outside a comparison whose uses share an anchor have one environment.
+    // innermost node the environment reads (a premise frame, a scope stop, a resolving declaration, a local whose R5 the use is within,
+    // the root), as a Property's header and a match arm's body read their parent by child; a generated function's block itself, whose
+    // statements alone bind in their source's scope (NodeScope); the use itself when it is read or is such a statement. Requests outside a comparison whose uses share an anchor have one environment.
     private Koto PremiseAnchor(Koto use)
     {
         if (GeneratedStatement(use))

@@ -15,6 +15,8 @@ public sealed class CodeBlockKoto : ExpressionKoto
 
     private IReadOnlyList<Koto> items;
 
+    private List<Koto>? source;
+
     /// <summary>Gets the declaration context of a compile-time directive body.</summary>
     public TokenKind DeclarationContext { get; internal set; }
 
@@ -110,6 +112,14 @@ public sealed class CodeBlockKoto : ExpressionKoto
         }
     }
 
+    /// <summary>Adopts the markers of the block's directives (SPEC 19.4) as its source slot.</summary>
+    /// <param name="markers">The markers, or <see langword="null"/>.</param>
+    internal void AdoptSource(List<Koto>? markers)
+    {
+        this.source = markers;
+        this.Adopt(markers);
+    }
+
     /// <summary>Adds an item to a compiler-generated block.</summary>
     /// <param name="item">The item to add.</param>
     internal void AddLast(Koto item)
@@ -128,5 +138,6 @@ public sealed class CodeBlockKoto : ExpressionKoto
     protected override void ForEachChildSlot(ref ChildSlots slots)
     {
         slots.List(this.items);
+        slots.Source(this.source);
     }
 }

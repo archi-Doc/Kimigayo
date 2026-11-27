@@ -1,17 +1,30 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the source of one compile-time directive (an #if, a #switch or an orphan #case; SPEC 19.1-19.4): its Conditions, its selection
+// and its excluded parts. Input: the parts Parsing's directive selection (Parser.Directives) hands it while the directive is parsed.
+// Output: one source slot (ChildSlots.Source) holding them in parse order; an excluded member's parts move in after the member from
+// its list's parse-time host (DeclarationContainerKoto.ExcludedOwner), which never enters the tree.
+// Invariants: a decided directive's marker stands in its list owner's source slot and spans its directive's header; a directive
+// inside the excluded syntax a marker owns has no marker of its own: its Conditions and parts join the owner's, so a marker's source
+// slot holds no marker (G144-27 N8; SyntaxNesting counts no level at a marker); a #switch outside excluded syntax that selected no
+// arm is the list item itself, spanning its Case Group, the recovery of the Error that kept it from selecting (DIAGNOSTICS.md §4.3);
+// the marker's parts are reached only through KotoVisitor.VisitSource.
+// Must not register anything or be read by a semantic phase, except as that failed-selection item (SPEC 19.4).
+
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-/// <summary>Marks a compile-time <c>#switch</c> that selected no arm, so later analyses explain no cascade (SPEC 19.3).</summary>
-/// <remarks>Its arms are excluded syntax: they were parsed and source-checked but are not retained (SPEC 19.4).</remarks>
+/// <summary>The marker of one compile-time directive, which holds its source: Conditions and excluded parts (SPEC 19.4). A
+/// <c>#switch</c> that selected no arm is also the list item on which later analyses explain no cascade (SPEC 19.3).</summary>
 public sealed class CompileTimeSwitchKoto : ExpressionKoto
 {
+    private List<Koto>? source;
+
     /// <summary>Initializes a new instance of the <see cref="CompileTimeSwitchKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete Case Group span.</param>
+    /// <param name="range">The directive's header span; a failed-selection Case Group's is set when it ends.</param>
     public CompileTimeSwitchKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
@@ -50,4 +63,34 @@ public sealed class CompileTimeSwitchKoto : ExpressionKoto
             first = false;
         }
     }
+
+    /// <summary>Adds a Condition or an excluded part to the source slot, in parse order.</summary>
+    /// <param name="part">The part.</param>
+    internal void AddSource(Koto part)
+    {
+        (this.source ??= []).Add(part);
+        part.Parent = this;
+    }
+
+    /// <summary>Moves parts to the source slot in their order, emptying their list.</summary>
+    /// <typeparam name="T">The part type.</typeparam>
+    /// <param name="parts">The parts, or <see langword="null"/>.</param>
+    internal void MoveToSource<T>(List<T>? parts)
+        where T : Koto
+    {
+        if (parts is null)
+        {
+            return;
+        }
+
+        foreach (var part in parts)
+        {
+            this.AddSource(part);
+        }
+
+        parts.Clear();
+    }
+
+    protected override void ForEachChildSlot(ref ChildSlots slots)
+        => slots.Source(this.source);
 }

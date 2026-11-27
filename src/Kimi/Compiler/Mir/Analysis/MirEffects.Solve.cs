@@ -303,9 +303,9 @@ internal sealed partial class MirEffects
 
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
     // (Require), or a call through a Callable value with its signature (SPEC 8.11.4): a Closure's or a function item's body entered through
-    // its substitution, a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises with the
-    // call's signature. Binding proves no other Type Callable (SPEC 8.10) and acquires a value call's callee to one of these (TryCallable,
-    // AcquireValueCallee): any other is Unsited.
+    // its substitution (a requirement Item on a Self that is not abstract is Required, as its call is), a common Function Type unknown
+    // (erasure keeps no bound), an abstract input by the definition's premises with the call's signature. Binding proves no other Type
+    // Callable (SPEC 8.10) and acquires a value call's callee to one of these (TryCallable, AcquireValueCallee): any other is Unsited.
     private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null, BoundType? signature = null)
     {
         if (type is not null && kind == Requires)
@@ -352,16 +352,21 @@ internal sealed partial class MirEffects
             case BoundTypeKind.Closure:
                 this.Enter(this.program[new(type.Symbol, MirBodyKind.Closure)], types.SubstOfClosure(type), type.Symbol!);
                 break;
-            case BoundTypeKind.FunctionItem: // A closed requirement item runs the witness its substitution names; another dispatches.
+            case BoundTypeKind.FunctionItem when CallPlan.KindOf(type.Symbol!) == CalleeKind.Requirement &&
+                type.Components is [{ IsAbstract: false } self, var reference]:
+                // SPEC 8.15: a requirement Item on a Self that is not abstract runs what its call runs, under the premises: Process's
+                // Requires rule (Require), as a Terminator's local atom does (the guard is the Terminator's, the form the solve's).
+                this.Require(self, type.Symbol!, types.ItemContract(type), types.InView(types.SubstOfItem(type)!, self, reference));
+                break;
+            case BoundTypeKind.FunctionItem: // An abstract Self's requirement Item dispatches; another runs its declaration.
                 var item = types.SubstOfItem(type);
-                var function = item?.Target ?? type.Symbol!;
-                if (types.DispatchBounds(this.definition, function, item?.Self, types.ItemContract(type)) is { } dispatched)
+                if (types.DispatchBounds(this.definition, type.Symbol!, item?.Self, types.ItemContract(type)) is { } dispatched)
                 {
-                    this.found |= Discharged(dispatched, function);
+                    this.found |= Discharged(dispatched, type.Symbol);
                     break;
                 }
 
-                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, function)), item, function); // Its declaration (SPEC 15.6.4, Local).
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, type.Symbol!)), item, type.Symbol!); // Its declaration (SPEC 15.6.4, Local).
                 break;
             case BoundTypeKind.Function: // SPEC 8.11.4: a common Function Type has no evidence (erasure keeps no bound).
                 this.found |= Unknown;
