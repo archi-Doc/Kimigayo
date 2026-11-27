@@ -141,7 +141,11 @@ public static partial class Parser
             return effect.Unexpected(SyntaxForm.EffectItem);
         }
 
-        if (!reader.InExcludedSyntax)
+        if (reader.ExcludingMarker is { } marker)
+        {
+            marker.AddSource(effect); // Excluded syntax keeps the item in its directive's marker (SPEC 19.4).
+        }
+        else
         {
             leading.AddEffectBound(effect);
         }
