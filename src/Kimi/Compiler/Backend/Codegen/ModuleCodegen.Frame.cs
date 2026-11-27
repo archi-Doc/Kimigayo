@@ -149,7 +149,7 @@ internal sealed partial class ModuleCodegen
         this.Entry = null;
         if (start is not null)
         {
-            this.Entry = this.WriteStart(output, frame.Layer, start);
+            this.Entry = this.WriteStart(output, frame, start);
         }
         else if (this.IsTestBuild)
         {
@@ -203,29 +203,22 @@ internal sealed partial class ModuleCodegen
     // The start (IMPL 21.4.2, 21.5.2): on the C path, a module whose Libraries hold its row's C runtime (Require), main, which the C
     // runtime's startup calls after initializing the C library and whose 0 its exit returns, running the C library's exit handlers;
     // otherwise the row's layer's start form, its module asm defining the entry, if any, then its start routine (the entry itself,
-    // exported, or the body the asm calls, internal), which exits with 0. Either calls the layer's routines before the startup body, then
-    // the startup body, which takes no parameter (Binding's startup check). Returns the entry the start defines (Entry).
-    private string WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
+    // exported, or the body the asm calls, internal), which exits with 0. Either calls the layer's routines before the startup body (the
+    // frame's StartCalls), then the startup body, which takes no parameter (Binding's startup check). Returns the entry the start defines
+    // (Entry).
+    private string WriteStart(TextWriter output, LlvmModuleText.ModuleFrame frame, FunctionAbi startup)
     {
         var main = this.row.CRuntime is { } runtime && this.Requires(runtime);
-        var routine = main ? RuntimeAbi.Main : layer.Start;
+        var routine = main ? RuntimeAbi.Main : frame.Layer.Start;
         if (!main)
         {
-            output.Write(layer.StartAssembly);
+            output.Write(frame.Layer.StartAssembly);
         }
 
-        output.Write(routine.GetDefinition(exported: main || layer.Start.Name == this.row.EntrySymbol));
+        output.Write(routine.GetDefinition(exported: main || frame.Layer.Start.Name == this.row.EntrySymbol));
 
         output.Write("entry:\n");
-        foreach (var call in layer.StartCalls)
-        {
-            output.Write("  call ");
-            output.Write(call.Result);
-            output.Write(" @");
-            output.Write(call.Name);
-            output.Write("()\n");
-        }
-
+        output.Write(frame.StartCalls);
         this.bodies.BeginFrameFunction(output, routine);
         _ = this.bodies.WriteEntryCall(startup, default);
         if (main)
