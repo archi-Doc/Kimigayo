@@ -208,15 +208,16 @@ public ref partial struct TokenReader
     /// <summary>Gets or sets the innermost directive that excludes the pending item, meaningful while <see cref="IsExcluded"/> holds.</summary>
     internal SourceSpan PendingExclusion { get; set; }
 
-    /// <summary>Gets or sets the marker of <see cref="PendingExclusion"/>'s directive, meaningful while <see cref="IsExcluded"/> holds.</summary>
+    /// <summary>Gets or sets the marker owning <see cref="PendingExclusion"/>'s target: its directive's, or the marker that directive
+    /// joined (G144-27 N8); meaningful while <see cref="IsExcluded"/> holds.</summary>
     internal CompileTimeSwitchKoto? PendingMarker { get; set; }
 
     /// <summary>Gets or sets the first source position excluded by the pending directive, after its own header.</summary>
     internal int PendingExclusionStart { get; set; }
 
-    /// <summary>Gets or sets the marker of the innermost directive whose excluded syntax the current item list is in: the owner of the
-    /// list's excluded parts (SPEC 19.4). It is null in selected syntax and in a list that begins inside excluded syntax, which keeps
-    /// its parts (Parser.ParseItemList).</summary>
+    /// <summary>Gets or sets the marker owning the excluded syntax the current item list is in: the owner of the list's excluded parts
+    /// and of the directives among them (SPEC 19.4; G144-27 N8). It is null in selected syntax and in a list that begins inside
+    /// excluded syntax, which keeps its parts (Parser.ParseItemList).</summary>
     internal CompileTimeSwitchKoto? ExcludingMarker { get; set; }
 
     /// <summary>Gets or sets the markers of the current item list's directives that no marker owns, which the list's owner adopts

@@ -4,9 +4,11 @@
 // and its excluded parts. Input: the parts Parsing's directive selection (Parser.Directives) hands it while the directive is parsed.
 // Output: one source slot (ChildSlots.Source) holding them in parse order; an excluded member's parts move in after the member from
 // its list's parse-time host (DeclarationContainerKoto.ExcludedOwner), which never enters the tree.
-// Invariants: a decided directive's marker stands in its list owner's source slot, or in the source slot of the directive whose
-// excluded syntax it is; a #switch outside excluded syntax that selected no arm is the list item itself, the recovery of the Error
-// that kept it from selecting (DIAGNOSTICS.md §4.3); the marker's parts are reached only through KotoVisitor.VisitSource.
+// Invariants: a decided directive's marker stands in its list owner's source slot and spans its directive's header; a directive
+// inside the excluded syntax a marker owns has no marker of its own: its Conditions and parts join the owner's, so a marker's source
+// slot holds no marker (G144-27 N8; SyntaxNesting counts no level at a marker); a #switch outside excluded syntax that selected no
+// arm is the list item itself, spanning its Case Group, the recovery of the Error that kept it from selecting (DIAGNOSTICS.md §4.3);
+// the marker's parts are reached only through KotoVisitor.VisitSource.
 // Must not register anything or be read by a semantic phase, except as that failed-selection item (SPEC 19.4).
 
 using Kimi.Compiler.Lexing;
@@ -22,7 +24,7 @@ public sealed class CompileTimeSwitchKoto : ExpressionKoto
 
     /// <summary>Initializes a new instance of the <see cref="CompileTimeSwitchKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
-    /// <param name="range">The directive's span; a Case Group's is set when it ends.</param>
+    /// <param name="range">The directive's header span; a failed-selection Case Group's is set when it ends.</param>
     public CompileTimeSwitchKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {

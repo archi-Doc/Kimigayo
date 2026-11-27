@@ -131,6 +131,22 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.True(deep.Depth <= L, $"depth {deep.Depth}");
     }
 
+    // G144-27 N8: a directive inside the excluded syntax a marker owns joins that marker (a stacked prefix, a nested directive Block,
+    // a #switch, in a body too), so no marker's Source holds a marker; a list that begins inside excluded syntax keeps its directives'
+    // own markers (the last row). Fail-before: each inner directive had its own marker inside the outer one's Source.
+    [Theory]
+    [InlineData("#if false\n#if true\nfunc g() => ()\n", 1)]
+    [InlineData("#if false\n    #if true\n        func g() => ()\n", 1)]
+    [InlineData("#if false\n    #switch\n        #case true\n            func h() => ()\n        #case _\n            func h() => ()\n", 1)]
+    [InlineData("func f() -> ()\n    #if false\n        #if true\n            let a = 1\n", 1)]
+    [InlineData("#if false\nfunc g() -> ()\n    #if true\n        let a = 1\n", 2)]
+    public void AMarkersSourceHoldsNoMarker(string source, int markers)
+    {
+        var all = KotoTree.WalkWithSource(Parsed(source)).OfType<CompileTimeSwitchKoto>().ToArray();
+        Assert.Equal(markers, all.Length);
+        Assert.DoesNotContain(all, static x => x.ChildrenWithSource().Any(static y => y is CompileTimeSwitchKoto));
+    }
+
     // The depth of a tree, its root at 0 (SyntaxNesting's measure, also KimiLibraryShapeTest's), by an explicit stack: the test thread has the default stack.
     internal static int Depth(Koto root)
     {

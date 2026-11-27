@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 
 // SPEC 19: compile-time directives. A directive body is parsed by the item loop of its enclosing owner; selected
 // syntax goes into that owner and excluded syntax is parsed with the same grammar into the directive's marker, registering
-// nothing (SPEC 19.4). Each directive has one marker (CompileTimeSwitchKoto), which holds its Conditions and excluded parts.
+// nothing (SPEC 19.4). Each directive has one marker (CompileTimeSwitchKoto), which holds its Conditions and excluded parts; a
+// directive inside the excluded syntax a marker owns joins that marker instead (G144-27 N8), so no marker holds a marker.
 public static partial class Parser
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -91,9 +92,10 @@ public static partial class Parser
             // Attributes before the Case Group are reported first: no Condition takes them (SPEC 6.7).
             RejectDirectiveBlockAttributes(ref reader);
             var start = reader.CurrentTokenRange.Start;
-            var marker = new CompileTimeSwitchKoto(ref reader, reader.CurrentTokenRange);
+            var owner = OwningMarker(ref reader);
+            var marker = owner ?? new CompileTimeSwitchKoto(ref reader, reader.CurrentTokenRange);
             var arms = new CompileTimeSwitchArms(start, ScanCompileTimeSwitch(ref reader, marker), marker, BeginCompileTimeSwitchArms(ref reader));
-            if (!arms.IsItem(ref reader))
+            if (owner is null && !arms.IsItem(ref reader))
             {
                 PlaceMarker(ref reader, marker);
             }
@@ -146,20 +148,21 @@ public static partial class Parser
             return false;
         }
 
-        /// <summary>Ends the Case Group, whose span the marker takes, and gets the marker of a <c>#switch</c> outside excluded syntax
-        /// that selected no arm, once its arms are parsed.</summary>
+        /// <summary>Ends the Case Group and gets the marker of a <c>#switch</c> outside excluded syntax that selected no arm, once its
+        /// arms are parsed; that marker, the list item, takes the Case Group's span.</summary>
         /// <param name="reader">The token reader positioned after the Case Group.</param>
         /// <returns>The marker, or <see langword="null"/> when an arm was selected or the Case Group is excluded syntax.</returns>
         /// <remarks>The marker is the recovery of the Error that kept the Case Group from selecting an arm, so no later check of it
-        /// is reported again (DIAGNOSTICS.md §4.3).</remarks>
+        /// is reported again (DIAGNOSTICS.md §4.3). A decided marker keeps its header's span: it may be the marker of an enclosing
+        /// directive, which this <c>#switch</c> joined.</remarks>
         internal readonly CompileTimeSwitchKoto? Unselected(ref TokenReader reader)
         {
-            this.Marker.Span = SourceSpan.FromBounds(this.start, Math.Max(this.start, reader.PreviousSyntaxEnd));
             if (!this.IsItem(ref reader))
             {
                 return null;
             }
 
+            this.Marker.Span = SourceSpan.FromBounds(this.start, Math.Max(this.start, reader.PreviousSyntaxEnd));
             if (this.selection.Cause is { } cause)
             {
                 reader.CodeContext.RecordRecovery(this.Marker, cause);
@@ -220,22 +223,20 @@ public static partial class Parser
         }
     }
 
-    /// <summary>Places a directive's marker: in the marker of the directive whose excluded syntax it is, otherwise among the current
-    /// item list's markers (<see cref="TokenReader.ListMarkers"/>).</summary>
+    /// <summary>Gets the marker that owns the excluded syntax at the reader: an earlier prefix's of the same item that excludes its
+    /// target, otherwise the innermost excluding directive's. A directive there joins that marker, its Conditions and parts going
+    /// into the owner's source slot, so a marker's source slot holds no marker (G144-27 N8: SyntaxNesting counts no level at a
+    /// marker).</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns>The owning marker, or <see langword="null"/> when the directive gets its own.</returns>
+    private static CompileTimeSwitchKoto? OwningMarker(ref TokenReader reader)
+        => reader.IsExcluded ? reader.PendingMarker : reader.ExcludingMarker;
+
+    /// <summary>Places a directive's own marker among the current list's markers (<see cref="TokenReader.ListMarkers"/>).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="marker">The marker.</param>
     private static void PlaceMarker(ref TokenReader reader, CompileTimeSwitchKoto marker)
-    {
-        // An earlier prefix of the same item that excludes its target excludes this directive too.
-        if ((reader.IsExcluded ? reader.PendingMarker : reader.ExcludingMarker) is { } owner)
-        {
-            owner.AddSource(marker);
-        }
-        else
-        {
-            (reader.ListMarkers ??= []).Add(marker);
-        }
-    }
+        => (reader.ListMarkers ??= []).Add(marker);
 
     /// <summary>Validates every arm header and Condition of a <c>#switch</c> before any arm body is parsed (SPEC 19.3).</summary>
     /// <param name="reader">The token reader positioned at <c>#switch</c>; it is not advanced.</param>
@@ -420,9 +421,14 @@ public static partial class Parser
         var condition = ParseRequiredCompileTimeCondition(ref reader);
         var invalidHeader = !ExpectCompileTimeHeaderEnd(ref reader);
         var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
-        var marker = new CompileTimeSwitchKoto(ref reader, SourceSpan.FromBounds(start, reader.PreviousEnd));
+        var owner = OwningMarker(ref reader);
+        var marker = owner ?? new CompileTimeSwitchKoto(ref reader, SourceSpan.FromBounds(start, reader.PreviousEnd));
+        if (owner is null)
+        {
+            PlaceMarker(ref reader, marker);
+        }
+
         marker.AddSource(condition);
-        PlaceMarker(ref reader, marker);
         if (invalidHeader || result != CompileTimeConditionResult.True)
         {
             ExcludeTarget(ref reader, marker, condition.Span, condition.Span.End);
@@ -449,13 +455,18 @@ public static partial class Parser
 
         _ = ExpectCompileTimeHeaderEnd(ref reader);
         var header = SourceSpan.FromBounds(start, reader.PreviousEnd);
-        var marker = new CompileTimeSwitchKoto(ref reader, header);
+        var owner = OwningMarker(ref reader);
+        var marker = owner ?? new CompileTimeSwitchKoto(ref reader, header);
+        if (owner is null)
+        {
+            PlaceMarker(ref reader, marker);
+        }
+
         if (condition is not null)
         {
             marker.AddSource(condition);
         }
 
-        PlaceMarker(ref reader, marker);
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             reader.Expect(SyntaxForm.Body);
