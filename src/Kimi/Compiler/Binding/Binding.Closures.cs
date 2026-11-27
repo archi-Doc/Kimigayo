@@ -16,8 +16,8 @@
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Signature, EnvironmentType and InfersResult (its
 //   Storage and Carried are Binding.Captures'; the symbol's DeclaringBody the index walk's); the Environment query (FormEnvironment);
 //   a ClosureReceiverRefutation; the located InternalInvariant_Kd of each use no consumer takes.
-// - Invariants: BindClosure clears the published Signature, Published and Classified before a binding; the environment (Storage,
-//   Carried) is formed once in the pass (FormEnvironment, from the index
+// - Invariants: BindClosure clears the published Signature, Published, Classified and the result context (DECISIONS BU-275) before a
+//   binding; the environment (Storage, Carried) is formed once in the pass (FormEnvironment, from the index
 //   walk's reset, BoundClosure.ResetPass) and kept by every later binding, and is not ready before the literal's header binds an
 //   omitted parameter Type or an entry's source binds (abandoned, no record); BindConcreteClosure starts from reset receiver facts (Shared,
 //   no exclusive cause) and has them classified right after the body is bound (a relation naming a pending atom is a row, DECISIONS
@@ -289,6 +289,7 @@ public sealed partial class Binding
             previous.Signature = null;
             previous.Published = false; // BoundClosure.Of is this binding's definition, set once it is published.
             previous.Classified = false; // And its receiver facts this binding's, once it has classified them.
+            this.resultContexts.Remove(function); // And its result context this binding's: one its body opens, or none (InfersUnit).
         }
 
         if (expected is not null && !this.ClosureSignatureFits(function, expected, open))

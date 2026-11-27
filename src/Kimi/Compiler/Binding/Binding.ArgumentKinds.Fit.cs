@@ -308,7 +308,7 @@ public sealed partial class Binding
                 _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
                 (_, var node) when type.ContainsOpenSlot && this.PlacedAtOpenSlot(node, this.KindOf(node), type, this.ConstraintScope(part)) =>
                     held = true, // SPEC 10.5.1, 10.8 (the place rule; PLAN G814 R): a part placed at a bare atom holds whole, walked no further.
-                _ when this.IsWaiting(part) => this.FitArgumentPart(part, type, this.ConstraintScope(part), part, out _) != CandidateApplicability.Inapplicable,
+                _ when this.AwaitsParameterType(part) => this.FitArgumentPart(part, type, this.ConstraintScope(part), part, out _) != CandidateApplicability.Inapplicable,
                 (PartKind.Aggregate, TupleLiteralKoto tuple) => this.ShapeFits(TupleShapeAt(tuple, type)),
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ShapeFits(this.ArrayShapeAt(array, type)),
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>

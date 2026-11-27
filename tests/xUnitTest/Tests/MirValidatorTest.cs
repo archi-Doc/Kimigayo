@@ -64,6 +64,19 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 22.5.1 (PLAN G1017): only a Drop carries an offset of its document, -1 or a position; a Drop below -1 and a Return at 0 break it.
+    [Theory]
+    [InlineData("Drop", -2)]
+    [InlineData("Return", 0)]
+    public void OnlyADropIsLocatedAtAnOffset(string kind, int offset)
+    {
+        var body = Build(null);
+        var index = Array.FindIndex(body.Blocks.ToArray(), x => x.Terminator.Kind == Enum.Parse<MirTerminatorKind>(kind));
+        ref var block = ref Unsafe.AsRef(in body.Blocks[index]);
+        block.Terminator = block.Terminator with { Offset = offset };
+        Assert.Equal(MirViolation.Operation, Assert.Single(Validate(body)).Rule);
+    }
+
     // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
     // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its undecided uses', is
     // an undecided use's (MirDescriptors.IsUndecided, G191 N1; DECISIONS Z17).

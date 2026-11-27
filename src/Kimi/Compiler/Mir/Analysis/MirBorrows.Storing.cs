@@ -32,6 +32,10 @@ namespace Kimi.Compiler.Mir;
 // layer stepping Unstated or Static is written there, joined over the storage) and gives i neither Value nor a pair:
 // UnretainedRawStore_Kd at the store, with no fact (MirBorrows.Locations; DECISIONS Q13: an Anchor reads as a Loan's, and an own part
 // formed by `@raw` has none).
+// A body whose own contract is Deep (CallRetention.IsDeep: its rows a lower bound, with a part past a walk's bound beside them) is read
+// on its decided rows as on exact ones; where the rule refuses there, a missing Value or pair row is not conclusive, so the store takes
+// OwnershipDepthLimit_Kd instead, the record a Deep call takes (MirBorrows.Reports' Limit): the body's own check, independent of each
+// caller's record at its call (SPEC 23.1.2; the Middle's G408-B A5 ruling 1).
 // Never where the value's own part is the destination's layer, reached through no own step (a self-link, O-56 (a), SPEC 5.2.1).
 // The own step applies only at a destination whose own address holds raw layers none of which states an Origin (MirBorrows.PunKeys'
 // RawInline and not AnyStated over TyCtxt.OwnLayers; `static` counts as stated). At any other destination (a stated, mixed or
@@ -42,7 +46,8 @@ namespace Kimi.Compiler.Mir;
 // `unsafe` scope, and an address of it gives Past(i).
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
 // and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
-// exposure lost, a landing any redirect may have moved, and a record Binding joins over a storage where another position lets i by Value.
+// exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
+// and a body whose own contract is the Limit (no rows; O-62 (a)).
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
@@ -116,7 +121,8 @@ internal sealed partial class MirBorrows
     }
 
     // The body's own contract, where the rule reads the body: a Fn or Test body whose signature bound, with an input whose case Type may hold
-    // a raw layer, whose contract is no Limit and writes an untied storage; else none. Then the landing fact (Redirects).
+    // a raw layer, whose contract is no Limit (a Deep one, its decided rows) and writes an untied storage; else none. Then the landing
+    // fact (Redirects).
     private void BeginStoring()
     {
         (this.contract, this.overstored, this.owning) = (null, 0, false);

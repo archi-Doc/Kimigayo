@@ -140,9 +140,8 @@ public sealed partial class Binding
 
             foreach (var pending in solved)
             {
-                var region = this.LocalRegionSlot(owner, slot--, this.OccurrenceVariance(declared, pending, this));
-                this.PublishRegionValue(region, declaration.Forming.Replacements[pending], owner);
-                declaration.Forming.Replacements[pending] = region;
+                declaration.Forming.Replacements[pending] = this.ValuedRegion(
+                    owner, slot--, this.OccurrenceVariance(declared, pending, this), declaration.Forming.Replacements[pending], owner);
             }
 
             solved.Clear();

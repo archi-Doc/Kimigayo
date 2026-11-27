@@ -17,7 +17,8 @@ public partial class TypeDagScalingTest
     // callee's atom walk); a comparison of the Tuple tree (ComparisonProof), a Copy requirement on it (DependentType), a called closure
     // capturing it (LacksImage). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
     // candidates' and results' Origin tests (the Origin summary), the published result and a Closure with two captures, one of which names
-    // the result's Origin.
+    // the result's Origin; and a `match` and a `for` decomposition reached through a reference, whose `let` bindings each own the region of
+    // the layer the reach adds (PLAN G922), carried by a Closure.
     [Theory]
     [InlineData("tuple", 40)]
     [InlineData("array", 40)]
@@ -46,6 +47,24 @@ public partial class TypeDagScalingTest
         }
 
         Assert.Equal(form == "enum" ? "g f" : "g f, k h, copies cp", string.Join(", ", calls));
+    }
+
+    // PLAN G922 U1 (the owner's O-534 (a) interim): the `ref` chain's last instance read into a `let` local, whose opening merges each
+    // Tuple level met on its two paths (MarkMerged, each distinct part walked once), and a `match` of its copy whose bindings at the
+    // leftmost and rightmost leaf a nested signature names: each name is the located limit, within the chain's bound.
+    [Theory]
+    [InlineData(40)]
+    public void AMergedLeafNamedInANestedSignatureIsTheLimit(int size)
+    {
+        var (left, right) = ("let l", "let r");
+        for (var i = 0; i < size - 2; i++)
+        {
+            (left, right) = ($"({left}, _)", $"(_, {right})");
+        }
+
+        var c = MirBuildTest.Compile(InstanceChain("ref", size) + $"func merged(d: ref/D1<ref/i32 during a>) -> ()\n    let v = d{string.Concat(Enumerable.Repeat(".x", size))}\n" +
+            $"    match v@copy\n        ({left}, {right})\n            func inner(x: ref/i32 during l) -> ref/i32 during r => x\n            return\n    return\n");
+        Assert.Equal("Unsupported_Kd l|Unsupported_Kd r", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {(x.Node as IdentifierNameKoto)?.IdentifierName}").Order(StringComparer.Ordinal)));
     }
 
     // DECISIONS BU-113: a generic callee's declared input is the chain over its own Type parameter, `fg<T>(d: uniq/D1<T>, …)`, so the
@@ -219,7 +238,10 @@ public partial class TypeDagScalingTest
         {
             "tuple" => text.Append($"func equal(a: ref/{root}, b: ref/{root}) -> bool => a{path} == b{path}\n").ToString(),
             "ref" => text.Append($"func both(d: ref/{root}, e: ref/D1<ref/i32 during b>) -> ()\n    let v = d{path}\n    let u = e{path}\n")
-                .Append("    let f = func [v, u] () => v\n    let w = f()\n    return\n").ToString(),
+                .Append("    let f = func [v, u] () => v\n    let w = f()\n    return\n")
+                .Append($"func patterns(d: ref/{root}) -> ()\n    match d{path}\n        (let a, let b)\n            let f = func [a, b] () => a\n")
+                .Append($"            let w = f()\n            return\n    return\nfunc loops(d: ref/Array<({root}, {root})>) -> ()\n    for (u, v) in d\n")
+                .Append($"        let g = func [u, v] () => u{path}\n        let z = g()\n    return\n").ToString(),
             _ => text.ToString(),
         };
     }

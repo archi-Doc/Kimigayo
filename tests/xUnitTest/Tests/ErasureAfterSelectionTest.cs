@@ -29,6 +29,9 @@ public class ErasureAfterSelectionTest
 
     private const string GenericK = "func k<T>(g: (T) -> T, x: T) -> T\n    return x@move\n";
 
+    // A struct whose Field n holds an i64 34 entries down, past StorageBound: a Closure taking it has a Deep call contract.
+    private const string DeepDS = "struct DS\n    public var p: raw/i32 during static\n    public var n: (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, (i32, i64)))))))))))))))))))))))))))))))))\n";
+
     // SPEC 7.7.4, 10.1, 10.2, 15.6.5 (G379 (a) Revision 3; the owner's O-404): a stored Closure holding a borrow of a body local (not
     // Owned) or with an Exclusive receiver has no erasure row, so its lone candidate is not applicable: one record at the call.
     [Theory]
@@ -161,7 +164,9 @@ public class ErasureAfterSelectionTest
     // with no capture; e07, a Copy capture and a parameter), a call argument (e01; e08, a waiting Closure at a pair's instantiated
     // `raw/i32`) or a return (e05), the Type mismatch of the closure's Type. A result stating an Origin (w01, w06), a Function
     // Item (w02), a result with no raw layer (w03) and a raw layer the call writes through a parameter, which 7.7.4 does not name (w05),
-    // still convert.
+    // still convert. A Closure whose input d lies past StorageBound (DeepDS) has a Deep call contract, a lower bound beside its
+    // decided rows; its receiver row with Value is decided, so it keeps the Type mismatch at an initialization (eraBad, e03's form) and
+    // a call argument (eraArgBad, e01's) (the Middle's G408-B A5 consent ruling 2).
     [Theory]
     [InlineData("t09", "func f(p: raw/i32) -> raw/i32\n    let g: () -> raw/i32 = func () -> raw/i32 => p\n    return g()\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
     [InlineData("e01", "func run(g: () -> raw/i32) -> i32 => 0\nfunc f(p: raw/i32) -> i32\n    return run(func () -> raw/i32 => p)\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
@@ -172,6 +177,8 @@ public class ErasureAfterSelectionTest
     [InlineData("e06", "func f(p: raw/i32) -> raw/i32?\n    let g: () -> raw/i32? = func () -> raw/i32? => .Some(p)\n    return g()\n", "TypeMismatch_Kd func () -> raw/i32? => .Some(p)")]
     [InlineData("e07", "func f(address: usize) -> raw/u8\n    let concrete = func [address] (offset: isize) -> raw/u8 => address@raw/u8\n    let erased: (isize) -> raw/u8 = concrete\n    return erased(0)\n", "TypeMismatch_Kd concrete")]
     [InlineData("e08", "func call<s/T>(v: s/T, f: (s/T) -> s/T) -> s/T => f(v@move)\nfunc g(x: ref/i32, p: raw/i32 during x) -> raw/i32 => call(p, func (w) => w)\n", "TypeMismatch_Kd func (w) => w")]
+    [InlineData("eraBad", DeepDS + "func f() -> i32\n    let g: (DS) -> (raw/i16, i64) = func (d: DS) -> (raw/i16, i64) => (null, 0)\n    return 0\n", "TypeMismatch_Kd func (d: DS) -> (raw/i16, i64) => (null, 0)")]
+    [InlineData("eraArgBad", DeepDS + "func run(g: (DS) -> (raw/i16, i64)) -> i32 => 0\nfunc f() -> i32\n    return run(func (d: DS) -> (raw/i16, i64) => (null, 0))\n", "TypeMismatch_Kd func (d: DS) -> (raw/i16, i64) => (null, 0)")]
     [InlineData("w01", "func f() -> raw/i32 during static\n    let g: () -> raw/i32 during static = func () -> raw/i32 during static => null\n    return g()\n", "")]
     [InlineData("w02", "func h(q: raw/i32) -> raw/i32 => q\nfunc f(p: raw/i32) -> raw/i32\n    let g: (raw/i32) -> raw/i32 = h\n    return g(p)\n", "")]
     [InlineData("w03", "func f(n: i32) -> i32\n    let g: () -> i32 = func () -> i32 => n\n    return g()\n", "")]
