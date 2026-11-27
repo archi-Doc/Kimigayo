@@ -234,14 +234,11 @@ public sealed partial class CheckServiceTest : IDisposable
 
     // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1; design rows 1 and 3): artifact production takes the one selected target with a row.
     // linux-x64's pair is published under bin\x86_64-unknown-linux-musl\ (row 1's emit half); a target without a row is the location-only
-    // Unsupported_Kd at the project (row 3, D-1167 N6), and so is a staged row (none-x64, outside TargetProfile.Rows); several selected
-    // targets are their selection record; the check accepts each target but the freestanding one, where the Application without a
-    // platform is the located Unsupported_Kd at its startup form (SPEC 22.4.5). Fail-before: each is the gate's "Artifact production
-    // currently requires exactly one configured Windows x64 target.".
+    // Unsupported_Kd at the project (row 3, D-1167 N6); several selected targets are their selection record; the check accepts each
+    // target. Fail-before: each is the gate's "Artifact production currently requires exactly one configured Windows x64 target.".
     [Theory]
     [InlineData("\"x86_64-unknown-linux-musl\"", "", "", null)]
     [InlineData("\"x86_64-unknown-linux-gnu\"", "", nameof(DiagnosticCode.Unsupported_Kd), null)]
-    [InlineData("\"x86_64-unknown-none\"", "Unsupported_Kd Hello.kimi 0", nameof(DiagnosticCode.Unsupported_Kd), null)]
     [InlineData("\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-musl\"", "", nameof(DiagnosticCode.ProjectPreparationFailed_Kd), "Artifact production requires one selected target; select one with --Target.")]
     public async Task ArtifactProductionTakesOneSelectedTargetWithARow(string targets, string check, string code, string? note)
     {
@@ -276,6 +273,46 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Equal(note is not null, console.Output.Contains("Note: ", StringComparison.Ordinal));
         Assert.DoesNotContain("Artifact production currently requires", console.Output, StringComparison.Ordinal);
         Assert.False(Directory.Exists(bin));
+    }
+
+    // The Tatara plan's B9g (SPEC 22 ¶1, IMPL 20.3.2; design §3.8, rows 1 and 3): x86_64-unknown-none is an artifact target. Kernel
+    // (Hello.kimi and its platform, Board.kimi) publishes its pair under bin\x86_64-unknown-none\; Hello alone has no platform, so its
+    // check and its generation record B9c1's located Unsupported_Kd at the startup form (SPEC 22.4.5) and publish nothing. Fail-before
+    // (B9b's membership line, removed with TargetProfile.Staged as planned): each generation was the location-only Unsupported_Kd at the
+    // project.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ArtifactProductionPublishesTheFreestandingPair(bool platform)
+    {
+        var folder = this.PathOf("Kernel");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "Kernel.kimiproj");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{\"{TargetProfile.None.Target}\"}}");
+        File.WriteAllText(Path.Combine(folder, "Hello.kimi"), KernelSources.Hello);
+        if (platform)
+        {
+            File.WriteAllText(Path.Combine(folder, "Board.kimi"), KernelSources.Board + KernelSources.BoardTerminate);
+        }
+
+        var output = this.Run(path, CheckMode.Product, TargetProfile.None.Target);
+        var errors = output.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(platform ? string.Empty : "Unsupported_Kd Hello.kimi 0", string.Join(" | ", errors.Select(x => $"{x.Code} {Path.GetFileName(output.Sources[x.Source].Path)} {x.Span?.Start}")));
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, path, out var project));
+        Assert.Equal(platform, await project.Generate(TestContext.Current.CancellationToken));
+        var bin = Path.Combine(folder, "bin");
+        if (!platform)
+        {
+            Assert.Contains($" : {nameof(DiagnosticCode.Unsupported_Kd)}\n --> Hello.kimi:1:1", console.Output, StringComparison.Ordinal);
+            Assert.DoesNotContain("--> Kernel.kimiproj", console.Output, StringComparison.Ordinal);
+            Assert.False(Directory.Exists(bin));
+            return;
+        }
+
+        Assert.Equal(TargetProfile.None.Target, Path.GetFileName(Assert.Single(Directory.GetDirectories(bin))));
+        Assert.True(File.Exists(Path.Combine(bin, TargetProfile.None.Target, "Kernel.ll")));
+        Assert.True(File.Exists(Path.Combine(bin, TargetProfile.None.Target, "Kernel.link.json")));
     }
 
     // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
@@ -599,12 +636,13 @@ public sealed partial class CheckServiceTest : IDisposable
     }
 
     // IMPL 20.6.1, SPEC 22 ¶1 (the Tatara plan's B7b8): the test target is one with a row in the target table; one without is the
-    // location-only Unsupported_Kd at the project (no note), as is a staged row's (none-x64, not an artifact target), and a linux-x64
-    // test unit is checked (front end only; whether this host runs it is the runner's rule). Fail-before: each is "Testing requires a
-    // configured Windows x64 target.".
+    // location-only Unsupported_Kd at the project (no note), and a linux-x64 or x86_64-unknown-none test unit is checked (front end only;
+    // whether this host runs it is the runner's rule). Fail-before: each is "Testing requires a configured Windows x64 target."; the
+    // x86_64-unknown-none row's (the Tatara plan's B9g; B9b's membership line, removed with TargetProfile.Staged as planned) was the
+    // location-only Unsupported_Kd at the project.
     [Theory]
     [InlineData("x86_64-unknown-linux-gnu", false)]
-    [InlineData("x86_64-unknown-none", false)]
+    [InlineData("x86_64-unknown-none", true)]
     [InlineData("x86_64-unknown-linux-musl", true)]
     public void TestModeRejectsAnUntestableTarget(string target, bool checkedUnit)
     {

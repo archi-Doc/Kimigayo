@@ -294,8 +294,20 @@ public sealed partial class MirOriginsTest
     // exclusive reference's Reborrow into a fixed layer (row 9c's containment), and a local's Borrow through locals with no candidate, a
     // local region (row 19), returned. With the old reporter gone (R6-check H8a D4) the rows pin the MIR's lines.
     [Theory]
-    // R7Inv's local annotation fit is recorded at its initializer `y` (R7-O1 H's D5).
-    [InlineData(R7Inv, "UnprovenOriginRelation_Kd uniq/(ref/i32 during a); UnprovenOriginRelation_Kd y")]
+    // R7Inv's local annotation fit is recorded at its initializer `y` (R7-O1 H's D5). Its Type's well-formedness bounds the omitted outer
+    // Origin and records nothing (SPEC 15.3.6, 15.6.1; R7-M113's invariant meet, R7-O2 A4-L's Q-B: it was a second record at the Type).
+    [InlineData(R7Inv, "UnprovenOriginRelation_Kd y")]
+    // wf_ret: SPEC 15.4.4, the declaration fixes z's slot at its candidate `c and a`, which nothing proves outlives d at the later use:
+    // one record at `return z`, and none for the Type's well-formedness, which bounds the slot (R7-O2 A4-L, the Middle's Q-A).
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, d: ref/i32, y: ref/(ref/i32 during b) during c) -> ref/(ref/i32 during a) during d\n    origin b outlives a\n    let z: ref/(ref/i32 during a) = y\n    return z\n", "UnprovenOriginRelation_Kd z")]
+    // wf_prem_bad: SPEC 15.6.1, the well-formedness row bounds z's region and is no premise, so returning its inner reference at c needs
+    // `a outlives c`, which nothing proves: one record at the return.
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, y: ref/(ref/i32 during b) during c) -> ref/i32 during c\n    origin b outlives a\n    let z: ref/(ref/i32 during a) = y\n    return z@follow\n", "UnprovenOriginRelation_Kd z@follow")]
+    // wf_use_ok: I, SPEC 15.3.6's solver rule ("`(a and b) outlives c` exactly when `a outlives c` and `b outlives c`"; R7-O2 A4-L,
+    // m-ruling-a4l-p2r 2): w's fit needs z's candidate `a and c` to outlive a, so `c outlives a`, which no premise gives (`b outlives a`
+    // is written, y's Type gives `b outlives c`): one record at w's initializer `z`. z's well-formedness record `a outlives c`, which
+    // rested on the missing bound, goes, as wf_ret's.
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, y: ref/(ref/i32 during b) during c) -> ()\n    origin b outlives a\n    let z: ref/(ref/i32 during a) = y\n    let w: ref/(ref/i32 during a) during a = z\n", "UnprovenOriginRelation_Kd z")]
     [InlineData(Layers, "UnsatisfiedOriginRelation_Kd rr@follow@follow@ref; UnsatisfiedOriginRelation_Kd rr@follow@follow@ref")]
     [InlineData("func f(p: uniq/(uniq/i32 during a)) -> ()\n    var local: i32 = 1\n    var r = local@uniq\n    p@follow = r\n", "UnsatisfiedOriginRelation_Kd r")]
     [InlineData("func f(y: ref/i32) -> ref/i32 during y\n    let l = 1\n    var a: ref/i32 = y\n    a = l@ref\n    let b: ref/i32 = a\n    return b\n", "UnsatisfiedOriginRelation_Kd b")]
@@ -345,6 +357,19 @@ public sealed partial class MirOriginsTest
     [InlineData(ClosureHeader + "    return h(x@ref@ref)\n")]
     [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit + InitP)]
     [InlineData(HolderP + "    public var n: i32 = if true\n        let x = 1\n        let t: ref/i32 = x@ref\n        yield t@follow\n    else => 0\n")]
+    // a3_var: SPEC 15.3.6, a `var` local's region publishes no value; its reads take its candidate (R7-O2 A4-L).
+    [InlineData(HolderP + "    public var n: i32 = if true\n        let x = 1\n        var t: ref/i32 = x@ref\n        yield t@follow\n    else => 0\n")]
+    // wfcov, wf_ret_ok, wf_nest_ok: SPEC 15.3.6's covariant row with 15.6.1 (R7-O2 A4-L, the Middle's Q-A). z's omitted outer Origin has
+    // the upper bounds c (the fit) and a (its Type's well-formedness), so its candidate `c and a` satisfies both, also under a later
+    // `return z` that `c outlives d` proves, a nested signature naming z's region, a later local whose fit needs it to outlive a, which
+    // `c outlives a` proves (wf_use_ok_v: V by SPEC 15.3.6's solver rule, m-ruling-a4l-p2r 2; AnAuditRowsChainHasItsOriginProblems has
+    // wf_use_ok, its twin without the premise) and a Closure that carries it under `c outlives d` (wf_clo_ok). wfcov, wf_ret_ok,
+    // wf_nest_ok and wf_clo_ok were rejected (UsOR "a outlives c" at the let).
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, y: ref/(ref/i32 during b) during c) -> ()\n    origin b outlives a\n    let z: ref/(ref/i32 during a) = y\n")]
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, y: ref/(ref/i32 during b) during c) -> ()\n    origin b outlives a\n    origin c outlives a\n    let z: ref/(ref/i32 during a) = y\n    let w: ref/(ref/i32 during a) during a = z\n")]
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, d: ref/i32, y: ref/(ref/i32 during b) during c) -> ref/(ref/i32 during a) during d\n    origin b outlives a\n    origin c outlives d\n    let z: ref/(ref/i32 during a) = y\n    let g = func [z] () -> ref/(ref/i32 during a) during d => z\n    return g()\n")]
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, d: ref/i32, y: ref/(ref/i32 during b) during c) -> ref/(ref/i32 during a) during d\n    origin b outlives a\n    origin c outlives d\n    let z: ref/(ref/i32 during a) = y\n    return z\n")]
+    [InlineData("func f(a: ref/i32, b: ref/i32, c: ref/i32, d: ref/i32, y: ref/(ref/i32 during b) during c) -> ()\n    origin b outlives a\n    let z: ref/(ref/i32 during a) = y\n    func lift(v: ref/i32 during z) -> ref/i32 during z => v\n")]
     [InlineData(HolderP + "    public var n: i32 = if true\n        var x = 1\n        var r = x@uniq\n        let t: ref/i32 = r@follow@ref\n        yield 0\n    else => 0\n")]
     [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit)]
     [InlineData("group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n" + NoBase + "    public var n: i32 = Util.pick(3@ref, 4@ref)\n")]

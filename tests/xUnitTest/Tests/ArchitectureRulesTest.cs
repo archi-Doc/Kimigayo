@@ -59,13 +59,12 @@ public class ArchitectureRulesTest
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|" +
         "BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|" +
         "EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|" +
-        "ImplementationStorage|ClosureDefinition|ClosureAsCreated|ArithmeticStorage|ComparisonStorage|ComparisonActive|CreationStorage|" +
-        "AdaptationStorage";
+        "ClosureDefinition|ClosureAsCreated|ArithmeticStorage|ComparisonStorage|ComparisonActive|CreationStorage|AdaptationStorage";
 
     // R6-check H14 (D7): a read or write of a Koto semantic slot, as a member access or as a property pattern's name, nested or not (a
     // static `BoundType.X` argument is neither).
     private const string SemanticSlotReads = @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:" + SemanticSlots + @")(?:\.\w+)*\s*:";
-    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=5;" +
+    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=7;Koto/Expressions/BinaryKoto.cs=5;" +
         "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;" +
         "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=3";
 
@@ -657,12 +656,14 @@ public class ArchitectureRulesTest
     [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\b(?:ClassForm|NormalizedForm)\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=5;Binding/Binding.Contracts.Expansion.cs=2;Binding/Binding.Contracts.cs=1;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.MemberLookup.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
-    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
-    // (ii): three of `Binding.LocalOrigins.cs`'s are InferLocalOrigins' `let` branch, which reads the replacements, publishes each
-    // region's value and replaces the replacement with the region before it sets the declaration's state: formation, as the rule names.
+    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. R7-O2 A4-L:
+    // `Binding.LocalOrigins.cs`'s are the initializer's and the annotation's formation alone, which give the omitted slots regions and
+    // set the declarations' state (30 -> 12: SolveLocalBounds, the `let` branch's publish loop and the `Inferred` side table went); a
+    // `let` region's value is published by FixDeclaredRegions (Binding.LocalRegions.cs), which reads the read members `Relations` and
+    // `SubstitutionPairs`, so that file has no row.
     // PLAN G1369: `Binding.OriginDeclarations.Failures.cs` lost the dead first-failure copy (5 -> 4); `Binding.OriginDeclarations.cs`'s
     // SubstituteOriginEqualities reads the completed relations and counts a local's fixed regions (FixedRegions; 29 -> 28).
-    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=4;Binding/Binding.OriginDeclarations.cs=28;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=12;Binding/Binding.OriginDeclarations.Failures.cs=4;Binding/Binding.OriginDeclarations.cs=28;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
     // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
     // number is reached, its holder and a member returning it included:

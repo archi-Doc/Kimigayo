@@ -19,7 +19,7 @@ internal static class LinuxPair
     // The C flags of a library member (Archive): no builtins, no stack protector, Microsoft's extensions for selectany.
     private static readonly string[] Flags = ["--target=" + TargetProfile.Linux.Target, "-O2", "-fno-builtin", "-fno-stack-protector", "-fms-extensions", "-c"];
 
-    /// <summary>Publishes an Application pair of the source for an ELF row (linux-x64, or the staged none-x64: Tatara B9f) into
+    /// <summary>Publishes an Application pair of the source for an ELF row (linux-x64, or none-x64: Tatara B9f) into
     /// directory/out/Hello.ll at the level, its program libraries under the row's key (each <c>native/&lt;input&gt;</c>, static unless the
     /// kind says otherwise).</summary>
     /// <param name="row">The target row.</param>

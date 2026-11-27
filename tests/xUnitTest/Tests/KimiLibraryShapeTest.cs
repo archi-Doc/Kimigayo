@@ -13,10 +13,10 @@ namespace XunitTest;
 public partial class KimiLibraryShapeTest
 {
     // Read-only: no test changes the library or its Binding. The library of a compilation without a target is windows-x64's selection
-    // (the Tatara plan's F1 (a)); each row's library, staged rows included, is selected under its own Conditions (B7b6: no Kimi.Windows
+    // (the Tatara plan's F1 (a)); each row's library is selected under its own Conditions (B7b6: no Kimi.Windows
     // where `windows` does not hold, Time over the platform layer's clock), bound once on its first read (LibraryOf).
     private static readonly Lazy<Compilation> Library = new(() => BoundLibrary(null));
-    private static readonly Dictionary<string, Lazy<Compilation>> Libraries = TargetProfile.AllRows.Select(static x => x.Target).Prepend(string.Empty)
+    private static readonly Dictionary<string, Lazy<Compilation>> Libraries = TargetProfile.Rows.Select(static x => x.Target).Prepend(string.Empty)
         .ToDictionary(static x => x, static x => x.Length == 0 ? Library : new Lazy<Compilation>(() => BoundLibrary(x)));
 
     // PLAN G776-b (the owner's O-194 (a): a built-in conformance adds no member): the receiver groups no witness-table row names, the
@@ -208,7 +208,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
-    // run time: each lies within IMPL A.4's syntax depth L, measured as SyntaxNesting measures it (a node's distance from its root).
+    // run time: each lies within IMPL A.4's syntax depth L, measured as SyntaxNesting measures it (a node's distance from its root; a
+    // directive's marker and the generated function with its Body count no level, G144-25).
     [Fact]
     public void TheLibraryLiesWithinTheSyntaxNestingLimit()
         => WithinTheSyntaxNestingLimit(Compilation.CreateForTest().Library.Kotonoha.RootKoto);

@@ -8,8 +8,9 @@ namespace Kimi.Compiler.Mir;
 // Default copies (plan 5.6.2, SPEC 7.2.3): where a call omits a default whose template is not recursive, did not fail and instantiates
 // under the call's substitution (Defaults), its value is a copy of the template's MIR in the calling body, folded once under that
 // substitution. Each statement and terminator of a copy is its template's, folded: at its template's location, in the copy's scopes under
-// the one Inlined at the call; its case decides a PairAcquire's rvalue again (ByCase) and its folded key a keyed view's form (First).
-// Only the pending slots and the prologue's borrows (Defaults) are the caller's. Whether the substitution instantiates the copy is
+// the one Inlined at the call; its case decides a PairAcquire's rvalue again (ByCase), its folded key a keyed view's form (First) and the
+// Self it closes an inherited witness's receiver (TyCtxt.ProjectedReceiver). Only the pending slots, the prologue's borrows (Defaults)
+// and those receivers' borrows are the caller's. Whether the substitution instantiates the copy is
 // decided before it is written, so none is written in part.
 internal sealed partial class MirBuilder
 {
@@ -172,9 +173,10 @@ internal sealed partial class MirBuilder
     // each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent acquisition its
     // case's (ByCase), each static and constant added again (a Length's term in the instance, of LengthOperand's form: a constant's value,
     // as its Type, is the instance's), and a Drop the instance's Type does not need left out. No MustNotComplete
-    // row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3). Two forms are decided again in the copy, each
-    // by its owner: a PairAcquire's rvalue by its case (Reacquired; ByCase) and a keyed view by its folded key (Refirst; First). A third
-    // would be an open family, to close in one representation.
+    // row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3). Three forms are decided again in the copy, each
+    // by its owner: a PairAcquire's rvalue by its case (Reacquired; ByCase), a keyed view by its folded key (Refirst; First) and the
+    // receiver of a Requirement callee whose Self the copy closes by its witness (TyCtxt.ProjectedReceiver; Ref). A fourth would be an
+    // open family, to close in one representation.
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
         var map = this.folded;
@@ -222,6 +224,19 @@ internal sealed partial class MirBuilder
                         MirConstKind.Integer,
                         BoundType.ISize,
                         ~FoldPlace(new(~(int)template.Consts[argument.Arg].Bits)).Root))) : FoldOperand(argument));
+            }
+
+            if (call && terminator.Callee is { Kind: MirCalleeKind.Requirement, Symbol: { } requirement, Subst: { Self.HasAbstractPart: true } open } &&
+                subst is not null && compilation.Types.ProjectedReceiver(requirement, this.compositions[open]) is { } projected)
+            {
+                // SPEC 8.6.2, 9.6.1: the Self the copy closes makes the witness's call, so an inherited witness's receiver, operand 0, is
+                // the borrow of its base (TyCtxt.ProjectedReceiver), formed by the one borrow rule (Ref, Lent) as a selected call's is. Its
+                // temp is the caller's (the header's receivers' borrows), not a copy local: the borrow forms no Loan of its own (SPEC 15.6.3),
+                // and the caller's temporaries scope ends it with the default's other temporaries, before the next default (SPEC 7.2.3).
+                var receiver = this.Temp(projected, node);
+                var source = this.FoldInfo(terminator.Source) with { StatementStart = false };
+                this.body.Push(this.current, MirStatement.Assign(receiver, this.Ref(this.arguments[start].Place, projected, input: true), source));
+                this.arguments[start] = MirOperand.Move(receiver);
             }
 
             var first = call ? this.Flush(start) : this.body.Cases.Length;
