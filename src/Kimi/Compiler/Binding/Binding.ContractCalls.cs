@@ -41,9 +41,10 @@ public sealed partial class Binding
         group.PropertyRequirement = false;
         group.Properties.Clear();
         group.PropertyContracts.Clear();
+        var name = TypeSpelling(member.Right);
         if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
         {
-            Add(own);
+            Add(Named(own));
         }
 
         // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, each non-Alias row of Enumerate's rows (the use is
@@ -54,30 +55,31 @@ public sealed partial class Binding
         {
             if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
             {
-                Add(shape);
+                Add(Named(shape));
             }
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
 
-        // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
-        // concrete integers gain no members. Temporary: this clause names Position apart from PrimitiveIntegerSupplies until
-        // PLAN G776 decides the member calls an entailed built-in conformance gives; it then reads that list or goes.
-        if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope, member))
+        // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter, and the
+        // arithmetic Contract whose method is the member's name, a numeric witness under generic evidence; concrete integers gain no
+        // members. SPEC 8.3.3 (G1406-56 (i)): the PrimitiveInteger judgment is asked only where its answer adds a member of the name,
+        // so a lookup whose result cannot depend on it rests on no answer of it. Temporary: this clause names Position apart from
+        // PrimitiveIntegerSupplies until PLAN G776 decides the member calls an entailed built-in conformance gives; it then reads
+        // that list or goes.
+        var positional = this.Library.Position.Contract is { } position ? Named(position) : null;
+        KimiDeclarationId? arithmetic = null;
+        for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider && arithmetic is null; id++)
         {
-            Add(position);
+            arithmetic = name == ArithmeticContractSyntax.Method(id) ? id : null;
         }
 
-        // Numeric witnesses are requirements under generic evidence, not named numeric members.
-        if (this.IsGenericInteger(type, scope, member))
+        if ((positional is not null || arithmetic is not null) && this.IsGenericInteger(type, scope, member))
         {
-            for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider; id++)
+            Add(positional);
+            if (arithmetic is { } id)
             {
-                if (TypeSpelling(member.Right) == ArithmeticContractSyntax.Method(id))
-                {
-                    Add(this.ArithmeticReference(id, type).Contract!);
-                    break;
-                }
+                Add(Named(this.ArithmeticReference(id, type).Contract!));
             }
         }
 
@@ -131,9 +133,12 @@ public sealed partial class Binding
         group.Active = group.Members.Count != 0;
         return group.Active ? group.Members[0] : null;
 
-        void Add(BoundContract shape)
+        // The members of the name a Contract holds: the one reading of its member table, before any judgment adds them.
+        List<BoundRequirement>? Named(BoundContract shape) => name is not null && shape.MembersByName.TryGetValue(name, out var members) ? members : null;
+
+        void Add(List<BoundRequirement>? members)
         {
-            if (TypeSpelling(member.Right) is not { } name || !shape.MembersByName.TryGetValue(name, out var members))
+            if (members is null)
             {
                 return;
             }
