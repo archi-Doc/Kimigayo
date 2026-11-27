@@ -276,8 +276,10 @@ public class UserArithmeticOperatorTest
     // written Contract premise (x41n, x41o, x41t), on either side of the identity (x41m, x41md; d2n, whose identity names the projection),
     // joined by decomposition (y4n), by congruence (x41p) or by a premise of the member (x41s, y1n, y1m,
     // y1d) is found where the premises first meet (x41s2 at Box, g stating nothing); x41e and x41f keep their independent 8.2.3 conflict
-    // and 8.3.2 contradictory evidence. Pinned accepted, Closure(view)'s limit (PLAN dm1's class 1 row): x41i, an identity supplied only at depth; y3n and
-    // y3s, both premises below the premises' Types.
+    // and 8.3.2 contradictory evidence. An identity supplied only at depth is a ground however deep (8.2.3): x41i's `M is Gi` makes
+    // C B through Zi's clause, so its two premises are one pair, rejected at f as x41d writes it directly (G1406-49 (2)); x41w, the same
+    // depth with a pair of two operations, is valid. Pinned accepted, Closure(view)'s limit (PLAN dm1's class 1 row): y3n and y3s, both
+    // premises below the premises' Types.
     [Theory]
     [InlineData("a0n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
     [InlineData("a0r", "func f<L, R>(left: ref/L, right: ref/R)\n    R is LeftAddable<L>\n    L is Addable<R>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
@@ -350,7 +352,9 @@ public class UserArithmeticOperatorTest
     [InlineData("x41x", "contract K1\n    associate A\n    Self.(K1).A is LeftAddable<Self>\ncontract W\n    associate C is K1\n    associate D\n    Self.(W).D is Addable<Self.(W).C>\ncontract Z\n    associate E is W\nfunc f<L>(left: ref/L)\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    ()\n" + MainLine, "clean", null)]
     [InlineData("x41e", X41 + "func f<L, T, U>(left: ref/L)\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    T is Option<U>\n    T is Array<U>\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
     [InlineData("x41f", X41 + "func f<L, T>(left: ref/L)\n    T is Copy\n    T is not Copy\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
-    [InlineData("x41i", X41i + "func f<M>(value: ref/M)\n    M is Gi\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    M.(G0).G.(Z0).A is LeftAddable<M.(G0).G.(Z0).C>\n    ()\n" + MainLine, "clean", null)]
+    [InlineData("x41i", X41i + "func f<M>(value: ref/M)\n    M is Gi\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    M.(G0).G.(Z0).A is LeftAddable<M.(G0).G.(Z0).C>\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("x41d", X41i + "func f<M>(value: ref/M)\n    M is Gi\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    M.(G0).G.(Z0).A is LeftAddable<M.(G0).G.(Z0).B>\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("x41w", X41i + "func f<M>(value: ref/M)\n    M is Gi\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    M.(G0).G.(Z0).A is LeftMultipliable<M.(G0).G.(Z0).C>\n    ()\n" + MainLine, "clean", null)]
     [InlineData("x41iv", X41i + "func f<M>(value: ref/M)\n    M is G0\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    M.(G0).G.(Z0).A is LeftAddable<M.(G0).G.(Z0).C>\n    ()\n" + MainLine, "clean", null)]
     [InlineData("y4n", X41 + "func f<L, T>(left: ref/L, value: T)\n    L is Z\n    T is Option<L.(Z).E.(W).D>\n    T is Option<L.(Z).E.(W).C>\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd", "f<")]
     [InlineData("y1n", Y1 + "struct Box<M>\n    M is G0\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    public func g(self)\n        M is Gq\n        ()\n" + MainLine, "1*ArithmeticDirection_Kd", "g(self)")]
