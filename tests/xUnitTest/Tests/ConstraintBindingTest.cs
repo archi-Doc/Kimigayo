@@ -872,6 +872,24 @@ public class ConstraintBindingTest
         Assert.Equal(expected, string.Join(' ', records.Select(static x => x.Text is { } text && !text.Contains('\n') ? x.Code + "@" + text : x.Code)));
     }
 
+    // SPEC 15.6.1, 15.4.2, 15.3.3 (G1485): a function's Constraint clause's Type is no signature Type, so its own Origin relations are
+    // judged at the declaration, at the clause's outermost Type, as a struct clause's are: unproven under no premise (d, nested o, a Contract
+    // argument k), entailed by the function's premise (dv), none for a Type declaring no relation (dr). A body local over T keeps its own
+    // record (i).
+    [Theory]
+    [InlineData("    T is S during p\n", "UnprovenOriginRelation_Kd@S during p")] // clfd
+    [InlineData("    T is Option<S during p>\n", "UnprovenOriginRelation_Kd@Option<S during p>")] // clfo
+    [InlineData("    T is K<S during p>\n", "UnprovenOriginRelation_Kd@K<S during p>")] // clfk
+    [InlineData("    T is S during p\n    origin p outlives static\n", "")] // clfdv
+    [InlineData("    T is R during p\n", "")] // clfdr
+    [InlineData("    T is S during p\n    let x: Option<T> = .None\n", "UnprovenOriginRelation_Kd@S during p UnprovenOriginRelation_Kd@Option<T>")] // clfi
+    public void AFunctionClausesTypeIsJudgedAtTheDeclaration(string clauses, string expected)
+    {
+        const string Prelude = "struct S {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nstruct R {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\ncontract K<U>\n";
+        var records = ContextualCaptureTest.PublishedRecords(Prelude + "func g<T>(p: ref/i32, t: T) -> i32\n" + clauses + "    return 0\npublic func main() => ()\n");
+        Assert.Equal(expected, string.Join(' ', records.Select(static x => x.Code + "@" + x.Text)));
+    }
+
     // SPEC 7.5, 8.4.2, 23.1.2 (G507): a body's leading Constraint Clause is a Constraint whatever its subject names, and one invalid subject
     // is one record: never one on a later premise, on the clause over a failed subject or on a valid requirement. Each valid twin has none.
     [Theory]
