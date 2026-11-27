@@ -38,6 +38,27 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.False(cut.Accepted);
     }
 
+    // G144-32, IMPL A.4 by hand: a root `f` stands at depth 1 (the generated pair counts no level), its Body at 2, `return` at 3 and
+    // the `1` inside n parentheses at n + 4 <= L, so n = 1,020 is kept; `f` in `group G` (depth 1) stands at 2, so there n = 1,019.
+    [Fact]
+    public void ARootFunctionIsKeptOneLevelDeeperThanTheSameFunctionInAGroup()
+    {
+        (string Kept, string Cut)[] rows =
+        [
+            (Source("parentheses", 1020), Source("parentheses", 1021)),
+            (Under("group G", Source("parentheses", 1019)), Under("group G", Source("parentheses", 1020))),
+        ];
+        foreach (var (kept, cut) in rows)
+        {
+            var accepted = this.Compile(kept);
+            Assert.Empty(accepted.Records);
+            Assert.True(accepted.Accepted);
+
+            var record = Assert.Single(this.Compile(cut).Records);
+            Assert.Equal((nameof(DiagnosticCode.NestingLimit_Kd), DiagnosticCategory.Resource), (record.Code, record.Category));
+        }
+    }
+
     [Fact]
     public void EachCutOfOneBodyIsItsOwnRecord()
     {
@@ -237,9 +258,9 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         return source.Append(' ', 4 * levels).Append("let v: i32 = 1\n").ToString();
     }
 
-    // source as a directive's block: each line indented under it.
-    private static string Under(string directive, string source)
-        => $"{directive}\n{string.Concat(source.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => $"    {x}\n"))}";
+    // source as the block of a header line (a directive or `group G`): each line indented under it.
+    private static string Under(string header, string source)
+        => $"{header}\n{string.Concat(source.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => $"    {x}\n"))}";
 
     // The text a span covers.
     private static string Text(string source, SourceSpan span)
