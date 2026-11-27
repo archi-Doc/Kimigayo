@@ -17,9 +17,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // Closure(view) (the class header's): the entries the outermost request formed (dropped when it returns unless Kept); the running
-    // pass's entry of each (view scope, requirement Contract), its T(G) entry (GroundsEntry) and its free entries, each with its lists
-    // and their capacity, are the pass's part's, handed over by EnterPass (enumerateIndex, enumerateGrounds, enumerateIndexPool below;
-    // PassPart.EnumerateIndex, PassPart.GroundsIndex).
+    // pass's entry of each (view scope, requirement Contract), its T(G) entry (GroundsEntry), lent by position, and its free entries,
+    // each with its lists and their capacity, are the pass's part's, handed over by EnterPass (enumerateIndex, enumerateGrounds,
+    // enumerateGroundsPool, enumerateIndexPool below; PassPart.EnumerateIndex, PassPart.GroundsIndex, PassPart.GroundsPool).
     private readonly List<(EvidenceView, BindingSymbol?)> enumerateOwned = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
@@ -39,6 +39,7 @@ public sealed partial class Binding
     private readonly List<BoundType> extendRoots = new(); // c2-4b: a closure's roots (CloseRoot, ExtendRound), a request table (LeaveRows)
     private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
     private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateGrounds; // e2-7 (i): the running pass's T(G) entries.
+    private List<ViewIndex> enumerateGroundsPool; // their entries: a pass's k-th T(G) key takes the k-th (GroundsEntry)
     private Stack<ViewIndex> enumerateIndexPool; // The running pass's free entries.
 
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
@@ -355,7 +356,9 @@ public sealed partial class Binding
     // (ForgetKeptTables, ClearClosure) while T(G) is memoized for `serial` and every reading it formed was kept, read as IndexOf reads
     // a Kept entry (readings only in KeptRegion); otherwise formed again in place. The first proof limit its formation wrote (its
     // readings', T(G)'s) is kept with it and joined at each read (W6, G1406-43 (2)), so a closure reading it rests on what one that
-    // formed it rests on.
+    // formed it rests on. Its entry is lent by position, as a pass's inline summaries are (Binding.InlineLayouts.cs): a pass's k-th
+    // key takes GroundsPool's k-th entry (enumerateGrounds only grows within a pass), so a warm pass forms each view's entry in the
+    // object, and over the capacity, that formed it in the pass before; a shared free entry would come back in another role each pass.
     private ViewIndex GroundsEntry(BindingScope scope, EvidenceView view, int serial)
     {
         var key = (view, this.activeRequirementContract);
@@ -367,7 +370,13 @@ public sealed partial class Binding
 
         if (entry is null)
         {
-            entry = this.enumerateIndexPool.Count != 0 ? this.enumerateIndexPool.Pop() : new();
+            var count = this.enumerateGrounds.Count;
+            if (count == this.enumerateGroundsPool.Count)
+            {
+                this.enumerateGroundsPool.Add(new());
+            }
+
+            entry = this.enumerateGroundsPool[count];
             this.enumerateGrounds[key] = entry;
         }
 
@@ -822,16 +831,11 @@ public sealed partial class Binding
         this.enumerateOwned.Clear();
     }
 
-    // The pass ended (ResetCapabilities, as the pass runs again): every entry of the pass goes back to the pass's pool, and the head
-    // depths and supplies go.
+    // The pass ended (ResetCapabilities, as the pass runs again): every request entry of the pass goes back to the pass's pool, the T(G)
+    // entries stay lent by position (GroundsEntry), and the head depths and supplies go.
     private void ClearClosure()
     {
         foreach (var index in this.enumerateIndex.Values)
-        {
-            this.enumerateIndexPool.Push(index);
-        }
-
-        foreach (var index in this.enumerateGrounds.Values)
         {
             this.enumerateIndexPool.Push(index);
         }

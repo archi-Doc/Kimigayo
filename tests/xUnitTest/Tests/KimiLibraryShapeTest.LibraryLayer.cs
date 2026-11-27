@@ -244,6 +244,7 @@ public partial class KimiLibraryShapeTest
     {
         var c = Bound(program);
         LibraryLayer.AssertLivePrefix(c.Binding, "Binding.inlineSummaryPool", "Binding.inlineSummaries");
+        LibraryLayer.AssertLivePrefix(c.Binding, "Binding.enumerateGroundsPool", "Binding.enumerateGrounds");
         SameLayer(program, EmptyProgramLayer.Value, LibraryLayer.Dump(c), c.Library.Layer.TypeCount);
     }
 
@@ -446,6 +447,8 @@ public partial class KimiLibraryShapeTest
             ["Binding.comparisonPlans"] = Rule.Program, // The legacy comparison plans, each current in the run that formed it (n7).
             ["Binding.enumerateIndexPool"] = Rule.Program, // The running part's free epoch index entries (EnumerateIndex's, returned at the epoch's end).
             ["Binding.programPart.EnumerateIndexPool"] = Rule.Program, // The same pool, the program pass's part's.
+            ["Binding.enumerateGroundsPool"] = Rule.Program, // The running part's T(G) entries, lent by position: its live prefix is enumerateGrounds' values (AssertLivePrefix).
+            ["Binding.programPart.GroundsPool"] = Rule.Program, // The same pool, the program pass's part's.
             ["Binding.retentionContracts"] = Rule.Program, // HandedSignatures' walk.
             ["Binding.retentionReached"] = Rule.Program,
             ["Binding.retentionWalk"] = Rule.Program,

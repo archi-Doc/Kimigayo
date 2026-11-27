@@ -311,7 +311,8 @@ public sealed partial class Binding
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
     [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions), nameof(borrows))]
     [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations), nameof(foreignFailures))]
-    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateGrounds), nameof(enumerateIndexPool), nameof(aliasesByDocument), nameof(boundContracts))]
+    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateGrounds), nameof(enumerateGroundsPool), nameof(enumerateIndexPool))]
+    [MemberNotNull(nameof(aliasesByDocument), nameof(boundContracts))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -337,6 +338,7 @@ public sealed partial class Binding
         this.enumerateIndex = part.EnumerateIndex;
         this.enumerateIndexPool = part.EnumerateIndexPool;
         this.enumerateGrounds = part.GroundsIndex;
+        this.enumerateGroundsPool = part.GroundsPool;
         this.aliasesByDocument = part.AliasesByDocument;
         this.boundContracts = part.BoundContracts;
     }
@@ -436,8 +438,10 @@ public sealed partial class Binding
         internal Stack<ViewIndex> EnumerateIndexPool { get; } = new();
 
         // e2-7 (i): each view's T(G) entry (Binding.ContractSolver.Rows.cs: GroundsEntry), a per-pass memo of EnumerateIndex's lifetime,
-        // its entries from the same free entries.
+        // its entries lent by position from GroundsPool (the pass's k-th key takes the k-th), never from the free entries.
         internal Dictionary<(EvidenceView View, BindingSymbol? Requirement), ViewIndex> GroundsIndex { get; } = new();
+
+        internal List<ViewIndex> GroundsPool { get; } = new();
 
         // The unnamed aliases of each source document of the pass (Binding.Aliases.cs: PrepareAliases, read by the name lookups): each
         // pass's own, emptied by its reset and pruned of its emptied documents by its own PrepareAliases, so the library pass, which
