@@ -10436,10 +10436,9 @@ resumed by R4-M86 (2026-10-20).
     only through the own Loan SPEC removes), and popLateBad, swapTwoBad, the two-read forms and lend3Repl stay accepted, until Order
     3 (replaced by R4-M138, A5's Chain closure, which rejects them).
   - Transfer keys (`Binding.Retention.Transfers.cs`), read once per contract at the first output meeting Unstated, never by name:
-    Iterator's `next` (`SelectsWitness(callee, Self, Iterator)` and `ResolveConformance(Self, Iterator)` Proven under TyCtxt's premise
-    scope for an instance with an abstract part, passed to `Binding.Retains` and from it, as `RetentionRows`' parameter, to
-    `TransferOf` (null for an instance without an abstract part, for C8's closure path and from `RetainsErased`, which has no callee),
-    else the library root's; `exchange`, `swap` by their catalog IDs; 4.6–4.9 by declaring identity (Array, Dictionary, Slice,
+    Iterator's `next` (`SelectsWitness(callee, Self, Iterator)` and `ResolveConformance(Self, Iterator)` Proven under the scope TyCtxt
+    read the instance under, passed to `Binding.Retains` and from it, as `RetentionRows`' parameter, to `IteratorTransfer` (formerly
+    `TransferOf`; null only from `RetainsErased`, which has no callee; superseded in part by BU-276: the library root's is gone); `exchange`, `swap` by their catalog IDs; 4.6–4.9 by declaring identity (Array, Dictionary, Slice,
     UniqSlice, FromEnd, Start, End, Range, ClosedRange, ResolvedRange, the fixed array's two groups (`WitnessMembers.FixedArray` and
     `FixedArrayEntries`, read through `KimiLibrary.MembersOf`)). Under them a borrowed input keeps its
     Chain only; `exchange`'s result only its target's Chain; for §4.9 only (Array, Dictionary) the receiver's storage keeps of the
@@ -17793,8 +17792,9 @@ resumed by R4-M86 (2026-10-20).
     reading's view; under `T is U` a writer of U writes T), one rule for `Handed`, `Filled` and `Routes`. `Identical` judges in the
     view of the body the comparison stands in, the computation's own (`Binding.retentionViews`, set once per computation; ruling
     57): the callee's constraint scope for its kept reading (`Handed`, `Routes`, `HiddenKind`, `Filled` in a kept binding; ruling
-    59), the calling definition's premise scope TyCtxt read the instance under for the instantiated one (the callee's where it read
-    it under none).
+    59), the scope TyCtxt read the instance under for the instantiated one (`TyCtxt.Retains`: the calling definition's where the
+    call's Subst brings an abstract part, else the callee's own; it never reads a callee's instance under none, and an erased
+    signature (`RetainsErased`) has no view, as before; BU-276).
   - The write test's two facts (the merge with G963, rulings 67, 69 and 70): "writes what T hides" is BU-225's `HiddenWritable`,
     which `WrittenThrough` reads as `HiddenWritableBelow`; "writes a value of T" is `FreshBelow` (`Binding.Retention.Atoms.cs`),
     BU-1's fresh value past a part held by value, an own step and a raw layer's pointee, read by `WrittenThrough` at reach Own
@@ -20074,6 +20074,37 @@ resumed by R4-M86 (2026-10-20).
     leaves the literal failed, so InfersUnit reads false either way.
   - **Rejected:** InfersUnit reading `InfersResult` for a function and the context otherwise (a clause per form, two stores for one
     fact); clearing the row only where the rebinding fixes the result (a second copy of BindClosureHeader's rule).
+- **BU-276 A function's own Types are read under its own identity premises: `TyCtxt.Retains` decides the scope once (PLAN G986,
+  the Binding half)** (2026-11-28; Front, Binding; Q17 class 1 with A5's storing gate; G986 rulings 1-6 and 10; supersedes BU-40's
+  transfer-key parenthesis and BU-231's "(the callee's where it read it under none)") SPEC 8.2.3 ("All Type checking in the scope
+  treats identical Types as one Type"; the scope is the constrained declaration), 15.6.4. `TyCtxt.Retains` chose the scope an
+  instance is read under by `HasAbstractPart(subst)` alone, so a function's declared record (`Retains(f, null, f)`, the contract
+  `MirBorrows.BeginStoring` reads) and a call whose Subst brings no abstract part read their abstract Types under no premise: under
+  `T is V` slot's T and y's V stayed two carriers, under `T is raw/u8` rule A's raw layer stayed hidden. The consumer answered the
+  question again (`premises ?? own` in `Binding.Retains`), and `IteratorTransfer` a third time (the library root).
+  - The rule: `TyCtxt.Retains` reads the instance as `TyCtxt.Premised` makes it in the scope of the definition whose abstract Types it
+    names: the calling definition's (`EffectPremises(definition)`) where the call's Subst brings an abstract part, else the callee's own
+    `ConstraintScope(callee.Declaration)`, `TyCtxt.Premised`'s scope (no Subst: a declared record; a Subst bringing none: a concrete
+    call, a nested function's call naming its outer's Types). It is the `RetentionKey`'s scope (one per callee, so no key splits) and
+    `Binding.Retains`' instantiated view, a non-null parameter: `retentionViews = (ConstraintScope(callee), premises)`. A Value callee
+    (C8) passes `ConstraintScope(owner)`. `TyCtxt.Instance` applies the one premising, `Binding.CallableContractType`, whose owner
+    decides which Type is its own image.
+  - Deleted: `premises ?? own` (`Binding.Retains`) and `IteratorTransfer`'s `premises ?? EffectPremises(null)` (`premises!`: every
+    computation with a callee has its scope; `RetainsErased` has neither and returns before reading it). The Iterator transfer key
+    reads the callee's scope for a Subst without an abstract part, and `ConstraintScope(owner)` for a Value callee, where it read the
+    library root's. For a concrete Self both prove alike; no row covers a Self that names an enclosing declaration's abstract
+    Types (a nested function's call), which the callee's scope now reads.
+  - Rejected: `EffectPremises(callee)` for the declared reading (an override's implementation premises are not `TyCtxt.Premised`'s
+    scope); a null scope for a Subst without an abstract part beside a no-Subst rule (one instance read two ways); premising in
+    `Binding.Retains` (TyCtxt keys the memo by the scope); a `!HasAbstractPart` guard in `Instance` (a copy of
+    `CallableContractType`'s own early-out under another condition); a null check in `IteratorTransfer` (a silent default).
+  - Cost: `TyCtxt.Premised` on c2-4b's form is linear on a DAG image (`f<T0..Tn>(v: T0)`, `Ti is (Ti+1, Ti+1)`: Analyze 1.1, 1.5,
+    1.1 ms and `Retains(f, null, f)` 23,024, 32,880, 38,432 B at n = 8, 16, 20), so 4652ea85a's per-query tables were not ported
+    and BU-64 stands.
+  - Rows: `RetentionTest.AFunctionsDeclaredRecordReadsItsOwnTypesUnderItsPremises` (10) and
+    `ACallReadsItsInstanceInTheScopeOfTheDefinitionWhoseTypesItNames` (2). No verdict moves: the program rows bodyIdBad and
+    bodyIdLocalBad (I, `UnretainedRawStore_Kd`) stay accepted until the MIR half (the Middle: `ReadsRaw` and the drop elaboration
+    read the premised Type).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
