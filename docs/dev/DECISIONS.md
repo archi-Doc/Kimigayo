@@ -3127,7 +3127,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     before a later statement reads its Type: (a, R1) `ResolveInitializerOrigins` gives an initializer's omitted Origin whose bounds reach
     nothing but its own variables (none, or a cycle among them) the region, in or outside the local's Type, in `let` and `var` locals; it
     runs for every local whose initializer formed one (the initializer declaration is created with it: the reviewer's H holds, no new
-    field); (b, R2) `SolveLocalBounds` keeps the monotone principal search and, after all passes, gives a contravariant slot whose
+    field); (b, R2; superseded by R7-M128, whose `FixDeclaredRegions` reads the declaration's bounds) `SolveLocalBounds` keeps the monotone principal search and, after all passes, gives a contravariant slot whose
     candidate is not proven to outlive each lower bound the region (order-independent); (c, R3) a written slot that `InferLocalOrigins`
     binds to itself gets the region. One count per local numbers the slots (`BindVariableCore`: initializer variables, then the Type's).
     B1's hole cannot recur: no `Inference` atom of a local stays unresolved, and `IsVerifiedOriginObligation` is unchanged.
@@ -29215,7 +29215,7 @@ Closure row of `MirCases.Branch`).
     Binding-time reading, which `SolvedStatic` reads too; the code review's B1): a Binding-time judgment in a body nested in it, as a
     Closure's body bound at its literal, reads the region, and Final reads the candidate.
   - **Two members for SPEC 15.3.6's table, staged:** the call solve keeps its own reading, `RowCandidate` (BU-221's member; the
-    solve's fixpoint, the representative and `SolveLocalBounds` read it), which departs from the table twice (a covariant variable
+    solve's fixpoint, the representative and `SolveLocalBounds` read it; R7-M128 removed the last), which departs from the table twice (a covariant variable
     without an upper bound takes the lower bound; an invariant one gives none unless its bounds are proven equal); both share
     `StrongestLowerBound`. Its contract names the departures and its removal condition: PLAN G1208 (D-998), the unit in which the solve
     reads the table itself and its records move. No single rule is claimed until then.
@@ -31155,6 +31155,115 @@ Closure row of `MirCases.Branch`).
     - ruling 7's (4): T1-V newly rejected.
   - Reason: one witness rule and one assembly serve Binding, A4, A5, the validator, the collector and code generation. The receiver
     a closed-Self call borrows is its witness's, as SPEC 8.6.2 and 9.6.1 state.
+- **R7-M128 R7-O2 (A4-L) An annotated `let` local's omitted Origin is a region slot of the local whose value its declaration fixes**
+  (Middle, 2026-11-28; Q-839, D-1356; Major: design `artifacts\units\r7o2-rem\design-a4l.md`, the review `review-a4l.md` (ACCEPT
+  WITH CONDITIONS C1-C8), the Middle's rulings `m-ruling-a4l.md` (Q-A to Q-D), `m-ruling-a4l-impl.md`, `m-ruling-a4l-impl-2.md`,
+  `m-ruling-a4l-r2.md`, `m-ruling-a4l-o544.md` and `m-ruling-a4l-p2r.md`; the Front's review of every Binding hunk; the Middle's RP17 consent) SPEC 15.3.6, 15.4.4, 15.6.1, 15.6.5, 23.1.2. Closes PLAN G194
+  (OQ-1 (c), R4-M94). Extends R7-M89 (the one reading) and R8-M56 (`PublishRegionValue`); supersedes in part R4-M112 (b, R2), R8-M56's
+  `SolveLocalBounds` reading and its "`CheckTypeUse` also records the initializer's Origin as written", and R7-M89's
+  `SolveLocalBounds` reader of `RowCandidate` (below).
+  - **Rule.** `InferLocalOrigins` gives every omitted slot the initializer's Type matches a region slot of the local, one branch for
+    `let` and `var`. The declaration records the region's bounds in the region graph: its one fit (`CheckTypeUse`), its Type's
+    well-formedness and its clauses, the relations SPEC 15.3.6 says constrain an inference variable ("constrained by variance,
+    relations and uses"; well-formedness is one of 15.6.1's Origin relations). `FixDeclaredRegions` (Binding.LocalRegions) records
+    the clauses as region bounds without an obligation row (`JudgeLocalClause` still judges each clause once, after the body) and
+    publishes each of a `let` local's regions with no value at the end of its declaration with `VarCandidate`, SPEC 15.3.6's table
+    over those bounds; a region with no candidate stays a region with no value (R4-M112). A row at no position (Unused) takes the
+    covariant candidate, else the contravariant one, as 15.3.6 states. Later uses read the value as published; a re-bind of the
+    body reads it and does not publish again (15.4.4: the declaration fixes its regions once). The D5 Site of a local clause's record
+    is the initializer when an end resolves to a region slot of the local that no equality fixed.
+  - **Layer well-formedness at the declaration.** A local annotation's layer well-formedness is formed by its declaration over the
+    resolved Type, after local origin inference (SPEC 15.3.3, 15.3.6); CompleteOrigins publishes the Local position's sites. It removes
+    FixDeclaredRegions' false premise: the rows were formed when `BindType` resolved the annotation, before `InferLocalOrigins` gave
+    the omitted slots their regions, so no well-formedness row bounded them. The owner stays TypeOrigins
+    (`RetainLocalWellFormedness`, called by the declaration between its own InferLocalOrigins and FixDeclaredRegions); only the time
+    moves. The skip covers the annotation alone (LocalOrigins' `IsWithin`), so a Type written inside the initializer keeps its rows
+    where it forms; each layer reads its node's `node.BoundType` after InferLocalOrigins' rewrite (the fact D1b also reads), and the
+    rows of the layers that formed stay when the annotation's Type did not resolve (F's C1, C2). The layer step shares
+    CompleteOrigins' condition and formation as one member taking the caller's discharge (`RetainLayerOutlives`). It does not join
+    AddTypeClauseObligations' walk, which is also FormNestedResult's, whose layers CompleteOrigins forms at the Result position.
+  - **The layer sites (a new representation; `m-ruling-a4l-ws.md` ruling 5).** CompleteOrigins stays the one owner of a layer's
+    site rule (PLAN G412: a transparent wrapper forms the row only where it supplies the outer Origin, and a layer whose wrapper
+    supplies its outer Origin has none to relate). Inside a local's annotation it publishes each site it decides to the declaration
+    in place of forming the row (`localLayerSites`, Binding.TypeOrigins: one list of (local, site) pairs, filled at completion,
+    cleared by each pass's reset), and `RetainLocalWellFormedness` forms the rows at the local's own sites, its only input, which it
+    removes; it restates no wrapper term. So the declaration moves the time of formation, never the site: wf_slice_bad's and
+    wrap_paren_bad's records stay at the supplying wrapper, as on dev. Rejected: `supplied` published as a node fact (its reader
+    would re-decide the site from it, a second copy of the rule).
+  - **The D5 Site's equality exclusion.** `LocalClauseRow`'s local-slot test skips a region its equality fixed (the published
+    `LocalRegion.Equality`): a written or equality-fixed slot is not a local's inferred region, so the initializer supplies neither
+    end and the record stays at the clause, as on dev (e2, eq_bad, eq_rev_bad and C7's projection-dropped slot that `x.s == p`
+    fixes; eq_mix's omitted slot beside it stays the initializer's). A clause on an omitted slot the initializer never matched and no
+    equality fixes is the one site move: inv_low_bad's record moves from the clause to the initializer (`m-ruling-a4l-p2r.md` 1).
+  - **Reading cycles (the owner's O-544 (b), 「O-544 b」, through K 11-27 10:00).** A sibling region is read as its candidate in
+    turn (SPEC 15.3.6). Regions whose candidates read each other, a reading cycle (`FixWaiting`, Tarjan's strongly connected sets
+    over the bounds each member's own `VarCandidate` reads: its upper bounds unless its row is contravariant, its lower bounds where
+    `ReadsLowerBounds` takes them), are each their own variable over their own row: a bound that is another member stays that
+    variable as recorded, is never read through its candidate, and is no proven lower bound (`LowerBound` has none wherever one
+    names a member, a sole one included; where another lower bound, `static` or an operand of a meet that names the member, is
+    proven by the solver rules alone to outlive the others, SPEC 15.3.6 still takes it: PLAN G-new (l), a value difference with no
+    known acceptance difference, c4_static accepted on dev and the head). A member upper bound that is not contravariant and reaches
+    back closes an outlives cycle and is read through with it as one variable, by SPEC 15.3.6's "Variables connected by a cycle of
+    `outlives` relations are equal and solved as one" (chapter 15 :442; `ReadThrough`; cyc_ok and cyc_bad); a contravariant member is
+    not joined (a contravariant position gives a lower bound), a departure from :442, which joins every member of an `outlives` cycle
+    and solves one at both positions as invariant (PLAN G-new (c); cyc_contra is accepted and cyc_contra_bad rejected as before A4-L). This amends
+    `m-ruling-a4l-o544.md` ruling 1's "UpperBound meets a member as an atom", which still holds for a member that does not reach
+    back (`m-ruling-a4l-p2r.md` ruling 3 (2)). Each set's candidates are read while every member still waits and then published, a named member
+    first, so a value names no region with a value and the result is the same in every order of the `let` slots (c4_let and
+    c4_swap, s3_sib). The members are the declaration's waiting `let` regions alone: a `var` region of the same body is an atom of
+    their bounds, read as itself (`RegionBounded`'s walk), so `var r = x@ref` then `let s: uniq/(ref/i32) = r@uniq` gives s's
+    invariant slot r's region, never a value naming s's own region (the review's F B1).
+  - Specification: SPEC 15.3.6's read-in-turn sentence gains its reading-cycle clause, the owner's O-544 (b) (「O-544 b」, 11-27).
+  - **Cost (`m-ruling-a4l-impl-review.md` ruling 8 (a), (c)).** `OriginProofMetrics.CandidateSteps` counts BoundAtoms' calls, one
+    per region whose recorded bounds UpperBound's or ReachesRegion's walk enters, opt-in behind the existing null check; it is a
+    measurement column, not a closed vocabulary. OriginProofScalingTest's chain row (N = 16 to 128) asserts that the term walks,
+    CandidateSteps (2N) and the proof's insertions grow linearly. On a reading cycle, FixDeclaredRegions' walk is O(N·E²)
+    BoundAtoms steps (Θ(N³) on a ring of N slots), because each member's UpperBound runs one ReachesRegion walk per read-through
+    atom: a named limit (PLAN G-new (r): one upper-bound strongly connected pass at the close).
+  - **Removed:** `SolveLocalBounds`, `Forming.Inferred`, `OriginDeclaration.InferredVariance`, the `let` branch of `Bind` and the
+    `var` branch's own `AddOriginFit` (a second row of CheckTypeUse's relation), the publish loop; `RowCandidate`'s readers are the
+    call solve's fixpoint and the representative (PLAN G1208).
+  - **Supersedes in part**, each because its reason no longer holds:
+    - R4-M112 (b, R2), `SolveLocalBounds`' monotone principal search and its after-all-passes region for a contravariant slot: it
+      was the `let` form's own reading of the candidate, needed while the declaration's bounds were outside the region graph. They
+      are now in it, and `VarCandidate` reads them at the declaration; a slot with no candidate stays a region by R4-M112's rule
+      itself. Its (a, R1) and (c, R3) stand.
+    - R8-M56, "the omitted slot's candidate as `SolveLocalBounds` solves it": the candidate is `FixDeclaredRegions`' (this entry).
+      Its "the value is also a bound of the region in the region graph (`CheckTypeUse` also records the initializer's Origin as
+      written)": the value was fixed before the fit ran, so the graph needed the initializer's Origin recorded beside it. The fit now
+      runs first, while the region has no value, and its row is the bound the candidate reads; the value is that candidate, not a
+      second bound. The rest of R8-M56 stands, including its sentence on an immutable Pattern binding and BU-197.
+    - R7-M89's "`SolveLocalBounds` read it" (`RowCandidate`'s readers): a local's slot now reads `VarCandidate`, the table, so the
+      table's departures left are the call solve's (PLAN G1208) and the reading cycle's contravariant member (PLAN G-new (c)).
+  - **Record moves (Q13, the Middle's rulings Q-A and Q-B):** a local's Type's well-formedness bounds its slots, as A1's `var`
+    reading did: tcsf's and r7inv's well-formedness records go, and such programs with a valid fit are accepted (class 3: wfcov,
+    wf_ret_ok, wf_nest_ok, wf_use_ok_v, wf_clo_ok; each with one record "requires a outlives c" at the `let` on dev), and wf_ret,
+    wf_for, wf_match, wf_clo, wf_store, wf_nest, wf_prem_bad, wf_use_ok, wf_mid_bad and r7inv lose the well-formedness record that
+    rested on the missing bound (wf_use_ok keeps its fit's record, "requires c outlives a", by SPEC 15.3.6's meet rule;
+    `m-ruling-a4l-p2r.md` 2); tcsf keeps only the fit's record (dev's second judged its Type's clause with the slot fixed at the
+    initializer's Origin alone; the head's candidate is the meet, under which the clause holds); an invariant slot with a clause
+    upper bound takes the meet (R7-M113), so the fit, not the clause, is the record, one per failing part of the meet (SPEC 23.1.2,
+    R7-M66; inv_up 1 -> 1, inv_two 2 -> 2, the kind clause -> fit). The traces keep x.s and x.t apart in inv_up, inv_two and
+    inv_up_ok, so no set merges them (this replaces the Middle's ruling 7, a stop for such a merge). C14, sf_eq, h2, d6b, BU-68's
+    rows and C31 keep their records; bu68_r6's dependent ComparisonLoanConflict_Kd is unchanged and pinned (Q-C).
+    Commit 3 (the Middle's `m-ruling-a4l-ws.md` 2-4): the annotation's well-formedness bounds its omitted outer slot, whose value
+    satisfies it, so TypeBindingTest's d4i and rp1i (2 -> 1) and k6 (3 -> 2) lose that record and keep their independent ones
+    (class 4, counted); RepeatedSet's row (I program: a duplicate set and an unknown `zz`, records unchanged) is (Inferred, None) ->
+    (Fixed, None), count 0; G962 D1's row gains `origin w.b == q` and its sibling pins the one chain row on the original program
+    (V, count 0).
+  - **A4-P dropped** (the Middle's ruling, 11-27): SPEC 14.8.3 keeps an immutable Pattern binding's stored Type and 14.6.2 a `for`
+    binding's, so nf_pat and nf_for are valid, and dev accepts both (runs-dev.md); R8-M56's sentence and BU-197 stand, and OQ-1 (c)
+    is done by R8-M56, BU-197 and this entry.
+  - Rejected: publishing before `CheckTypeUse` (keeps dev's well-formedness records, but two readings of one table); forming the
+    clause rows at the declaration (Binding would judge local clauses twice or move the after-body judgment); keeping Bind's fit
+    (doubles the fit's record); A' (reopening the value at later uses, C14 1 -> 3; Revision 2); a `let`-only owner; O-544 (a), one
+    candidate per reading cycle at its members' joined row (the owner chose (b)); (b1), a variable read by its fixed bounds only
+    while its candidate is read (the result depends on slot order: c4_let against c4_swap, s3_sib); an invariant member also
+    following its lower bounds (it merges x.s and x.t in inv_up, inv_two and inv_up_ok); one record for a fit's meet that fails at
+    two operands (a clause for one form or a merge of records; SPEC 23.1.2 asks for each independent failure); joining the layer
+    rows to AddTypeClauseObligations' walk (it would form FormNestedResult's layers twice or need a mode); a sole member lower bound
+    as a candidate (the sentence has no exception); a member upper bound that reaches back read as an atom (the members' values
+    would name each other).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -33874,10 +33983,10 @@ Closure row of `MirCases.Branch`).
     `LocalBorrowType`'s opening, run inside no other query), its regions marked merged,
     which only BU-273's interim limit reads. A `let` local's region has a value, the Origin its declaration fixes for
     the slot (SPEC 15.3.6, 15.4.4): the initializer's Origin at that slot, or the omitted slot's candidate as `SolveLocalBounds` solves
-    it (dev's `let` rule, an earlier `let` region read as its value), published by `PublishRegionValue`. An Origin read at a use in the
+    it (superseded by R7-M128: the candidate `FixDeclaredRegions` publishes) (dev's `let` rule, an earlier `let` region read as its value), published by `PublishRegionValue`. An Origin read at a use in the
     region's own body (`SuppliedAtUse`, hence `OriginAtUse`) reads the region as its value; a nested function's signature or body, a
     Closure's included, reads the region itself, fixed there (15.3.4, BU-28). The value is also a bound of the region in the region
-    graph (`CheckTypeUse` also records the initializer's Origin as written). A `var` region publishes no value: a use in its own body
+    graph (`CheckTypeUse` also records the initializer's Origin as written) (superseded by R7-M128: the fit's row is the bound the candidate reads). A `var` region publishes no value: a use in its own body
     reads the region, and only `RegionValue` reads its meet.
   - **Each walk is per distinct part.** `CheckTypeUse`'s walk enters a pair of composite parts once per invariance, keyed by (actual,
     expected, invariant); a later meeting is a `FitPart` naming the earlier part (`Same`), whose obligations the decomposition already
