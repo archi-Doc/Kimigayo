@@ -14,13 +14,13 @@
 // zero-sized buffer address at `{{zero_sized_buffer}}`, Abort's os_error without an OS error at `{{no_os_error}}`, the release kinds at
 // `{{static_release_kind}}` and `{{heap_release_kind}}`) and a row's (RowConstants: the row's unmapped bound at `{{unmapped_bound}}`,
 // and its layer's OS-error prefix at `{{os_prefix}}` with its length at `{{os_prefix_length}}`), which only the row's runtime expansion
-// is given.
+// is given; and the one writer of a layer's call lines (Calls), each routine of a list called in turn, which a row's frame builds once.
 // Input: a target row (its Layer and UnmappedBound); the Windows, Linux and None rows' entry symbols and the table's C entry symbol
 // (TargetProfile.MainSymbol, the C path's start, Main); the test runtime's resource name
 // (Testing's TestRuntime.Resource); a marker's name, the row's constants and
-// the expanded text being written.
+// the expanded text being written; a layer's routine list.
 // Output: the records, read by code generation and by LlvmModuleText's frame and runtime splice; a row's layer and constants; a
-// constant marker's text appended.
+// constant marker's text appended; a routine list's call lines.
 // Invariants: each runtime routine has exactly one FunctionAbi, shared by its definition and every call (identity by reference);
 // layers' template names distinct; a layer's definition list lists each routine whose `{{name}}` marker its runtime templates (the
 // layer, the common part and the allocator) hold exactly once; a template spells a marker's constant only through its marker, and a
@@ -286,6 +286,21 @@ internal static class RuntimeAbi
     {
         var prefix = Layer(row).OsErrorPrefix;
         return [("unmapped_bound", Number(row.UnmappedBound)), ("os_prefix", prefix), ("os_prefix_length", Number(prefix.Length))];
+    }
+
+    /// <summary>Gets the call lines of a layer's routines, each a Unit routine without parameters, called in turn: one
+    /// <c>  call void @name()</c> line per routine, or the empty string for none. A row's frame builds them once (its start's calls).</summary>
+    /// <param name="routines">The routines.</param>
+    /// <returns>The lines.</returns>
+    internal static string Calls(FunctionAbi[] routines)
+    {
+        var text = string.Empty;
+        foreach (var routine in routines)
+        {
+            text += "  call " + routine.Result + " @" + routine.Name + "()\n";
+        }
+
+        return text;
     }
 
     // Appends the text of a runtime template's constant marker, a target-free one or one of the row's constants the expansion is given

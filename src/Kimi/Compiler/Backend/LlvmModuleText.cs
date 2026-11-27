@@ -322,8 +322,8 @@ internal static partial class LlvmModuleText
         return runtime.Replace(entry, entry + "  call void @__kimi_test_aborted()\n", StringComparison.Ordinal);
     }
 
-    /// <summary>A target row's module frame (the Tatara plan's B7b2a): its header, runtime, the runtime's test variant and footer, built
-    /// once per row (Frame).</summary>
+    /// <summary>A target row's module frame (the Tatara plan's B7b2a): its header, runtime, the runtime's test variant, the start's calls
+    /// and footer, built once per row (Frame).</summary>
     internal sealed class ModuleFrame
     {
         internal ModuleFrame(TargetProfile row)
@@ -333,6 +333,7 @@ internal static partial class LlvmModuleText
                 "target datalayout = \"" + row.DataLayout + "\"\n" + RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n" +
                 (row.FloatMarker is { } marker ? "@" + marker + " = global i32 0, align 4\n" : string.Empty);
             this.Runtime = ExpandRuntime(RuntimeTemplate(this.Layer), this.Layer.Definitions, RuntimeAbi.RowConstants(row)) + "\n";
+            this.StartCalls = RuntimeAbi.Calls(this.Layer.StartCalls);
             this.TestRuntime = this.Layer.TestRuntime is null
                 ? null
                 : ReportTestAbort(ReportTestAbort(this.Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage);
@@ -343,6 +344,10 @@ internal static partial class LlvmModuleText
 
         /// <summary>Gets the row's platform layer, whose start form the module's entry takes (ModuleCodegen's start).</summary>
         internal RuntimeLayer Layer { get; }
+
+        /// <summary>Gets the start's calls of the layer's routines before the startup root (RuntimeLayer.StartCalls), one call line each
+        /// (RuntimeAbi.Calls), which the start's entry writes.</summary>
+        internal string StartCalls { get; }
 
         /// <summary>Gets the header: target information, shared Types, and exactly one strong definition of the row's float marker (SPEC
         /// 21.4.7), where the row has one.</summary>
