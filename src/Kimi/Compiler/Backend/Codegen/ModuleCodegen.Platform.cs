@@ -28,16 +28,15 @@ internal sealed partial class ModuleCodegen
     private readonly StringWriter platformText = new(CultureInfo.InvariantCulture); // The platform part of the latest Write (Start).
     private readonly int[] witnesses = new int[PlatformRows.Rows.Length]; // The latest Write's witnesses' items, by row (-1: none).
 
-    // The witnesses' items, Binding's PlatformWitnesses, into witnesses before any item is written: an Application's roots 1 to 6 when
-    // it has a platform, in PlatformRows' order (positional; Compilation.PlatformRoots checks their count, so the span is trusted); -1 on
-    // a hosted row, in a test build and in a Library. This test repeats Compilation.OutputRoots' classification (a test build's roots are
-    // its tests, a Library's its generated roots, an Application's the witnesses' after its startup body only with a platform), and it is
-    // the one place ModuleCodegen reads roots 1 to 6 by position: Signature marks each witness's body (Abi.Flags.PlatformMember) and
-    // PlatformAdapters calls it.
+    // The witnesses' items, Binding's PlatformWitnesses, into witnesses before any item is written: roots 1 to 6, in PlatformRows' order,
+    // exactly when Binding published a platform (StartupResult.Platform, null on a hosted row, in a test build and in a Library), the
+    // fact on which Compilation.OutputRoots appends them (positional; Compilation.PlatformRoots checks their count, so the span is
+    // trusted); -1 otherwise. It is the one place ModuleCodegen reads roots 1 to 6 by position: Signature marks each witness's body
+    // (Abi.Flags.PlatformMember) and PlatformAdapters calls it.
     private void Witnesses(in StartupResult startup, ReadOnlySpan<int> roots)
     {
         this.witnesses.AsSpan().Fill(-1);
-        if (!this.IsTestBuild && startup.OutputKind != OutputKind.Library && startup.Platform is not null)
+        if (startup.Platform is not null)
         {
             roots[1..].CopyTo(this.witnesses);
         }

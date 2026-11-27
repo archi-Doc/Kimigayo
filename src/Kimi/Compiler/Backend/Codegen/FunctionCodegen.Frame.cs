@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Backend;
 // The function frame of FunctionCodegen (R5 package C 3.2 I2; DECISIONS R5-M65, R5-M89, R5-M102): each local's home and layout under the
 // signature ModuleCodegen gives the item, the entry block (the prologue: the homes' and the copy slots' allocas, the Value arguments'
 // stores) and the return. The argument order and the copy slots are FunctionCodegen.Arguments'. A platform member's body
-// (FunctionAbi.PlatformMember) brackets its every run with the none layer's enter, the entry block's last instruction, and its leave,
+// (FunctionAbi.PlatformMember) brackets its every run with the none layer's enter, the last before the entry block's branch, and its leave,
 // directly above each `ret` after the result is computed (IMPL 21.6.3); a path that does not return keeps the flag set.
 internal sealed partial class FunctionCodegen
 {

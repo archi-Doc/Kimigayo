@@ -155,7 +155,7 @@ idle:
 }
 
 ; A platform member's run (IMPL 21.6.3: every run of a member, the program's own calls included): code generation calls the enter at
-; the head of the member's body, which sets the flag and returns its value, and passes that value to the leave directly above each of
+; the head of the member's body, which returns the flag's value and then sets it, and passes that value to the leave directly above each of
 ; its returns, which restores it, not clears it, so a member's call of another member is an ordinary call.
 {{__kimi_platform_enter}}
 entry:
