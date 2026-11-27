@@ -476,7 +476,7 @@ public sealed partial class Binding
     // Returns the request's identity classes, in which PremiseRows forms its column. G1406-12, e2-7 R3.3 (SPEC 8.3.3 Limits): it answers
     // no judgment. Its rows at a Limited reading are cut at the round bound, so a reader whose answer the cut rows could make negative
     // (CallableSelection, ValueCalls, EffectDeclarations, CallableEffects; Retention at `true`, G1406-16 C3; discovery's miss:
-    // RequirementMember, G1406-57) refuses through ReadIdentityLimit with these classes and its asking node, once per reading;
+    // RequirementMember, FindAssociated, G1406-57) refuses through ReadIdentityLimit with these classes and its asking node, once per reading;
     // ExactAssumption and the adapter answer no rows judgment, and neither does discovery's found member (PremiseRows), whose use is
     // judged afterwards.
     private IdentityClasses? FirstRows(BoundType subject, BindingScope scope, List<PremiseRow> into)

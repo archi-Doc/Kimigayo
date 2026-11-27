@@ -467,7 +467,9 @@ public partial class TypeIdentityTest
     // record at the use, which 8.3.3 allows (F's G1406-39 and G1406-22: record selection, a Q13 class 4 move). e2-7 (G1406-26 D1;
     // SPEC 8.2.3, 8.3.3): Bt's closure (two recursive associates) is Limited under O-532 (b); a call asking `Option<T> is Result<T, i32>` differs
     // at known heads, an answer that reads no closure, so it keeps its UnprovenConstraint_Kd (bt-indep0), beside a let the closure
-    // leaves open, whose record is the limit's (bt-indep).
+    // leaves open, whose record is the limit's (bt-indep). G1406-57 (SPEC 8.5.2, 8.3.3): the fa- form reads `T.(Pq).Up.F`
+    // unqualified, so F is discovered over x's rows: at `T.Next^4.Up` it is found (fa-2, VALID, accepted); at 3 links x's class never
+    // closes (fa-o3, INVALID), so the miss is the limit's record, not a Language miss.
     public static TheoryData<string, string, string> RoundBoundProgramRows => new()
     {
         { "spm-a", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    need(x)\npublic func main() => ()\n", string.Empty },
@@ -506,6 +508,8 @@ public partial class TypeIdentityTest
         { "dm-o3", Dm(Up(3, "Mkr")), "AnalysisLimit_Kd" },
         { "dm-o67", Dm(Up(67, "Mkr")), "AnalysisLimit_Kd" },
         { "dm-np", Dm(string.Empty), "AnalysisLimit_Kd" },
+        { "fa-o3", Fa(Up(3, "Inner")), "AnalysisLimit_Kd" }, // G1406-57: before, UnresolvedBinding_Kd at the name (dev's too)
+        { "fa-2", Fa(Up(4, "Inner")), string.Empty },
         { "bt-indep", "contract Bt\n    associate L is Bt\n    associate R is Bt\n    associate Up\n    Self.(Bt).L.(Bt).Up is Self\n    Self.(Bt).R.(Bt).Up is Self\nfunc same<A, B>(x: ref/A, y: ref/B) -> i32\n    A is B\n    return 0\nfunc probe<T>(a: ref/T.(Bt).L.(Bt).Up, o: ref/Option<T>, r: ref/Result<T, i32>) -> i32\n    T is Bt\n    let x: ref/T.(Bt).R = a\n    return same(o, r)\npublic func main() => ()\n", "AnalysisLimit_Kd UnprovenConstraint_Kd" },
         { "bt-indep0", "contract Bt\n    associate L is Bt\n    associate R is Bt\n    associate Up\n    Self.(Bt).L.(Bt).Up is Self\n    Self.(Bt).R.(Bt).Up is Self\nfunc same<A, B>(x: ref/A, y: ref/B) -> i32\n    A is B\n    return 0\nfunc probe<T>(o: ref/Option<T>, r: ref/Result<T, i32>) -> i32\n    T is Bt\n    return same(o, r)\npublic func main() => ()\n", "UnprovenConstraint_Kd" },
     };
@@ -744,6 +748,11 @@ public partial class TypeIdentityTest
     private static string Dm(string premise)
         => Pq + "contract Mkr\n    func make(self: ref/Self) -> Self\nfunc f<T>(x: ref/T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n" + premise +
             "    return x.make()\npublic func main() => ()\n";
+
+    // Dg's form with Inner's F read off x's Type as a Type argument, `mark<T.(Pq).Up.F>()`, instead of a member call.
+    private static string Fa(string premise)
+        => "contract Inner\n    associate F\n    Self.(Inner).F is Callable<(raw/u8) -> Self>\n    func get(self: ref/Self) -> ref/Self.(Inner).F\n" + Pq +
+            Mark + "func f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n" + premise + "    mark<T.(Pq).Up.F>()\n    return\npublic func main() => ()\n";
 
     private static string Mate(string supplied)
         => "contract Inner\ncontract Q\n    associate A is Q\n    associate B is Q\n    associate C is Q\n    associate Up\n" +

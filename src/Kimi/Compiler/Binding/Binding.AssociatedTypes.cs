@@ -90,6 +90,11 @@ public sealed partial class Binding
             return null;
         }
 
+        if (search.Found is null)
+        {
+            this.ReadIdentityLimit(use, scope, search.Classes); // SPEC 8.3.3 (G1406-57): a miss over cut rows is a negative answer
+        }
+
         return search.Found;
     }
 
@@ -142,7 +147,8 @@ public sealed partial class Binding
     }
 
     // The search alone, recording nothing (a walk's question, 9.7.3's evidence): the candidate Contracts are the qualifier's, else the
-    // Type's own Contract, the scope's Contract facts on it and its conformances; Source is the conformance that supplied the match.
+    // Type's own Contract, the scope's Contract facts on it and its conformances; Source is the conformance that supplied the match,
+    // Classes the premise rows' (PremiseRows), with which FindAssociated's miss refuses.
     private AssociatedSearch SearchAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, QuerySite site)
     {
         BindingSymbol? found = null;
@@ -150,6 +156,7 @@ public sealed partial class Binding
         BoundRequirement? alternative = null;
         BoundConformance? source = null;
         BoundConformance? searching = null;
+        IdentityClasses? classes = null;
         this.ambiguousAssociatedMatches?.Clear();
         if (qualifier?.Contract is { } qualified)
         {
@@ -165,7 +172,7 @@ public sealed partial class Binding
             // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, each non-Alias row of Enumerate's rows (the use is
             // judged); the reader (IsSelectionCandidate, NamesReference, SameConformanceType) identifies the rest.
             var start = this.premiseRows.Count;
-            this.PremiseRows(type, scope, this.premiseRows);
+            classes = this.PremiseRows(type, scope, this.premiseRows);
             for (var i = start; i < this.premiseRows.Count; i++)
             {
                 if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
@@ -188,7 +195,7 @@ public sealed partial class Binding
             }
         }
 
-        return new(found, foundReference, alternative, source);
+        return new(found, foundReference, alternative, source, classes);
 
         void Search(BoundContract shape)
         {
@@ -375,8 +382,9 @@ public sealed partial class Binding
     private BoundType NormalizedProjection(BoundType projection, BindingScope scope, bool applyingOrigins)
         => this.bindingConstraintTypes || applyingOrigins ? projection : this.ContractType(projection, scope);
 
-    // One associated search (SearchAssociated): the match, its declaring reference, a second distinct match and the match's conformance.
-    private readonly record struct AssociatedSearch(BindingSymbol? Found, BindingSymbol? Reference, BoundRequirement? Alternative, BoundConformance? Source);
+    // One associated search (SearchAssociated): the match, its declaring reference, a second distinct match, the match's conformance
+    // and the classes its premise rows were read in.
+    private readonly record struct AssociatedSearch(BindingSymbol? Found, BindingSymbol? Reference, BoundRequirement? Alternative, BoundConformance? Source, IdentityClasses? Classes);
 
     // SPEC 8.5.2: only the suffix `.(C).` names a projection's Contract (its `C` in the Contract Reference row); `T.C.X` is an ordinary
     // path (9.6, 9.7.3), never read as `T.(C).X`.
