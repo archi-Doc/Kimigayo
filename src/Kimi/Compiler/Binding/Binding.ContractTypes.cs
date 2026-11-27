@@ -28,9 +28,10 @@ public sealed partial class Binding
     private uint evidenceQuery;
 
     // The reads a formation made that the evidence query's key does not carry (design R3.1.1, R3.1.4): a guard hit (ContractTypeCore's
-    // normalizingAssociated arm), an obligation open and not held (OpenObligation, ReadOpen) and a projection not yet inferred
-    // (ProjectionSpecification). An entry whose formation raised none is the same under every guard set and in every call of its
-    // evidence; any other keeps its call's query. Only ever raised: a store compares it before and after a formation.
+    // normalizingAssociated arm), every hit on an open obligation, held or not (OpenObligation, ReadOpen: HeldPending tests the
+    // innermost evidence, which can begin inside the formation; CC-77 P1), the body's binding (ReadBodyBinding) and a projection not yet
+    // inferred (ProjectionSpecification). An entry whose formation raised none is the same under every guard set and in every call of
+    // its evidence; any other keeps its call's query. Only ever raised: a store compares it before and after a formation.
     private int unkeyedReads;
 
     // The scaling rows' measure: the parts ContractType rewrote past its memo in this compilation (ContractTypeCore's runs).

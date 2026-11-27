@@ -20,6 +20,7 @@ public sealed partial class Binding
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
+    private int capabilityEpoch; // The capability results' lifecycle: ClearCapabilityResults ends each epoch.
 
     /// <summary>Gets the capability evaluations (both steps) run in this compilation, which the scaling rows read.</summary>
     internal int CapabilityEvaluationWork { get; private set; }
@@ -251,7 +252,7 @@ public sealed partial class Binding
 
     private void ClearCapabilityResults()
     {
-        this.summaryEpoch++; // Component summaries follow the capability results' lifecycle.
+        this.capabilityEpoch++; // Component summaries follow it (ComponentSummary.Epoch): an answer formed over these results ends with them.
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
         this.dependentCapabilities.Clear();

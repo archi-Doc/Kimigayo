@@ -517,7 +517,7 @@ public sealed partial class Binding
         if (open)
         {
             this.dependence = Math.Min(this.dependence, depth);
-            this.unkeyedReads += this.HeldPending(depth) ? 0 : 1; // An obligation not held: an image over it holds for its call only.
+            this.unkeyedReads++; // Held or not: the evidence holding it can begin inside the formation that reads it.
             return false;
         }
 
@@ -526,8 +526,12 @@ public sealed partial class Binding
     }
 
     // The answers in progress read a local region with no answer yet, or a program path's pending Unknown: they depend on the body's
-    // binding (BodyBinding).
-    private void ReadBodyBinding() => this.dependence = Math.Min(this.dependence, BodyBinding);
+    // binding (BodyBinding), which moves on apart from every evidence, so an image over it holds for its call only (unkeyedReads).
+    private void ReadBodyBinding()
+    {
+        this.dependence = Math.Min(this.dependence, BodyBinding);
+        this.unkeyedReads++;
+    }
 
     // Whether a request reaching `key` finds it open (it then reads no evidence, and the answers in progress read it).
     private bool ReadOpen(Obligation key)
@@ -538,7 +542,7 @@ public sealed partial class Binding
         }
 
         this.dependence = Math.Min(this.dependence, depth);
-        this.unkeyedReads += this.HeldPending(depth) ? 0 : 1; // As OpenObligation's open arm.
+        this.unkeyedReads++; // As OpenObligation's open arm.
         return true;
     }
 

@@ -44,7 +44,7 @@ public partial class KimiLibraryShapeTest
         ["Binding.recursiveVersion"] = "n8",
         ["Binding.frameEpoch"] = "n8",
         ["Binding.retentionStamp"] = "n8",
-        ["Binding.summaryEpoch"] = "n8",
+        ["Binding.capabilityEpoch"] = "n8",
         ["InstanceStorage.Version"] = "n9: the run whose substitution formed an instance (Binding.instances, a Type-keyed memo), never on a library object",
         ["CheckedSet.Version"] = "n10: MIR's, outside Binding (no MIR freeze, O-381 (b))",
         ["MirProgram.Version"] = "n10",

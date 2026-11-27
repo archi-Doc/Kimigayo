@@ -40,7 +40,6 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, bool> summaryParts = new(); // The parts one summary walk met.
     private readonly TypeMemo<BoundType, bool> scannedParts = new(); // The parts one storage scan met.
     private readonly List<BoundType> resolvingSteps = []; // The steps the walk in progress resolved through conformance hops.
-    private int summaryEpoch;
     private bool solvingSummaries;
 
     // Whether a pair argument's outer Semantics, and so its target, is unknown in D's formals; D's own pair whole maps to D's target.
@@ -162,7 +161,7 @@ public sealed partial class Binding
             this.summaries.Add(declaration, summary = new(declaration));
         }
 
-        if (summary.Epoch != this.summaryEpoch)
+        if (summary.Epoch != this.capabilityEpoch)
         {
             if (this.solvingSummaries)
             {
@@ -218,7 +217,7 @@ public sealed partial class Binding
     {
         var set = this.summarySet;
         var start = set.Count;
-        root.Reset(this.summaryEpoch);
+        root.Reset(this.capabilityEpoch);
         set.Add(root);
         for (var i = start; i < set.Count; i++)
         {
@@ -250,9 +249,9 @@ public sealed partial class Binding
                 this.summaries.Add(declaration, named = new(declaration));
             }
 
-            if (named.Epoch != this.summaryEpoch)
+            if (named.Epoch != this.capabilityEpoch)
             {
-                named.Reset(this.summaryEpoch);
+                named.Reset(this.capabilityEpoch);
                 this.summarySet.Add(named);
             }
 
@@ -310,7 +309,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (summary.Epoch == this.summaryEpoch && this.linkSeen.Add((summary, index)))
+            if (summary.Epoch == this.capabilityEpoch && this.linkSeen.Add((summary, index)))
             {
                 foreach (var link in summary.Links)
                 {

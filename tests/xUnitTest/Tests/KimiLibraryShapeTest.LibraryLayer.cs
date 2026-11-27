@@ -143,7 +143,7 @@ public partial class KimiLibraryShapeTest
     // runs first in each pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after
     // it. Each pass's start ends the epoch of the stores it reads: the shared ones and its own part's (the closure index, PassPart), so
     // the row starts each pass in turn, the library pass's and the program pass's (G949 S1-r1b). Every component summary is stale (its
-    // Epoch is not summaryEpoch); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store is
+    // Epoch is not capabilityEpoch); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store is
     // empty, Enumerate's view index among them, whose entries hold its kept rows (ViewIndex.Rows, R7-C2e2 e2-3a). Reset leaves only a
     // work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
     // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U fact
@@ -172,7 +172,7 @@ public partial class KimiLibraryShapeTest
             typeof(Binding).GetMethod("ResetCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(binding, [binding.Result.Mode]);
         }
 
-        var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
+        var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.capabilityEpoch");
         string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Depends", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
         {
