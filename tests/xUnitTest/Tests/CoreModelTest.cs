@@ -96,8 +96,9 @@ public class CoreModelTest
     }
 
     // The target table (IMPL 21.4, 21.5, 21.6): three selectable rows, windows-x64, whose triple is the literal the [InlineData] rows
-    // name, linux-x64 (the Tatara plan's B7b2a) and none-x64 (B9g: no staged row and no array of every row remain, so no member names
-    // them; design §0.2's planned removal). Fail-before (B9g): Rows was two rows, and Staged held none-x64.
+    // name, linux-x64 (the Tatara plan's B7b2a) and none-x64 (B9g: no staged row and no array of every row remain, so Rows is
+    // TargetProfile's only static TargetProfile[] property; design §0.2's planned removal). Fail-before (B9g): Rows was two rows, and
+    // Staged (none-x64) and AllRows were two more static row arrays.
     // Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
     // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), each one's kind among the
     // row's Kinds and the table's supply of its name (B7b5), and a C runtime, if any, that names one of them; each runtime declaration is
@@ -111,7 +112,7 @@ public class CoreModelTest
     public void TheReservedSuppliesAreOneTable()
     {
         Assert.Equal([TargetProfile.Windows, TargetProfile.Linux, TargetProfile.None], TargetProfile.Rows);
-        Assert.DoesNotContain(typeof(TargetProfile).GetMembers(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic), static x => x.Name is "Staged" or "AllRows");
+        Assert.Equal(["Rows"], typeof(TargetProfile).GetProperties(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Where(static x => x.PropertyType == typeof(TargetProfile[])).Select(static x => x.Name));
         Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
         Assert.Equal("x86_64-unknown-linux-musl", TargetProfile.Linux.Target);
         Assert.Equal("x86_64-unknown-none", TargetProfile.None.Target);
