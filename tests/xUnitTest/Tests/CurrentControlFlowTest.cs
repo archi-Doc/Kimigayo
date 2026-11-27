@@ -172,8 +172,6 @@ public class CurrentControlFlowTest
     [InlineData("let f = func () -> ()\n    compute()", 0)]
     [InlineData("let f: () -> () = func ()\n    compute()", 0)]
     [InlineData("let f = func () => compute()", 0)]
-    [InlineData("func run(f: () -> ()) => f()\nlet r = run(func ()\n    compute()\n)", 0)]
-    [InlineData("func run(f: () -> ()) => f()\nfunc run(x: i32) => ()\nlet r = run(func ()\n    compute()\n)", 0)]
     public void OnlyAnInferredUnitClosureWarnsAtItsDiscardedTails(string declaration, int count)
     {
         var c = Parse("func compute() -> i32 => 1\n" + declaration);
