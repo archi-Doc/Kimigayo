@@ -15,6 +15,7 @@
 // integer formatting part (FormatInteger128Runtime.ll.in: the FormatInteger128 intrinsic's routine and its division by ten, a module part
 // on request), the runtime routines a module defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte
 // copy), the checked one-scan expansion every runtime template takes (ExpandRuntime; TestRuntime's text too),
+// the start's call lines (ModuleFrame.StartCalls: the layer's StartCalls through RuntimeAbi.Calls, which the start's entry writes),
 // the external declarations, the overflow and memory intrinsic declarations, the footer (the row's profile attributes with its
 // FunctionAttributes, #0; #1, #0 plus "no-builtins", for the memory part; the PIC Level module flag of a pic row, none for a static
 // one), the spelling of external symbols, numbered names, numbers formatted on the stack and the bits of
@@ -322,8 +323,8 @@ internal static partial class LlvmModuleText
         return runtime.Replace(entry, entry + "  call void @__kimi_test_aborted()\n", StringComparison.Ordinal);
     }
 
-    /// <summary>A target row's module frame (the Tatara plan's B7b2a): its header, runtime, the runtime's test variant and footer, built
-    /// once per row (Frame).</summary>
+    /// <summary>A target row's module frame (the Tatara plan's B7b2a): its header, runtime, the runtime's test variant, the start's calls
+    /// and footer, built once per row (Frame).</summary>
     internal sealed class ModuleFrame
     {
         internal ModuleFrame(TargetProfile row)
@@ -333,6 +334,7 @@ internal static partial class LlvmModuleText
                 "target datalayout = \"" + row.DataLayout + "\"\n" + RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n" +
                 (row.FloatMarker is { } marker ? "@" + marker + " = global i32 0, align 4\n" : string.Empty);
             this.Runtime = ExpandRuntime(RuntimeTemplate(this.Layer), this.Layer.Definitions, RuntimeAbi.RowConstants(row)) + "\n";
+            this.StartCalls = RuntimeAbi.Calls(this.Layer.StartCalls);
             this.TestRuntime = this.Layer.TestRuntime is null
                 ? null
                 : ReportTestAbort(ReportTestAbort(this.Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage);
@@ -343,6 +345,10 @@ internal static partial class LlvmModuleText
 
         /// <summary>Gets the row's platform layer, whose start form the module's entry takes (ModuleCodegen's start).</summary>
         internal RuntimeLayer Layer { get; }
+
+        /// <summary>Gets the start's calls of the layer's routines before the startup root (RuntimeLayer.StartCalls), one call line each
+        /// (RuntimeAbi.Calls), which the start's entry writes.</summary>
+        internal string StartCalls { get; }
 
         /// <summary>Gets the header: target information, shared Types, and exactly one strong definition of the row's float marker (SPEC
         /// 21.4.7), where the row has one.</summary>

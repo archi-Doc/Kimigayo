@@ -100,10 +100,9 @@ public sealed partial class Binding
 
     // The views Identical judges in (SPEC 8.2.3: identity in the body the comparison stands in), set once per computation: the callee's
     // constraint scope for its kept reading (its declared Types: Parametric, OutputRetention.Handed), and for the instantiated one the
-    // calling definition's premise scope TyCtxt read the instance under. An instance read under none names no abstract Type the call
-    // brings, only those of the callee's declaration environment (an enclosing function's Type parameters, a Closure's), which a calling
-    // definition reads through that environment as the callee does (TyCtxt keys no definition there), so it is read in the callee's view.
-    // None for an erased signature, which reads no declaration's premises.
+    // scope TyCtxt read the instance under, the one decision of whose premises the instance's Types are read under (TyCtxt.Retains:
+    // the calling definition's where the call brings an abstract part, else the callee's own; a Value callee's declaration's). None for
+    // an erased signature, which reads no declaration's premises.
     private (BindingScope? Kept, BindingScope? Instantiated) retentionViews;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
@@ -112,20 +111,19 @@ public sealed partial class Binding
     // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (HandedSignatures), instantiated as its
     // inputs, are erased callables its body may call. `types`: the call's Subst (null: a Value callee's declared signature), whose Type
     // arguments, Self and declaring Type bring the Origins a fit may relate under the call's solved Origins (Instantiation). `premises`:
-    // the scope TyCtxt read an instance with an abstract part under (null: none), which the transfer rule's Iterator key reads
-    // (Binding.Retention.Transfers.cs).
+    // the scope TyCtxt read the instance under (TyCtxt.Retains), the instantiated reading's view, which the transfer rule's Iterator key
+    // reads (Binding.Retention.Transfers.cs).
     internal CallRetention Retains(
         FunctionKoto callee,
         ReadOnlySpan<BoundType> inputs,
         BoundType result,
         Subst? types,
         ReadOnlySpan<ErasedSignature> bounds,
-        BindingScope? premises)
+        BindingScope premises)
     {
         var use = callee.OriginBinder;
         var declaring = types?.Declaring;
-        var own = this.ConstraintScope(callee);
-        this.retentionViews = (own, premises ?? own);
+        this.retentionViews = (this.ConstraintScope(callee), premises);
         this.DeclareSignature(types?.Target ?? (callee.ClosureDefinition is null ? callee.BoundSymbol : null), inputs, result);
         var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
         try
