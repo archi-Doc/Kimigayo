@@ -1429,7 +1429,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
   are per method). Temporary: removed at R6-check.
 - **R4-M51** (2026-10-17; design A3 §4.3's C1+C8 view and §4.1's In place row, owner approval; superseded in part by R4-M153: A5's
-  record of `CallRetention.Limit`) Call retention, the
+  record of `CallRetention.Limit`; and by R7-M125: a contract past a walk's bound where only a part lies past it gives its rows with Deep) Call retention, the
   Binding view A5's Loan flow reads for calls (SPEC 15.6.4). `TyCtxt.Retains(callee, Subst, definition)` and
   `TyCtxt.Retains(calleeType, signature, definition)` (a Value callee's Type and declared Callable signature, R4-M41; `definition`
   is the calling body's, null at top level) give an immutable `CallRetention`: rows `Retention(Input, Kind, Output)` over the
@@ -4999,7 +4999,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     only the call receiver ρ, and the G280 cascade at the argument (h1's and d3's Owned `UnprovenConstraint_Kd`) is gone.
     Then superseded by R7-M101 (B1): the call result atom is imaged as the call's own result region.
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
-  (superseded in part by R4-M157: the holding walk's key, and R4-M57) (2026-10-28; G272's design-first candidate, design 2; the owner's
+  (superseded in part by R4-M157: the holding walk's key, and R4-M57; and by R7-M125: the call's verdict joins CallRetention's Deep) (2026-10-28; G272's design-first candidate, design 2; the owner's
   「G272: (1)」 and 「G272 要件: (a)」) SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis
   limit a Resource diagnostic at the affected declaration, call or token. `MirTypes`' walks end a growing Type (SPEC 15.3.5) at the
   bound of 32 and answered there with a value they did not establish (the guard's write fact, a destruction that is a use), so each
@@ -20030,6 +20030,33 @@ resumed by R4-M86 (2026-10-20).
     capture set published before the body binds (no owner: a pre-walk is a second name resolution, against R7-M91's N6), the verdict
     at the captures' completion (the annotated local's Type would form twice) and a deferred limit list on the literal (a side table
     for one feature, two outcomes of one rule chosen by timing).
+- **BU-274 A retention walk's undecided finding names its subject, and the contract's Deep part rests on it (R7-M125) (PLAN G408, G408-B; F's G408B-16,
+  G408B-17)** (2026-11-27). SPEC 15.6.4 decides retention per argument, so a finding a walk over a contract Type leaves undecided past
+  its bound (Binding's StorageBound, TyCtxt's HandedBound; `Binding.Enters`) changes a verdict only where the holder can carry a Loan
+  or an address and so can the value the finding concerns: a value of a Type that cannot carry one retains nothing, whatever the walk
+  would have found.
+  - **Representation.** `Binding.retentionPast` is the list of those subjects (`List<BoundType?>`, cleared in `EndRetention`, so
+    `DeclareSignature`'s reading survives `BeginRetention`): the argument for the input fold (`RetentionSources`) and `HiddenKind`
+    (`Hidden`), `position` for the write test (`Writes`), the declared Type for `ViewedDeclared`, and each part the handed-callable walk
+    left unentered past HandedBound (`Handed`). `TyCtxt.HandedCallables(type, out ReadOnlySpan<BoundType> past)` publishes those
+    parts (the states `handedSeen` holds past HandedBound, in the order met); its per-Type memo is `(BoundType[] Callables, BoundType[]
+    Past)`, `[]` for a Type within the bound, so such a Type allocates nothing. TyCtxt names the parts and asks no Binding predicate.
+  - **The one site.** `RetentionRows` gives the Limit on `retentionLimit`, else its rows with `deep` = `retentionPast.Count > 0 &&
+    HolderCarries(result) && AnyCarries(retentionPast)`, read first (its carrier walks may set `retentionLimit`); `AnyCarries` is one `MayCarry` query over a list (one `retentionCarried` set), which `HolderCarries`
+    also reads for the holders. `MayCarry` is the existing unbounded walk (G408B-9 R1), so the subject adds no rule and no walk.
+  - **Removed:** `Hands`' past read: its argument is an input or its declared Type, which `RetentionPremises` has already handed on
+    both entries (`Retains`, `RetainsErased`), the only ones that reach `Filled`. `HandedPast` stays: it is Handed's step predicate
+    (G408B-4 C-B1), and without it a past `ref/i32` holding no callable would be a subject.
+  - **Why the subjects.** The input fold names the argument, never the part past the bound: `zz(d: (ref/i32 during q, N33))` returning
+    `(ref/i16 during q, i64)` retains d's own value (x's Loan included) through d's i64 34 entries down, which `MayCarry(i64)` would
+    miss (zzIn33Bad). Handed names the part, since every callable it lists is a Function, which `MayCarry` counts as carrying, and
+    `MayCarry` walks every step Handed takes: an argument `uniq/((T^31) -> i32)` carries, its i32 and `Option<i32>` parts do not (dv).
+  - **Supersedes in part** (F's rulings, not DECISIONS entries; named here for the record): G408B-6 (2)'s rejection of a "may hold a
+    callable" pre-test, and G408B-9 R3's pinned make limit on pr32Ok and pr32OwnOk (now accepted, as on dev). The reason that no longer
+    holds: since G408B-16, `MayCarry` is the predicate's own unbounded walk, so asking it of a subject adds no second copy of Handed's
+    rule.
+  - **Rejected:** a `MayCarry` call at each site (a clause per Past read, and a walk where no holder carries); TyCtxt calling
+    `MayCarry` (Binding's predicate); the argument as Handed's subject (dv's `uniq/((T^31) -> i32)` carries, so the Limit would stay).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -30917,6 +30944,59 @@ Closure row of `MirCases.Branch`).
     `ConsultedFor`'s held guard or `RecordRead`'s unfiltered read); a fourth frame field with a recorder query for the mid-frame
     readers (6.1 (b): a second place for one fact); joining a held frame (the read would be dropped with the frame, and G1391's
     question would be settled here).
+- **R7-M125 A past-bound contract keeps its decided rows, with its Deep part beside them (PLAN G408, G408-B section 2; the Middle's
+  A5 ruling C1-C7, F's G408B-17)** (2026-11-27). SPEC 15.6.4 decides retention per argument and SPEC 23.1.2 keeps every independent
+  failure's record. Where a walk over a contract Type leaves a finding undecided past its bound and both a holder the rows name and
+  the finding's subject can carry a Loan or an address (section 1's gate, BU-274), only that part is past the bound: the rows found
+  within it are decided. A whole-contract `CallRetention.Limit` there hid them, so W's store check lost a record that rests only on
+  decided inputs (IndependentChecks(40): replace's (s, with) Value row and s's R6.1 marks; Q13's lost independent record).
+  - **Representation (Binding, `TyCtxt.Retention.cs`).** `CallRetention.IsDeep` (internal, no vocabulary entry): the rows, with a
+    part past the bound beside them; never with `IsLimit`. `RetentionRows` gives the rows with Deep set where section 1's gate holds;
+    `CallRetention.Limit` stays the whole-contract limit only for `retentionLimit` (storage instantiation, a keeper cycle, an
+    incomplete carrier walk), height and substitution. A Deep contract's rows are a lower bound on the exact rows.
+  - **Lower-bound readers follow the rows.** A reader that a present row moves (a record, a Loan, a holder or a plan entry) reads a
+    Deep contract's rows unchanged: `MirBorrows.CallRows`' Planned, `Calls`' Keep and Deliver, `Holders`' Writes, KeepsSourced and
+    WriteSourced, `Destructions`' composition, `Puns`, `PunKeys` and `Reach` (the census, `artifacts\units\g408b\a5-census.md`).
+    Their Language records are a subset of the exact analysis's, so a valid program gains none.
+  - **Absence readers stay conservative.** No reader concludes acceptance or a Language record from a missing row of a Deep
+    contract. `CallRetention.Keeps` answers true (and so `MirValidator`'s Clears keeps the slot). `Binding.ReceiverIndependence`
+    reads `IsLimit ? Error : (Kinds[0] & Value) != 0 ? Refuted : IsDeep ? Error : Proven`: a present receiver Value row is a decided
+    fact and keeps its `TypeMismatch_Kd` (eraBad, eraArgBad, as on dev), and only its absence on Deep gives the located limit (a
+    valid erasure dev converts gets the located `Unsupported_Kd`, eraOk; the Limit's existing open issue).
+  - **Storing on a Deep own contract.** The storing rule runs on a Deep body's decided rows as on exact ones. Where it would give
+    `UnretainedRawStore_Kd` (the record untied, and the input given neither Value nor a pair), a missing row of a lower bound is not
+    conclusive, so the store records `OwnershipDepthLimit_Kd` instead, through `MirBorrows.Reports`' `Limit`, the record a Deep call
+    takes: one record, a body's own check, independent of each caller's call record (SPEC 23.1.2). Where the rule gives nothing on
+    the decided rows, it gives nothing, as on dev, so acceptance and silence never change against dev. A `CallRetention.Limit` own
+    contract keeps O-62 (a)'s silence. **Move (Q13, class 4):** dstUx0's and dstFieldUx0's form (a body whose own contract is Deep,
+    whose input is a borrow whose referent holds an exclusive layer at the input fold's first meeting past the bound, which needs no
+    drop, and that stores an input's own part past it) goes from dev's `UnretainedRawStore_Kd` to `OwnershipDepthLimit_Kd` at the
+    same store. dstU0 and dstFieldU0 (a borrow with scalars past the bound) are not Deep: `UnretainedRawStore_Kd` on both trees, no move. A by-value input past the bound (dst0, dstField0, twin (d)) is dropped at the body's
+    exit, `MayNeedDrop` fails closed past the bound and Redirects' drop clause caps the landing, so that store is silent on dev and
+    here (O-62 (a)'s named silence); with callers (twin (d)) each call records its Deep part, and each caller's decided row its own
+    conflict.
+  - **One record per Deep call.** Deep enters the call's verdict only at `MirBorrows.Locations`' terminator verdict (`Locations.cs:68`, `IsLimit or
+    IsDeep`; the drop rows' `deep` in `Destructions` feeds the same), joined there by R4-M153's `Join` (decided over Limit over Deep
+    over none): a Deep call records `OwnershipDepthLimit_Kd`, or the located `Unsupported_Kd` where W's Limit meets it. So no
+    program that rests on a Deep part is accepted, and a decided record beside it stays (twin (c): `x = 3`'s
+    `ComparisonLoanConflict_Kd` and the call's record, both). The one other Deep record site is a body's own store, at `MirBorrows.Locations`' store verdict (`Locations.cs:78`, above): one verdict each, joined by R4-M153's `Join`, one record per failure (SPEC 23.1.2).
+  - **R4-M181's distinction.** Its rejection, "mapping Holdings' false to Limit or Deep (... Deep hides a decided part beside it)",
+    concerns `TyCtxt.Holdings`' storage answer, a different fact; under the Join a decided part ranks over Deep, so no decided part
+    is hidden here.
+  - **Open issues (PLAN).** Per-input Deep (G1468) would keep dev's `UnretainedRawStore_Kd` on dstUx0's form; `retentionPast` holds subject
+    Types, not inputs, so it is a representation change beyond this entry. A by-value input past the storage bound silences the
+    storing rule (`MayNeedDrop` fails closed, Redirects' drop clause caps the landing), so an invalid store is accepted without a
+    record on dev and here (dst0, dstField0; SPEC 23.1.1 wants a Resource record): the Middle (MIR, A5), G1471, with STATUS's
+    Raw pointers "Not checked" row.
+  - **Supersedes in part** R4-M51 ("gives `CallRetention.Limit` (`IsLimit`; no rows ...)": a contract past a walk's bound where
+    section 1's gate holds gives its rows with Deep) and R4-M153 (A5's readers of a retention limit: the call's verdict joins
+    CallRetention's Deep as it joins its Limit). The reason that no longer holds: R4-M51's whole-contract Limit assumed that a contract
+    past a bound has no decided row; section 1 decides per subject, so some rows are decided beside the part.
+  - **Rejected:** a consumer re-deciding a Limit contract's rows (A5 re-deriving what Binding owns); Deep as a second record site
+    for a call (two records for one failure); concluding acceptance or a Language record from a missing row of a Deep contract (a
+    missing row would accept or refuse what the part past the bound may hold); Storing silent on a Deep own contract, as O-62 (a) is
+    for the Limit (it accepts an invalid body with no caller that dev rejects); per-input Deep now (above); a new walk (the Deep fact
+    rides section 1's gate; its scaling rows cover it, C7).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
