@@ -36755,3 +36755,45 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     column `Family` (Binding would read the Backend); writing the asm inline at direct calls and a routine only for Items (two forms
     of one row); a located `Unsupported_Kd` for a member's Item (a valid form unsupported only to save the definition writer, which
     OSF1b needs regardless); `DirectCallOnly` for the safe members (a Language error for a valid program, SPEC §7.7.4).
+- **T-M60 The none row's linker script and its ELF link** (Tatara, 2026-11-27; the plan's unit B9f; Major; design §3.7; decision 31;
+  rulings w3w5 F4, F7-F9, O5, O6, O11; T's rulings 150 (1), 151, 152).
+  - **Script:** `src/backend/none-x64/kernel.ld`, which the compiler carries, embedded (`Kimi.None.kernel.ld`) and named with its SHA-256 by the
+    none catalog's `linkerScript`. `ENTRY(__kimi_start)`; `PHDRS` text (R+X), rodata (R), data (R+W); linked at 0xFFFFFFFF80000000;
+    `.text`; `ALIGN(0x1000)` (the script's alignment fixes the segments' addresses, and `p_align` 0x1000 is LLD 22.1.8's x86-64
+    default max-page-size, so the line passes no `-z max-page-size`: F7, probe P2 byte-equal to the design's `-z` form, the image row
+    pins `p_align`; the Back's B9f N4);
+    `.rodata` and `.eh_frame` (`KEEP`); `ALIGN(0x1000)`; `.data` beginning with `KEEP` of `.limine_requests_start`, `.limine_requests`,
+    `.limine_requests_end`; `.bss` with `COMMON`; `.symtab 0`, `.strtab 0` and `.shstrtab 0`; `/DISCARD/` of `.note*` and `.comment`.
+  - **Orphans (ruling 152):** the row's line passes `--orphan-handling=error`, so an input section the script does not place is a located
+    link error, never LLD's silent placement (O5). The three tables are the linker's own sections, not input, so the script names them to
+    complete its layout under the flag (the Linux kernel's `ELF_DETAILS` form); without them the flag fails every link
+    ("<internal>:(.symtab) is being placed in '.symtab'"). Run 3: an object with a kept `.kimi_probe` section fails and the record names it.
+    Input `.comment` (each compiler-rt member's clang ident) is placed by `/DISCARD/`, so it is no orphan and the script places no
+    `.comment 0` (T's ruling 155 on the Back's B9e N4): run 3 (`probes\probe-log-run3.txt`) links the seconds program, which pulls
+    `__floatundidf`/`__floatdidf` and `__divdf3`, under the flag, and its image holds no `.comment`.
+  - **Column and material:** `TargetProfile.LinkerScript` (`required string?`: Windows and Linux null, the linker's own layout; None
+    `"kernel.ld"`). Its bytes are the row's material, not a supply's (a script is no library, IMPL 20.4; F9): `ToolchainIdentity.Scripts`,
+    one `SupplyFile` per row with a script, placed `SupplyPlace.Script` (-T's argument) by its member: the catalog's `linkerScript`
+    entry is read in a file entry's form (`CatalogFile`), with the place that member fixes and no `place` datum; a `files` entry
+    placed `script` is refused like any other place (ruling 167); the initializer checks that a row has a script
+    exactly when its column names one, and that the names agree.
+  - **Package identity (ruling 150 (1), F4):** `ToolchainIdentity.PackageIdentities` (Windows `kimi-backend-windows-x64` 3, None
+    `kimi-backend-none-x64` 1) replaces Windows' two constants; each catalog states its row's package id, ABI version and the pinned LLVM
+    version (a row without an identity states no package id); `Packages` gives each row reserving the backend supply its head's
+    `backendSupport.*` (the compiler's version, the row's backend supply's name and symbols, the archive's hash; the row's backend
+    supply is one file). `LinkManifest`'s heads are
+    built over the table's array (`AllRows`), so a staged row's pair is published and built.
+  - **Build:** the script is staged as a supply's file is (`StageSupply`, `.ld` kept), held to the build's end; the ELF line adds
+    `-T <staged> --orphan-handling=error` after `-e` for a row with a script; the record gains `linkerScript` (`path` redacted, `sha256`)
+    only for such a row, so hosted records are byte-equal. The libc-free path already places the program's libraries before the row's
+    `library` files (probe P4). No head row names the script (O6).
+  - **toolchain verify:** each row's script's embedded bytes against the catalog's SHA-256, stated in the supplies' form without facts
+    (VerifyScript, through the supplies' one compare; a script is not inspected); the report's members are unchanged.
+  - **Keying (M's C-597 N2):** `ToolchainIdentity.Of(row, name)` finds a compiler's supply by (row, supply name), not by `TargetSupply`'s
+    record equality (which compared `Symbols` by array reference).
+  - **Inspection (F8):** the object rule with the row's allowed set stays the product's; the image's shape is asserted by tests with the
+    shared `ElfFile` reader (its segments gain offset, address, sizes and alignment, O11), no post-link check in the product.
+  - **Rejected:** a project-supplied script (design §7.2); a post-link ELF check for one row (F8); the script as a supply's file (F9); the
+    page size as a line flag (F7); a fallback to the linker's layout when the row's script is missing (a broken contract, the
+    initializer's error); dropping `--orphan-handling=error` (ruling 152 (b)); placing the three tables by an exception list instead of the
+    script (they are the script's complete layout).
