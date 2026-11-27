@@ -187,6 +187,10 @@ public class CoreModelTest
         // SPEC 22.4.5: the program supplies the platform layer's routines on the freestanding row alone.
         Assert.Equal([false, false, true], TargetProfile.AllRows.Select(static x => x.ProgramPlatform));
 
+        // The Tatara plan's decision 31 (B9f): the compiler's own linker script on the freestanding row alone; the hosted rows link in the
+        // linker's layout.
+        Assert.Equal([null, null, "kernel.ld"], TargetProfile.AllRows.Select(static x => x.LinkerScript));
+
         // The Tatara plan's B7b7: each row's input extension and executable format (IMPL 20.3.2, 20.4); a subsystem, a float marker and
         // a load configuration symbol exactly on the COFF rows (LinkRoots: windows-x64's _load_config_used).
         Assert.Equal([(".lib", "COFF"), (".a", "ELF"), (".a", "ELF")], TargetProfile.AllRows.Select(static x => (x.InputExtension, x.Format)));
