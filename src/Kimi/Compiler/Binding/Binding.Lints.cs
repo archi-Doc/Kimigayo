@@ -545,7 +545,7 @@ public sealed partial class Binding
             NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto => true,
             IdentifierNameKoto => IsStableName(node),
             UnaryKoto { Akind: KotoKind.Not } unary => this.IsEffectFree(unary.Operand),
-            BinaryKoto { Akind: >= KotoKind.LessThan and <= KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals } comparison =>
+            BinaryKoto comparison when Parser.IsComparison(comparison.Akind) =>
                 this.IsEffectFree(comparison.Left) && this.IsEffectFree(comparison.Right),
             _ => false,
         };
