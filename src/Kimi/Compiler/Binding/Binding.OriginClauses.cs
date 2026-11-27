@@ -346,33 +346,37 @@ public sealed partial class Binding
     // no open initializer as a fit's answer does, FormBodyRelation's step 2), so the row forms directly (LocalClauseRow).
     private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation) => this.AddObligation(this.LocalClauseRow(local, relation));
 
-    // A local clause's row (JudgeLocalClause): its ends are the clause's as written, which the view resolves at the clause (its Supplier,
-    // R4-M133, is the written longer end). Its record is at the clause, or at the initializer when that supplies one of its ends, an Origin
-    // the local's Type omits, as the value that does not fit (H11b D5).
+    // A local clause's row (JudgeLocalClause; FixDeclaredRegions records it as a region bound): its ends are the clause's as written,
+    // which the view resolves at the clause (its Supplier, R4-M133, is the written longer end). Its record is at the clause, or at the
+    // initializer when that supplies one of its ends, an Origin the local's Type omits (one the declaration resolves to a region slot of
+    // the local that no equality fixed, LocalRegion.Equality, or a meet holding one), as the value that does not fit (H11b D5).
     private BindingObligation LocalClauseRow(OriginDeclaration local, OriginRelation relation)
     {
         var use = relation.Syntax;
-        var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
+        var supplied = OmittedEnd(relation.Longer) || OmittedEnd(relation.Shorter);
         var site = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
         return new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality, Clause: use, Site: site);
 
-        // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
-        OriginVariance? InferredEnd(BoundOrigin end)
+        bool OmittedEnd(BoundOrigin end)
         {
-            if (local.InferredVariance(end) is { } position)
+            var resolved = this.ResolveOrigin(end, local);
+            if (LocalSlot(resolved))
             {
-                return position;
+                return true;
             }
 
-            for (var i = 0; i < end.Operands.Count; i++)
+            for (var i = 0; i < resolved.Operands.Count; i++)
             {
-                if (local.InferredVariance(end.Operands[i]) is { } operand)
+                if (LocalSlot(resolved.Operands[i]))
                 {
-                    return operand;
+                    return true;
                 }
             }
 
-            return null;
+            return false;
         }
+
+        bool LocalSlot(BoundOrigin origin)
+            => SlotRegion(origin) && ReferenceEquals(origin.Binder, local.Owner) && this.Region(origin) is not { Equality: true };
     }
 }

@@ -140,9 +140,15 @@ public sealed partial class Binding
             this.formingBody = saved;
         }
 
-        if (symbol.Kind == BindingSymbolKind.Local && declared is not null && variable.TypeKoto is { } occurrence)
+        // SPEC 15.4.4: the annotation's rows are formed at its declaration, over the Type it resolved, before it fixes its regions.
+        if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is { } occurrence)
         {
-            this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
+            this.RetainLocalWellFormedness(occurrence); // SPEC 15.6.1: its layers' well-formedness, each layer that formed.
+            if (declared is not null)
+            {
+                this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
+                this.FixDeclaredRegions(variable); // SPEC 15.3.6: the declaration fixes its regions.
+            }
         }
 
         if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is null && declared is null && inferred is not null)
