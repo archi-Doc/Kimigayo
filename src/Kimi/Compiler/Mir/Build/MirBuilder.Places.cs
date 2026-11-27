@@ -113,16 +113,15 @@ internal sealed partial class MirBuilder
         return place;
     }
 
-    // SPEC 8.2: a Type's image under the body's premises (MirTypes.Premised); a Type without an abstract part is its own (premises change
-    // only abstract parts; the Contract environment's rewrite of its Origins alone is not applied, as MirTypes.Agree ignores Origins).
+    // SPEC 8.2: a Type's image under the body's premises (MirTypes.Premised, which leaves a Type without an abstract part its own), a premised
+    // Type counted as layer-walk work.
     private BoundType? Image(BoundType? type)
     {
-        if (type is not { HasAbstractPart: true })
+        if (type is { HasAbstractPart: true })
         {
-            return type;
+            this.program.LayerWalkWork += type.Height + 1;
         }
 
-        this.program.LayerWalkWork += type.Height + 1;
         return MirTypes.Premised(compilation.Types, this.body, type);
     }
 

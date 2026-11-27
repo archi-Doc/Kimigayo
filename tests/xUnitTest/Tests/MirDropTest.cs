@@ -187,6 +187,17 @@ public sealed partial class MirDropTest
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 
+    // SPEC 8.2.3, 16.2.2 (PLAN G355's interim, G986): a Drop's tree reads its root Type as the body's identity premises make it, the Type
+    // the builder's drop rule reads, so a part spelled T moved on some paths is judged as its premise makes it: under `T is raw/u8` a
+    // raw/u8, which destroys nothing (Elide, no flag), under `T is string` a string (its flag).
+    [Theory]
+    [InlineData("raw/u8", "[open (.1 elide)]")]
+    [InlineData("string", "[open (.1 flag f0)] [clear f0]")]
+    public void APremisedPartIsJudgedAsItsPremiseMakesIt(string premise, string verdict)
+        => Assert.Contains(
+            Lines($"func f<T>(s: (string, T), c: bool)\n    T is {premise}\n    if c => _ = s.1@move\n", "f"),
+            x => x.StartsWith("drop _1 ", StringComparison.Ordinal) && x.EndsWith(verdict, StringComparison.Ordinal));
+
     // SPEC 6.3, 13.7.1: a constructor's first placement of a Field destroys nothing (Elide), and a placement after a conditional one
     // destroys the old value under a flag.
     [Fact]

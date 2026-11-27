@@ -245,8 +245,8 @@ internal sealed partial class MirBuilder
                 Source = this.FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget),
                 Operand = operand, Start = first, Place = place, Callee = callee,
             };
-            // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
-            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(compilation.Types, this.body.TypeOf(place), this.walked);
+            // The copy keeps a Drop where its instance's Type may need one (MayNeedDrop, the rule every Drop is built by).
+            var kept = terminator.Kind != MirTerminatorKind.Drop || this.MayNeedDrop(this.body.TypeOf(place));
             var continuation = copied;
             if (terminator.Kind == MirTerminatorKind.Return)
             {

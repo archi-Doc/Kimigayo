@@ -6,7 +6,8 @@
 // Input: published Types, their stored shapes, a body's identity premises (the compilation's TyCtxt.Premised, read through Premised), Binding's Copy and
 // Sealed proofs and the Type statements the operator domain composes (TyCtxt.HasBuiltinArithmetic, TyCtxt.OperatorCompares,
 // BoundType.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
-// (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
+// (its guard), raw, exclusivity, shared-layer, selection, view-start, premised (Premised: the one premising MIR reads, only an abstract
+// part; PLAN G355's interim readers' until R7-Y5), agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
 // operator-domain facts (Operates, the operator table's domain, which the Backend's operator columns read too), and the pairing of the
 // arithmetic Contracts with MIR's operators (ArithmeticOperations, read by Contract through ArithmeticOperation).
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk
@@ -28,6 +29,7 @@
 // here the reference, view, shared-layer, selection, view-start, borrow-kind, pointer-cast, integer, operator-domain, agreement and Never
 // facts.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -231,8 +233,13 @@ internal static partial class MirTypes
         => IsArithmeticInteger(type) || ReferenceEquals(type, BoundType.Char) || type.IsPointer;
 
     // SPEC 8.2, 8.2.3: a Type as the body's identity premises make it (TyCtxt.Premised; itself in a body without a definition), since MIR Types
-    // keep a premised parameter (DECISIONS BU-72); Agrees and the builder's walk to a compared Place read it.
-    internal static BoundType Premised(TyCtxt types, MirBody body, BoundType type) => body.Key.Decl is { } definition ? types.Premised(definition, type) : type;
+    // keep a premised parameter (DECISIONS BU-72). A Type without an abstract part is its own, as premises change only abstract parts (the
+    // Contract environment's rewrite of its Origins alone is not applied: no reader's answer reads Origins, MirTypes.Agree ignores them).
+    // Read by Agrees, IsNever, the validator's compared operand (MirValidator.Types), the builder's image of a compared Place (Image, its
+    // comparison walk) and PLAN G355's interim readers (G986: A5's storing rule, the drop rule, A2's root), which read it until R7-Y5.
+    [return: NotNullIfNotNull(nameof(type))]
+    internal static BoundType? Premised(TyCtxt types, MirBody body, BoundType? type)
+        => type is { HasAbstractPart: true } && body.Key.Decl is { } definition ? types.Premised(definition, type) : type;
 
     // SPEC 3.1.3, 8.2.3: whether a Type is Never in the body: Never itself, or an abstract Type the body's identity premises make Never (T
     // under `T is Never`; only an abstract Type takes another's head, so a concrete Type is answered by the reference test alone and costs

@@ -408,6 +408,20 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(init.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Drop && init.TypeOf(x.Terminator.Place)?.Symbol?.Name == "InlineStorage");
     }
 
+    // SPEC 8.2.3, 16.3 (PLAN G355's interim, G986): the drop rule reads a Type as the body's identity premises make it, so a parameter
+    // spelled T is dropped as its premise makes it: under `T is raw/u8` a raw/u8, which destroys nothing (no Drop of it is built), under
+    // `T is string` a string (its Drop is built).
+    [Theory]
+    [InlineData("raw/u8", false)]
+    [InlineData("string", true)]
+    public void APremisedParameterIsDroppedAsItsPremiseMakesIt(string premise, bool dropped)
+    {
+        var program = Compile($"func st<T>(s: T)\n    T is {premise}\n    return\npublic func main()\n    return\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "st" });
+        Assert.Equal(dropped, body.Blocks.ToArray().Any(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: 1, Projection: 0 } }));
+    }
+
     // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
     // them (a call's, an indexer's or a view selection's plan, a local's symbol, a closure's definition, a case adaptation's plan, a loop's
     // iterator symbol, a write of an interpolation, a tuple operator's conforming Type, R5-M75; since PLAN G396 (3) Z1 a plain call's

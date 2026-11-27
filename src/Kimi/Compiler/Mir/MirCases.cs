@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Semantics-case views of a MIR body.
-// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition, adaptation and case branch views, a decider's
-// decision; a pair layer's binder and whether a call's input of a Type is reserved.
+// Input: the body's pair binders and TyCtxt (for PLAN G355's interim readers, the body's identity premises: MirTypes.Premised). Output:
+// case Types (premised ones in the one order, premise then view, until R7-Y5), projection, acquisition, adaptation and case branch views,
+// a decider's decision; a pair layer's binder and whether a call's input of a Type is reserved.
 // Case order is stable; views share the body and reuse their storage.
 // Must not copy the body per case or re-bind source syntax.
 
@@ -213,8 +214,7 @@ internal sealed class MirCases(TyCtxt types)
     /// (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
     /// <param name="place">A Place of the selected body.</param>
     /// <returns>The case Type.</returns>
-    internal BoundType TypeOf(MirPlace place)
-        => this.Type(this.Body.TypeOf(place) ?? throw new InvalidOperationException($"A case reader read {place} of no Type (InternalInvariant)."));
+    internal BoundType TypeOf(MirPlace place) => this.Type(this.Stated(place));
 
     /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's Type as a case Type
     /// (<see cref="Type"/>) or its Place's (<see cref="TypeOf(MirPlace)"/>), the one form every case reader of an operand takes.</summary>
@@ -222,6 +222,19 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType TypeOf(in MirOperand operand)
         => operand.Kind == MirOperandKind.Const ? this.Type(this.Body.Consts[operand.Arg].Type) : this.TypeOf(operand.Place);
+
+    /// <summary>Gets the case Type (<see cref="Type"/>) of a Type of the selected body as its identity premises make it first
+    /// (<see cref="MirTypes.Premised"/>), the one order of PLAN G355's interim readers (G986: A5's storing rule, A2's root) until R7-Y5: a
+    /// premise may give a pair layer (PLAN G355 t13), which only the view after it maps. None for none (<see cref="KnownType"/>).</summary>
+    /// <param name="type">The Type, or none.</param>
+    /// <returns>The premised case Type, or none.</returns>
+    internal BoundType? PremisedKnownType(BoundType? type) => this.KnownType(MirTypes.Premised(types, this.Body, type));
+
+    /// <summary>Gets the case Type of a Place of the selected body as <see cref="PremisedKnownType"/> makes its Type, read where
+    /// <see cref="TypeOf(MirPlace)"/> is: the validated body states it.</summary>
+    /// <param name="place">A Place of the selected body.</param>
+    /// <returns>The premised case Type.</returns>
+    internal BoundType PremisedTypeOf(MirPlace place) => this.Type(MirTypes.Premised(types, this.Body, this.Stated(place)));
 
     /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5): the Place it applies to itself
     /// in the owner case, else the referent of the reference or object handle that Place stores in the case. The Place selected has the
@@ -296,6 +309,10 @@ internal sealed class MirCases(TyCtxt types)
                 target),
         };
     }
+
+    // A Place's Type as the validated body states it for a case reader (TypeOf's): none is an InternalInvariant.
+    private BoundType Stated(MirPlace place)
+        => this.Body.TypeOf(place) ?? throw new InvalidOperationException($"A case reader read {place} of no Type (InternalInvariant).");
 
     // Branch's rule under the selected view, the receiver a decider's case acquires: a Closure Type's case receiver, another Type's own
     // Semantics.

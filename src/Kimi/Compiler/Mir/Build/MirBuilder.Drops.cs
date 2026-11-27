@@ -5,8 +5,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Scopes and drop trees (SPEC 16, plan 5.6.4). A Var or Temp local lives from its StorageLive to its StorageDead, a value whose Type may
-// need drop (MirTypes.MayNeedDrop) is dropped first, and a defer runs where its scope is left. Each open scope keeps its registrations in
+// Scopes and drop trees (SPEC 16, plan 5.6.4). A Var or Temp local lives from its StorageLive to its StorageDead, a value whose Type, as
+// the body's identity premises make it, may need drop (MayNeedDrop) is dropped first, and a defer runs where its scope is left. Each open scope keeps its registrations in
 // order: a block its locals and defers, a statement or a condition its temporaries (a guard candidate also its EndBorrow), the body its
 // parameters, a destructor's self as its layer's parts (SPEC 16.3.2). A local's StorageDead registers where its storage begins; a
 // binding's Drop with it, in declaration order (SPEC 16.2.1), a temp's where its value is created (Hold, Made), so temporaries are
@@ -114,11 +114,15 @@ internal sealed partial class MirBuilder
         return local;
     }
 
+    // The drop rule (MirTypes.MayNeedDrop) over a Type as the body's identity premises make it (MirTypes.Premised; PLAN G355's interim,
+    // removed at R7-Y5), so no Drop is built of a value only the premised parameter's row would destroy. Every Drop site reads it.
+    private bool MayNeedDrop(BoundType? type) => MirTypes.MayNeedDrop(compilation.Types, MirTypes.Premised(compilation.Types, this.body, type), this.walked);
+
     // A local's value created, dropped with the scope at an index, before what the scope registered earlier, where its Type may need drop;
     // the Drop at an offset of its document where that is its declaration's start (MirTerminator.Offset), else -1.
     private void Created(int local, int index, int offset = -1)
     {
-        if (MirTypes.MayNeedDrop(compilation.Types, this.body.Locals[local].Type, this.walked))
+        if (this.MayNeedDrop(this.body.Locals[local].Type))
         {
             this.Register(Cleanup.Drop, local, null, index, offset);
         }
@@ -226,7 +230,7 @@ internal sealed partial class MirBuilder
         for (long rank = 0, count = MirTypes.LevelCount(compilation.Types, type); rank < count; rank++)
         {
             var (step, arg) = MirTypes.LevelPart(compilation.Types, type, rank);
-            if (MirBody.SelectsPart(compilation.Types, type, step, (int)arg, out var part) && MirTypes.MayNeedDrop(compilation.Types, part, this.walked))
+            if (MirBody.SelectsPart(compilation.Types, type, step, (int)arg, out var part) && this.MayNeedDrop(part))
             {
                 this.DropAt(this.body.Project(compilation.Types, new(local), step, (int)arg), source);
             }

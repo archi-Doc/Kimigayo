@@ -453,8 +453,9 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
         }
     }
 
-    // A Drop's tree under the view: the Types top-down from the Drop's case Type; a node whose Type needs no drop is Elide with its subtree,
-    // and an Open layer whose Type declares a drop may be incomplete where that drop would run (SPEC 15.1.3, 16.3.2): MovedPlace_Kd at a
+    // A Drop's tree under the view: the Types top-down from the Drop's case Type as the body's identity premises make it (MirCases'
+    // PremisedTypeOf, the Type the builder's drop rule reads; PLAN G355's interim until R7-Y5); a node whose Type needs no drop is Elide
+    // with its subtree, and an Open layer whose Type declares a drop may be incomplete where that drop would run (SPEC 15.1.3, 16.3.2): MovedPlace_Kd at a
     // runtime Drop. A check-only Drop is read here alone: not judged and flagless (R4-M6a), so Flag's state reads as Keep, no row has a
     // flag, and such a layer is destroyed whole (Keep, its drop included). Only an Open row has child rows. Returns the next tree.
     private int Tree(int first, ulong views)
@@ -476,7 +477,7 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
 
             var step = node.Path < 0 ? default : moves.Paths[node.Path];
             MirDataflow.Grow(ref this.types, node.Depth + 1);
-            var type = this.types[node.Depth] = node.Depth == 0 ? cases.TypeOf(drop.Terminator.Place)
+            var type = this.types[node.Depth] = node.Depth == 0 ? cases.PremisedTypeOf(drop.Terminator.Place)
                 : this.body.ProjectedType(typeContext, this.types[node.Depth - 1], step.Kind, step.Arg);
             var state = node.State == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : node.State;
             var verdict = MirTypes.MayNeedDrop(typeContext, type, this.walked) ? state : MirDropVerdict.Elide;

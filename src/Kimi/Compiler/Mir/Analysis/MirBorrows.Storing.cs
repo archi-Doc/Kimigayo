@@ -9,6 +9,9 @@ namespace Kimi.Compiler.Mir;
 // Input: the body's own CallRetention (TyCtxt.Retains over its declaration), its records (Own, the Reached entry of a storage's erased
 // case Type, All), the exposed holders (MirBorrows.Loans' Exposed), the checks replay's chains (MirDataflow.Head) and the facts at a
 // store's destination key (MirBorrows.PunKeys' RawInline and AnyStated, folded from TyCtxt.OwnLayers, the fold the pun rule reads).
+// Every Type it reads, the gate's, a pointer test's, an operand's and a storage's, is the case Type of the Type as the body's identity
+// premises make it (MirCases' PremisedKnownType and PremisedTypeOf; PLAN G355's interim, removed at R7-Y5), as Binding's record is
+// premised (DECISIONS BU-276); PunKeys' destination fact stays over MIR Types until then.
 // The value fact, M(h): by holder slot, the elements its whole value certainly holds, a MirLoanSets set in a namespace of its own (never
 // joined with σ): Own(i, part), input i's own part, an address or borrow of the storage i's layer at `part` refers to (a parameter's own
 // pointer is the layer at the root, part 0; a by-value input's layer is the part a Place names before its first layer Deref), or of
@@ -149,7 +152,7 @@ internal sealed partial class MirBorrows
 
         for (var i = 1; complete && i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
-            if (MirTypes.HoldsRaw(types, cases.KnownType(this.body.Locals[i].Type), this.seen))
+            if (MirTypes.HoldsRaw(types, cases.PremisedKnownType(this.body.Locals[i].Type), this.seen))
             {
                 return true;
             }
@@ -262,9 +265,9 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included); none of no Type, a whole
-    // write's destination (MirCases.KnownTypeOf, PLAN G1073).
-    private bool PointerType(MirPlace place) => this.Holds(cases.KnownTypeOf(place), out _);
+    // Whether a value of a Place's premised case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included); none of no Type, a
+    // whole write's destination (MirCases.PremisedKnownType, PLAN G1073).
+    private bool PointerType(MirPlace place) => this.Holds(cases.PremisedKnownType(this.body.TypeOf(place)), out _);
 
     // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0).
     private void EnterStoring()
@@ -321,7 +324,7 @@ internal sealed partial class MirBorrows
             return this.slots[place.Root] >= 0 ? this.must[this.slots[place.Root]] : 0;
         }
 
-        if (this.StoringInput(place.Root) && cases.TypeOf(this.body.Operands[index]) is var type &&
+        if (this.StoringInput(place.Root) && cases.PremisedTypeOf(place) is var type &&
             (MirTypes.IsReference(type) || type.IsPointer) && this.Depth(place) == 0)
         {
             return this.sets.Add(0, this.Own(place.Root, place.Projection));
@@ -416,7 +419,7 @@ internal sealed partial class MirBorrows
         }
 
         var storage = last + 1 < count ? place with { Projection = this.mustSteps[last + 1].Prefix } : place;
-        var type = types.Erase(cases.TypeOf(storage));
+        var type = types.Erase(cases.PremisedTypeOf(storage));
         var slot = MirCallee.Slot(this.body.Key.Decl!, input - 1);
         foreach (var written in this.contract.Writes)
         {
