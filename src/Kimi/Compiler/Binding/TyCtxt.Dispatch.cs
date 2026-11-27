@@ -29,10 +29,11 @@
 // Cause: the resolution's formation (TyCtxt.Formation), Formed but for a resolution that formed a Type past IMPL A.4's height inside the
 // collector's answer frame (another conformance's formal, SPEC 8.6.1, or a conditional conformance's premise, 8.8.2): HeightLimit with no
 // target, which the caller records at its requesting site (InstanceCollector.Formed).
-// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance, but for a
-// resolution refused in the collector's frame, which the materializer, outside it, records itself (InstanceCollectorTest's K 4.5 rows,
-// TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
-// since a base subobject is a layout prefix (Layout.Of, X1).
+// Invariants: for a closed Self, an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same
+// instance, but for a resolution refused in the collector's frame, which the materializer, outside it, records itself
+// (InstanceCollectorTest's K 4.5 rows, TyCtxtTest's direct Witness assertions, the native fixtures); a Self with an abstract part has no
+// materializer counterpart, since the materializer keeps that requirement call (SPEC 8.15), and its reader is A4. No receiver
+// projection is returned, since a base subobject is a layout prefix (Layout.Of, X1).
 // Must not: forward an abstract Self (the materializer's SPEC 8.15 rule), create a bridge or a CallPlan, write a diagnostic, HIR or pass
 // state, or prove on an erased value.
 

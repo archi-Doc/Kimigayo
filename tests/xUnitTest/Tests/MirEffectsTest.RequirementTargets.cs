@@ -644,7 +644,9 @@ public sealed partial class MirEffectsTest
         => Assert.Equal(expected, TestDiagnostics.ErrorSites(MinimalEmissionTest.Check(source + "\n"), source));
 
     // IMPL 21.3.2, A.4, SPEC 23.1.2: a premise the collector forms past the height in h, reached from startup through g1 and g2, is the
-    // collector's one TypeHeightLimit_Kd at `w == w`; A4 adds nothing at `Self is Sink`.
+    // collector's one TypeHeightLimit_Kd at `w == w`; A4 adds nothing at `Self is Sink`. The row also pins TyCtxt.Witness's premise
+    // scope: read under the library root's premises, A4 adds an IncompatibleContractImplementation_Kd (R7-P5a; the mutant
+    // `EffectPremises(null)` fails it).
     [Fact]
     public void AFormationPastTheHeightIsTheCollectorsRecordAlone()
         => Assert.Equal("TypeHeightLimit_Kd@54:21", TestDiagnostics.ErrorSites(MinimalEmissionTest.Check(HeightFromStartup + "\n"), HeightFromStartup));

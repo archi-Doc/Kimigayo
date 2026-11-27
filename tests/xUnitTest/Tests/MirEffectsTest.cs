@@ -1070,7 +1070,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.3: a witness entered for a row runs its own body, whose requirement call on its parameter keeps the witness's premises
     // (X2) whatever the instance: `Box<Key>`'s equality is confined under `T is Fixed` and unknown under `T is Equatable`, reached
-    // directly and through a generic helper (fail-before: the confined ones, through the private Storage helper).
+    // directly and through a generic helper (fail-before: the confined ones, through the private Storage helper). The confined row
+    // through H.find also pins TyCtxt.Witness's premise scope: read under the library root's premises, Box<Key>'s equality is unknown
+    // there (R7-P5a; the mutant `EffectPremises(null)` fails it).
     [Theory]
     [InlineData("Fixed", "_ = self.boxes.tryGet(Box<Key>.init(Key.init()))", "")]
     [InlineData("Equatable", "_ = self.boxes.tryGet(Box<Key>.init(Key.init()))", Failed)]
