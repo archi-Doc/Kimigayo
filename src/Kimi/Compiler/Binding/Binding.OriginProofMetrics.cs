@@ -65,6 +65,11 @@ internal sealed class OriginProofMetrics
     /// region-graph version once no body is being bound).</summary>
     internal long ValueInReads { get; private set; }
 
+    /// <summary>Gets the regions whose recorded bounds a local region's candidate walks read (<c>Binding.BoundAtoms</c>: one per region
+    /// UpperBound's or ReachesRegion's walk enters); at most the sum over UpperBound reads of one plus, over their read-through atoms,
+    /// the regions of those atoms' reach walks.</summary>
+    internal long CandidateSteps { get; private set; }
+
     /// <summary>Gets the declaration judge's chain work (<c>TyCtxt.OriginChains.Work</c> of its graphs, PLAN G318): the core's only, as
     /// the minimal-condition rule at a last edge is quadratic in its key's conditions by design (at most 64 binders), as the copy's was.</summary>
     internal long ChainWork { get; private set; }
@@ -117,6 +122,7 @@ internal sealed class OriginProofMetrics
         this.CarriedWalks = 0;
         this.CarriedAdmissions = 0;
         this.ValueInReads = 0;
+        this.CandidateSteps = 0;
         Array.Clear(this.edges);
     }
 
@@ -127,6 +133,8 @@ internal sealed class OriginProofMetrics
     internal void CarriedAdmission() => this.CarriedAdmissions++;
 
     internal void ValueInRead() => this.ValueInReads++;
+
+    internal void CandidateStep() => this.CandidateSteps++;
 
     internal void Chained(long work) => this.ChainWork += work;
 

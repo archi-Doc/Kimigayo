@@ -6,16 +6,18 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // A local's omitted Origins (SPEC 15.3.6, 15.4.4): the Origins its initializer infers while it binds, and the Origins its annotation
-// omits, inferred from the initializer's Type and solved with the local's clauses.
+// omits, each a region slot of the local.
 // - Responsibility: ResolveInitializerOrigins closes the initializer's acquisition (initializerOrigins, whose bounds the fits record in
 //   Binding.OriginProof.cs) and rewrites the initializer's Type; InferLocalOrigins matches the annotation against that Type, giving the
-//   local's omitted slots regions (LocalRegionSlot), `let` or `var`; SolveLocalBounds solves the slots its clauses bound.
-// - Inputs: the local's declared and initializer Types, the bounds its initializer's fits recorded, its clauses (originDeclarations).
+//   local's omitted slots regions (LocalRegionSlot, each row its slot's variance in the Type), `let` or `var` alike, whose bounds the
+//   declaration records and whose `let` values FixDeclaredRegions fixes (Binding.LocalRegions.cs).
+// - Inputs: the local's declared and initializer Types, the bounds its initializer's fits recorded.
 // - Outputs: the replacements of the local's two Origin declarations, the local's rewritten Types and annotation nodes, the discharged
 //   inference obligations of resolved Origins, and the region bounds that publish their resolutions.
 // - Invariants: a local's Origins are resolved once, when its initializer is bound, before any later use reads its Type; the
-//   initializer's declaration is closed (State 3) before the annotation's is solved.
-// - Prohibitions: no judgment of a relation (Binding.OriginClauses.cs and the proof judge them); no message text.
+//   initializer's declaration is closed (State 3) before the annotation's is matched.
+// - Prohibitions: no judgment of a relation (Binding.OriginClauses.cs and the proof judge them); no region value (Binding.LocalRegions.cs
+//   publishes it); no message text.
 public sealed partial class Binding
 {
     // Origins omitted in a local initializer's own Type expressions (SPEC 15.4.4), inferred while that initializer binds. They
@@ -73,27 +75,23 @@ public sealed partial class Binding
         return this.RewriteOrigins(type, declaration);
     }
 
-    // SPEC 15.3.6, 15.4.4: an Origin the local's Type omits takes its candidate from the initializer's Type; one that no fit binds, bound
-    // only to itself or no longer reached by the declared Type (a projection base's slot that the projection's normalization drops), has
-    // none and is a local region of `owner` (DECISIONS R4-M112 (c)), numbered after the initializer's. `slot` is the local's next region
-    // slot (BindVariableCore).
+    // SPEC 15.3.6, 15.4.4: every Origin the local's Type omits is a region slot of `owner`, `let` or `var` alike (Bind), numbered after the
+    // initializer's: one the initializer's Type matches, whose bound the declaration's one fit records (CheckTypeUse), and one that no
+    // fit binds, bound only to itself or no longer reached by the declared Type (a projection base's slot that the projection's
+    // normalization drops), which has no bound from the initializer (DECISIONS R4-M112 (c)). The declaration fixes their values
+    // (FixDeclaredRegions). `slot` is the local's next region slot (BindVariableCore).
     private BoundType InferLocalOrigins(BoundType declared, BoundType actual, VariableKoto owner, BindingScope scope, int slot)
     {
         OriginDeclaration? declaration = null;
         if (declared.CarriesOrigin && actual.CarriesOrigin)
         {
-            Match(declared, actual, OriginVariance.Covariant);
+            Match(declared, actual);
         }
 
         // OmittedOrigin creates the local's declaration with the first Origin its Type omits.
         if (declaration is null && !this.originDeclarations.ContainsKey(owner))
         {
             return declared;
-        }
-
-        if (declaration?.Forming.Inferred is { Count: > 0 } inferred)
-        {
-            this.SolveLocalBounds(declaration, inferred, owner, ref slot);
         }
 
         for (var i = this.obligations.Count - 1; i >= 0; i--)
@@ -111,8 +109,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                declaration ??= this.OriginDeclarationFor(owner);
-                declaration.Forming.Replacements[pending] = this.LocalRegionSlot(owner, slot--, this.OccurrenceVariance(declared, pending, this));
+                Bind(pending);
             }
 
             this.obligationSet.Remove(new(obligation));
@@ -124,29 +121,6 @@ public sealed partial class Binding
             return declared;
         }
 
-        if (!IsMutableDeclaration(owner))
-        {
-            // SPEC 15.3.4, 15.3.6, 15.6.5 (PLAN G492-a (ii) revision 2): a `let` local's solved slot is the value of its own region, which
-            // its name denotes: its own body reads the value (RegionValueAtUse), a nested signature or body the region, fixed there.
-            var solved = this.regionWork;
-            solved.Clear();
-            foreach (var replacement in declaration.Forming.Replacements)
-            {
-                if (!IsLocalRegion(replacement.Value))
-                {
-                    solved.Add(replacement.Key);
-                }
-            }
-
-            foreach (var pending in solved)
-            {
-                declaration.Forming.Replacements[pending] = this.ValuedRegion(
-                    owner, slot--, this.OccurrenceVariance(declared, pending, this), declaration.Forming.Replacements[pending], owner);
-            }
-
-            solved.Clear();
-        }
-
         declaration.Forming.Scope = scope;
         declaration.Forming.State = 3;
         this.originStateVersion++;
@@ -156,146 +130,42 @@ public sealed partial class Binding
         visitor.Declaration = null;
         return this.RewriteOrigins(declared, declaration);
 
-        // `polarity` is the variance of the position within the local's Type, composed as RelationWalk compares it.
-        void Match(BoundType pattern, BoundType value, OriginVariance polarity)
+        // The omitted slots the initializer's Type matches, position by position as RelationWalk pairs them.
+        void Match(BoundType pattern, BoundType value)
         {
             if (pattern.Kind != value.Kind || pattern.Semantics != value.Semantics || !ReferenceEquals(pattern.Symbol, value.Symbol))
             {
                 return;
             }
 
-            if (pattern.Origin is { } p && value.Origin is { } a)
+            if (pattern.Origin is { } p && value.Origin is not null)
             {
-                Bind(p, a, polarity);
+                Bind(p);
             }
 
             for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, value.OriginArguments.Count); i++)
             {
-                Bind(pattern.OriginArguments[i], value.OriginArguments[i], ComposeVariance(polarity, this.OriginArgumentVariance(pattern, i, this)));
+                Bind(pattern.OriginArguments[i]);
             }
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)
             {
-                Match(pattern.Components[i], value.Components[i], ComposeVariance(polarity, ComponentVariance(pattern, i, this)));
+                Match(pattern.Components[i], value.Components[i]);
             }
         }
 
-        void Bind(BoundOrigin pending, BoundOrigin value, OriginVariance polarity)
+        // An omitted slot's region, its row the slot's variance in the local's Type (OccurrenceVariance); a slot matched again, or fixed
+        // by an equality (FixedRegion), keeps its region.
+        void Bind(BoundOrigin pending)
         {
             if (pending.Kind == OriginKind.Inference && !IsLocalRegion(pending))
             {
                 declaration ??= this.OriginDeclarationFor(owner);
-                if (IsMutableDeclaration(owner))
+                if (!declaration.Forming.Replacements.TryGetValue(pending, out var previous) || !IsLocalRegion(previous))
                 {
-                    var region = declaration.Forming.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
-                        ? previous : this.LocalRegionSlot(owner, slot--, polarity);
-                    declaration.Forming.Replacements[pending] = region;
-                    this.originStateVersion++;
-                    if (!ReferenceEquals(value, pending))
-                    {
-                        this.AddOriginFit(value, region, declared, owner.InitializerKoto!, polarity);
-                    }
-                }
-                else
-                {
-                    // SPEC 15.3.6: the slot itself is no candidate, so a slot bound only to itself is a local region (DECISIONS R4-M112).
-                    // A `let` local's candidate reads the initializer's regions as their values (PLAN G492-a (ii) revision 2), a binding
-                    // again its own slot's region too; once solved, it is the value of the slot's region (below).
-                    value = this.RegionValueAtUse(value, owner);
-                    declaration.Forming.Replacements[pending] = declaration.Forming.Replacements.TryGetValue(pending, out var previous)
-                        ? this.Meet(this.RegionValueAtUse(previous, owner), value)
-                        : ReferenceEquals(value, pending) ? this.LocalRegionSlot(owner, slot--, polarity) : value;
+                    declaration.Forming.Replacements[pending] = this.LocalRegionSlot(owner, slot--, this.OccurrenceVariance(declared, pending, this));
                     this.originStateVersion++;
                 }
-
-                if (declaration.Forming.Relations.Count != 0)
-                {
-                    // Local clauses use this composed variance when solving their bounds.
-                    var inferred = declaration.Forming.Inferred ??= new(ReferenceEqualityComparer.Instance);
-                    inferred[pending] = inferred.TryGetValue(pending, out var seen) && seen != polarity ? OriginVariance.Invariant : polarity;
-                }
-            }
-        }
-    }
-
-    // SPEC 15.3.6, 15.4.4: covariant positions meet upper bounds; contravariant positions select an existing lower bound proven to
-    // outlive the others (StrongestLowerBound, each clause's lower bound before the candidate held, so that an equal one keeps it, at the
-    // clause; RowCandidate's contravariant row). Repeated passes propagate dependent slots without inventing unions. Once every lower bound is seen, a
-    // contravariant slot whose candidate is not proven to outlive each of them has no candidate and is a local region of `owner`, at
-    // `slot` (DECISIONS R4-M112): one decision, whatever the clause order.
-    private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred, VariableKoto owner, ref int slot)
-    {
-        for (var pass = 0; pass <= declaration.Forming.Relations.Count; pass++)
-        {
-            var changed = false;
-            foreach (var relation in declaration.Forming.Relations)
-            {
-                if (relation.Equality)
-                {
-                    continue;
-                }
-
-                if (inferred.TryGetValue(relation.Longer, out var lowerVariance) && lowerVariance == OriginVariance.Contravariant &&
-                    declaration.Forming.Replacements.TryGetValue(relation.Longer, out var lowerCandidate) && !IsLocalRegion(lowerCandidate))
-                {
-                    var lowers = this.originScratch.Rent(2);
-                    try
-                    {
-                        (lowers[0], lowers[1]) = (this.ResolveOrigin(relation.Shorter, declaration), lowerCandidate);
-                        var lower = this.StrongestLowerBound(lowers.AsSpan(0, 2), relation.Syntax, default, out _);
-                        if (this.RowCandidate(OriginVariance.Contravariant, null, lower, relation.Syntax, default) is { } selected && !ReferenceEquals(selected, lowerCandidate))
-                        {
-                            declaration.Forming.Replacements[relation.Longer] = selected;
-                            this.originStateVersion++;
-                            changed = true;
-                        }
-                    }
-                    finally
-                    {
-                        this.originScratch.Return(lowers, clearArray: true);
-                    }
-                }
-
-                if (!inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
-                    !declaration.Forming.Replacements.TryGetValue(relation.Shorter, out var current))
-                {
-                    continue;
-                }
-
-                var longer = this.ResolveOrigin(relation.Longer, declaration);
-                if (IsLocalRegion(current))
-                {
-                    this.AddObligation(new(BindingObligationKind.OriginOutlives, relation.Syntax, BindingDeadline.BodyOrigins, null, longer, current, Clause: relation.Syntax));
-                    continue;
-                }
-
-                var met = this.Meet(current, longer);
-                if (!ReferenceEquals(met, current))
-                {
-                    declaration.Forming.Replacements[relation.Shorter] = met;
-                    this.originStateVersion++;
-                    changed = true;
-                }
-            }
-
-            if (!changed)
-            {
-                break;
-            }
-        }
-
-        foreach (var relation in declaration.Forming.Relations)
-        {
-            if (relation.Equality || inferred.GetValueOrDefault(relation.Longer) != OriginVariance.Contravariant ||
-                !declaration.Forming.Replacements.TryGetValue(relation.Longer, out var candidate) || IsLocalRegion(candidate))
-            {
-                continue;
-            }
-
-            if (!this.ProvesOriginOutlives(candidate, this.ResolveOrigin(relation.Shorter, declaration), relation.Syntax))
-            {
-                declaration.Forming.Replacements[relation.Longer] = this.LocalRegionSlot(owner, slot--, OriginVariance.Contravariant);
-                this.originStateVersion++;
             }
         }
     }

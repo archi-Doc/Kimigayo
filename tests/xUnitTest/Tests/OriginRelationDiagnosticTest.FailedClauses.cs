@@ -92,6 +92,18 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal(twinRecords, OriginRecords(source.Replace(written, repair, StringComparison.Ordinal) + Main));
     }
 
+    // SPEC 23.1.2, 15.6.5 (R7-O2 A4-L, the Middle's Q-C): the whole located record list, beside OriginRecords' filter, of the row whose
+    // failed clause names the omitted slot as its shorter end (bu68_r6: I), of its repair (bu68_r6c: I), of the same program without
+    // the annotation (bu68_un: I) and as a `var` local (bu68_var: I). l's Borrow reaches a through p.q, Refuted; the loan conflict at
+    // `let l` is the program's own, not the annotation's.
+    [Theory]
+    [InlineData(PairLocal + "        origin zz outlives x.t\n    return p.q\n", "ComparisonLoanConflict_Kd 8:5; MissingOriginBinding_Kd 10:16; UnsatisfiedOriginRelation_Kd 11:12")]
+    [InlineData(PairLocal + "        origin a outlives x.t\n    return p.q\n", "ComparisonLoanConflict_Kd 8:5; UnsatisfiedOriginRelation_Kd 11:12")]
+    [InlineData(Pair + "func f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n    let p = P.init(a, l@ref)\n    return p.q\n", "ComparisonLoanConflict_Kd 8:5; UnsatisfiedOriginRelation_Kd 10:12")]
+    [InlineData(Pair + "func f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n    var p: P{x} = P.init(a, l@ref)\n        origin a outlives x.t\n    return p.q\n", "ComparisonLoanConflict_Kd 8:5; UnsatisfiedOriginRelation_Kd 11:12")]
+    public void ALocalsBorrowThroughItsSlotHasItsWholeRecordList(string source, string records)
+        => Assert.Equal(records, string.Join("; ", DiagnosticCorpus.LocatedRecords(source + Main).Select(static x => string.Join(' ', x.Split(' ', 3).Take(2)))));
+
     /// <summary>Gets each declaration whose failed clause leaves a slot of its Types Unbound, with uses of those Types outside it, the
     /// clause as written and its repair (the valid twin).</summary>
     public static TheoryData<string, string, string> UsesOfARestingSlot => new()
