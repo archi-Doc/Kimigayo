@@ -76,12 +76,15 @@ public sealed class Kernel32ImportsTest
         => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], []));
 
     // A row's constant markers take the row's constants, which only the row's runtime expansion is given (the Tatara plan's B7b2a, N2):
-    // the Windows row's unmapped bound (G371) and its layer's OS-error prefix with its length, and the none layer's prefix (IMPL 21.6); a
-    // target-free template naming one fails (BrokenRuntimeTemplateFails).
+    // the Windows row's unmapped bound (G371) and its layer's OS-error prefix with its length, and the none layer's prefix (IMPL 21.6);
+    // the layer's allocation calls (none on windows-x64; the none layer's test that no platform member runs, IMPL 21.6.3); a target-free
+    // template naming one fails (BrokenRuntimeTemplateFails).
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", "{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
     [InlineData("x86_64-pc-windows-msvc", "{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[8 x i8] c\" (win32=\"\n")]
     [InlineData("x86_64-unknown-none", "{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[11 x i8] c\" (platform=\"\n")]
+    [InlineData("x86_64-pc-windows-msvc", "{{__kimi_exit}}\n{{allocation_calls}}  ret void\n", "  ret void\n")]
+    [InlineData("x86_64-unknown-none", "{{__kimi_exit}}\n{{allocation_calls}}  ret void\n", "  call void @__kimi_platform_idle()\n  ret void\n")]
     public void ARowsRuntimeTemplateTakesTheRowsConstants(string row, string template, string body) => Assert.Equal(
         RuntimeAbi.Exit.GetDefinition(exported: false) + body,
         LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], RuntimeAbi.RowConstants(TargetProfile.Find(row)!)));
@@ -246,6 +249,30 @@ public sealed class Kernel32ImportsTest
             Assert.Equal(mapping, body[(call.Index + call.Length)..]);
             Assert.Equal(adapter.NoReturn ? 0 : 1, body.Split(Clear).Length - 1);
         }
+    }
+
+    // IMPL 21.6.3 (PLAN G1455): every heap block's allocation first calls its row's layer's allocation calls, before it reads the
+    // allocator's state. A hosted row has none, so its allocator is unchanged and its runtime names no idle test. The none row's is the
+    // layer's test that no platform member runs: the busy flag's test (set: the processor halts), which sets and clears nothing.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "")]
+    [InlineData("x86_64-unknown-linux-musl", "")]
+    [InlineData("x86_64-unknown-none", "  call void @__kimi_platform_idle()\n")]
+    public void EveryBlockAsksItsRowsLayerFirst(string row, string calls)
+    {
+        var runtime = LlvmModuleText.Frame(TargetProfile.Find(row)!).Runtime;
+        var allocate = Definition(runtime, RuntimeAbi.HeapAllocate.GetDefinition(exported: false));
+        Assert.StartsWith("entry:\n" + calls + "  %size = add i64 %bytes, 16\n", allocate, StringComparison.Ordinal);
+        if (calls.Length == 0)
+        {
+            Assert.DoesNotContain("@" + RuntimeAbi.PlatformIdle.Name, runtime, StringComparison.Ordinal);
+            return;
+        }
+
+        Assert.Equal(
+            "entry:\n  %busy = load i8, ptr @__kimi_platform_busy, align 1\n  %reentered = icmp ne i8 %busy, 0\n" +
+            "  br i1 %reentered, label %halt, label %idle\nhalt:\n  call void @__kimi_halt()\n  unreachable\nidle:\n  ret void\n}\n",
+            Definition(runtime, RuntimeAbi.PlatformIdle.GetDefinition(exported: false)));
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,

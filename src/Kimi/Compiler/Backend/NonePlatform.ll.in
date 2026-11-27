@@ -4,8 +4,9 @@
 ; routines through which the common runtime (Runtime.ll.in) writes and exits, its allocator (HeapRuntime.ll.in) maps and releases pages
 ; and Kimi.Time reads the clock, each over the program's platform member through its adapter (__kimi_platform_member_<member>, which
 ; ModuleCodegen's frame defines). A routine tests the busy flag, sets it, calls its adapter, clears it and maps the result: a member
-; call while a member runs, an Abort's report included, halts the processor with interrupts disabled, without a report. No system call,
-; no import and no adapter declaration; the template makes no other call of the program.
+; call while a member runs, an Abort's report included, halts the processor with interrupts disabled, without a report. The allocator
+; asks the idle test, its allocation call, before it takes a block, so an allocation while a member runs halts the same way (IMPL
+; 21.6.3). No system call, no import and no adapter declaration; the template makes no other call of the program.
 
 @__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
 
@@ -67,8 +68,8 @@ answered:
   ret void
 }
 
-; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records. Each routine has one shape: the flag's test (set: halt),
-; its set, the adapter's call, its clear, then the result's mapping.
+; Compiler-facing definitions are expanded from RuntimeAbi FunctionAbi records. Each routine over an adapter has one shape: the flag's
+; test (set: halt), its set, the adapter's call, its clear, then the result's mapping.
 ; The platform's start: the loader's answers in a Boot local, passed to the program's start, which stores the platform value.
 {{__kimi_platform_start}}
 entry:
@@ -180,4 +181,19 @@ call:
   %result = call i64 @__kimi_platform_member_clock()
   store i8 0, ptr @__kimi_platform_busy, align 1
   ret i64 %result
+}
+
+; Whether a platform member runs, which the allocator asks before it takes a block (its allocation call, RuntimeLayer.AllocationCalls;
+; IMPL 21.6.3): a member's allocation halts the processor with interrupts disabled, without a report; otherwise nothing. The flag's
+; test alone: no set and no clear.
+{{__kimi_platform_idle}}
+entry:
+  %busy = load i8, ptr @__kimi_platform_busy, align 1
+  %reentered = icmp ne i8 %busy, 0
+  br i1 %reentered, label %halt, label %idle
+halt:
+  call void @__kimi_halt()
+  unreachable
+idle:
+  ret void
 }
