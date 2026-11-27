@@ -6502,6 +6502,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     witness in the copy (a responsibility moved between phases for one consumer).
   - Closes R4-M189's Open sentence ("A requirement call on a closed Self records no own Type arguments, so a witness's
     parameter-dependent atom ...").
+  - Amended by R7-M126 (R7-P5a): the Rejected line's "not before H11" is met (R5-M182's amendment); A4 reads `TyCtxt.Witness` in
+    R7-P5a, a comparison shim's leaves by the entry.
 - **R4-M198 A5's pun rule reads one fact per raw access and entry** (2026-11-11; Middle, A5 and Binding's one reader; Major, an
   acceptance mover; PLAN G667 with G667b's held rule; the owner's O-131 (a), O-135 (c), O-137 (a), O-144 (a), O-159 (a)) SPEC 4.1,
   4.3.3, 4.4.2, 5.2; IMPL 21.1.2. A5's pun rule reads one fact per raw access and entry: the Place the entry names, the value's
@@ -8053,7 +8055,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     for the same purpose); keeping `Limit` with a stage (none exists; R7-M53 removes, not excepts).
   - **Supersedes in part** R4-M139's "Each keeps its own meaning of a Limit (... A4's Limit class ...)" for A4 (A4's atom and
     `Below` read the null as Deep); **amends** R4-M153 (A4's Deep also covers an instance past Binding's storage bound). A4's `Limit`
-    class keeps E5 (Z3), E6 (Z2's rest) and E7 (R7-P5).
+    class keeps E5 (Z3), E6 (Z2's rest) and E7 (R7-P5a).
   - **Rows.** `MirEffectsTest.DepthLimit`'s rel65, rel65-loud, wipe65, clear65 and their twins, and
     `AChainGrowingThroughADestructorEndsAtTheBound`; records move `Unsupported_Kd` -> `OwnershipDepthLimit_Kd` at the obligation on
     programs the base rejects (Q13), none in the snapshot corpus; no acceptance move.
@@ -14103,7 +14105,7 @@ resumed by R4-M86 (2026-10-20).
     "Property, Refused and None give false".
   - **Kept:** `Binding.LeafTarget` (the legacy composition's leaf) answers a library witness with no Types, right only for a row of no
     parameter (String, the one Equatable or Comparable row): no comparison row with a parameter lands before A-12's read of the view, else
-    R7-P5, which removes it.
+    R7-P5a, which removes it.
   - **Rejected:** selecting inside `Witnesses` (the one producer answering a specialization; the agreement check would compare a selected
     target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
     Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
@@ -21510,6 +21512,10 @@ structure is recorded here by the unit that first implements it.
     `ComparisonPlan(CallPlan)` keeps H11 for `ComparisonCompositionTest`.
   - Amended by BU-142 (G589): the comparison view's Witness leaf is the Body's instance without its Origins, not `Synthesized(witness,
     declaring, [])`.
+  - Superseded in part by R7-M126 (R7-P5a): the legacy comparison twin's bullet (`ComparisonPlan`, `BoundComparison`,
+    `comparisonPlans`, `RequirementImplementation` with `requirementCalls`) and R5-M166's amendment line here, which ends "A4 holds
+    both resolvers until then": A4's `Require` reads `TyCtxt.Witness` and a comparison shim by `TyCtxt.Comparison`'s leaves, so A4
+    and codegen hold one resolver; the legacy composition is gone.
 - **R5-M67 Requirement edges of the checked set** (2026-10-19; plan K6; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1;
   `MonoKind.Builtin`, `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11,
   `ExclusiveInheritedWitness` being KD10's and §4.7's OCC-X row; its Builtin key superseded by R5-M70) A Requirement call of an
@@ -25344,6 +25350,9 @@ structure is recorded here by the unit that first implements it.
     the dev defects D-1 (binder widening) and D-2 (a resting InvalidOrigin masks a later failure); the owner's G1 approval travels
     with H11b (R5-M192's amendment).
   - Amended by R4-M232 (Z17, Q-621): the H3-2 bullet's removal condition, 2g-1 (Z16, R7-M65), becomes PLAN G121.
+  - Amended by R7-M126 (R7-P5a): R4-13's "A-12 does not land before H11" is met: H11a (W-22), H11b-0 (B0 445c1dd17a, B1 512d390301;
+    BU-154, BU-159) and H11b's remainder, R7-O1 H (5230ca5793, R7-M66; R7 plan revision 99), landed before it; A-12 deletes
+    `RequirementImplementation` with its composition in R7-P5a.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -27195,12 +27204,14 @@ R8-M* and R9-M* by the stage of the recording unit.
     Z6, Z8, Z9).
   - **Owner questions, only where named:** OQ-Z7, if SPEC 22.4.3 does not decide whether a live Loan on a static proves it
     initialized; Z6's option (a), if it adds a vocabulary entry; Z23, if its design needs a MIR vocabulary entry; O-445 for Z24.
-  - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5;
+  - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5a;
     X1, X2 with P42's Binding part) and those added since R4's X-2, which keep their own rows (PLAN G1106, G1107 among them).
   - Amended (R7-T1 c4, Q-641, D-1051; the Middle's RP17 C3, the Middle's decision taken by B's ruling 12): the "Not in stream Z" list
     drops B1 (removed by R7-T1 c4, R7-M54's c4 part) and moves B3, E3 and E4 into stream Z, as the Middle's rows: they read
     `Instance`'s verdict (the builder's default copy and A4), not Dispatch's, so their removal stage is R7's stream Z; R7-T1 removes
     none of them. No postponed stage is created, so no owner approval is needed.
+  - Amended by R7-M126 (R7-P5a): E7 was the last producer of A4's `Limit` class, so M5 and M6 went with it in R7-P5a; Z7 keeps M4
+    and M7.
 - **R7-M54 `TyCtxt.Apply` is the substitution alone; the instance collector reads a substitution's formation, never its storage**
   (Back, 2026-11-19; R7-T1 c2 and c3a-c3e, Q-543, D-864; Major unit T1: design review by the Front (Binding), B's reviewer (the
   collector) and the Middle (RP17: `Signature`'s MIR readers, the publication rule, the newly accepted class); the Front's code review
@@ -28903,7 +28914,7 @@ Closure row of `MirCases.Branch`).
   - **Supersedes in part** R4-M22's abstract-input clause, "an abstract input is nothing where its one Callable signature's premises
     declare confined (`TyCtxt.CallableBounds`), a Limit where it has several signatures (Binding chose among them by the call's
     arguments, which MIR does not keep)": A4 now reads the selected signature's premises. That producer of A4's Limit class (E5) is
-    gone; the class stays for E7 (R7-P5; E3 and E4 left it with Z25, R4-M237, and E6 with Q-688, R7-M57).
+    gone; the class stays for E7 (R7-P5a; E3 and E4 left it with Z25, R4-M237, and E6 with Q-688, R7-M57).
   - **Rejected.** (a) A new Binding column (DeclaredSignature already is the choice); (b) re-running the selection in MIR (a second
     owner of SPEC 8.10's choice); (c) the case Type of the signature (the premises are not case-instantiated); (d) a located
     `Unsupported_Kd` for the override path alone (a clause for one form; Z3-B1, R7-M83, fixes its cause).
@@ -31021,6 +31032,28 @@ Closure row of `MirCases.Branch`).
     missing row would accept or refuse what the part past the bound may hold); Storing silent on a Deep own contract, as O-62 (a) is
     for the Limit (it accepts an invalid body with no caller that dev rejects); per-input Deep now (above); a new walk (the Deep fact
     rides section 1's gate; its scaling rows cover it, C7).
+- **R7-M126 A4 reads TyCtxt.Witness; the legacy comparison composition and A4's Limit class go** (2026-11-28, Middle; R7-P5a, R7
+  plan revision 121, D-1324; A-12, G186).
+  - Adopted (option (A)): `TyCtxt.Witness` takes the reading definition; a Self with an abstract part that is not abstract resolves
+    under that definition's premises (`Binding.EffectPremises`), the premise scope in its memo key as `TyCtxt.Retains`' is; a closed
+    Self under the library root's. A4 asks Origin-free (`TyCtxt.InView`; warm 0 B, N8). `Require` reads it by kind: Body entered at
+    its instance without Origins (a virtual one by its slot's bound); a comparison shim by its distinct leaves under the Contract's
+    mapping (`TyCtxt.Comparison`), a Requirement leaf by the entry (an abstract leaf at a call the body writes: the premises' bound,
+    else Unknown, SPEC 8.11.3; a leaf that is not abstract but has an abstract part, `Box<A>`: what its witness runs under the
+    premises, at either entry, 8.6.1; an abstract part of a row or an atom: the requirement on the part, kept for the callers, 4.9.6;
+    R4-M28); another Builtin the compiler function (every built-in target is a Shim, `Binding.PrepareBuiltinTargets`, without a MIR
+    body); Storage a Set's Field destruction (SPEC 11.9.2, 16.3); Refused Derived; None for a closed Self a broken contract, for a
+    Self with an abstract part a conformance only a premise states, which takes the premises' bound (SPEC 8.2.3, 8.11.3; R7-P5a's
+    N1''); HeightLimit Derived (the TypeHeightLimit_Kd at the requesting site, the collector's or Binding's site record, is the
+    failed input's record, SPEC 23.1.2; the Middle's ruling 2).
+  - One per-leaf rule: `MirEffects.Leaves` enumerates a comparison's distinct nodes into the `leaves` stack and answers each leaf once;
+    Local's `Compared` (an Item on a Requirement leaf it returns) and Solve's `Shim` act on what it returns, each in its place's form
+    (ruling 1).
+  - Removed: `Binding.Witnesses`, `TyCtxt.Witnesses`, the legacy comparison composition (`ComparisonPlan`, `comparisonPlans`,
+    `BoundComparison`, `RequirementImplementation`, `requirementCalls`, `Binding.LeafTarget`; R5-M68, BU-142), E7 and A4's `Limit`
+    class with `Verdict`'s Limit arm and M5's and M6's Limit outcomes; Z7 keeps M4 and M7 (A5's `MirOutcome.Limit`, P42).
+  - Reason: one witness rule and one comparison composition serve A4, the collector and codegen; the leaf's reading follows its
+    entry because SPEC 8.11.3 and 4.9.6 part them.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -31126,7 +31159,7 @@ Closure row of `MirCases.Branch`).
   - **`EffectsLimit`, temporary (`[Transitional("R7")]`):** a computed property of the row, `TypeParameter is not null`, so no row states it: a row
     whose functions are generic keeps `Witnesses`' `false`, A4's Limit, a located `Unsupported_Kd` where a default's copy calls the requirement on a
     closed Self under a `confined` obligation (`MirEffectsTest.ALibraryWitnessInADefaultsCopyIsTheLimit`), and a row of no parameter, S1d2's string,
-    has its body read. Removal: R7-P5, which deletes `RequirementInstances`' copies: `Witnesses` answers a witness's instance with its Types (A-12's
+    has its body read. Removal: R7-P5a, which deletes `RequirementInstances`' copies: `Witnesses` answers a witness's instance with its Types (A-12's
     read of the view, else R7, `ComparisonPlan`'s condition). Those valid programs are then accepted, a behavior change with its own tests.
   - R5-M22's sentence "Property, FixedArrayEntry, IntegerPosition, Refused and None give false" reads: "Property, a library witness of a row with
     `EffectsLimit`, Refused and None give false".
