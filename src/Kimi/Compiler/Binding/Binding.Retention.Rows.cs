@@ -177,8 +177,8 @@ public sealed partial class Binding
     // (`within`) retains that argument's own value. The transfer key by declaring identity
     // also gives the stores written only where the receiver refers (ReferentStores). The work is one closure per node a target names, each
     // node with its incoming premises once, and the walks; the identity key is read once per contract, and for a callee it does not name
-    // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance
-    // with an abstract part under (null: none, or an erased callable's, which has no callee). CallRetention.Limit where a walk meets
+    // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read the instance
+    // under (null only for an erased callable, which has no callee). CallRetention.Limit where a walk meets
     // storage past its limits; the rows with CallRetention.IsDeep where a finding a walk left past its bound can carry (G408B-17).
     private CallRetention RetentionRows(
         OriginPremiseEnvironment environment,

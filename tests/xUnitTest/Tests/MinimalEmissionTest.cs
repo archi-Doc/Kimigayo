@@ -205,6 +205,35 @@ public class MinimalEmissionTest
             ir);
     }
 
+    // IMPL 21.6.3 (PLAN G1455, O-538 (a)): every run of a platform member holds the busy flag, whoever calls it. Each witness's function,
+    // the one every call of the member reaches, ends its entry block with the none layer's enter and passes the enter's value to the leave
+    // directly above each of its returns, after the result is computed; terminate's, which never returns, has the enter alone. No other
+    // function, the adapters and the start body included, calls the enter. The program's own call of clock calls that function directly.
+    [Fact]
+    public void EveryRunOfAPlatformMemberHoldsTheBusyFlag()
+    {
+        const string Own = "var board = Board.init(next: 0, end: 0, screen: (0@usize)@raw/u16)\nlet ticks = board.clock()\n";
+        var board = KernelSources.Board.Replace("\n    init(", "\n    public init(", StringComparison.Ordinal);
+        var ir = CompilationTestHelper.WriteIr(Analyze(TargetProfile.None, KernelSources.Hello + Own + board + KernelSources.BoardTerminate, "Kernel.kimi", OutputKind.Application));
+        var clock = AssertEveryMembersRunIsBracketed(ir)[Array.FindIndex(PlatformRows.Rows, static x => x.Name == "clock")];
+        var startup = Regex.Match(ir, @"\n  call void @__kimi_platform_start\(\)\n  call void @(__kimi_f\d+)\(\)\n").Groups[1].Value;
+        Assert.Contains("call i64 @" + clock + "(", Body(ir, startup), StringComparison.Ordinal);
+    }
+
+    // EveryRunOfAPlatformMemberHoldsTheBusyFlag's twin: a field-less platform's one-line member bodies, over a zero-sized receiver.
+    [Fact]
+    public void EveryRunOfAFieldlessPlatformsMemberHoldsTheBusyFlag()
+        => AssertEveryMembersRunIsBracketed(CompilationTestHelper.WriteIr(Analyze(TargetProfile.None, KernelSources.Hello + KernelSources.FieldlessBoard, "Kernel.kimi", OutputKind.Application)));
+
+    // IMPL 21.6.3: a hosted row publishes no platform, so its generated code brackets no run.
+    [Fact]
+    public void AHostedProgramBracketsNoRun()
+    {
+        var ir = CompilationTestHelper.WriteIr(Analyze(KernelSources.Hello));
+        Assert.DoesNotContain("call i8 @__kimi_platform_enter(", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("call void @__kimi_platform_leave(", ir, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("func unused() -> ()\n    " + FloatExpression + "\nConsole.writeLine(\"a\")", true)]
     [InlineData("func unused<T>() => ()\nConsole.writeLine(\"a\")", true)]
@@ -547,4 +576,46 @@ public class MinimalEmissionTest
         => Assert.True(
             c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),
             Describe(c));
+
+    // A module's text between a function's definition line and its closing brace, the brace's line excluded.
+    private static string Body(string ir, string function)
+    {
+        var head = Regex.Match(ir, @"\ndefine [^\n]*@" + function + @"\([^\n]*\{\n");
+        Assert.True(head.Success, function);
+        var start = head.Index + head.Length;
+        return ir[start..(ir.IndexOf("\n}\n", start, StringComparison.Ordinal) + 1)];
+    }
+
+    // IMPL 21.6.3: the function each platform adapter calls, in PlatformRows' order, each bracketed: the enter as its entry block's last
+    // instruction and the leave of the enter's value as the line directly above each `ret` (none in terminate's); the module holds no other
+    // enter call.
+    private static string[] AssertEveryMembersRunIsBracketed(string ir)
+    {
+        var witnesses = new string[PlatformRows.Rows.Length];
+        for (var i = 0; i < witnesses.Length; i++)
+        {
+            var adapter = PlatformRows.Rows[i].Adapter;
+            witnesses[i] = Regex.Match(ir, @"\ndefine internal [^\n]* @" + adapter.Name + @"\([^\n]*\n(?:(?!\})[^\n]*\n)*?[^\n]*call \w+ @(__kimi_f\d+)\(").Groups[1].Value;
+            var body = Body(ir, witnesses[i]);
+            var enter = Regex.Match(body, @"\Aentry:\n(?:  [^\n]*\n)*?  %t(\d+) = call i8 @__kimi_platform_enter\(\)\n  br label %b0\n");
+            Assert.True(enter.Success, adapter.Name);
+            var leave = "  call void @__kimi_platform_leave(i8 %t" + enter.Groups[1].Value + ")";
+            var lines = body.Split('\n');
+            var returns = 0;
+            for (var j = 1; j < lines.Length; j++)
+            {
+                if (lines[j].StartsWith("  ret ", StringComparison.Ordinal))
+                {
+                    Assert.Equal(leave, lines[j - 1]);
+                    returns++;
+                }
+            }
+
+            Assert.Equal(returns, body.Split("  call void @__kimi_platform_leave(").Length - 1);
+            Assert.True(adapter.NoReturn == (returns == 0), adapter.Name);
+        }
+
+        Assert.Equal(witnesses.Length, Regex.Matches(ir, @"= call i8 @__kimi_platform_enter\(\)").Count);
+        return witnesses;
+    }
 }

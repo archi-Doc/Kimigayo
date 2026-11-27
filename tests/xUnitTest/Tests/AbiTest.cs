@@ -29,6 +29,7 @@ public class AbiTest
     [InlineData("i32", (int)(Abi.Flags.ErasedClosure | Abi.Flags.CallerLocation), Erased)]
     [InlineData("(i32, i64)", (int)Abi.Flags.ConcreteClosure, Concrete)]
     [InlineData("i32", (int)Abi.Flags.OutOfLine, "i32 (" + Logical + ") noinline")]
+    [InlineData("i32", (int)Abi.Flags.PlatformMember, "i32 (" + Logical + ") member")]
     public void TheInternalConventionOrdersKindsAndOmits(string result, int flags, string expected)
     {
         // IMPL 21.3.1: [environment] [ret] a0..an [context] [location, location_length]; a string is passed by its owned slot, a slot
@@ -55,6 +56,7 @@ public class AbiTest
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, Abi.Flags.ErasedClosure, i32, parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags | Abi.Flags.ResultSlot, i32, parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags | Abi.Flags.OutOfLine, i32, parameters));
+        Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags | Abi.Flags.PlatformMember, i32, parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags, BoundType.Primitives["i64"], parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags, i32, parameters.AsSpan(0, 4)));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags, i32, [parameters[1], .. parameters]));
@@ -197,5 +199,5 @@ public class AbiTest
     private static string Describe(FunctionAbi abi)
         => abi.Result + abi.ResultExtension + " (" + string.Join(", ", abi.Parameters.Select(static x => $"{x.Type}{x.Extension} {x.Name} {x.Kind} {x.LogicalIndex}")) + ")" +
             (abi.ResultSlot ? " slot" : string.Empty) + (abi.CallerLocation ? " location" : string.Empty) + (abi.NoReturn ? " noreturn" : string.Empty) +
-            (abi.OutOfLine ? " noinline" : string.Empty);
+            (abi.OutOfLine ? " noinline" : string.Empty) + (abi.PlatformMember ? " member" : string.Empty);
 }
