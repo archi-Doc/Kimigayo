@@ -7,7 +7,8 @@ namespace XunitTest;
 
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
 /// have one id, 0 is the empty set, Add (of an element or a run), Union (of two or of any number, R4-M138), Remove and Range keep the set
-/// laws and repeat through their memos (a run's Add through its result), and the storage is pooled.</summary>
+/// laws and repeat through their memos (a run's Add through its result), and the storage is pooled; each element has a tier, the decided
+/// one winning where both meet, every operation matching by element, and Rest and At give a set's rested tier (R4-M2xx).</summary>
 public sealed class MirLoanSetsTest
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
@@ -269,11 +270,94 @@ public sealed class MirLoanSetsTest
         Assert.Equal([0, 3, 64, 70, 5_000], Ids(sets, result));
     }
 
+    // DECISIONS R4-M2xx: where both tiers of an element meet, the decided one wins: Add of an element or of a run, and Union of two or of
+    // any number; a rested element added to a decided one stays decided.
+    [Fact]
+    public void TheDecidedTierWins()
+    {
+        var sets = new MirLoanSets();
+        var rested = sets.Rest(Of(sets, 1, 5));
+        Assert.Equal([(1, true), (5, true)], Tiered(sets, rested));
+        Assert.Equal([(1, true), (5, false)], Tiered(sets, sets.Add(rested, 5)));
+        Assert.Equal(rested, sets.Add(rested, new TieredElement(5, true)));
+        Assert.Equal(Of(sets, 5), sets.Add(Of(sets, 5), new TieredElement(5, true)));
+        var decided = Of(sets, 5, 9);
+        Assert.Equal([(1, true), (5, false), (9, false)], Tiered(sets, sets.Union(rested, decided)));
+        Assert.Equal(sets.Union(rested, decided), sets.Union(decided, rested));
+        Assert.Equal(sets.Union(rested, decided), sets.Union([rested, 0, decided, rested]));
+        Assert.Equal([(1, true), (5, false), (8, false)], Tiered(sets, sets.Add(rested, Decided(5, 8))));
+    }
+
+    // DECISIONS R4-M2xx: every set operation matches by element, so a removed element removes both tiers: Contains reads either tier, and
+    // Remove (through Without, or Apart for sets that share no element) and a Range's removal take an element at whichever tier it has.
+    [Fact]
+    public void RemovalMatchesByElement()
+    {
+        var sets = new MirLoanSets();
+        var mixed = sets.Union(sets.Rest(Of(sets, 1, 4)), Of(sets, 7));
+        Assert.Equal((true, true, false), (sets.Contains(mixed, 4), sets.Contains(mixed, 7), sets.Contains(mixed, 5)));
+        Assert.Equal([(1, true), (7, false)], Tiered(sets, sets.Remove(mixed, Of(sets, 4))));
+        Assert.Equal([(1, true), (4, true)], Tiered(sets, sets.Remove(mixed, sets.Rest(Of(sets, 7)))));
+        Assert.Equal([1, 7], Ids(sets, sets.Remove(Of(sets, 1, 4, 7), sets.Rest(Of(sets, 4)))));
+        Assert.Equal(mixed, sets.Remove(mixed, sets.Rest(Of(sets, 9))));
+        Assert.Equal([(5, true)], Tiered(sets, sets.Remove(sets.Rest(Of(sets, 3, 4, 5)), sets.Range(3, 2))));
+    }
+
+    // DECISIONS R4-M2xx: Rest gives every element rested, memoized by the set (the rested set its own Rest), and At gives a set at the
+    // tier of the entry it is reached by.
+    [Fact]
+    public void RestAndAtTakeTheEntrysTier()
+    {
+        var sets = new MirLoanSets();
+        var set = Of(sets, 2, 6);
+        var rest = sets.Rest(set);
+        Assert.Equal([(2, true), (6, true)], Tiered(sets, rest));
+        var scanned = sets.Scanned;
+        Assert.Equal([rest, rest, 0], new[] { sets.Rest(set), sets.Rest(rest), sets.Rest(0) });
+        Assert.Equal(scanned, sets.Scanned);
+        Assert.Equal([(2, true), (6, true), (8, true)], Tiered(sets, sets.Rest(sets.Union(rest, Of(sets, 8)))));
+        Assert.Equal([set, rest], new[] { sets.At(set, new TieredElement(9, false)), sets.At(set, new TieredElement(9, true)) });
+        Assert.Equal(rest, sets.At(rest, new TieredElement(0, false)));
+    }
+
+    // DECISIONS R4-M2xx: a tiered element is one word, 2·element + rested, so an element must be below 2^30; one that is not is an
+    // internal invariant, never a set.
+    [Fact]
+    public void AnElementAt2To30IsAnInternalInvariant()
+    {
+        var last = new TieredElement((1 << 30) - 1, true);
+        Assert.Equal(((1 << 30) - 1, true), (last.Element, last.Rested));
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => new TieredElement(1 << 30, false)).Message);
+        Assert.Throws<InvalidOperationException>(() => new TieredElement(-1, false));
+    }
+
+    // R4-M2xx with V16: a warm Rest and At allocate nothing: the Rest memo keeps its storage across Clear.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRestAllocatesNothing()
+    {
+        var sets = new MirLoanSets();
+        var result = 0;
+        void Run()
+        {
+            sets.Clear();
+            var set = sets.Add(sets.Add(sets.Add(0, 0), 3), 64);
+            result = sets.Union(sets.At(set, new TieredElement(3, true)), sets.Add(0, 64));
+        }
+
+        Run();
+        Assert.Equal(0, AllocationMeasurement.Measure(Run));
+        Assert.Equal([(0, true), (3, true), (64, false)], Tiered(sets, result));
+    }
+
     // A set of elements, added in their order.
     private static int Of(MirLoanSets sets, params int[] elements) => elements.Aggregate(0, sets.Add);
 
     // A set's elements in ascending order, without their tiers.
     private static int[] Ids(MirLoanSets sets, int set) => [.. sets.Elements(set).ToArray().Select(x => x.Element)];
+
+    // A set's elements in ascending order, each with its tier (rested or not).
+    private static (int Element, bool Rested)[] Tiered(MirLoanSets sets, int set) => [.. sets.Elements(set).ToArray().Select(x => (x.Element, x.Rested))];
 
     // A run of decided elements.
     private static TieredElement[] Decided(params int[] elements) => [.. elements.Select(x => new TieredElement(x, false))];

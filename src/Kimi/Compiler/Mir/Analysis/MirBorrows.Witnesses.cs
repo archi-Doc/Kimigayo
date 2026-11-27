@@ -211,7 +211,7 @@ internal sealed partial class MirBorrows
                 return -1;
             }
 
-            if (this.sets.Contains(this.eStores[location].Sure, found) || this.sets.Contains(this.eStores[location].Unsure, found))
+            if (this.sets.Contains(this.eStores[location], found))
             {
                 return location;
             }

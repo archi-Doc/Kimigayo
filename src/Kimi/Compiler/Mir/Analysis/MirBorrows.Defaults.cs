@@ -11,10 +11,10 @@ namespace Kimi.Compiler.Mir;
 // - R26-borrow: at each Return of the checks replay, one gather with the checks' Based pass and closure from E and _0's holder (the result
 //   and storage the body does not own); each slot-rooted Loan it finds, its tier there joined over the view's Returns (Candidate.Outcome),
 //   is the verdict. Where decided, it is after the replay DefaultArgumentBorrow_Kd at each location whose stores put the Loan in E (a
-//   write's, a call's or a destruction's entries at E, none resting: DefaultStores; SPEC 7.2.3, "with the error at that operation") and at
-//   the Loan's site where the result's own value carries it at a Return (DefaultBorrows: "Its result cannot keep a new Borrow") or no such
-//   store places it, both when both hold (SPEC 23.1.2); else the located Unsupported_Kd at the site (a set carrying Φ_U: R4-M198's
-//   undecided class) unless R26-access reports it; once per Loan, view and subject.
+//   write's, a call's or a destruction's entries at E, the Loan's decided: DefaultStores; SPEC 7.2.3, "with the error at that operation")
+//   and at the Loan's site where the result's own value carries it decided at a Return (DefaultBorrows: "Its result cannot keep a new
+//   Borrow") or no such store places it, both when both hold (SPEC 23.1.2); else the located Unsupported_Kd at the site (a rested entry:
+//   R4-M198's undecided class, its tier the entry's, DECISIONS R4-M2xx) unless R26-access reports it; once per Loan, view and subject.
 // - R26-access: a write to a slot-rooted Place is DefaultArgumentAccess_Kd at the write, found where the location's accesses are listed
 //   (every destination, before the borrowed-root filter; MirBorrows.Accesses); after the replay, each exclusive slot-rooted Loan R26-borrow
 //   does not report at its site is DefaultArgumentAccess_Kd there, one code per failure. The replay reaches every Loan's issue: MirValidator
@@ -117,18 +117,14 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The slot-rooted Loans one set of the result's own value carries (DefaultBorrows); a set that rests (Φ_U, Φ_M) decides none.
+    // The slot-rooted Loans one set of the result's own value carries decided (DefaultBorrows); a rested entry decides none (DECISIONS
+    // R4-M2xx).
     private void DefaultKept(int set)
     {
-        if (this.Resting(set))
-        {
-            return;
-        }
-
         this.Work += this.sets.Count(set);
-        foreach (var (element, _) in this.sets.Elements(set))
+        foreach (var (element, rested) in this.sets.Elements(set))
         {
-            if (this.SlotLoan(element) is >= 0 and var loan)
+            if (!rested && this.SlotLoan(element) is >= 0 and var loan)
             {
                 this.defaultHeld[loan] |= HeldByResult;
             }
@@ -137,9 +133,9 @@ internal sealed partial class MirBorrows
 
     // R26-borrow's place (SPEC 7.2.3: a default that stores a value carrying an inspection Loan into storage the body does not own, "by
     // a write, or by a call or destruction that may store it there", is invalid "with the error at that operation"): in the checks
-    // replay of a template view, the slot-rooted Loans of a location's E stores that do not rest (MirBorrows.Flow's eStores, Sure: a
-    // write's Store, a call's or a destruction's Keep), once per Loan; a set that rests (Φ_U, Φ_M) places none, so keepS's resting store
-    // leaves the Loan's record at its site; the verdict stays the Returns' (DefaultBorrows).
+    // replay of a template view, the slot-rooted Loans a location's E stores hold decided (MirBorrows.Flow's eStores: a write's Store, a
+    // call's or a destruction's Keep), once per Loan; a rested entry places none (DECISIONS R4-M2xx), so keepS's resting store leaves the
+    // Loan's record at its site; the verdict stays the Returns' (DefaultBorrows).
     private void DefaultStores(int location)
     {
         if (this.body.Key.Kind != MirBodyKind.DefaultTemplate)
@@ -148,14 +144,14 @@ internal sealed partial class MirBorrows
         }
 
         MirDataflow.Grow(ref this.defaultHeld, this.loanCount);
-        var placed = this.eStores[location].Sure;
+        var placed = this.eStores[location];
         this.Work += this.sets.Count(placed);
-        foreach (var (element, _) in this.sets.Elements(placed))
+        foreach (var (element, rested) in this.sets.Elements(placed))
         {
-            if (this.SlotLoan(element) is >= 0 and var loan)
+            if (!rested && this.SlotLoan(element) is >= 0 and var loan)
             {
                 this.defaultStores.Add((loan, location));
-                this.defaultHeld[loan] |= this.MarkedIn(placed, loan) ? (byte)(HeldByStore | HeldIndirect) : HeldByStore; // Every arrival of every store (Sure).
+                this.defaultHeld[loan] |= this.MarkedIn(placed, loan) ? (byte)(HeldByStore | HeldIndirect) : HeldByStore; // Every arrival of every store.
             }
         }
     }

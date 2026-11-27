@@ -21,26 +21,22 @@ internal sealed partial class MirBorrows
     private Entry[] entries = [];
     private int entryCount;
 
-    // E's stores by location (SPEC 7.2.3's stores into storage the body does not own; DIAGNOSTICS' `Store`): what its entries put into
-    // E, their sets that do not rest (Sure) and those that rest on an undecided write (Unsure: Φ_M, Φ_U), from its last plan, gathered
-    // where every entry is added (AddSlot), so a plan pays only its entries at E. A location's last plan in the forward solve is on its
+    // E's stores by location (SPEC 7.2.3's stores into storage the body does not own; DIAGNOSTICS' `Store`): the union of what its
+    // entries put into E, each element at its tier (DECISIONS R4-M2xx), from its last plan, gathered where every entry is added
+    // (AddSlot), so a plan pays only its entries at E. A location's last plan in the forward solve is on its
     // converged state, as the replay's is, so from the solve's end every reached location holds the replay's sets. The transfer is
     // monotone in what a location stores into E (W's targets and received values grow with the state; Keep's covered-only stores are a
     // subset of its referents), so an element that entered a head's state from an earlier carry of a predecessor is in that
-    // predecessor's converged stores too. Read by R26-borrow's place (MirBorrows.Defaults' DefaultStores, Sure) and by the Store witness
-    // of what a check found in E (MirBorrows.Witnesses' EStore, both).
-    private (int Sure, int Unsure)[] eStores = [];
-
-    // E's stores with a set added: to Unsure where it rests (MirBorrows.Puns' Resting), else to Sure.
-    private (int Sure, int Unsure) Into((int Sure, int Unsure) stored, int set)
-        => this.Resting(set) ? (stored.Sure, this.sets.Union(stored.Unsure, set)) : (this.sets.Union(stored.Sure, set), stored.Unsure);
+    // predecessor's converged stores too. Read by R26-borrow's place (MirBorrows.Defaults' DefaultStores, its decided entries) and by the
+    // Store witness of what a check found in E (MirBorrows.Witnesses' EStore, every entry).
+    private int[] eStores = [];
 
     // The entries of a location on the state: a statement's storage end, or its rvalue's value stored into its Place after the Moves it
     // makes; a Call's.
     private void Plan(ulong[] state, int block, int index)
     {
         (this.entryCount, this.planLocation, this.mustValue, this.mustKept, this.limit) = (0, this.Location(block, index), 0, 0, false);
-        this.eStores[this.planLocation] = (0, 0);
+        this.eStores[this.planLocation] = 0;
         foreach (var set in this.read)
         {
             this.reads[set] = default;
@@ -134,7 +130,7 @@ internal sealed partial class MirBorrows
         this.entries[this.entryCount++] = new(slot, value, own, op, issue);
         if (slot == Escaped)
         {
-            this.eStores[this.planLocation] = this.Into(this.Into(this.eStores[this.planLocation], value), own);
+            this.eStores[this.planLocation] = this.sets.Union(this.sets.Union(this.eStores[this.planLocation], value), own);
             this.Work++;
         }
     }
@@ -164,12 +160,11 @@ internal sealed partial class MirBorrows
 
         var through = last == count - 1 ? pointer : 0; // A write of the whole referent (rule W's write-through).
         var written = this.writeCount > 0 ? this.StoredThrough(state, last < count - 1) : 0;
-        foreach (var (target, root, _) in this.refs) // Every holder, whatever its mode.
+        foreach (var (target, root, _, by) in this.refs) // Every holder, whatever its mode, each at its entry's tier (a receipt).
         {
             var arrived = this.Arrive(target, receiving, false, through, value);
-            arrived = root >= 0 && this.Exposed(root) ? this.sets.Union(arrived, this.unformedSet) : arrived;
-            arrived = target == Escaped ? this.Rested(arrived, pointer) : arrived; // An undecided write's E (MirBorrows.Puns).
-            this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
+            arrived = this.sets.At(root >= 0 && this.Exposed(root) ? this.sets.Union(arrived, this.unformedSet) : arrived, by);
+            this.AddSlot(target, arrived, this.sets.At(this.Arrive(target, receiving, false, through, own), by), JoinedThrough, issue);
             if (written != 0 && this.slotWrites[target] >= 0)
             {
                 this.AddSlot(this.slotWrites[target], written, 0, Joined, issue: false); // Its write slot (MirBorrows.Holders' WriteSlots).

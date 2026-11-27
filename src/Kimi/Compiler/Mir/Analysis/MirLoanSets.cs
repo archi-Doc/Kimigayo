@@ -5,7 +5,8 @@
 // Input: the elements, the Loan and marker ids A5 numbers, each below 2^30, and in a second namespace the storing rule's must-set elements (Own,
 // Past; MirBorrows.Storing), whose sets are never joined with the first's. Output: each set as a node id, 0 the empty set; Add, Union and Remove
 // (a \ b) of sets, a set with an ascending run added (interned in one pass, R4-M132, G263) and the set of a Range of consecutive elements as
-// node ids, Contains, Count and a set's tiered elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and
+// node ids, a set's Rest (every element rested, memoized at its first call) and At (the set at an entry's tier), Contains, Count and a
+// set's tiered elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and
 // Scanned, the elements its operations read and wrote, which A5's work counts.
 // Invariants: a node's elements are a strictly ascending run of words, 2·element + rested, in one pooled array, so each element is in a set at
 // most once, at one tier: where both tiers of an element meet (Add, Union), the decided one wins, and every other operation matches by element,
@@ -62,6 +63,7 @@ internal sealed class MirLoanSets
     private int[] starts = [0, 0]; // Each node's first word, then the end of the last node's run and of a candidate's.
     private ulong[] marker = []; // The n-ary Union's bit per word, clear between its calls.
     private int[] touched = []; // The marker words an n-ary Union set, in the order it set them.
+    private int[] rested = []; // By set: its Rest plus 1 (0: not made), grown at the first Rest.
     private int created = 1; // The nodes made; node 0 is the empty set.
 
     /// <summary>Initializes a new instance of the <see cref="MirLoanSets"/> class, holding the empty set.</summary>
@@ -86,6 +88,7 @@ internal sealed class MirLoanSets
         this.unions.Clear();
         this.removes.Clear();
         this.ranges.Clear();
+        this.rested.AsSpan(0, Math.Min(this.rested.Length, this.created)).Clear(); // In proportion to the view's nodes.
         this.nodes.Add(0, 0);
         (this.created, this.Bytes, this.Scanned) = (1, 0, 0);
     }
@@ -287,6 +290,43 @@ internal sealed class MirLoanSets
 
         return range;
     }
+
+    /// <summary>Gets a set with every element rested (the tier an undecided fact's owner gives what rests on it), memoized by the set
+    /// in a memo made at the first call, so a run with no rested element allocates none.</summary>
+    /// <param name="set">The set.</param>
+    /// <returns>Its elements, each rested.</returns>
+    internal int Rest(int set)
+    {
+        if (set == 0)
+        {
+            return 0;
+        }
+
+        MirDataflow.Grow(ref this.rested, set + 1);
+        if (this.rested[set] != 0)
+        {
+            return this.rested[set] - 1;
+        }
+
+        var from = this.Words(set);
+        var run = this.Candidate(this.Count(set));
+        this.Scanned += from.Length;
+        for (var i = 0; i < from.Length; i++)
+        {
+            run[i] = from[i] | 1;
+        }
+
+        var rest = this.Intern(from.Length);
+        MirDataflow.Grow(ref this.rested, rest + 1);
+        (this.rested[set], this.rested[rest]) = (rest + 1, rest + 1);
+        return rest;
+    }
+
+    /// <summary>Gets a set at the tier of an entry it is reached by: the set where the entry is decided, else its <see cref="Rest"/>.</summary>
+    /// <param name="set">The set.</param>
+    /// <param name="by">The entry.</param>
+    /// <returns>The set at that tier.</returns>
+    internal int At(int set, TieredElement by) => by.Rested ? this.Rest(set) : set;
 
     // The index of an element's word in a run of words, at either tier, or a negative number where the run lacks the element.
     private static int Find(ReadOnlySpan<int> words, int element)

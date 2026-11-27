@@ -15,9 +15,9 @@ namespace Kimi.Compiler.Mir;
 // Inputs: A5's sets and entries (G667a), the stored Place's steps (MirSteps), Binding's Place facts through TyCtxt (PlaceKey, Select,
 // Base, Leading, OwnLayers, SameStructure, NoStore; C-189, C-211) under the case view, and SPEC 5.2's punnable set (TyCtxt.Punnable).
 // Outputs: the holder's markers. A pun: {Φ_E, Φ_W}. An undecided write (the layout, a length that is no constant, or a layer with no
-// stated-Origin answer decides what it covers) may be a pun: {Φ_E, Φ_W, Φ_M}, and what rests on that Φ_E carries Φ_U: a value stored
-// into E through a set carrying Φ_M or Φ_U, and what a read through one gives (Rested). A gather tags what it finds in a set carrying
-// Φ_U apart (MirBorrows.Candidates), and what it reaches only through such a set, the holders it names and their stores
+// stated-Origin answer decides what it covers) may be a pun: {Φ_E, Φ_W, Φ_M}, its Φ_E and Φ_W rested, and a read or a
+// retention through a pointer holding Φ_M rests each as-written target it reaches (Through, the one through-entry rule; DECISIONS
+// R4-M2xx). A gather tags each rested entry it finds apart (MirBorrows.Candidates), and what it reaches only through one, the holders it names and their stores
 // (MirBorrows.CheckSets' read keys, PLAN G775), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject
 // (R4-M153's path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid
 // row, or an address formed past a raw Deref through a component step to no part TyCtxt.Leading places at its base's address (Step,
@@ -37,9 +37,8 @@ namespace Kimi.Compiler.Mir;
 // part-stored local, an argument, a Cast), a read whose Places hold raw pointer bytes and other bytes, in one holder or across the
 // holders the value names where one keeps provenance, or whose structure or layout states no bytes, is may: a check only a store
 // through it meets is the located Unsupported_Kd.
-// Invariants: each (holder state, key) is scanned once per run; a warm run allocates nothing; Φ_U is a set's, not an element's: what
-// a set carrying it holds otherwise is tagged with it, E's later content included; the own-step Warning and an activation's own scan
-// do not read it.
+// Invariants: each (holder state, key) is scanned once per run; a warm run allocates nothing; the tier is an entry's, never a set's
+// (MirLoanSets: the decided tier dominates); the own-step Warning and an activation's own scan do not read it.
 // Must not: decide a pun by Type alone where the write's overlap with a raw pointer of the Place is not established (undecided, never
 // a Language error); read a size, an offset or a stride value (Layout's); read a Type's structure for the chain's step (TyCtxt.Leading).
 internal sealed partial class MirBorrows
@@ -245,11 +244,15 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // Whether a set's Φ_E, or its content, rests on an undecided write (Φ_M, Φ_U).
-    private bool Resting(int set) => this.sets.Contains(set, Maybe) || this.sets.Contains(set, Undecided);
-
-    // A value stored into E, or read, through the set `through`: with Φ_U where that set rests on an undecided write.
-    private int Rested(int value, int through) => this.Resting(through) ? this.sets.Union(value, this.undecidedSet) : value;
+    // The through-entry rule (DECISIONS R4-M2xx): the tier of a read's or a retention's reach of the target `entry` names through a
+    // pointer, given whether that pointer holds Φ_M (`pointerHoldsMaybe`, the datum each caller states by its owner's one query: the
+    // read value's MirLoanSets.Contains; σ(h)'s at a step past a holder h, MirBorrows.States' Holds over h's parts; Content, Chain and W
+    // alike): rested where the entry rests, or where the pointer holds Φ_M and the entry names an as-written target; an entry that names
+    // E (Φ_E, Φ_W, a Loan whose Named is E) keeps its own tier (SPEC 5.5 bounds a pun's reach to the storage E names). A receipt takes its
+    // entry's own tier, never this rule's Φ_M clause.
+    private TieredElement Through(bool pointerHoldsMaybe, TieredElement entry)
+        => entry.Rested || entry.Element is Escaped or Writable || (entry.Element >= this.loanBase && this.loans[entry.Element - this.loanBase].Named == Escaped)
+            || !pointerHoldsMaybe ? entry : new(entry.Element, true);
 
     // A scan's effect on the walk: its written slots get their writes' sets (Pun), its (holder, key) pairs not yet queued are queued.
     private void Children(int scan)

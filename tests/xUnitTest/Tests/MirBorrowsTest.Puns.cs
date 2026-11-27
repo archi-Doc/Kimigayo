@@ -1498,6 +1498,556 @@ public sealed partial class MirBorrowsTest
             kk = 2
         """;
 
+    // The per-entry tier's forms (ADecidedEntryBesideRestedOnesKeepsItsVerdict; DECISIONS R4-M2xx): the declarations, then the forms.
+    private const string TierForms = """
+        func usep<T>(p: raw/T) => ()
+        func stash(slot: raw/(raw/u8), value: raw/u8) => ()
+        func keepChain(slot: raw/((raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8))))), value: raw/u8) => ()
+        struct PK<T>
+            internal var pair: (raw/u8 during self, i32)
+            internal var k: T
+            public init(k: T)
+                self.pair = (null, 0)
+                self.k = k@move
+        func pickPK<T>(r: ref/PK<T>) -> ref/(raw/u8 during r, i32) during r => r@follow.pair@ref
+        func eDecidedBesideRestedBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var two: (raw/u8, raw/u8) = (hh, vU)
+            kk = 2
+            usep(two.0)
+        func eDecidedBesideRestedOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var two: (raw/u8, raw/u8) = (hh, vU)
+            usep(two.0)
+            kk = 2
+        func dEscBesideRestedOk(slot: raw/(raw/(raw/u8)))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            unsafe => *slot = other@raw
+            var w: raw/u8 = null
+            var h: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tp = h@raw@raw/u32
+            unsafe => *tp = 7
+            var nothing: raw/u8 = null
+            stash(h.1, nothing)
+            kk = 2
+        func dClosureEscBesideBad(slot: raw/(raw/(raw/u8)))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = spare
+            unsafe => *slot = other@raw
+            var w: raw/u8 = null
+            let n: u64 = 3
+            let q: raw/(raw/u8) = w@raw
+            var c = func [n, q] (v: raw/u8)
+                unsafe => *q = v
+            let tp = c@raw@raw/u16
+            unsafe => *tp = 7
+            var nothing: raw/u8 = null
+            c(nothing)
+            kk = 2
+        func dClosureEscBesideOk(slot: raw/(raw/(raw/u8)))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            unsafe => *slot = other@raw
+            var w: raw/u8 = null
+            let n: u64 = 3
+            let q: raw/(raw/u8) = w@raw
+            var c = func [n, q] (v: raw/u8)
+                unsafe => *q = v
+            let tp = c@raw@raw/u16
+            unsafe => *tp = 7
+            var nothing: raw/u8 = null
+            c(nothing)
+            kk = 2
+        func rLaterWriteEscBad(slot: raw/(raw/(raw/u8)))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = spare
+            unsafe => *slot = other@raw
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var nothing: raw/u8 = null
+            unsafe => *gp = nothing
+            kk = 2
+        func rLaterWriteEscOk(slot: raw/(raw/(raw/u8)))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            unsafe => *slot = other@raw
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var nothing: raw/u8 = null
+            unsafe => *gp = nothing
+            kk = 2
+        func rRestedOnlyRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            unsafe => *gp = spare
+            kk = 2
+        func rTwoHopStoreRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: raw/u8 = null
+            var wp: raw/(raw/u8) = w@raw
+            var g: (u64, raw/(raw/(raw/u8))) = (0, wp@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gpp = g.1
+            var p: raw/(raw/u8) = null
+            unsafe => p = *gpp
+            unsafe => *p = spare
+            kk = 2
+        func rTwoHopStoreOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = null
+            var w: raw/u8 = null
+            var wp: raw/(raw/u8) = w@raw
+            var g: (u64, raw/(raw/(raw/u8))) = (0, wp@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gpp = g.1
+            var p: raw/(raw/u8) = null
+            unsafe => p = *gpp
+            unsafe => *p = spare
+            kk = 2
+        func cutHolderFirstOk(flag: u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var aa: raw/u8 = null
+            var bb: raw/u8 = null
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var p: raw/(raw/u8) = aa@raw
+            if flag == 1
+                p = bb@raw
+            if flag == 2
+                p = hh@raw
+            unsafe => *p = vU
+            kk = 2
+            usep(aa)
+            usep(bb)
+        func walkOrderDecidedBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var t2: raw/u8 = null
+            var t: raw/(raw/u8) = t2@raw
+            var w: raw/(raw/(raw/u8)) = t@raw
+            var g: (u64, raw/(raw/(raw/(raw/u8)))) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/(raw/(raw/u8)) = null
+            unsafe => vU = *gp
+            var y: raw/(raw/(raw/u8)) = t@raw
+            var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)
+            keepChain(a@raw, spare)
+            kk = 2
+            usep(t2)
+        func walkOrderRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var t2: raw/u8 = null
+            var t: raw/(raw/u8) = t2@raw
+            var w: raw/(raw/(raw/u8)) = t@raw
+            var g: (u64, raw/(raw/(raw/(raw/u8)))) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/(raw/(raw/u8)) = null
+            unsafe => vU = *gp
+            var y: raw/(raw/(raw/u8)) = t@raw
+            var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)
+            keepChain(a@raw, spare)
+            kk = 2
+        func walkOrderShapeBad(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x0: raw/u8 = null
+            var t0: raw/(raw/u8) = x0@raw
+            var w0: raw/(raw/(raw/u8)) = t0@raw
+            var g: (u64, raw/(raw/(raw/(raw/u8)))) = (0, w0@raw)
+            if flag
+                g.1 = w0@raw
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/(raw/(raw/u8)) = null
+            unsafe => vU = *gp
+            var y: raw/(raw/(raw/u8)) = t0@raw
+            if flag
+                y = t0@raw
+            var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)
+            keepChain(a@raw, spare)
+            kk = 2
+            usep(x0)
+        func rcvMBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            unsafe => *gp = spare
+            kk = 2
+            usep(w)
+        func rcvMOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var nothing: raw/u8 = null
+            unsafe => *gp = nothing
+            kk = 2
+            usep(w)
+        func chainPastMBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let q = g@raw
+            kk = 2
+            usep(q)
+        func chainPastMCallRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let q = g@raw
+            usep(q)
+            kk = 2
+        func chainPastMNoStore()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let q = g@raw
+            unsafe
+                let first = (*q).0
+            kk = 2
+        func chainPastMRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let q = g.1@raw
+            var vU: raw/u8 = null
+            unsafe => vU = *(*q)
+            kk = 2
+            usep(vU)
+        func rLaterWriteOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, other@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var nothing: raw/u8 = null
+            stash(gp, nothing)
+            kk = 2
+        func rLaterWriteBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, other@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var nothing: raw/u8 = null
+            stash(gp, nothing)
+            kk = 2
+            usep(other)
+        func sSeedRestedOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            kk = 2
+            usep(vU)
+        func sSeedRestedRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            kk = 2
+            usep(vU)
+        func sSeedRestedBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            kk = 2
+            usep(vU)
+            usep(w)
+        func eJoinBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var two: (raw/u8, raw/u8) = (hh, vU)
+            kk = 2
+            usep(two.1)
+        func eJoinOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var two: (raw/u8, raw/u8) = (hh, vU)
+            usep(two.1)
+            kk = 2
+        func eJoinRestOnlyRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/u8 = null
+            unsafe => vU = *gp
+            var two: (raw/u8, raw/u8) = (null, vU)
+            kk = 2
+            usep(two.1)
+        func cycRestDecidedBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var a: (raw/u8, raw/u8) = (spare, null)
+            var b: raw/u8 = a@raw@raw/u8
+            a.1 = b@raw@raw/u8
+            var g: (u64, raw/(raw/u8)) = (0, b@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var hold: (raw/(raw/u8), raw/u8) = (gp, b)
+            kk = 2
+            usep(hold.1)
+        func cycRestDecidedOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var a: (raw/u8, raw/u8) = (spare, null)
+            var b: raw/u8 = a@raw@raw/u8
+            a.1 = b@raw@raw/u8
+            var g: (u64, raw/(raw/u8)) = (0, b@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var hold: (raw/(raw/u8), raw/u8) = (gp, b)
+            usep(hold.1)
+            kk = 2
+        func cycRestOnlyRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var a: (raw/u8, raw/u8) = (spare, null)
+            var b: raw/u8 = a@raw@raw/u8
+            a.1 = b@raw@raw/u8
+            var g: (u64, raw/(raw/u8)) = (0, b@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var hold: (raw/(raw/u8), raw/u8) = (gp, null)
+            kk = 2
+            usep(hold.1)
+        func storeThenCallBad(slot: raw/(raw/u8))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            unsafe => *gp = spare
+            stash(slot, spare)
+            kk = 2
+        func storeThenCallOk(slot: raw/(raw/u8))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = null
+            var w: raw/u8 = null
+            var g: (u64, raw/(raw/u8)) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            unsafe => *gp = spare
+            stash(slot, spare)
+            kk = 2
+        func closureReadRestBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            let c = func [gp, hh] () -> (raw/u8, raw/u8)
+                unsafe => return (*gp, hh)
+            let got = c()
+            kk = 2
+            usep(got.1)
+        func closureReadRestOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            let c = func [gp, hh] () -> (raw/u8, raw/u8)
+                unsafe => return (*gp, hh)
+            let got = c()
+            usep(got.1)
+            kk = 2
+        func closureReadRestOnlyRests()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var hh: raw/u8 = spare
+            var g: (u64, raw/(raw/u8)) = (0, hh@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            let c = func [gp] () -> (raw/u8, raw/u8)
+                unsafe => return (*gp, null)
+            let got = c()
+            kk = 2
+            usep(got.1)
+        func fForkParam(c: bool, sp: ref/PK<i32>)
+            var k: i32 = 1
+            let s = PK.init(k@ref)
+            var q = pickPK(s@ref)
+            if c
+                q = pickPK(sp)
+            let x = q@follow.0
+            k = 2
+            usep(x)
+        func fForkParamOk(c: bool, sp: ref/PK<i32>)
+            var k: i32 = 1
+            let s = PK.init(k@ref)
+            var q = pickPK(s@ref)
+            if c
+                q = pickPK(sp)
+            let x = q@follow.0
+            usep(x)
+            k = 2
+        func fForkParamOnly(c: bool, sp: ref/PK<i32>)
+            var k: i32 = 1
+            var q = pickPK(sp)
+            if c
+                q = pickPK(sp)
+            let x = q@follow.0
+            k = 2
+            usep(x)
+        """;
+
     // The body read forms' declarations (ARawPointerABodyReadsPunnedReachesUnownedStorage).
     private const string BodyReadShapes = """
         func usep<T>(p: raw/T) => ()
@@ -2438,12 +2988,15 @@ public sealed partial class MirBorrowsTest
     // so stash's store through n.next is a conflict without any write (cLayoutNoWrite), and the same conflict, not a limit, with the
     // typed one (cLayoutFirstField*Typed); cLayoutField*LoanOk are accepted. A later Field's Type there is a pun: NodeD's u32 starts on
     // next's first byte (the chain's end is a raw pointer: invalid, the conflict and no limit, cLayoutSecondFieldBad); a Kimigayo-layout
-    // Field's is not decided (kLayoutFieldRests). A first Field `Option<obj/OBoxP>` places its Some payload there too (IMPL 21.1.3, PLAN
-    // G808), so a store past it is typed (opt*Typed; undecided before G808), and the init's own conflict stands (SPEC 15.6: the result's
-    // raw `next` is tied to no argument); a Kimigayo-layout or `Option<Option<R>>` Field's is not decided (kOpt*Rests, optOptCastRests).
+    // Field's is not decided, but a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past
+    // the pun (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx): the conflict (kLayoutFieldRests). A first Field `Option<obj/OBoxP>` places
+    // its Some payload there too (IMPL 21.1.3, PLAN G808), so a store past it is typed (opt*Typed; undecided before G808), and the init's
+    // own conflict stands (SPEC 15.6: the result's raw `next` is tied to no argument); a Kimigayo-layout or `Option<Option<R>>` Field's is
+    // not decided, the conflict decided past the pun as above (kOpt*Rests, optOptCastRests).
     // A shared Subject's binding of the payload in place (SPEC 15.1.6; its write runs only under `flag`, having no write authority,
     // SPEC 5.2.1 condition 3) keeps that verdict, a store or a call past it typed (sharedOpt*), through an enum that is no nonnull
-    // Option, a Kimigayo-layout Field or `Option<Option<R>>` undecided (sharedEnumRests, sharedKOptRests, sharedOptOptRests). A written
+    // Option, a Kimigayo-layout Field or `Option<Option<R>>` undecided, the conflict decided past the pun as above (sharedEnumRests,
+    // sharedKOptRests, sharedOptOptRests). A written
     // array of no element over a pointer is no pun (zeroArrayOk, 5.2: positive-sized). A length that is no constant is not established
     // positive (4.4.2: the body is checked for every binding that meets the public conditions, which may all make it 0: `N - N`,
     // `N * 0`, a bare `N` beside a `[(0 - N) of u8]` parameter), so no pun is decided over one, written or the holder's: a located
@@ -2464,15 +3017,19 @@ public sealed partial class MirBorrowsTest
     // holder's provenance; absEnumNumRests and absEnumNumU16Rests: the Num Case at the store), and at a holder's length that is no
     // constant (limit (c): absLengthRests, absZeroExprRests, the last valid). After a destruction through tp (`_ = (*tp)@move`, or a
     // non-Copy store's drop of the old value) tp's own address is formed, so its Position is not seen formed (Φ_N) and the write rests;
-    // the undecided write's Φ_M is the set's (R4-M198's named limit, PLAN G599 (b)), so a decided conflict beside it rests too
-    // (absOnTupleRests, absDropThenCallRests, absOtherSourceRests, absCallThenStoreRests). A struct written whole, a Function value, a
+    // the undecided write's entries rest each by its own tier (DECISIONS R4-M2xx), and one whose only Φ_E is the write's rests
+    // (absOnTupleRests); `usep` over a Tuple holding a pointer and non-pointers is O-205 (a)'s undecided write, which adds Φ_E rested,
+    // so the check rests where it follows the destruction or precedes the store, as absOnTupleCallRests (absDropThenCallRests,
+    // absCallThenStoreRests: U kept, the allowed precision limit); a store from another source decides it, `(*bq)@move`'s decided entry
+    // over buf's owner bytes (absOtherSourceRests, as PunRead answers surely for an abstract T). A struct written whole, a Function value, a
     // read and a pointer to T are no pun; a holder with no pointer byte holds none (the abs*Ok rows, fnStoreOk, fnCallOk).
     // A call that writes through a borrowed holder such a write leaves undecided (a Closure's receiver, IMPL 21.1.1 and R4-M148; a
     // `uniq/` Tuple) may retain what reads through it carry, the other pointer's address included, where the punned pointer reaches
     // (5.2.1 Retained dependencies), and stores spare where that pointer points, other's holder, in either layout. Whether other is
-    // live at kk = 2 then rests on the write, so the check is a located Unsupported_Kd (closureMixedRests, borrowedTupleRests;
-    // closurePtrBad, whose only part every layout puts the write on, is limit (a)'s); where other is used later, the conflict holds in
-    // either layout (closureMixedLiveBad) (PLAN G775). Without the write the call is invalid as well (closureMixedNoWriteOk,
+    // live at kk = 2 then rests on the write, so the check is a located Unsupported_Kd (closureMixedRests; closurePtrBad, whose only
+    // part every layout puts the write on, is limit (a)'s); where other is used later, the conflict holds in either layout
+    // (closureMixedLiveBad) (PLAN G775), and so where the call reaches the written holder through a fresh Loan without Φ_M, a decided
+    // entry, at whose tier its own pointer's write lands (borrowedTupleRests; DECISIONS R4-M2xx). Without the write the call is invalid as well (closureMixedNoWriteOk,
     // selfStoreNoWriteOk; A5 value redesign U3c): the `let` capture q's layer is one the Closure states in its own Fields (SPEC 5.7 Calls,
     // the owner's O-254 Q1 D), so through it the call may store what a raw layer it writes retains; `other`, which it writes, is a raw
     // layer without an Origin, so the call may write its own pointer there and store spare, or keep other's address, in storage the body
@@ -2482,13 +3039,12 @@ public sealed partial class MirBorrowsTest
     // (selfStoreRests); with other's address in storage the body does not own it conflicts (selfStoreEscBad). A decided route stays
     // decided whatever the order the gather reads holders in: p may address aa, bb or cc, which then share one stored set, and on the
     // path where it addresses cc, cc holds r's Loan and is used after kk = 2, a route through no undecided write, so kk = 2 conflicts
-    // whether aa and bb are read at the Limit tier through a set carrying Φ_U (via*) or by their own states carrying it (ownRested*),
+    // whether aa and bb are read at the Limit tier through a rested entry (via*) or by their own states' rested entries (ownRested*),
     // and whether cc is declared before them or after (15.6). A holder that holds r's Loan by its own Place, used after kk = 2, whose
-    // stored set (shared with aa and bb) carries Φ_U, conflicts in every layout, but its state carries Φ_U, so R4-M198's set-level
-    // named limit makes the record the located Unsupported_Kd (PLAN G599 (b)), the same whichever via of that set it is read as
-    // (cutHolderFirstBad, cutHolderLastBad, cutTwoViasBad); without the write it is the conflict (cutNoWriteBad). The same limit holds
-    // where the set naming the holder carries Φ_U: other holds r's Loan and its address is in storage the body does not own, but E's set
-    // also carries an unrelated rested store (escBesideRestedBad). A holder reached both through E's rested content and by a decided
+    // stored set (shared with aa and bb) rests on the write, conflicts in every layout: its own Placed entry is decided beside the
+    // stored set's rested ones (DECISIONS R4-M2xx), so the record is the conflict, the same whichever via of that set it is read as
+    // (cutHolderFirstBad, cutHolderLastBad, cutTwoViasBad), as without the write (cutNoWriteBad). So too where other holds r's Loan and
+    // its address is in storage the body does not own beside an unrelated rested store E also receives (escBesideRestedBad). A holder reached both through E's rested content and by a decided
     // route keeps its decided conflict, also where the location stores one value into it and into a holder reached only through E:
     // that value is taken once per tier (selfStoreLiveBad; tookPerTierBad and tookPerTierSwapBad, the same records in both orders, their
     // second record at `var p` resting on E's content).
@@ -2501,14 +3057,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("arrayMidBad", "arrayMidBad: kk = 2 Unsupported_Kd")]
     [InlineData("wholeTupleRests", "wholeTupleRests: kk = 2 Unsupported_Kd")]
     [InlineData("wholeTupleCallRests", "wholeTupleCallRests: kk = 2 Unsupported_Kd")]
-    [InlineData("kLayoutFieldRests", "kLayoutFieldRests: kk = 2 Unsupported_Kd")]
+    [InlineData("kLayoutFieldRests", "kLayoutFieldRests: kk = 2")]
     [InlineData("otherTypeRests", "otherTypeRests: kk = 2 Unsupported_Kd")]
     [InlineData("otherTypeCallRests", "otherTypeCallRests: kk = 2 Unsupported_Kd")]
     [InlineData("closureMixedRests", "closureMixedRests: kk = 2 Unsupported_Kd")]
     [InlineData("closureMixedNoWriteOk", "closureMixedNoWriteOk: kk = 2")] // Invalid without the pun write (U3c; SPEC 5.7 Calls, the owner's O-254 Q1 D).
     [InlineData("closureMixedLiveBad", "closureMixedLiveBad: kk = 2")]
     [InlineData("closurePtrBad", "closurePtrBad: kk = 2 Unsupported_Kd")]
-    [InlineData("borrowedTupleRests", "borrowedTupleRests: kk = 2 Unsupported_Kd")]
+    [InlineData("borrowedTupleRests", "borrowedTupleRests: kk = 2")] // Reached through `h@uniq`, a fresh Loan without Φ_M (DECISIONS R4-M2xx).
     [InlineData("selfStoreRests", "selfStoreRests: other = r@follow@raw@raw/u8 Unsupported_Kd")]
     [InlineData("selfStoreEscBad", "selfStoreEscBad: other = r@follow@raw@raw/u8")]
     [InlineData("selfStoreNoEscOk", "")]
@@ -2517,14 +3073,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("viasDecidedFirstBad", "viasDecidedFirstBad: kk = 2")]
     [InlineData("ownRestedViasBad", "ownRestedViasBad: kk = 2")]
     [InlineData("ownRestedCcLastBad", "ownRestedCcLastBad: kk = 2")]
-    [InlineData("cutHolderFirstBad", "cutHolderFirstBad: kk = 2 Unsupported_Kd")]
-    [InlineData("cutHolderLastBad", "cutHolderLastBad: kk = 2 Unsupported_Kd")]
+    [InlineData("cutHolderFirstBad", "cutHolderFirstBad: kk = 2")]
+    [InlineData("cutHolderLastBad", "cutHolderLastBad: kk = 2")]
     [InlineData("cutNoWriteBad", "cutNoWriteBad: kk = 2")]
-    [InlineData("cutTwoViasBad", "cutTwoViasBad: kk = 2 Unsupported_Kd")]
+    [InlineData("cutTwoViasBad", "cutTwoViasBad: kk = 2")]
     [InlineData("selfStoreLiveBad", "selfStoreLiveBad: other = r@follow@raw@raw/u8")]
     [InlineData("tookPerTierBad", "tookPerTierBad: *p = rp@follow@raw@raw/u8; tookPerTierBad: var p: raw/(raw/u8) = b@raw Unsupported_Kd")]
     [InlineData("tookPerTierSwapBad", "tookPerTierSwapBad: *p = rp@follow@raw@raw/u8; tookPerTierSwapBad: var p: raw/(raw/u8) = b@raw Unsupported_Kd")]
-    [InlineData("escBesideRestedBad", "escBesideRestedBad: kk = 2 Unsupported_Kd")]
+    [InlineData("escBesideRestedBad", "escBesideRestedBad: kk = 2")]
     [InlineData("cLayoutSecondFieldBad", "cLayoutSecondFieldBad: kk = 2")]
     [InlineData("zeroArrayOk", "")]
     [InlineData("lengthArrayRests", "lengthArrayRests: kk = 2 Unsupported_Kd")]
@@ -2546,15 +3102,15 @@ public sealed partial class MirBorrowsTest
     [InlineData("cLayoutFirstFieldCallTyped", "cLayoutFirstFieldCallTyped: kk = 2")]
     [InlineData("optCastObjTyped", "optCastObjTyped: kk = 2")]
     [InlineData("optMatchObjTyped", "optMatchObjTyped: kk = 2")]
-    [InlineData("kOptCastRests", "kOptCastRests: kk = 2 Unsupported_Kd")]
-    [InlineData("kOptMatchRests", "kOptMatchRests: kk = 2 Unsupported_Kd")]
-    [InlineData("optOptCastRests", "optOptCastRests: kk = 2 Unsupported_Kd")]
+    [InlineData("kOptCastRests", "kOptCastRests: kk = 2")]
+    [InlineData("kOptMatchRests", "kOptMatchRests: kk = 2")]
+    [InlineData("optOptCastRests", "optOptCastRests: kk = 2")]
     [InlineData("sharedOptTyped", "sharedOptTyped: kk = 2")]
     [InlineData("sharedOptNoWrite", "sharedOptNoWrite: kk = 2")]
     [InlineData("sharedOptCallTyped", "sharedOptCallTyped: kk = 2")]
-    [InlineData("sharedKOptRests", "sharedKOptRests: kk = 2 Unsupported_Kd")]
-    [InlineData("sharedEnumRests", "sharedEnumRests: kk = 2 Unsupported_Kd")]
-    [InlineData("sharedOptOptRests", "sharedOptOptRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sharedKOptRests", "sharedKOptRests: kk = 2")]
+    [InlineData("sharedEnumRests", "sharedEnumRests: kk = 2")]
+    [InlineData("sharedOptOptRests", "sharedOptOptRests: kk = 2")]
     [InlineData("wholeTupleLoanOk", "")]
     [InlineData("wholeTupleNoLoanOk", "")]
     [InlineData("wholeTupleCallLoanOk", "")]
@@ -2584,9 +3140,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("absEnumNumU16Rests", "absEnumNumU16Rests: kk = 2 Unsupported_Kd")]
     [InlineData("absEnumNoWriteOk", "")]
     [InlineData("absEnumPtrRests", "absEnumPtrRests: kk = 2 Unsupported_Kd")]
-    [InlineData("absDropThenCallRests", "absDropThenCallRests: kk = 2 Unsupported_Kd")]
-    [InlineData("absOtherSourceRests", "absOtherSourceRests: kk = 2 Unsupported_Kd")]
-    [InlineData("absCallThenStoreRests", "absCallThenStoreRests: kk = 2 Unsupported_Kd")]
+    [InlineData("absDropThenCallRests", "absDropThenCallRests: kk = 2 Unsupported_Kd")] // O-205 (a), as absOnTupleCallRests.
+    [InlineData("absOtherSourceRests", "absOtherSourceRests: kk = 2")]
+    [InlineData("absCallThenStoreRests", "absCallThenStoreRests: kk = 2 Unsupported_Kd")] // O-205 (a), as absOnTupleCallRests.
     [InlineData("absOffTupleRests", "absOffTupleRests: kk = 2 Unsupported_Kd")]
     [InlineData("absOffTupleCallRests", "absOffTupleCallRests: kk = 2 Unsupported_Kd")]
     [InlineData("absOffTupleNoWriteOk", "")]
@@ -2614,6 +3170,94 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
         var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
+    // DECISIONS R4-M2xx (PLAN G599 (b); SPEC 5.5, 15.6 Holders and Addresses, 15.6.2, 15.6.4, 23.1.2): the tier is an entry's, so a
+    // decided entry beside rested ones keeps its verdict. r's exclusive Loan of kk is held decided where kk = 2 writes it, beside entries
+    // that rest on a u16 write which may pun a Tuple's or a Closure's pointer (5.5; IMPL 21.1.2): the conflict holds in every layout, so
+    // it is the conflict, whether the rested entries reach the holder by a read (eDecidedBesideRestedBad), a call's rested store into E
+    // beside other's decided address there (escBesideRestedBad's Closure form, dClosureEscBesideBad) or a later raw write through the
+    // punned pointer (rLaterWriteEscBad); each Ok twin is valid. Where r's Loan reaches E only through the punned pointer, rested, the
+    // verdict rests on the write, the located Unsupported_Kd (rRestedOnlyRests; rTwoHopStoreRests, two hops through it). W walks its
+    // targets in walk order (MirBorrows.Reach's walkOrder): t, first reached rested through vU (a read through the punned g.1), is read
+    // on again once y reaches it decided, so t2 past it receives the call's store decided and conflicts in every layout
+    // (walkOrderDecidedBad; walkOrderShapeBad, RestedEntriesScaleLinearly's shape at n = 1, where x0's decided entry is reached only after
+    // the rested reach of t0); without t2's later use the call's own pointer, written at the decided node y reaches t through, takes that
+    // node's tier (S5 (c)) and stores spare in storage the body does not own: the conflict too (walkOrderRests, SPEC 15.6.4). The design
+    // review's twins: a receipt through the punned pointer is decided (rcvM*), Chain
+    // carries past a holder whose state holds Φ_M (chainPastM*; its Rests twin reads through it), and a call through it may retain hh's
+    // value, which carries r's Loan, in storage the body does not own (SPEC 15.6.4), which Through's Φ_M clause rests, the allowed
+    // precision limit (chainPastMCallRests), where a read through it that stores nothing is valid (chainPastMNoStore); a call through it
+    // rests what it reaches past it (rLaterWrite*; rLaterWriteOk is PLAN G788's), and a seed
+    // read through it rests (sSeedRested*), each Bad holding r's Loan by a decided entry. A decided and a rested entry of one element
+    // join decided (eJoin*; its RestOnly twin holds the rested one alone); a cycle or a Closure keeps a rested read rested and a decided
+    // one decided (cycRest*, closureReadRest*; both RestOnly twins are invalid in every layout); a call after a rested store delivers
+    // its own entry decided (storeThenCall*); a may-join of a parameter-rooted and a Loan-carrying result keeps the Loan (fForkParam*).
+    [Theory]
+    [InlineData("eDecidedBesideRestedBad", "eDecidedBesideRestedBad: kk = 2")]
+    [InlineData("eDecidedBesideRestedOk", "")]
+    [InlineData("dEscBesideRestedOk", "")]
+    [InlineData("dClosureEscBesideBad", "dClosureEscBesideBad: kk = 2")]
+    [InlineData("dClosureEscBesideOk", "")]
+    [InlineData("rLaterWriteEscBad", "rLaterWriteEscBad: kk = 2")]
+    [InlineData("rLaterWriteEscOk", "")]
+    [InlineData("rRestedOnlyRests", "rRestedOnlyRests: kk = 2 Unsupported_Kd")]
+    [InlineData("rTwoHopStoreRests", "rTwoHopStoreRests: kk = 2 Unsupported_Kd")]
+    [InlineData("rTwoHopStoreOk", "")]
+    [InlineData("cutHolderFirstOk", "")]
+    [InlineData("walkOrderDecidedBad", "walkOrderDecidedBad: kk = 2")]
+    [InlineData("walkOrderRests", "walkOrderRests: kk = 2")] // OwnPointer's write at its decided node (S5 (c)); limit (a) is keepU's.
+    [InlineData("walkOrderShapeBad", "walkOrderShapeBad: kk = 2")]
+    [InlineData("rcvMBad", "rcvMBad: kk = 2")]
+    [InlineData("rcvMOk", "")]
+    [InlineData("chainPastMBad", "chainPastMBad: kk = 2")]
+    [InlineData("chainPastMCallRests", "chainPastMCallRests: kk = 2 Unsupported_Kd")] // I by SPEC 15.6.4; the U is the precision limit.
+    [InlineData("chainPastMNoStore", "")]
+    [InlineData("chainPastMRests", "chainPastMRests: kk = 2 Unsupported_Kd")]
+    [InlineData("rLaterWriteOk", "rLaterWriteOk: kk = 2 Unsupported_Kd")] // V under 5.5, R under G1 (pun part); PLAN G788 stays open.
+    [InlineData("rLaterWriteBad", "rLaterWriteBad: kk = 2")]
+    [InlineData("sSeedRestedOk", "")]
+    [InlineData("sSeedRestedRests", "sSeedRestedRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sSeedRestedBad", "sSeedRestedBad: kk = 2")]
+    [InlineData("eJoinBad", "eJoinBad: kk = 2")]
+    [InlineData("eJoinOk", "")]
+    [InlineData("eJoinRestOnlyRests", "eJoinRestOnlyRests: kk = 2 Unsupported_Kd")]
+    [InlineData("cycRestDecidedBad", "cycRestDecidedBad: kk = 2")]
+    [InlineData("cycRestDecidedOk", "")]
+    [InlineData("cycRestOnlyRests", "cycRestOnlyRests: kk = 2")] // Invalid in every layout: hold.1 uses b and so a (15.6 Live).
+    [InlineData("storeThenCallBad", "storeThenCallBad: kk = 2")]
+    [InlineData("storeThenCallOk", "")]
+    [InlineData("closureReadRestBad", "closureReadRestBad: kk = 2")]
+    [InlineData("closureReadRestOk", "")]
+    [InlineData("closureReadRestOnlyRests", "closureReadRestOnlyRests: kk = 2")] // Invalid in every layout: c's result retains *gp's read (15.6.4).
+    [InlineData("fForkParam", "fForkParam: k = 2")]
+    [InlineData("fForkParamOk", "")]
+    [InlineData("fForkParamOnly", "")]
+    public void ADecidedEntryBesideRestedOnesKeepsItsVerdict(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + TierForms[..TierForms.IndexOf("func eDecidedBesideRestedBad(", StringComparison.Ordinal)] + Form(TierForms, form));
+        var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
+    // DECISIONS R4-M2xx's cost (design §4, N5): n holders, each reached rested through a read behind a u16 write that may pun g.1 and
+    // then decided by name through y, with a call through the chain's head, so that W walks each holder rested, then decided, and reads
+    // each holder and each part at most twice per walk; the work grows linearly, on a shape with no Loan problem.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void RestedEntriesScaleLinearly()
+    {
+        const string Shape = "func keepChain(slot: raw/((raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8))))), value: raw/u8) => ()\n" +
+            "func shape(flag: bool)\n    var spare: raw/u8 = null\n" +
+            "«N:    var x{0}: raw/u8 = null\n    var t{0}: raw/(raw/u8) = x{0}@raw\n    var w{0}: raw/(raw/(raw/u8)) = t{0}@raw\n»" +
+            "    var g: (u64, raw/(raw/(raw/(raw/u8)))) = (0, w0@raw)\n«N:    if flag\n        g.1 = w{0}@raw\n»" +
+            "    let tg = g@raw@raw/u16\n    unsafe => *tg = 7\n    let gp = g.1\n    var vU: raw/(raw/(raw/u8)) = null\n" +
+            "    unsafe => vU = *gp\n    var y: raw/(raw/(raw/u8)) = t0@raw\n«N:    if flag\n        y = t{0}@raw\n»" +
+            "    var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)\n    keepChain(a@raw, spare)\n";
+        var runs = new[] { 32, 64, 128 }.Select(n => Measured(Prelude + Expand(Shape, n, 0))).ToArray();
+        long[] work = [.. runs.Select(static x => x.Work)];
+        output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", runs.Select(static x => x.Bytes))}");
+        Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
     }
 
     // SPEC 5.2, 5.2.1 condition 5, 5.6 (C-457 R-c; OSF2's row 27 premise): C-457's peek, a volatile read of a ref's bits through a raw
@@ -2663,13 +3307,15 @@ public sealed partial class MirBorrowsTest
     // Place (a match binding borrows through its Subject Place's Deref, `&((*_s) as case k).j`), so each shared-Subject form's body is
     // copied with its Subject's Deref replaced by the Place the Subject borrows, `&(((*p).link) as case k).j`: a store past the payload
     // keeps its source form's verdict, typed through `Option<obj/OBoxP>` at a C first Field (sharedOptTyped: undecided while the
-    // Downcast kept no Position), undecided through an enum that is no nonnull Option, a Kimigayo-layout Field or `Option<Option<R>>`.
+    // Downcast kept no Position), undecided through an enum that is no nonnull Option, a Kimigayo-layout Field or `Option<Option<R>>`,
+    // where a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past the pun, the conflict
+    // (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx).
     [Theory]
     [InlineData("sharedOptTyped", "sharedOptTyped: kk = 2")]
     [InlineData("sharedOptCallTyped", "sharedOptCallTyped: kk = 2")]
-    [InlineData("sharedEnumRests", "sharedEnumRests: kk = 2 Unsupported_Kd")]
-    [InlineData("sharedKOptRests", "sharedKOptRests: kk = 2 Unsupported_Kd")]
-    [InlineData("sharedOptOptRests", "sharedOptOptRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sharedEnumRests", "sharedEnumRests: kk = 2")]
+    [InlineData("sharedKOptRests", "sharedKOptRests: kk = 2")]
+    [InlineData("sharedOptOptRests", "sharedOptOptRests: kk = 2")]
     public void APayloadBorrowedInPlacePastARawDerefKeepsLeadingsStep(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
@@ -2685,11 +3331,13 @@ public sealed partial class MirBorrowsTest
     // last Deref. No source form stores through that Place (a binding's store goes through the binding's reference), so each uniq-Subject
     // form's body is copied with its Subject and then its binding rebased onto the Place each borrows (InPlace): the store `b.v = 7` is
     // `(*(((*p) as case 0).0)).v = 7`, typed through `Option<obj/OBoxP>` cast at a C first Field `obj/OBoxP` (hOptMatch: undecided while the
-    // Downcast kept no Position), undecided through an enum that is no nonnull Option (hEnumMatch: A5's Limit; the write past the handle's
-    // own step is the object's, SPEC 5.2). The binding's Ref stays, a borrow no store goes through, so each verdict is the store's.
+    // Downcast kept no Position), undecided through an enum that is no nonnull Option (the write past the handle's own step is the
+    // object's, SPEC 5.2), where a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past the
+    // pun, the conflict (hEnumMatch; SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx). The binding's Ref stays, a borrow no store goes
+    // through, so each verdict is the store's.
     [Theory]
     [InlineData("hOptMatch", "hOptMatch: kk = 2")]
-    [InlineData("hEnumMatch", "hEnumMatch: kk = 2 Unsupported_Kd")]
+    [InlineData("hEnumMatch", "hEnumMatch: kk = 2")]
     public void APayloadStoredInPlacePastARawDerefKeepsLeadingsStep(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
@@ -2705,17 +3353,18 @@ public sealed partial class MirBorrowsTest
     // PLAN G667c's named limit (a) on the stated-store forms (StatedForms; the Middle's Q13 rulings): a Scalar written at the whole
     // address of a struct or a Tuple that holds a raw pointer is undecided, IMPL 21.1.2 promising no offset there, so these invalid
     // forms, the conflict before G667c, are rejected by the located Unsupported_Kd at the conflict's two subjects, until Layout's byte
-    // positions decide them.
+    // positions decide them; a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past the
+    // pun, and so is its Loan's other end: both records of fieldPunBad's Cell.init, the conflict at kk = 2 and spare's (SPEC 15.6 Holders,
+    // 15.6.4; DECISIONS R4-M2xx).
     [Theory]
-    [InlineData("fieldPunBad")]
-    [InlineData("tuplePunnedBad")]
-    [InlineData("tupleCopiedPunBad")]
-    public void AScalarOverAStatedLayersHolderRestsOnItsLayout(string form)
+    [InlineData("fieldPunBad", "fieldPunBad: kk = 2; fieldPunBad: var spare: raw/u8 = r@follow@raw")]
+    [InlineData("tuplePunnedBad", "tuplePunnedBad: kk = 2 Unsupported_Kd; tuplePunnedBad: var spare: raw/u8 = r@follow@raw Unsupported_Kd")]
+    [InlineData("tupleCopiedPunBad", "tupleCopiedPunBad: kk = 2 Unsupported_Kd; tupleCopiedPunBad: var spare: raw/u8 = r@follow@raw Unsupported_Kd")]
+    public void AScalarOverAStatedLayersHolderRestsOnItsLayout(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + StatedForms[..StatedForms.IndexOf("func endOk(", StringComparison.Ordinal)] + Form(StatedForms, form));
-        Assert.Equal(
-            [$"{form}: kk = 2 Unsupported_Kd", $"{form}: var spare: raw/u8 = r@follow@raw Unsupported_Kd"],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal));
+        var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
     // PLAN G785, the pun rule's read site (SPEC 15.6 Holders, example punnedRef; 5.2; 5.5): a raw pointer a body reads punned over bytes
@@ -2821,13 +3470,16 @@ public sealed partial class MirBorrowsTest
     [InlineData("viaCarriedMixedTPOk", "viaCarriedMixedTPOk: kk = 2; viaCarriedMixedTPOk: var slot: raw/u8 = null")] // I, an abstract part
     [InlineData("viaCarriedDeepBad", "viaCarriedDeepBad: kk = 2; viaCarriedDeepBad: var hop: raw/(raw/u8) = cell@raw")] // I, past p to hop
     [InlineData("viaCarriedMixedQCopyBad", "viaCarriedMixedQCopyBad: kk = 2; viaCarriedMixedQCopyBad: var slot: raw/u8 = null")] // I, a Copy
-    // I: UnknownWrite gives mx its pun, but take's u8 write through c.w, off mx's Position, is the judge's undecided one (CallWrite).
-    [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2 Unsupported_Kd; unknownMixedBad: var slot: raw/u8 = null Unsupported_Kd")]
+    // I: UnknownWrite gives mx its pun, but take's u8 write through c.w, off mx's Position, is the judge's undecided one (CallWrite);
+    // mx, built by a call, keeps E's decided Φ_E entry, so the store through a part of it is decided past the pun at kk = 2, and so is
+    // slot's Loan's other end, as in viaCarriedMixedBad (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx).
+    [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2; unknownMixedBad: var slot: raw/u8 = null")]
     // V, a u8 store at mx's first byte, the stated p (PlacedAt's partly stated arm: t's abstract part; T is PrimitiveInteger, so no
     // binding holds a reference, 8.7.4). Accepted without the store; a Language record at kk = 2 without the arm.
     [InlineData("placedStatedFirstNoneOk", "placedStatedFirstNoneOk: kk = 2 Unsupported_Kd")]
-    // I (route M, 15.6 Holders), the store at the unstated q: the same arm.
-    [InlineData("placedUnstatedFirstBad", "placedUnstatedFirstBad: kk = 2 Unsupported_Kd; placedUnstatedFirstBad: var slot: raw/u8 = null Unsupported_Kd")]
+    // I (route M, 15.6 Holders), the store at the unstated q: the same arm; at kk = 2 and at slot, as unknownMixedBad, decided past the
+    // pun through E's decided Φ_E entry of the call-built mx (15.6.4; DECISIONS R4-M2xx).
+    [InlineData("placedUnstatedFirstBad", "placedUnstatedFirstBad: kk = 2; placedUnstatedFirstBad: var slot: raw/u8 = null")]
     [InlineData("viaParamQBad", "viaParamQBad: kk = 2; viaParamQBad: var slot: raw/u8 = null")] // I, mx.q holds a parameter's pointer
     [InlineData("viaParamQPOk", "viaParamQPOk: kk = 2; viaParamQPOk: var slot: raw/u8 = null")] // I, mx.p carries it
     [InlineData("viaCarriedPinOk", "")] // V, every layer stated: f leaves at pin.p only what a admits

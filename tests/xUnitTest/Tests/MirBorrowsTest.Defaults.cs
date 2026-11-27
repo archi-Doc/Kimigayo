@@ -316,16 +316,17 @@ public sealed partial class MirBorrowsTest
     // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE), whose
     // record is at the store (SPEC 7.2.3 as clarified by O-254 Q2 A). keepN is invalid by O-254 Q1 D (the let capture's pointee layer is
     // the Closure's own), which A5's rule W reads from U3c (the store through `other`, a raw layer without an Origin the call writes, reaches
-    // storage the body does not own; SPEC 15.6.4's composition): its record is at the call `c(rz@follow@raw)`, placed as keepECall's below. Today's records, a known limit (PLAN G599 (b): Φ_U is a set's, not an entry's): a decided store of rz
-    // beside `other`, which rests on the u16 write, places no record, so restBeside (invalid twice, SPEC 7.2.3 with 23.1.2: the store and
-    // the result) has the result's site record alone, and restStoreOnly (invalid at the store) the limit record at the site.
+    // storage the body does not own; SPEC 15.6.4's composition): its record is at the call `c(rz@follow@raw)`, placed as keepECall's below. The tier is an entry's (DECISIONS R4-M2xx): a decided
+    // store of rz beside `other`, which rests on the u16 write, places its record at the store, so restBeside (invalid twice, SPEC 7.2.3
+    // with 23.1.2: the store and the result) has both records, and restStoreOnly (invalid at the store) the store's alone.
     [Fact]
     public void ATemplateVerdictRestingOnAnUndecidedWriteIsTheLimit()
         => Assert.Equal(
             [
                 "keepU: z Unsupported_Kd", "keepN: c(rz@follow@raw) DefaultArgumentBorrow_Kd", "keepE: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
                 "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd", "keepS: z DefaultArgumentBorrow_Kd",
-                "keepX: z@follow@uniq DefaultArgumentAccess_Kd", "restBeside: z DefaultArgumentBorrow_Kd", "restStoreOnly: z Unsupported_Kd",
+                "keepX: z@follow@uniq DefaultArgumentAccess_Kd", "restBeside: *p = (rz@follow@raw, other) DefaultArgumentBorrow_Kd",
+                "restBeside: z DefaultArgumentBorrow_Kd", "restStoreOnly: *p = (rz@follow@raw, other) DefaultArgumentBorrow_Kd",
             ],
             AllProblems("""
                 func keepU(z: uniq/i32 during a, y: i32 = label w: do
