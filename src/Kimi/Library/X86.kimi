@@ -29,9 +29,10 @@
             #Intrinsic("Instruction", "sti")
             public func enableInterrupts()
 
-            /// Sets the interrupt flag and stops the processor until the next interrupt (`sti; hlt`). `sti` delays interrupts by
-            /// one instruction, so an interrupt pending at the call ends the `hlt` instead of running before it: the idle wait
-            /// without a lost wakeup.
+            /// Sets the interrupt flag and stops the processor until the next interrupt (`sti; hlt`).
+            ///
+            /// `sti` delays interrupts by one instruction, so an interrupt pending at the call ends the `hlt` instead of running
+            /// before it: the idle wait without a lost wakeup.
             #Intrinsic("Instruction", "stihlt")
             public func enableInterruptsAndHalt()
 
@@ -87,7 +88,7 @@
             /// Loads the global descriptor table register from the 10-byte limit and base at `descriptor` (`lgdt`).
             ///
             /// - safety: The 10 bytes at `descriptor` are live, and the table they name stays live and unchanged while
-            ///   interrupts may use it.
+            ///   the processor may use it.
             #Intrinsic("Instruction", "lgdt")
             public unsafe func loadDescriptorTable(descriptor: raw/u8)
 
@@ -130,8 +131,9 @@
 
             /// Writes control register 3, switching the page tables to the root at `value` (`mov cr3, r64`).
             ///
-            /// - safety: The page tables at `value` stay live and unchanged while the processor uses them, and the translation
-            ///   they give keeps the program's storage within its platform contract (IMPL 21.6).
+            /// - safety: The page tables at `value` stay live while the processor uses them, and each translation they give,
+            ///   including after a later edit and its invalidation, keeps the program's storage within its platform contract
+            ///   (IMPL 21.6).
             #Intrinsic("Instruction", "wrcr3")
             public unsafe func writeCr3(value: u64)
 

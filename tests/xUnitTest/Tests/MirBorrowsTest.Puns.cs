@@ -2625,6 +2625,7 @@ public sealed partial class MirBorrowsTest
     public void AnInstructionStoresNothingThroughItsRawOperand(string form, string expected)
     {
         var body = Form(PunForms, form).Replace("_ = Raw.readVolatile(q@raw@raw/usize)", "X86.loadInterruptTable(q@raw@raw/u8)", StringComparison.Ordinal);
+        Assert.Equal(form == "volatileReadOk", body.Contains("X86.loadInterruptTable", StringComparison.Ordinal));
         var c = MinimalEmissionTest.Analyze(
             TargetProfile.None, Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + body, "Board.kimi", OutputKind.Library);
         var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);

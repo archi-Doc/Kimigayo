@@ -86,8 +86,8 @@ internal sealed partial class GeneratedIr
         return ir;
     }
 
-    /// <summary>Gets the function of a runtime contract symbol: <c>__kimi_start</c>, <c>__kimi_exit</c>, an import or an LLVM intrinsic,
-    /// never a generated function or a generator's helper.</summary>
+    /// <summary>Gets the function of a recorded symbol: <c>__kimi_start</c>, <c>__kimi_exit</c>, an import, an LLVM intrinsic or a
+    /// generator's recorded helper name, such as an <c>__kimi_x86_</c> routine.</summary>
     /// <param name="symbol">The symbol without <c>@</c>.</param>
     /// <returns>The function.</returns>
     public IrFunction Function(string symbol) => Assert.Contains(symbol, this.symbols);
@@ -382,7 +382,7 @@ internal sealed class IrValue(string opcode, string shape)
     /// <summary>Gets the definitions of the values it reads, instructions or parameters, in operand order (labels excluded).</summary>
     public List<IrValue> Operands { get; } = [];
 
-    /// <summary>Gets or sets the function a direct call calls; null for inline asm.</summary>
+    /// <summary>Gets or sets the function a direct call calls; null for inline asm or an indirect call.</summary>
     public IrFunction? Callee { get; set; }
 
     /// <summary>Gets a call's function attributes, attribute groups resolved.</summary>
