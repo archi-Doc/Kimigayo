@@ -616,15 +616,17 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "tw2", OtherAssociates + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP2\n    let w = t.deepw()\n    return textOnly(w)\n", "UnprovenConstraint_Kd: return textOnly(w)")]
 
     // e2-7 (R7-C2e2, the view's identity closure; design-p0.md R1.5, labelled from SPEC first). An identity the grounds supply at depth
-    // conflicts with a written or a Contract's own clause (tconf2, tdec through decomposition, hc-use once at HC's clause and nothing at
-    // the use: SPEC 8.2.3, 23.1.2); a let reads it (u2-let); the meaning does not depend on the order of checks (8.2.3), so each pair
-    // (ord, ordr through a request, arg through a sibling link's Contract arguments, mk through a cycle's mate) is valid in either
-    // order; a premise's grounds do not depend on the check asking (c4a, c4b); a refuted identity under a path equation rests on the
-    // limited closure, and the mismatch resting on it is dependent (pqlet-i32, 8.3.3, 23.1.2). hc-use, ordr-a, ordr-b, arg-a, mk-a, mk-b,
-    // c4a and c4b already hold on the head (guards).
+    // conflicts with a written or a Contract's own clause (tconf2, tdec through decomposition, hc-use at HC's clause: SPEC 8.2.3,
+    // 23.1.2); a let reads it (u2-let); the meaning does not depend on the order of checks (8.2.3), so each pair (ord, ordr through a
+    // request, arg through a sibling link's Contract arguments, mk through a cycle's mate) is valid in either order; a premise's grounds
+    // do not depend on the check asking (c4a, c4b); a refuted identity under a path equation rests on the limited closure, and the
+    // mismatch resting on it is dependent (pqlet-i32, 8.3.3, 23.1.2). ordr-a, ordr-b, arg-a, mk-a, mk-b, c4a and c4b already hold on
+    // the head (guards). hc-use's use keeps a counted independent NoApplicableOverload_Kd (Q13 class 4, G1406-50; 8.2.3 says "never
+    // again at uses"): the candidate's result fit reads the premise error as its limit (IdentityPremiseErrorRead), but the selection
+    // rejects on the fit's answer and its NoneApplicable record reads no limit (the PLAN open issue).
     [InlineData("e2-7", "tconf2", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is i32\n    return 0\n", "InvalidConstraint_Kd: T.(KP).Next.(KP).V is i32", Explicit = true)]
     [InlineData("e2-7", "tdec", "contract KS\n    associate V\n    Self.(KS).V is string\ncontract K\n    associate A\n    associate B\n    associate C is KS\n    Self.(K).A is Option<Self.(K).C.(KS).V>\n    Self.(K).B is Option<i32>\nfunc probe<T>(t: ref/T) -> i32\n    T is K\n    T.(K).A is T.(K).B\n    return 0\n", "InvalidConstraint_Kd: T.(K).A is T.(K).B", Explicit = true)]
-    [InlineData("guard", "hc-use", "contract HC\n    associate Next is HC\n    associate V\n    Self.(HC).V is string\n    Self.(HC).Next.(HC).V is i32\n    func deep(self: ref/Self) -> ref/Self.(HC).Next.(HC).V\nfunc probe<T>(t: ref/T) -> i32\n    T is HC\n    let s: ref/i32 = t.deep()\n    return 0\n", "InvalidConstraint_Kd: Self.(HC).Next.(HC).V is i32")]
+    [InlineData("guard", "hc-use", "contract HC\n    associate Next is HC\n    associate V\n    Self.(HC).V is string\n    Self.(HC).Next.(HC).V is i32\n    func deep(self: ref/Self) -> ref/Self.(HC).Next.(HC).V\nfunc probe<T>(t: ref/T) -> i32\n    T is HC\n    let s: ref/i32 = t.deep()\n    return 0\n", "InvalidConstraint_Kd: Self.(HC).Next.(HC).V is i32 | NoApplicableOverload_Kd: let s: ref/i32 = t.deep()")]
     [InlineData("e2-7", "u2-let", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let s: ref/string = t.deep()\n    return 0\n", "", Explicit = true)]
     [InlineData("e2-7", "ord-a", IdentityOrders + "func probe<T>(t: ref/T) -> i32\n    T is K\n    let s: ref/string = t.v()\n    let y: ref/T.(K).Y = t.x()\n    return 0\n", "", Explicit = true)]
     [InlineData("e2-7", "ord-b", IdentityOrders + "func probe<T>(t: ref/T) -> i32\n    T is K\n    let y: ref/T.(K).Y = t.x()\n    let s: ref/string = t.v()\n    return 0\n", "", Explicit = true)]
