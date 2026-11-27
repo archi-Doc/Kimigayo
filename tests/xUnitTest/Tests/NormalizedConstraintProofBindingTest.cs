@@ -81,9 +81,12 @@ public class NormalizedConstraintProofBindingTest
     // R7-C2c2 c2-5c (F's CC-35): IndexNormalized files the reading of a Contract fact over a projection in a view with no identity
     // premise too (the per-fact domain), and such an entry outside a Kept region indexes those readings at each formation (plan
     // section 2's cost): 286 -> 306.
+    // R7-C2e2 e2-7 (G1406-49 (4), G1406-50): the requests' pairs stay dev's (325 - 19 = 306), and the view's identity closure forms
+    // one T(G) entry per view per serial (GroundsEntry: the view's facts as written and under T(G)'s keys, then its readings), 5 more
+    // formations than the library's, 48 pairs and 4 readings: 306 -> 358.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(306, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(358, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
     // R7-C2e2 e2-3a's coverage rows (`coverage-e23.md`): a published read's Completion (W8), W6 the meet of every source read, the
     // walk's Completion admitting its rows, every kept table for one publication. Each program's records, exact (equal under dev's
@@ -136,9 +139,11 @@ public class NormalizedConstraintProofBindingTest
     // R7-C3 (C7, design §13.1): the written pairs are dev's; the normalized readings are filed under the class key T, not the loop's
     // U (5 + 6 against 12 + 18): 98 -> 79.
     // R7-C2c2 c2-5b2 (F's CC-27 (1), CC-15 Q5 (a)): the rows reader's own requests for every atom proposition: 87 -> 134.
+    // R7-C2e2 e2-7 (G1406-49 (4), G1406-50): the requests' pairs stay dev's (134), and the view's identity closure forms one T(G) entry
+    // per view per serial (GroundsEntry), 3 formations, 26 pairs and 4 readings: 134 -> 164.
     [Fact]
     public void ARequestInsideANormalizationIndexesItsViewAgain()
-        => Assert.Equal(134, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty)); // dev 106 (98; 108 before f6324930d, below); R7-C3 C7 -19; c2-5b2 +47
+        => Assert.Equal(164, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty)); // dev 106 (98; 108 before f6324930d, below); R7-C3 C7 -19; c2-5b2 +47; e2-7 T(G) +30
 
     // DECISIONS R7-C2e2-2: a closure validator's read forms its view's entry when it has a fact to pair, and the entry goes back when
     // the read ends. The agreement reads f's view (three identities of one projection through K<U>, K<V> and K<i32>, SPEC 8.9.2);
@@ -151,9 +156,11 @@ public class NormalizedConstraintProofBindingTest
     // with its one written pair and does not keep it, so disjointness's read forms it again as before: 77 -> 79. Its other seed requests
     // (f's, Left's and Right's) form entries other readers form anyway (0).
     // R7-C2c2 c2-5b2 (F's CC-27 (1), CC-15 Q5 (a)): the rows reader's own requests for every atom proposition: 79 -> 133.
+    // R7-C2e2 e2-7 (G1406-49 (4), G1406-50): the requests' pairs stay dev's (133), and the view's identity closure forms one T(G) entry
+    // per view per serial (GroundsEntry), 15 formations, 52 pairs and 8 readings: 133 -> 193.
     [Fact]
     public void AValidatorsReadIndexesItsViewOncePerRead()
-        => Assert.Equal(133, ClosureWork(Validated) - ClosureWork(string.Empty)); // dev 77 (95; 89; 97 before f6324930d, below); R7-C3 C7 -18; x41n +2; c2-5b2 +54
+        => Assert.Equal(193, ClosureWork(Validated) - ClosureWork(string.Empty)); // dev 77 (95; 89; 97 before f6324930d, below); R7-C3 C7 -18; x41n +2; c2-5b2 +54; e2-7 T(G) +60
 
     // R7-C2c2 c2-3b at R7-C2e2-2's merge (merge review N1): a Callable fact is a row kind's fact, so a request's entry files it under its
     // subject and its class key, and a validator's read (no classes) under its subject alone. In f's view (`U is T`, whose class key is T)
@@ -162,10 +169,13 @@ public class NormalizedConstraintProofBindingTest
     // mate U adds 2 + 2 + 2 + 1 pairs, on the key T 1 + 1 + 1 + 1 (no class-key copy), on U without the projection identity 2 + 2 + 2
     // (no read). The pairs the fact adds, exact; valid without the fact too (`(a, a)` is a Copy request through T, SPEC 8.2.3).
     // R7-C2c2 c2-5b2 (F's CC-27 (1), CC-15 Q5 (a)): the rows reader's own requests for every atom proposition: 7, 4, 6 -> 9, 5, 8.
+    // R7-C2e2 e2-7 (G1406-49 (4), G1406-50): the requests' pairs stay dev's (9, 5, 8), and f's view's identity closure forms one T(G)
+    // entry per view per serial (GroundsEntry), 2 formations with or without the fact, each filing the fact on U under its subject and
+    // its class key T (2 + 2), on T under T alone (1 + 1): 9, 5, 8 -> 13, 7, 12.
     [Theory]
-    [InlineData("U", true, 9)] // 5, 3 and 4 before e2-3a's publication lifetime (with ForgetKeptTables skipped)
-    [InlineData("T", true, 5)]
-    [InlineData("U", false, 8)]
+    [InlineData("U", true, 13)] // 5, 3 and 4 before e2-3a's publication lifetime (with ForgetKeptTables skipped)
+    [InlineData("T", true, 7)]
+    [InlineData("U", false, 12)]
     public void ACallableFactIsFiledUnderItsClassKeyOnlyInARequestsEntry(string subject, bool read, int pairs)
     {
         var head = "contract K\n    associate E\nfunc f<T, U>(a: U, b: T.(K).E) -> (U, U)\n    U is T\n    T is Copy\n    T is K\n" + (read ? "    T.(K).E is i32\n" : string.Empty);
@@ -189,9 +199,12 @@ public class NormalizedConstraintProofBindingTest
     // premises in its own view (ValidateConstraintEnvironments), whose entries add 6 and 5: 30 and 27.
     // R7-C2c2 c2-5b2 (F's CC-27 (1)): one pair fewer each with the rows reader's requests for every atom proposition, observed and not
     // located: 30 -> 29, 27 -> 26.
+    // R7-C2e2 e2-7 (G1406-49 (4), G1406-50): the requests' pairs stay dev's (29, 26), and the views' identity closures form one T(G)
+    // entry per view per serial (GroundsEntry), 6 formations, 18 pairs on t-q and 15 with the roles swapped, no reading:
+    // 29 -> 47, 26 -> 41.
     [Theory]
-    [InlineData("T", "U", 29)]
-    [InlineData("U", "T", 26)]
+    [InlineData("T", "U", 47)]
+    [InlineData("U", "T", 41)]
     public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
     {
         var source = "struct Q\n    Self is C\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
