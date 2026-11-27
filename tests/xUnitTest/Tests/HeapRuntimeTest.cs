@@ -120,7 +120,7 @@ public class HeapRuntimeTest
     [Fact]
     public void PathsIntoTheLayerAreUnlikelyAtO2()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "Tatara runs on Windows.");
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var text = Optimized("var n: isize = 1\nwhile n < 2000000\n    let p = Raw.allocate<u8>(n)\n    unsafe => Raw.release(p)\n    n *= 4");
         var weights = Regex.Matches(text, @"^!(\d+) = !\{!""branch_weights""(?:, !""expected"")?, i32 (\d+), i32 (\d+)\}", RegexOptions.Multiline)
             .ToDictionary(static x => x.Groups[1].Value, static x => (First: long.Parse(x.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), Second: long.Parse(x.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture)));
@@ -145,7 +145,7 @@ public class HeapRuntimeTest
     [Fact]
     public void TheRunPathStaysOutOfLineAtO2()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "Tatara runs on Windows.");
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         const string Source = "let small = Raw.allocate<u8>(48)\nlet large = Raw.allocate<u8>(307200)\nunsafe => Raw.release(small)\nunsafe => Raw.release(large)";
         const string Take = "__kimi_heap_take_run";
         const string Return = "__kimi_heap_return_run";

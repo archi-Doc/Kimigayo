@@ -130,23 +130,22 @@ public class ProductTestMembershipTest
     {
         var compilation = MinimalEmissionTest.Analyze("#Test\n#Unknown\nfunc test() => Missing.api()\n()");
         Assert.False(compilation.Binding.Result.IsComplete);
-        Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTestDefinition_Kd);
-        Assert.DoesNotContain(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
+        Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(compilation.Binding.Issues).Code);
     }
 
     // R7-D2 c: an excluded test's own row writes its leading attribute chain before the walk reaches the chain (its unknown markers'
     // Unsupported, an invalid test's marker, a nested function's marker), and the indexer's walk resets a node with its leading chain
     // before those writes, so each record stays, in Binding.Issues' order, cold and on a warm rebind. Labels (SPEC 6.7: `#Bench` is no
     // recognized Attribute; 6.7.1: `#Layout` applies only to structs; 6.7.2: a parameter or a local function makes the target
-    // ineligible), all invalid: c5a (the review's B1 program; its `InvalidTestDefinition_Kd@2:1` is a record SPEC 6.7.2 does not give,
-    // since `#Test` attaches to an eligible `t` past `#Bench`: a PLAN open issue, kept here as dev's), c5b and c5c (each attribute's
-    // record), c5d (the marker written by the test's row and again by the misplaced-marker rule, listed twice; `#Bench`'s record only in
-    // a Test build, PLAN G660's records-only part) and c5e (the nested marker, 4:5).
+    // ineligible). A test marker attaches to its function through any intervening attributes. An ineligible excluded test records
+    // its marker once; the other attributes on that function are checked in a Test build (PLAN G660).
     [Theory]
-    [InlineData("#Test\n#Bench\nfunc t() => ()", "Unsupported_Kd@3:1 InvalidTestDefinition_Kd@2:1")]
+    [InlineData("#Test\n#Bench\nfunc t() => ()", "Unsupported_Kd@3:1")]
     [InlineData("#Bench\n#Layout(\"C\")\n#Test\nfunc t() => ()", "Unsupported_Kd@2:1 InvalidLayoutAttribute_Kd@3:1")]
     [InlineData("#Layout(\"C\")\n#Bench\n#Test\nfunc t() => ()", "Unsupported_Kd@3:1 InvalidLayoutAttribute_Kd@2:1")]
-    [InlineData("#Test\n#Bench\nfunc t(x: i32) => ()", "InvalidTestDefinition_Kd@2:1 InvalidTestDefinition_Kd@2:1")]
+    [InlineData("#Test\n#Bench\nfunc t(x: i32) => ()", "InvalidTestDefinition_Kd@2:1")]
+    [InlineData("#Test\n#Bench\n#Test\nfunc t() => ()", "InvalidTestDefinition_Kd@4:1 InvalidTestDefinition_Kd@2:1")]
+    [InlineData("#Test\nfunc outer()\n    func nested(#Test x: i32) => ()\n    ()", "InvalidTestDefinition_Kd@4:17")]
     [InlineData("#Test\nfunc outer()\n    #Test\n    func nested() => ()\n    ()", "InvalidTestDefinition_Kd@4:5")]
     public void AnExcludedTestKeepsTheRecordsItsRowWritesOnItsAttributes(string declaration, string records)
     {
@@ -155,6 +154,17 @@ public class ProductTestMembershipTest
         Assert.Equal(records, Issues(compilation, source));
         compilation.Bind();
         Assert.Equal(records, Issues(compilation, source));
+    }
+
+    [Theory]
+    [InlineData("", 0)]
+    [InlineData("x: i32", 1)]
+    public void TestBuildChecksTheFunctionAcrossInterveningAttributes(string parameters, int markerErrors)
+    {
+        var source = $"#Test\n#Bench\nfunc t({parameters}) => ()";
+        var records = DeclarationErrors(source, true);
+        Assert.Equal(markerErrors, records.Count(x => x.Code == nameof(DiagnosticCode.InvalidTestDefinition_Kd)));
+        Assert.Contains(records, x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
     }
 
     [Fact]

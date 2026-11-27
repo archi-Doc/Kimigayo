@@ -223,8 +223,9 @@ public sealed partial class Binding
 
                 break;
             case ForKoto loop:
-                uses.Use(loop.Iterable);
-                Bindings(BoundMatch.Of(this, loop), ref uses);
+                var iteration = BoundMatch.Of(this, loop);
+                Subject(loop.Iterable, iteration?.SubjectBorrow, ref uses);
+                Bindings(iteration, ref uses);
                 break;
             case MacroKoto { Formatting.Acquisition: { } acquisition } when this.CallOf(acquisition) is { ArgumentOperations: [var writer, ..] }:
                 uses.Use(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).

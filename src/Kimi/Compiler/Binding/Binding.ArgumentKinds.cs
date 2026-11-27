@@ -31,7 +31,7 @@ namespace Kimi.Compiler;
 //   fit walk, a part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments,
 //   elements, Case payloads and value calls, and the erasure of a callable completed there (ErasePart); SolveSelected, the selected
 //   candidate of a call whose slot no evidence binds: a nested call waits, or the Literal parts' defaults apply to it alone and its
-//   checks run once more (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments, and CompleteArguments, its
+//   checks run once more (SPEC 10.2.1); CompleteAtSelectedParameters, the selected candidate's waiting arguments, and CompleteArguments, its
 //   arguments completed at its operations, and CompleteUnselected, the parts of a call that completes none, bound on their own (SPEC
 //   23.1.2; Binding.ArgumentKinds.Completion.cs); the waiting-binds-F rule (TakeWaiting, Binding.ArgumentKinds.Waiting.cs), the one
 //   walk to the waiting callables at an F that the call's queries and the completions share; SlotSolution
@@ -94,9 +94,9 @@ public sealed partial class Binding
     // SPEC 10.5.1: whether a recorded part awaits its call, whose selected candidate completes it: its record holds Awaits (a Join, Case,
     // Reference, Function or Call; no Typed, Literal or Aggregate part waits) while its core is unbound and has no failure of its own. A
     // join's step 3 may bind it first (SPEC 14.9.2), so a bound part is not one its call completed. Of these, all but a Join are the
-    // waiting parts, which the selected candidate completes (CompleteWaiting, TakeWaiting): a Call or Case is SPEC 10.5.1's part checked
+    // waiting parts, which the selected candidate completes (CompleteAtSelectedParameters, TakeWaiting): a Call or Case is SPEC 10.5.1's part checked
     // against the expected Type, checked at each candidate's Type first (FitChecked; IsCheckedCall), and a Function or Reference one
-    // that 10.5.4 checks by its header or at S; a Join keeps its own rows (FitArgument, CompleteWaiting).
+    // that 10.5.4 checks by its header or at S; a Join keeps its own rows (FitArgument, CompleteAtSelectedParameters).
     private static bool Awaits(Koto core, ArgumentPart record)
         => (record.Relation & CallRelation.Awaits) != 0 && core.BoundType is null && core.BindingFailure == BindingFailure.None;
 
@@ -133,7 +133,7 @@ public sealed partial class Binding
     private bool AwaitsCall(Koto part) => this.AwaitedKind(part) is not null;
 
     // The kind its producer recorded for a part that awaits its call (Awaits), else null: the record is read once, and only for an
-    // unbound core, for AwaitsCall and the readers that also ask the kind (IsWaiting, IsWaitingCallable). An awaiting part's KindOf is
+    // unbound core, for AwaitsCall and the readers that also ask the kind (AwaitsParameterType, IsWaitingCallable). An awaiting part's KindOf is
     // that recorded kind.
     private PartKind? AwaitedKind(Koto part)
         => PartCore(part) is { BoundType: null } core && this.RecordedPart(core) is var record && Awaits(core, record) ? record.Kind : null;
@@ -160,7 +160,7 @@ public sealed partial class Binding
 
     // SPEC 10.5.1: whether the part is waiting, which the selected candidate completes: it awaits its call and is not a Join, which keeps
     // its own rows.
-    private bool IsWaiting(Koto part) => this.AwaitedKind(part) is not (null or PartKind.Join);
+    private bool AwaitsParameterType(Koto part) => this.AwaitedKind(part) is not (null or PartKind.Join);
 
     // SPEC 10.5.1 (DECISIONS BU-43), P2: whether an anonymous function or a contextual Case reached without an expected Type is a result
     // of a call's control-flow argument at a position its call completes (CallableTarget): it then awaits that call, its kind recorded
@@ -252,7 +252,7 @@ public sealed partial class Binding
         return ref record;
     }
 
-    // SPEC 10.5.1: the one writer of Taken. CompleteWaiting's selected candidate takes each argument first, before it completes its
+    // SPEC 10.5.1: the one writer of Taken. CompleteAtSelectedParameters's selected candidate takes each argument first, before it completes its
     // waiting parts and decides its join again (DecideTaken); a record it creates (Typed, no Awaits) reads as an absent one.
     private void TakeArgument(Koto argument)
     {

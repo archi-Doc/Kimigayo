@@ -180,13 +180,9 @@ public sealed partial class Binding
         }
         else
         {
-            subject = this.AcquireSubject(match.Expression, subject, out var borrow, out var mode);
+            subject = this.AcquireSubject(match, match.Expression, subject, out var borrow, out var mode);
             plan.SubjectBorrow = borrow;
             plan.Mode = mode;
-            if (this.FormsBorrows)
-            {
-                this.RecordBorrow(this.borrows, borrow); // Its writer forms it, before the arms bind (Binding.RawOrigins.Borrows).
-            }
         }
 
         // SPEC 8.6.3, 23.1.2 (PLAN G1278, G1321): the Subject Type is carried from the Subject, never formed by the match, so its formation
@@ -313,12 +309,14 @@ public sealed partial class Binding
 
     // SPEC 15.1.6 subject rule: the Subject is acquired as written, except that a bare Place is borrowed in place: a
     // stored uniq/objuniq reference is Reborrowed exclusively, a stored ref/objref reference is Copied, and any other
-    // stored value is shared-borrowed.
-    private BoundType? AcquireSubject(Koto expression, BoundType? type, out BoundType? borrow, out SubjectMode mode)
+    // stored value is shared-borrowed. `borrow` is the Borrow the acquisition forms (none for a Copy), at the Origin of what contains
+    // it; the Subject Place, a body slot of `construct`, owns that Borrow's region (SubjectRegion), so the Type returned, the Subject
+    // Place's, is the Subject reference at the region, which its Pattern readers and a `for`'s entry call read.
+    private BoundType? AcquireSubject(Koto construct, Koto expression, BoundType? type, out BoundType? borrow, out SubjectMode mode)
     {
         borrow = null;
         mode = this.SubjectModeOf(expression, type);
-        if (type is null || ReferenceEquals(type, BoundType.Never) || !this.IsBarePlace(expression))
+        if (!this.BorrowsInPlace(expression, type))
         {
             return type;
         }
@@ -326,34 +324,50 @@ public sealed partial class Binding
         if (mode == SubjectMode.Exclusive)
         {
             // SPEC 15.1.6, 15.6.3: the stored exclusive reference's Reborrow, contained in it and in the layers reaching the Subject.
-            borrow = this.types.Rebuild(type, [type.Components[0]], this.ReferentOrigin(expression, type), []);
-            return borrow;
+            borrow = this.types.Rebuild(type!, [type!.Components[0]], this.ReferentOrigin(expression, type), []);
         }
-
-        if (this.PairSubject(expression, type, this.ConstraintScope(expression)) is { } followed)
+        else if (this.PairSubject(expression, type, this.ConstraintScope(expression)) is { } followed)
         {
             // SPEC 15.1.6: a bare pair-layer Place is followed like a borrow value in the weakest admitted mode, as for `for`.
             mode = followed.Semantics == SemanticsKind.Uniq ? SubjectMode.Exclusive : SubjectMode.Shared;
             borrow = followed;
-            return followed;
         }
-
-        if (type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)
+        else if (type!.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)
         {
             // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
-            var origin = this.ReferentOrigin(expression, type);
             var semantics = type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef;
-            borrow = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
-            return borrow;
+            borrow = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: this.ReferentOrigin(expression, type));
         }
-
-        if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+        else if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
         {
             borrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
-            return borrow;
         }
 
-        return type;
+        if (this.FormsBorrows)
+        {
+            this.RecordBorrow(this.borrows, borrow); // Its writer forms it, before the arms bind (Binding.RawOrigins.Borrows).
+        }
+
+        return this.SubjectRegion(construct, expression, borrow ?? type!);
+    }
+
+    // SPEC 15.1.6: a Subject is borrowed in place where it is a bare Place of a Type (a failed or Never Subject is acquired as written).
+    private bool BorrowsInPlace(Koto expression, BoundType? type)
+        => type is not null && !ReferenceEquals(type, BoundType.Never) && this.IsBarePlace(expression);
+
+    // SPEC 15.1.6, 15.6.3, 15.6.5 (DECISIONS R8-M56): the Subject Place is a body slot holding the Borrow its acquisition forms, so the
+    // Borrow's Origin is the Place's region (ValuedRegion), published with the Origin the acquisition names (the Copied reference's, the
+    // Reborrow's or the shared borrow's) as its value, as a `let` local's region is: the body reads the value, a nested signature the
+    // region. Only the outer layer is rebuilt; a Subject with no outer Origin owns no region.
+    private BoundType SubjectRegion(Koto construct, Koto expression, BoundType subject)
+    {
+        if (subject is not { Kind: BoundTypeKind.Semantics, Origin: { } value })
+        {
+            return subject;
+        }
+
+        var region = this.ValuedRegion(construct, -1, OriginVariance.Covariant, value, expression);
+        return this.types.Rebuild(subject, (BoundType[])subject.Components, region, (BoundOrigin[])subject.OriginArguments);
     }
 
     private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, PatternReach reach)
