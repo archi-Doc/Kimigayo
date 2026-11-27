@@ -25,8 +25,9 @@ namespace Kimi.Compiler.Mir;
 // which ends its storage, SPEC 5.2.1, an encoded part; deeper: past i's referent) only while no pointer layer it reads was
 // redirected: Redirects, one flow-insensitive pass per body view, takes the least depth at which the body may write a pointer layer of
 // i's region (a store into a Place of i's region whose Type may hold a pointer; a borrow or Reborrow of a Place of it, not shared, or a
-// Move of a pointer read from it, which may write at that depth later), and depth 1 for every input where a call or a drop takes a value
-// that may hold a pointer, a store or borrow goes through a raw Place, or an Opaque site rests on an error; a landing at depth d holds
+// Move of a pointer read from it, which may write at that depth later), and depth 1 for every input where a call, or a drop A2 keeps in
+// the view (MirDrops.Elides: an elided Drop destroys nothing), takes a value that may hold a pointer, a store or borrow goes through a
+// raw Place, or an Opaque site rests on an error; a landing at depth d holds
 // while that least depth is d or more. A local root lands only through its own one element and one Deref, past an own step where its
 // element is past one or an own step follows the Deref.
 // The rule (Storing, at Flow.Store in the checks replay): a store in safe code whose destination lands past input i (depth 2 or more),
@@ -221,7 +222,7 @@ internal sealed partial class MirBorrows
                     all = this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: var argument } && this.PointerType(argument);
                 }
             }
-            else if (terminator.Kind == MirTerminatorKind.Drop)
+            else if (terminator.Kind == MirTerminatorKind.Drop && !this.program.Drops.Elides(this.body.Ordinal, block, this.view))
             {
                 all |= this.PointerType(terminator.Place);
             }
