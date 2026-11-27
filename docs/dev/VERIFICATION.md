@@ -46,7 +46,8 @@ The Code Rules Analyzer, its configuration/baseline and CompilerSizeBudgetTest w
 `2e341155`. DECISIONS CR-R1 retires their Report, SARIF-marker and commit-approval workflow.
 `verify.ps1` still builds nonincrementally with warnings as errors, validates every requested
 test selector against the new assembly, rejects zero executed tests and a requested selector
-that executed none, and checks source/NuGet input stability. `verify-commit.ps1` still
+that executed none, and checks source/NuGet input stability. An unconfigured semantic comparison appears as a skip in
+both the summary and result XML. Every other skip fails verification. `verify-commit.ps1` still
 requires a successful run and exact committed inputs.
 `ArchitectureRulesTest` retains its existing no-growth assertions and joins every Unit selection.
 

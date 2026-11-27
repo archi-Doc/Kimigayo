@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The Types of locals over the local-region graph (SPEC 15.4.4): a region owner's Type opened into region slots, a local's, `let` or
+// The Types of locals over the local-region graph (SPEC 15.4.4): a Type inferred per part opened into region slots, a local's, `let` or
 // `var`, a var Pattern binding's and a var for slot's alike (LocalBorrowType), a result's own body's regions resolved to their sources
 // (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts (HasLocalRegion, which also counts a pending atom,
 // HasRegionBounds, CarrierOf).
@@ -53,6 +53,11 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // SPEC 15.6.5, 14.8.3 (DECISIONS BU-197): the region owners whose whole stored Type is inferred per part, opened at the declaration
+    // (LocalBorrowType): a local and a reassignable binding. A `let` Pattern binding or for slot stores the bound T as it is; only the
+    // layer its reach adds is its own region (BindingTypeOf).
+    private static bool InfersStoredType(Koto declaration) => declaration is VariableKoto || IsMutableDeclaration(declaration);
 
     private BoundOrigin? CarrierPart(BoundType type, BoundOrigin origin, Koto use, uint query)
     {
@@ -147,20 +152,22 @@ public sealed partial class Binding
     }
 
     // `slot` is the local's next region slot (BindVariableCore; a Pattern binding's or for slot's first, BindingTypeOf). SPEC 15.4.2,
-    // 15.6.5, 15.3.4 (PLAN G492-a (ii)): a region owner's unwritten slots are its regions, `let` and `var` alike, opened at its declaration
-    // (15.4.4), one per stored part and place: each path of a reassignable binding's storage is a place a store writes apart
-    // (IsMutableDeclaration), so its paths are opened apart; a `let` local is one place, so a stored part met on several of its paths is
-    // opened once, in one query of rewrittenParts. The fit records each region's bound from the value (CheckTypeUse). Each slot's row is
-    // its position's variance in the local's Type, composed as RelationWalk composes it; a `let` local's part met again keeps its first
-    // row, which no reader reads (its value is published).
+    // 15.6.5, 15.3.4 (PLAN G492-a (ii)): the unwritten slots of a Type inferred per part (InfersStoredType) are its regions, `let` and
+    // `var` alike, opened at its declaration (15.4.4), one per stored part and place: each path of a reassignable binding's storage is a
+    // place a store writes apart (IsMutableDeclaration), so its paths are opened apart; a `let` local is one place, so a stored part met on
+    // several of its paths is opened once, in one query of rewrittenParts. The fit records each region's bound from the value
+    // (CheckTypeUse). Each slot's row is its position's variance in the local's Type, composed as RelationWalk composes it; a `let` local's
+    // part met again keeps its first row, which no reader reads (its value is published), and its regions, which merge its paths
+    // (DECISIONS R8-M56), are marked so (MarkMerged; PLAN G922 U1).
     private BoundType LocalBorrowType(BoundType type, Koto owner, Koto value, int slot)
     {
-        if (!IsRegionOwner(owner) || !type.StoresOrigin)
+        if (!InfersStoredType(owner) || !type.StoresOrigin)
         {
             return type;
         }
 
         var query = IsMutableDeclaration(owner) ? 0u : this.rewrittenParts.Begin(this.storageVersion);
+        var merged = 0u; // MarkMerged's visitedParts query, begun at the first part met again.
         var result = Open(type, OriginVariance.Covariant);
         _ = this.CheckTypeUse(type, result, value, out _);
         return result;
@@ -176,6 +183,14 @@ public sealed partial class Binding
             {
                 opened = OpenPart(current, variance);
                 this.rewrittenParts.Set(current, query, opened);
+            }
+            else
+            {
+                merged = merged == 0 ? this.visitedParts.Begin(this.storageVersion) : merged;
+                if (this.FirstVisit(opened!, merged))
+                {
+                    this.MarkMerged(opened!, owner, merged);
+                }
             }
 
             return opened!;
@@ -222,14 +237,39 @@ public sealed partial class Binding
 
         // A `let` region's value is the initializer's Origin at its slot (SPEC 15.3.6, 15.4.4: its one bound, fixed at the declaration).
         BoundOrigin Region(BoundOrigin initial, OriginVariance row)
-        {
-            var region = this.LocalRegionSlot(owner, slot--, row);
-            if (query != 0)
-            {
-                this.PublishRegionValue(region, initial, value);
-            }
+            => query != 0 ? this.ValuedRegion(owner, slot--, row, initial, value) : this.LocalRegionSlot(owner, slot--, row);
+    }
 
-            return region;
+    // DECISIONS R8-M56 (PLAN G922 U1, the owner's O-534 (a) interim): the regions of `owner`'s opened part that its opening met again on
+    // another path merge those paths, each marked Merged for the name limit (UnmergedSelection); each distinct part is walked once per
+    // opening (visitedParts). A contract part keeps its own Origins, which are no regions of `owner`.
+    private void MarkMerged(BoundType part, Koto owner, uint query)
+    {
+        if (!part.StoresOrigin || part.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
+        {
+            return;
+        }
+
+        Mark(part.Origin);
+        for (var i = 0; i < part.OriginArguments.Count; i++)
+        {
+            Mark(part.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < part.Components.Count; i++)
+        {
+            if (this.FirstVisit(part.Components[i], query))
+            {
+                this.MarkMerged(part.Components[i], owner, query);
+            }
+        }
+
+        void Mark(BoundOrigin? origin)
+        {
+            if (origin is not null && SlotRegion(origin) && ReferenceEquals(origin.Binder, owner) && this.Region(origin) is { } row)
+            {
+                row.Merged = true;
+            }
         }
     }
 

@@ -8,6 +8,17 @@ namespace XunitTest;
 
 public class CompilerFunctionReferenceTest
 {
+    // SPEC 10.5.3, 13.6.3: explicit pair arguments bind both clone overloads. The expected signature selects the strong one.
+    [Theory]
+    [InlineData("let f", DiagnosticCode.AmbiguousBinding_Kd)]
+    [InlineData("let f: (ref/(rc/i32)) -> rc/i32")]
+    public void CloneReferenceNeedsItsExpectedSignature(string declaration, params DiagnosticCode[] records)
+    {
+        var c = MinimalEmissionTest.Analyze(declaration + " = Kimi.Intrinsics.clone<rc/i32>");
+        Assert.Equal(records.Length == 0, c.Accepts);
+        Assert.Equal(records, c.Binding.Issues.Select(static x => x.Code));
+    }
+
     [Theory]
     [InlineData("Item", "let f = Raw.allocate<u8>\nlet p = f(2)\nunsafe => Raw.release(p)")]
     [InlineData("Erased", "let f: (isize) -> raw/u8 = Raw.allocate\nlet p = f(2)\nunsafe => Raw.release(p)")]

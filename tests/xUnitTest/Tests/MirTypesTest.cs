@@ -441,7 +441,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
             "plain: Plain, nest: Nest<i32>)\n    return\n");
         Assert.Equal(
             [("action", 1), ("pair", 1), ("maybe", 1), ("many", 1), ("maker", 1), ("plain", 0), ("nest", 0)],
-            Parameters(body).Select(x => (x.Name, c.Types.HandedCallables(x.Type).Length)).ToArray());
+            Parameters(body).Select(x => (x.Name, c.Types.HandedCallables(x.Type, out _).Length)).ToArray());
     }
 
     // V16 (DECISIONS R4-M58): the destruction walk enters each Type once per query, so a Type several parts share, nested pairs 25 deep

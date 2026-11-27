@@ -92,17 +92,22 @@ internal static class TestDiagnostics
     internal static string? Text(DiagnosticOwner owner, string path, SourceSpan span)
         => owner.FindDocument(path)?.SourceText.Substring(span.Start, span.Length);
 
-    /// <summary>Gets every published error of a compilation of one ASCII source as <c>Code@line:column</c> (1-based), in source order,
-    /// joined by <c> | </c>.</summary>
+    /// <summary>Gets every published error of a compilation of one ASCII source as <c>Code@line:column</c> (1-based), each followed by its
+    /// related declarations as <c> &lt;- line:column</c>, in source order, joined by <c> | </c>.</summary>
     /// <param name="compilation">The compilation.</param>
     /// <param name="source">The source's text.</param>
     /// <returns>The errors.</returns>
     internal static string ErrorSites(Compilation compilation, string source)
         => string.Join(" | ", Of(compilation).Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span.Start).Select(x =>
-        {
-            var start = x.Span.Start == 0 ? 0 : source.LastIndexOf('\n', x.Span.Start - 1) + 1;
-            return $"{x.Code}@{source.AsSpan(0, x.Span.Start).Count('\n') + 1}:{x.Span.Start - start + 1}";
-        }));
+            $"{x.Code}@{Site(source, x.Span.Start)}" +
+            string.Concat((x.Related ?? []).Where(static r => r.Role == "declaration").Select(r => $" <- {Site(source, r.Span!.Value.Start)}"))));
+
+    // A source offset as line:column, both 1-based.
+    private static string Site(string source, int offset)
+    {
+        var start = offset == 0 ? 0 : source.LastIndexOf('\n', offset - 1) + 1;
+        return $"{source.AsSpan(0, offset).Count('\n') + 1}:{offset - start + 1}";
+    }
 
     private static TestDiagnostic[] Collect(DiagnosticOwner owner, string? path, SourceDocument? snapshot)
     {

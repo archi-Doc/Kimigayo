@@ -6,55 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.3: what a requirement call runs on a Self that is not abstract, as the witness core resolves it under the Contract reference
-    // the call selected (InstanceContract: `recorded`, the call's dispatching Contract reference, and that reference instantiated in the
-    // call's substitution, its declaring Type, as TyCtxt.Witness reads them) and a definition's premises, each target with the instance it
-    // runs at: a built-in comparison's plan leaves, another built-in target itself, the conformance's witness, an inherited one included,
-    // or the accessor an accessor-call Property witness runs (SPEC 11.9.2), each under its declaring instance (binding nothing for a
-    // compiler function), and a library witness at the Self's arguments (TyCtxt.LibraryInstance); false where none resolves, a standard
-    // Property witness included, whose Field operation (a Set destroys the replaced value) no rule here reads. A virtual witness dispatches
-    // through its slot, whose bound the caller reads (SPEC 6.4.6, DispatchBounds).
-    // `call` is the requirement call's substitution, as TyCtxt.Witness takes it: its Self, its declaring Type and its own Types and
-    // lengths; a requirement no call names (a published row's) has TyCtxt.Synthesized(requirement, self, reference), which binds no own
-    // slot. A Conformance target's instance is the witness under its declaring instance at the call's own Types and lengths by position
-    // (SPEC 8.6.3), as TyCtxt.Witness's Conformance binds them; no other row reads them.
-    internal bool Witnesses(
-        BindingSymbol requirement, BindingSymbol? recorded, Subst call, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
-    {
-        var self = call.Self!;
-        var contract = this.InstanceContract(recorded, self, call.Declaring, QuerySite.AfterPass);
-        var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition), QuerySite.AfterPass);
-        // A comparison shim, by its Contract's lang item (TyCtxt.ShimContract), whose mapping the plan follows (Binding.PrepareBuiltinTargets).
-        if (witness is { Kind: RequirementWitnessKind.Builtin, Target: { } target } &&
-            TyCtxt.ShimContract(target) is (KimiDeclarationId.Equatable or KimiDeclarationId.Comparable) and var comparison)
-        {
-            return this.ComparisonPlan(target, self, comparison) is { } plan && this.Leaves(plan, into);
-        }
-
-        switch (witness.Kind)
-        {
-            case RequirementWitnessKind.Builtin:
-                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, [], [])));
-                return true;
-            case RequirementWitnessKind.Conformance:
-                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, call.Types, call.Lengths))); // SPEC 8.6.3.
-                return true;
-            case RequirementWitnessKind.LibraryWitness when this.types.LibraryInstance(witness, self, [], []) is { } instance:
-                into.Add((witness.Target!, instance));
-                return true;
-            case RequirementWitnessKind.Property when witness.Property.Kind == PropertyWitnessKind.AccessorCall:
-                var accessor = this.AccessorFunction(witness.Property.Implementation).BoundSymbol!;
-                into.Add((accessor, this.types.Synthesized(accessor, witness.Declaring, [], [])));
-                return true;
-            default:
-                return false;
-        }
-    }
-
     // SPEC 8.6.1: the Contract reference a requirement call selected, as Self's Type conforms to it, for the CallPlan materializer and
     // TyCtxt.Witness: a Contract without Type arguments is its own reference; a bound reference, given in the instance (`reference`:
     // `Indexable<Name>`, or `C<E>` read as `C<i32>`; a call's substitution holds it as its declaring Type), is the conformance of
-    // Self's Type that names it (NamesReference, in the scope of Self's declaration: Self is closed). A requirement's function item
+    // Self's Type that names it (NamesReference, in the scope of Self's declaration: Self is not abstract, closed or, from
+    // TyCtxt.Witness, with an abstract part). A requirement's function item
     // records its reference as a Type (TyCtxt.Witness(item)), so its Contract declaration with a reference of that declaration in the
     // instance is that reference (DECISIONS R5-M70). Null when the call recorded none or no instantiated reference names a conformance
     // of Self's Type.
@@ -73,22 +29,6 @@ public sealed partial class Binding
     // owning input has no outer Origin slot, so its absence (null) stays.
     internal BoundOrigin WitnessOrigin(BoundOrigin? origin, Koto requirement, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
         => origin is null ? null! : this.SubstituteStoredOrigin(origin, requirement, origins, inputs);
-
-    // A legacy comparison plan's leaves in walk order, each under its declaring instance (Witnesses).
-    private bool Leaves(BoundComparison plan, List<(BindingSymbol Target, Subst Instance)> into)
-    {
-        if (plan.Implementation is { } call)
-        {
-            into.Add((call.Target, this.types.Synthesized(call.Target, call.DeclaringType, [], [])));
-        }
-
-        foreach (var part in plan.Parts)
-        {
-            _ = this.Leaves(part, into);
-        }
-
-        return true;
-    }
 
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
     private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, QuerySite site, CallPlan? destination = null)

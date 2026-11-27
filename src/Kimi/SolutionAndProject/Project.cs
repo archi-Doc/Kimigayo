@@ -30,7 +30,7 @@ public partial class Project
         DefaultProjectFile = projectFile;
     }
 
-    /// <summary>Attempts to load a project from a <c>.kimiproj</c> file.</summary>
+    /// <summary>Loads a <c>.kimiproj</c> file. Read and configuration failures return <see langword="false"/>. Other exceptions propagate.</summary>
     /// <param name="kimigayo">The owning compiler service.</param>
     /// <param name="logger">The load logger.</param>
     /// <param name="path">The project-file path.</param>
@@ -39,7 +39,7 @@ public partial class Project
     public static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, [MaybeNullWhen(false)] out Project project)
         => TryCreate(kimigayo, logger, path, CheckInputSource.Disk, out project, out _);
 
-    /// <summary>Attempts to load a project from a <c>.kimiproj</c> file through an input source.</summary>
+    /// <summary>Loads a <c>.kimiproj</c> file through the input source. Read and configuration failures return <see langword="false"/> with their reasons. Other exceptions propagate.</summary>
     /// <param name="kimigayo">The owning compiler service.</param>
     /// <param name="logger">The load logger.</param>
     /// <param name="path">The project-file path.</param>

@@ -21,13 +21,8 @@ internal sealed partial class MirBuilder
     {
         var plan = BoundMatch.Of(compilation.Binding, match)!;
 
-        // The Subject's Type, none for a Subject of no Type (KnownType, PLAN G1073): a failed Subject, whose Patterns are resting leaves
-        // with no access and whose guards read nothing of it (Guard), or a use of a failed getter Binding kept as the Subject (G492-a
-        // (iii) and D-823), whose patterns' accesses are the validator's findings (PLAN G1076's open issue), never a fault.
         var scope = this.OpenScope(block: false);
-        var subject = this.Hold(plan.SubjectBorrow ?? KnownType(match.Expression), match.Expression, MirLocalRole.Subject);
-        this.Assign(subject, match.Expression);
-        this.Made(subject);
+        var subject = this.HoldSubject(plan, match.Expression);
         var after = this.Open(match, destination);
         var start = this.selected.Count;
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
@@ -67,6 +62,17 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.SetCount(this.selected, start);
         this.Close(after);
         this.CloseScope(scope);
+    }
+
+    // SPEC 15.1.6: the Subject acquired once into its Subject Place, at its plan's borrow (a bare Place borrowed in place), else at its
+    // own Type, none for a Subject of no Type (KnownType, PLAN G1073): a failed Subject, whose Patterns are resting leaves with no access
+    // and whose guards read nothing of it (Guard), or a use of a failed getter Binding kept as the Subject (G492-a (iii) and D-823), whose
+    // patterns' accesses are the validator's findings (PLAN G1076's open issue), never a fault.
+    private MirPlace HoldSubject(BoundMatch plan, Koto expression)
+    {
+        var subject = this.Hold(plan.SubjectBorrow ?? KnownType(expression), expression, MirLocalRole.Subject);
+        this.Assign(subject, expression);
+        return this.Made(subject);
     }
 
     // SPEC 14.8.3: guard candidates borrow the selected Places among the condition's temporaries, and the guard-local Origin of each ends

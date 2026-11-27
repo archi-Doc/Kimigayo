@@ -390,9 +390,9 @@ func use(source: uniq/i32, bound: ref/i32) -> i32
 
 **Fixed points.** Variance, Loan requirements, OwnedOrigins and `Transferable` are computed once per declaration (Loan requirements and Phantom status once per admitted Semantics case of its pair binders), in terms of its own Type parameters and slots, never by expanding instantiations. Each is the least fixed point from the bottom value (unused, `none`, empty set, no exclusion), so recursive Types, including non-regular ones such as a Field `rc/Nest<(T, T)>?`, terminate.
 
-**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access, and its requirement is `none`. Variance stays one per declaration: a slot that is Phantom in every admitted case is invariant, unless such a chain reaches it in a stored Function Type's signature; then it takes its variance from the declaration's storage like any other slot (Variance, above).
+**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access, and its requirement is `none`. A Type argument counts as stored where its generic declaration stores the Type parameter it binds: such a chain passes through the argument only where a chain of that declaration reaches the parameter, and there it reaches the argument's Origins that this occurrence of the parameter keeps (`s/T during b` keeps `b` in place of the argument's outer Origin, [§8.1.2](08-generics-constraints-and-contracts.md#812-pair-reconstruction-and-origin-annotations)). Variance stays one per declaration: a slot that is Phantom in every admitted case is invariant, unless such a chain reaches it in a stored Function Type's signature; then it takes its variance from the declaration's storage like any other slot (Variance, above).
 
-**`Kimi.Loan<T>`** is a zero-sized compiler-managed struct that expresses a dependency without storage. `T` must be a borrow Type with outer `ref`, `uniq`, `objref` or `objuniq`. A `Loan<T>` Field counts as storing a `T` for all slot properties; it is Copy when `T` is, has no address and grants no access. `Loan<T>.init(value: T)` is safe and keeps the borrow's dependency; destroying it ends only its own responsibility, and the Loan stays live while the values that carry it are used ([§15.6](#156-borrow-checking)). `Slice<T>` ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), `UniqSlice<T>` (invariant, [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice)) and `Array<T>` ([§4.5](04-arrays-indexing-and-slices.md#45-array-ownership)) take slot properties from their own rules; `Weak<S>` counts as storing an `S` ([§3.2.2](03-types-and-values.md#322-weak-references)).
+**`Kimi.Loan<T>`** is a zero-sized compiler-managed struct that expresses a dependency without storage. `T` must be a borrow Type with outer `ref`, `uniq`, `objref` or `objuniq`. A `Loan<T>` Field counts as storing a `T` for all slot properties; it is Copy when `T` is, has no address and grants no access. `Loan<T>.init(value: T)` is safe and keeps the borrow's dependency; destroying it ends only its own responsibility, and the Loan stays live while the values that carry it are used ([§15.6](#156-borrow-checking)). `Slice<T>` ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), `UniqSlice<T>` (invariant, [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice)) and `Array<T>` ([§4.5](04-arrays-indexing-and-slices.md#45-array-ownership)) take slot properties from their own rules; `Weak<S>` counts as storing an `S` ([§3.2.2](03-types-and-values.md#322-weak-references)) and `Dictionary<K, V>` as storing a `K` and a `V` ([§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections)).
 
 ```kimi
 struct Window<T> {source}               // Covariant in T and source.
@@ -406,6 +406,18 @@ struct Node<T> {a}
 
 struct Callback {input}                 // Contravariant in input, a Phantom slot only call's parameter names.
     let call: (ref/i32 during input) -> i32
+
+struct Reader<T>
+    let call: (T) -> i32
+
+struct Feed {f}                         // Contravariant in f, a Phantom slot only Reader's call parameter reaches.
+    let reader: Reader<ref/i32 during f>
+
+struct Marker<T>
+    let count: i32
+
+struct Tagged {a}                       // Invariant in a, a Phantom slot no chain reaches.
+    let marker: Marker<ref/i32 during a>
 ```
 
 ```kimi

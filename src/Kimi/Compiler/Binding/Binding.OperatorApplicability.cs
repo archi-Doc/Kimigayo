@@ -24,9 +24,6 @@ public sealed partial class Binding
         => operation.Akind is >= KotoKind.PlusEquals and <= KotoKind.GreaterThanGreaterThanEquals
             ? KotoHelper.CompoundOperation(operation.Akind) : operation.Akind;
 
-    private static bool ComparisonOperator(KotoKind kind)
-        => kind is >= KotoKind.LessThan and <= KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
-
     private static BindingFailure OperatorProofFailure(ConstraintProof proof, BindingFailure refuted) => proof switch
     {
         ConstraintProof.Proven => BindingFailure.None,
@@ -58,7 +55,7 @@ public sealed partial class Binding
         var source = operation is BinaryKoto binarySource ? binarySource.Left : operation;
         Koto? fittedOperand = null;
         if (ReferenceEquals(left, BoundType.Never) && operation is BinaryKoto fitting &&
-            (ComparisonOperator(fitting.Akind) || fitting.Akind is KotoKind.Asterisk or >= KotoKind.Slash and <= KotoKind.Minus or
+            (Parser.IsComparison(fitting.Akind) || fitting.Akind is KotoKind.Asterisk or >= KotoKind.Slash and <= KotoKind.Minus or
                 >= KotoKind.Ampersand and <= KotoKind.Bar))
         {
             if (right is null)
@@ -99,7 +96,7 @@ public sealed partial class Binding
                 ? this.RightOperatorApplicability(binary, right, scope) : default;
         }
 
-        if (ComparisonOperator(kind) && operation is BinaryKoto)
+        if (Parser.IsComparison(kind) && operation is BinaryKoto)
         {
             left = this.OperandTerminal(source, left);
         }
@@ -133,7 +130,7 @@ public sealed partial class Binding
         }
 
         var expected = left;
-        if (ComparisonOperator(kind))
+        if (Parser.IsComparison(kind))
         {
             if (expected.CarriesAnyOrigin && !IsUnfittedLiteral(pair.Right))
             {
@@ -170,7 +167,7 @@ public sealed partial class Binding
         }
 
         var operand = right;
-        if (ComparisonOperator(kind))
+        if (Parser.IsComparison(kind))
         {
             right = this.OperandTerminal(binary.Right, right);
         }
@@ -193,7 +190,7 @@ public sealed partial class Binding
     {
         var terminal = type;
         OperatorApplicability decision;
-        if (ComparisonOperator(kind))
+        if (Parser.IsComparison(kind))
         {
             terminal = ComparisonReferent(type);
             decision = this.ComparisonApplicability(terminal, kind, scope, site);

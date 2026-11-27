@@ -13,7 +13,8 @@
 // on a row whose program supplies its platform, IMPL 21.6, the platform storage and one adapter per Platform requirement over its
 // witness, the roots after the startup body, or the adapters' declarations without a platform) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
-// declarations, overflow declarations, functions, entry, footer); a row per item kind and output form: DropGlue
+// declarations, overflow declarations, the requested machine instruction routines (InstructionRows), functions, entry, footer); a row
+// per item kind and output form: DropGlue
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
 // array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104), an owning handle's (R5-M112), an Array's (R5-M121), a
 // Dictionary's (R5-M124)),
@@ -126,6 +127,7 @@ internal sealed partial class ModuleCodegen
         this.Records.Clear();
         this.reported.Clear();
         this.needs = Needs.None;
+        this.instructions = 0;
         this.constants.Clear();
         this.functions.GetStringBuilder().Clear();
         this.helperText.GetStringBuilder().Clear();

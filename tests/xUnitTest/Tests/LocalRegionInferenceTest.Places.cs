@@ -29,9 +29,14 @@ public partial class LocalRegionInferenceTest
         { "rp1q", "func f(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    let u = (p, p)\n    let w: ((ref/i64 during q, ref/i64 during q), (ref/i64 during q, ref/i64 during q)) = (u, u)\n    return 0\n", string.Empty },
         { "rcs1v", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    var t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", string.Empty }, // R7-O2 A1: valid (the carried slots are fixed Origins equal to their candidate p; D-868, O-443 (a))
         { "rcs1vg", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use<U>(p: ref/U) -> i32\n    var t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", string.Empty }, // R7-O2 A1: valid (the carried slots are fixed Origins equal to their candidate p; D-868, O-443 (a))
+        { "rcs1", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", string.Empty }, // PLAN G922: valid (the carried slots are fixed Origins equal to their candidate p; O-443 (a))
+        { "rcs1g", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use<U>(p: ref/U) -> i32\n    let t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", string.Empty }, // PLAN G922: valid (the carried slots are fixed Origins equal to their candidate p; O-443 (a))
+        { "rcs1q", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let t = (p, q)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", "UnprovenOriginRelation_Kd@5:24" }, // PLAN G922: invalid (the carried slots equal p and q, and p == q is Unknown; O-443 (a))
         { "rcs1b", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t: (ref/i32 during p, ref/i32 during p) = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", string.Empty },
         { "rcs2", "func use(p: ref/i32) -> i32\n    let t = (p, p)\n    var c = func [var t] (x: ref/i32 during p) -> ()\n        t.0 = x\n    c(p)\n    return 0\n", string.Empty }, // R7-O2 A1: valid (the carried slots are fixed Origins equal to their candidate p; D-868, O-443 (a))
         { "rcs2b", "func use(p: ref/i32) -> i32\n    let t: (ref/i32 during p, ref/i32 during p) = (p, p)\n    var c = func [var t] (x: ref/i32 during p) -> ()\n        t.0 = x\n    c(p)\n    return 0\n", string.Empty },
+        { "rcs2q", "func use(p: ref/i32, q: ref/i32) -> i32\n    let t = (p, p)\n    var c = func [var t] (x: ref/i32 during q) -> ()\n        t.0 = x\n    c(q)\n    return 0\n", "UnprovenOriginRelation_Kd@4:15" }, // PLAN G922: invalid (the carried slot equals p, and q outlives p is Unknown; O-443 (a))
+        { "rcs3", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    let u = t\n    var c = func [var u] () -> ()\n        swap(u.0@uniq, u.1@uniq)\n    c()\n    return 0\n", string.Empty }, // PLAN G922: valid (the carried slots are fixed Origins equal to their candidate p; O-443 (a))
         { "rcs3v", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    var u = t\n    var c = func [var u] () -> ()\n        swap(u.0@uniq, u.1@uniq)\n    c()\n    return 0\n", string.Empty }, // R7-O2 A1: valid (the carried slots are fixed Origins equal to their candidate p; D-868, O-443 (a))
         { "gc1", "func f<T>(p: ref/T, q: ref/T) -> ref/T during p\n    let t = (p, q)\n    let u = (t, t)\n    return u.1.1\n", "UnprovenOriginRelation_Kd@4:12" },
         { "gc1b", "func f<T>(p: ref/T, q: ref/T) -> ref/T during p\n    let t = (p, q)\n    let u = (t, t)\n    return u.1.0\n", string.Empty },
@@ -49,24 +54,8 @@ public partial class LocalRegionInferenceTest
         { "e2c", "func f() -> i32\n    var x = 1\n    var y = 2\n    let arr: Array<ref/i32> = [x@ref, y@ref]\n    return 0\n", string.Empty },
     };
 
-    // PLAN G922's known class 1 (not asserted as correct): a `var` capture's environment binding keeps the captured `let` local's Type,
-    // where SPEC 7.7.2 initializes it as `var t = t` would, whose slots are its own regions; so `swap(t.0@uniq, t.1@uniq)` over two slots
-    // of one stored part is accepted, invalid by the words. Removal: G922 forms a `var` capture's environment binding as its own place;
-    // these rows then take rcs1v's record (UnprovenOriginRelation_Kd at the call).
-    public static TheoryData<string, string, string> VarCaptureOfALetRows => new()
-    {
-        { "rcs1", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", string.Empty },
-        { "rcs1g", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use<U>(p: ref/U) -> i32\n    let t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", string.Empty },
-        { "rcs3", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    let u = t\n    var c = func [var u] () -> ()\n        swap(u.0@uniq, u.1@uniq)\n    c()\n    return 0\n", string.Empty },
-    };
-
     [Theory]
     [MemberData(nameof(PlaceRows))]
     public void ASlotsRegionIsOnePerStoredPartAndPlace(string row, string body, string records)
-        => Assert.True(records == LocalOriginClauseTest.Records(body + MainDeclaration), $"{row}: {LocalOriginClauseTest.Records(body + MainDeclaration)}");
-
-    [Theory]
-    [MemberData(nameof(VarCaptureOfALetRows))]
-    public void AVarCaptureOfALetLocalKeepsItsTypePendingG922(string row, string body, string records)
         => Assert.True(records == LocalOriginClauseTest.Records(body + MainDeclaration), $"{row}: {LocalOriginClauseTest.Records(body + MainDeclaration)}");
 }
