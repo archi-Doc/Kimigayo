@@ -228,11 +228,13 @@ public class RawStorageTest
     }
 
     // IMPL 21.6, SPEC 7.6, 10.1 (OSF's rows 2 and 3): a port member is an unsafe function of its declared Types: a call outside an
-    // unsafe context needs one, and with a u16 value where its byte goes the call has no applicable candidate.
+    // unsafe context needs one, and with a u16 value where its byte goes the call has no applicable candidate. A control register write
+    // is unsafe and its read is not (OSF1b, design 4.3's safety rule).
     [Theory]
     [InlineData("    unsafe => X86.writePort8(0x3F8, value)", "")]
     [InlineData("    X86.writePort8(0x3F8, 65)", "UnsafeBlockRequired_Kd X86.writePort8(0x3F8, 65)")]
     [InlineData("    unsafe => X86.writePort8(0x3F8, value@u16)", "NoApplicableOverload_Kd X86.writePort8(0x3F8, value@u16)")]
+    [InlineData("    X86.writeCr3(X86.readCr3())", "UnsafeBlockRequired_Kd X86.writeCr3(X86.readCr3())")]
     public void APortWriteIsUnsafeAndTyped(string body, string errors)
         => Assert.Equal(errors, TimeLibraryTest.Errors(MinimalEmissionTest.Check(TargetProfile.None, "public group Board\n    public func send(value: u8)\n    " + body + "\n", "Board.kimi", OutputKind.Library)));
 

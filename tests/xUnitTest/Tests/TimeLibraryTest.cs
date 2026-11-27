@@ -70,13 +70,16 @@ public class TimeLibraryTest
     }
 
     // SPEC 19.2, IMPL 21.6 (OSF's row 4): Kimi.X86's halt, interrupt-flag and port members are declared where `os == "none"` holds, so on
-    // a hosted row `X86.halt` names no member, while pause and readTimestamp are declared on every x86-64 row.
+    // a hosted row `X86.halt` names no member, while pause and readTimestamp are declared on every x86-64 row; so are OSF1b's control
+    // register reads (where `os == "none"`) and cpuid (every x86-64 row).
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
     [InlineData("x86_64-unknown-linux-musl", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
     [InlineData("x86_64-unknown-none", "public group Board\n    public func stop() => X86.halt()\n", "")]
     [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func spin() => X86.pause()\n", "")]
     [InlineData("x86_64-unknown-linux-musl", "public group Board\n    public func spin() => X86.pause()\n", "")]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func root() -> u64 => X86.readCr3()\n", "UnresolvedBinding_Kd X86.readCr3")]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func leaf() -> u32 => X86.cpuid(0, 0).eax\n", "")]
     public void X86IsDeclaredWhereItsConditionsHold(string triple, string source, string errors)
         => Assert.Equal(errors, Errors(MinimalEmissionTest.Check(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Library)));
 

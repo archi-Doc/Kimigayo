@@ -68,8 +68,9 @@ public partial class KimiLibraryShapeTest
 
         var once = named.Where(static x => !IntrinsicDisposition.TakesMember(x)).ToArray();
         Assert.Equal(once.Distinct(), once);
-        // Fail six times (the Time unit's Storage.clockFailure is the sixth), Instruction twice (X86's pause and readTimestamp, OSF1a).
-        Assert.Equal((count, 8), (once.Length, named.Count - once.Length));
+        // Fail six times (the Time unit's Storage.clockFailure is the sixth), Instruction three times (X86's pause and readTimestamp, OSF1a;
+        // cpuid, OSF1b).
+        Assert.Equal((count, 9), (once.Length, named.Count - once.Length));
         Assert.Equal(
             [
                 IntrinsicId.None, IntrinsicId.Abort, IntrinsicId.TypeTest, IntrinsicId.TestObserve, IntrinsicId.TestMessage, IntrinsicId.TestRequireAbort,

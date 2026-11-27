@@ -164,7 +164,8 @@ internal sealed partial class GeneratedIr
         throw new FormatException("Unbalanced parentheses: " + text);
     }
 
-    [GeneratedRegex(@"[%@][-\w$.]+")]
+    // A value, label or symbol, or a quoted string, which is text: an inline asm call's template and constraints.
+    [GeneratedRegex(@"""[^""]*""|[%@][-\w$.]+")]
     private static partial Regex Name();
 
     [GeneratedRegex(@"^(%[-\w$.]+) = ")]
@@ -173,7 +174,8 @@ internal sealed partial class GeneratedIr
     [GeneratedRegex(@"^([-\w$.]+):$")]
     private static partial Regex Label();
 
-    [GeneratedRegex(@"([@%][-\w$.]+)\(")]
+    // A call's callee: a symbol or a value, or inline asm (a call without a callee function).
+    [GeneratedRegex(@"([@%][-\w$.]+|asm sideeffect ""[^""]*"", ""[^""]*"")\(")]
     private static partial Regex Callee();
 
     [GeneratedRegex(@"\s(%[-\w$.]+)$")]
@@ -258,7 +260,7 @@ internal sealed partial class GeneratedIr
         var callee = opcode == "call" ? Callee().Match(text) : Match.Empty;
         Assert.True(callee.Success || opcode != "call", text);
         var end = callee.Success ? Close(text, callee.Index + callee.Length - 1) + 1 : text.Length; // A call's attributes follow its shape.
-        var value = new IrValue(opcode, Name().Replace(text[..end], x => x.Value[0] == '%' && this.types.Contains(x.Value) ? x.Value : x.Value[..1]));
+        var value = new IrValue(opcode, Name().Replace(text[..end], x => x.Value[0] == '"' || this.types.Contains(x.Value) ? x.Value : x.Value[..1]));
         value.Attributes.AddRange(this.Attributes(text[end..]));
         function.Blocks[^1].Instructions.Add(value);
         function.Instructions.Add(value);
@@ -380,7 +382,7 @@ internal sealed class IrValue(string opcode, string shape)
     /// <summary>Gets the definitions of the values it reads, instructions or parameters, in operand order (labels excluded).</summary>
     public List<IrValue> Operands { get; } = [];
 
-    /// <summary>Gets or sets the function a direct call calls.</summary>
+    /// <summary>Gets or sets the function a direct call calls; null for inline asm.</summary>
     public IrFunction? Callee { get; set; }
 
     /// <summary>Gets a call's function attributes, attribute groups resolved.</summary>

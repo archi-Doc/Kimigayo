@@ -167,18 +167,19 @@ internal sealed partial class ModuleCodegen
 
     // The requested machine instruction routines (InstructionRows), each once in row order: its routine's definition (`alwaysinline`,
     // Abi.Flags.Inline), whose entry block calls its template under its constraints and the one suffix (InstructionRows.Clobbers) over its
-    // parameters.
+    // operands, the parameters after its result slot, if any, then returns the asm's result (InstructionRow.Result), or, for a routine
+    // with a result slot, stores it there in one store and returns void.
     private void WriteInstructions(TextWriter output)
     {
         for (var set = this.instructions; set != 0; set &= set - 1)
         {
             var row = InstructionRows.Row(BitOperations.TrailingZeroCount(set));
             var routine = row.Routine;
-            var value = routine.Result != "void";
+            var first = routine.ResultSlot ? 1 : 0;
             output.Write(routine.GetDefinition(exported: false));
             output.Write("entry:\n");
-            output.Write(value ? "  %r = call " : "  call ");
-            output.Write(routine.Result);
+            output.Write(row.Result != "void" ? "  %r = call " : "  call ");
+            output.Write(row.Result);
             output.Write(" asm sideeffect \"");
             output.Write(row.Template);
             output.Write("\", \"");
@@ -186,17 +187,27 @@ internal sealed partial class ModuleCodegen
             output.Write(row.Constraints.Length == 0 ? string.Empty : ",");
             output.Write(InstructionRows.Clobbers);
             output.Write("\"(");
-            for (var i = 0; i < routine.Parameters.Length; i++)
+            for (var i = first; i < routine.Parameters.Length; i++)
             {
-                output.Write(i == 0 ? string.Empty : ", ");
+                output.Write(i == first ? string.Empty : ", ");
                 output.Write(routine.Parameters[i].Type);
                 output.Write(" %");
                 output.Write(routine.Parameters[i].Name);
             }
 
-            output.Write(")\n  ret ");
+            output.Write(")\n");
+            if (routine.ResultSlot)
+            {
+                output.Write("  store ");
+                output.Write(row.Result);
+                output.Write(" %r, ptr %");
+                output.Write(routine.Parameters[0].Name);
+                output.Write('\n');
+            }
+
+            output.Write("  ret ");
             output.Write(routine.Result);
-            output.Write(value ? " %r\n}\n" : "\n}\n");
+            output.Write(routine.Result != "void" ? " %r\n}\n" : "\n}\n");
         }
     }
 

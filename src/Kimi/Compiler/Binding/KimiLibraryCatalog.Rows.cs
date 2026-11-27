@@ -41,7 +41,10 @@ internal static partial class KimiLibraryCatalog
     // The operation contracts' inputs they store no value through (NoStoreRow): `slice` and `readVolatile` their storage, `initialize` its
     // value, `release` its storage (it ends the storage, writing no Place), `transferBytes` its source (read, its values relocated),
     // `replace` and `exchange` their value, which they place in their target (SPEC 15.7: each writes only its target, by its identity's
-    // rules, never its body's); KimiLibraryShapeTest pins each row to a named parameter of a bodiless contract or a 15.7 declaration.
+    // rules, never its body's); KimiLibraryShapeTest pins each row to a named parameter of a bodiless contract or a 15.7 declaration. The
+    // Instruction family (IMPL 21.6) is NoStore's one id-keyed clause, every input of every member: its contract stores no value through an
+    // operand (KimiLibraryShapeTest pins its raw operands to the read-only members), and its raw-operand members are declared where
+    // `os == "none"`, where a catalog row would stop every hosted compilation. Removal: PLAN G1290's one per-input row.
     private static readonly NoStoreRow[] NoStoreRows =
     [
         new(KimiDeclarationId.RawSlice, 0b1), new(KimiDeclarationId.RawInitialize, 0b10), new(KimiDeclarationId.RawRelease, 0b1),
@@ -94,10 +97,15 @@ internal static partial class KimiLibraryCatalog
     internal static bool KeepsOutOfLine(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Array.IndexOf(OutOfLineRows, id) >= 0;
 
-    // SPEC 5.2 Placement, 5.6, 15.7: whether an operation contract stores no value through parameter slot `input` (NoStoreRows); false
-    // otherwise.
+    // SPEC 5.2 Placement, 5.6, 15.7: whether an operation contract stores no value through parameter slot `input` (NoStoreRows, and every
+    // input of the Instruction family, until PLAN G1290); false otherwise.
     internal static bool NoStore(BindingSymbol? symbol, int input)
     {
+        if (symbol?.Definition is { Kind: DispositionKind.Intrinsic, Id: IntrinsicId.Instruction })
+        {
+            return true;
+        }
+
         foreach (var row in NoStoreRows)
         {
             if (symbol?.LibraryDeclaration == row.Id)

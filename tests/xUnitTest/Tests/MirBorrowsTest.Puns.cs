@@ -2616,6 +2616,21 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
+    // SPEC 5.2.1 condition 5, 5.6 (IMPL 21.6, PLAN G1290): volatileReadOk with X86.loadInterruptTable, which reads the descriptor its raw
+    // operand addresses and stores nothing there (KimiLibraryCatalog.NoStore's Instruction clause), in place of Raw.readVolatile is
+    // accepted, and volatileWriteBad keeps its pun, on the none row, where the member is declared.
+    [Theory]
+    [InlineData("volatileReadOk", "")]
+    [InlineData("volatileWriteBad", "volatileWriteBad: kk = 2")]
+    public void AnInstructionStoresNothingThroughItsRawOperand(string form, string expected)
+    {
+        var body = Form(PunForms, form).Replace("_ = Raw.readVolatile(q@raw@raw/usize)", "X86.loadInterruptTable(q@raw@raw/u8)", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(
+            TargetProfile.None, Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + body, "Board.kimi", OutputKind.Library);
+        var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
     // SPEC 5.2, 5.2.1 condition 5, 5.6 (C-457 R-c; OSF2's row 27 premise): C-457's peek, a volatile read of a ref's bits through a raw
     // pointer to it and then a follow of the ref through that pointer, is accepted. It does not observe Raw.readVolatile's NoStore row
     // (it is accepted without the row, as is its writeVolatile twin); volatileReadOk and volatileWriteBad are the rows that discriminate.

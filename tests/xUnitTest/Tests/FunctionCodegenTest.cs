@@ -2003,15 +2003,16 @@ public sealed partial class FunctionCodegenTest
             Instructions(TargetProfile.None, "public func mark(buffer: uniq/[2 of u8], value: u8)\n    buffer[0] = 1\n    unsafe => X86.writePort8(0x3F8, value)\n    buffer[1] = 2\n"));
 
     // SPEC 7.7.4 (design C-457 4.4, B C2): an instruction member's Item is a value whose call calls the member's routine, as a direct call
-    // does, on each row that declares it.
+    // does, on each row that declares it: readTimestamp's on every x86-64 row, readCr3's where `os == "none"` (OSF1b).
     [Theory]
-    [InlineData("x86_64-pc-windows-msvc")]
-    [InlineData("x86_64-unknown-none")]
-    public void AnInstructionItemsCallCallsItsRoutine(string triple)
+    [InlineData("x86_64-pc-windows-msvc", "readTimestamp", "rdtsc")]
+    [InlineData("x86_64-unknown-none", "readTimestamp", "rdtsc")]
+    [InlineData("x86_64-unknown-none", "readCr3", "rdcr3")]
+    public void AnInstructionItemsCallCallsItsRoutine(string triple, string member, string row)
     {
-        var text = Instructions(TargetProfile.Find(triple)!, "public func stamp() -> u64\n    let f = X86.readTimestamp\n    return f()\n");
-        Assert.Single(Regex.Matches(text, @"(?m)^define internal i64 @__kimi_x86_rdtsc\(\) alwaysinline #0 \{$"));
-        Assert.Contains("call i64 @__kimi_x86_rdtsc()\n", text, StringComparison.Ordinal);
+        var text = Instructions(TargetProfile.Find(triple)!, $"public func stamp() -> u64\n    let f = X86.{member}\n    return f()\n");
+        Assert.Single(Regex.Matches(text, $@"(?m)^define internal i64 @__kimi_x86_{row}\(\) alwaysinline #0 \{{$"));
+        Assert.Contains($"call i64 @__kimi_x86_{row}()\n", text, StringComparison.Ordinal);
     }
 
     // SPEC 7.7.4, IMPL 21.1.3: an instruction member's Item converted to a Function Type is an adapter whose entry calls the member's
@@ -2032,6 +2033,57 @@ public sealed partial class FunctionCodegenTest
         var text = Instructions(TargetProfile.Windows, "public func a() => X86.pause()\npublic func b() => X86.pause()\n");
         Assert.Single(Regex.Matches(text, @"(?m)^define internal void @__kimi_x86_pause\(\)"));
         Assert.Equal(2, Regex.Count(text, @"  call void @__kimi_x86_pause\(\)\n"));
+    }
+
+    // IMPL 21.6 (OSF1b; design C-457 4.3): the none row's call of a member calls its routine, whose entry block calls the row's template
+    // under its constraints and the one suffix over the routine's operands: design 6.1's install loading its interrupt table, a write of
+    // the EFER model-specific register (wrmsr's split of the value into EDX:EAX) and the idle wait, `sti` directly followed by `hlt`.
+    [Theory]
+    [InlineData(
+        "public func install(descriptor: raw/u8)\n    unsafe => X86.loadInterruptTable(descriptor)\n    X86.enableInterrupts()\n",
+        "lidt",
+        "void (ptr)",
+        "call void asm sideeffect \"lidt ($0)\", \"r,~{memory},~{dirflag},~{fpsr},~{flags}\"(ptr %)")]
+    [InlineData(
+        "public func efer()\n    unsafe => X86.writeMsr(0xC0000080, 0)\n",
+        "wrmsr",
+        "void (i32, i64)",
+        "call void asm sideeffect \"movq %rax, %rdx\\0Ashrq $$32, %rdx\\0Awrmsr\", \"{cx},{ax},~{dx},~{memory},~{dirflag},~{fpsr},~{flags}\"(i32 %, i64 %)")]
+    [InlineData(
+        "public func idle() => X86.enableInterruptsAndHalt()\n", "stihlt", "void ()", "call void asm sideeffect \"sti\\0Ahlt\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()")]
+    public void AnInstructionsRoutineCallsItsTemplate(string source, string row, string signature, string asm)
+    {
+        var ir = GeneratedIr.Parse(Instructions(TargetProfile.None, source));
+        var routine = ir.Function("__kimi_x86_" + row);
+        Assert.Equal("internal " + signature, routine.Signature);
+        Assert.Contains("alwaysinline", routine.Attributes);
+        Assert.Equal([asm, "ret void"], routine.Instructions.Select(static x => x.Shape));
+        Assert.Equal(routine.Parameters, routine.Instructions[0].Operands);
+        Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Callee == routine);
+    }
+
+    // IMPL 21.6, 21.3.1 (OSF1b; the Tatara plan's ruling 165): a routine that returns through a result slot, cpuid's C-layout struct, stores
+    // the asm's result into the slot in one store of the struct's storage Type and returns void, and the call passes its destination as
+    // the slot, whose Field at offset 4 is `ebx`.
+    [Fact]
+    public void AnInstructionsResultSlotHoldsItsResult()
+    {
+        var ir = GeneratedIr.Parse(Instructions(TargetProfile.Windows, "public func vendor() -> u32\n    let r = X86.cpuid(0, 0)\n    return r.ebx\n"));
+        var cpuid = ir.Function("__kimi_x86_cpuid");
+        Assert.Equal("internal void (ptr, i32, i32)", cpuid.Signature);
+        Assert.Equal(
+            [
+                "call { i32, i32, i32, i32 } asm sideeffect \"cpuid\", \"={ax},={bx},={cx},={dx},{ax},{cx},~{memory},~{dirflag},~{fpsr},~{flags}\"(i32 %, i32 %)",
+                "store { i32, i32, i32, i32 } %, ptr %", "ret void",
+            ],
+            cpuid.Instructions.Select(static x => x.Shape));
+        Assert.Equal(cpuid.Parameters.Skip(1), cpuid.Instructions[0].Operands);
+        Assert.Equal([cpuid.Instructions[0], cpuid.Parameters[0]], cpuid.Instructions[1].Operands);
+        var call = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Callee == cpuid);
+        Assert.Equal("call void @(ptr %, i32 0, i32 0)", call.Shape);
+        var slot = Assert.Single(call.Operands);
+        Assert.Equal("alloca", slot.Opcode);
+        Assert.Contains(Assert.Single(ir.Functions, x => x.Instructions.Contains(call)).Instructions, x => x.Shape == "getelementptr i8, ptr %, i64 4" && x.Operands[0] == slot);
     }
 
     // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
@@ -2098,7 +2150,7 @@ public sealed partial class FunctionCodegenTest
     private static IEnumerable<IrFunction> Internal(GeneratedIr ir) => ir.Functions.Where(static x => x.Signature.StartsWith("internal ", StringComparison.Ordinal));
 
     // A Library program's module text on a target row, the source's functions the members of a public group (a Library generates every
-    // root, K11): a routine's inline asm is not GeneratedIr's.
+    // root, K11).
     private static string Instructions(TargetProfile row, string source)
         => CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(row, "public group Board\n" + Regex.Replace(source, "(?m)^(?=.)", "    "), "Hello.kimi", OutputKind.Library));
 
