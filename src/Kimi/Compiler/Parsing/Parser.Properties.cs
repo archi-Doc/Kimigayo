@@ -266,7 +266,10 @@ public static partial class Parser
             returnType,
             hasSignature,
             parameters?.ReceiverType,
-            parameters?.ValueType);
+            parameters?.ValueType)
+        {
+            ParameterNames = parameters?.Names ?? default,
+        };
         Koto? body = default;
         if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
         {
@@ -315,19 +318,21 @@ public static partial class Parser
     /// <summary>The parameter list of a GetterSignature or a SetterSignature (SPEC F.7).</summary>
     /// <param name="ReceiverType">The Type of the AccessorReceiver, <c>self: Type</c>, or <see langword="null"/> without one.</param>
     /// <param name="ValueType">The Type of a setter's <c>value: Type</c>, or <see langword="null"/> without one.</param>
+    /// <param name="Names">The written receiver and setter input names.</param>
     /// <param name="End">The end of the list: its closer, or the last part read before a missing one.</param>
-    private readonly record struct AccessorParameters(Koto? ReceiverType, Koto? ValueType, int End);
+    private readonly record struct AccessorParameters(Koto? ReceiverType, Koto? ValueType, (SourceSpan Receiver, SourceSpan Value) Names, int End);
 
     // SPEC F.7: "(" AccessorReceiver? ")" of a GetterSignature, "(" (AccessorReceiver ",")? "value" ":" Type ")" of a SetterSignature; the
     // reader stands at "(".
     private static AccessorParameters ParseAccessorParameters(ref TokenReader reader, PropertyAccessorKind kind)
     {
         var end = reader.Read().Span.End;
+        (SourceSpan Receiver, SourceSpan Value) names = default;
         Koto? receiverType = null;
         Koto? valueType = null;
         if (reader.IsCurrentIdentifier("self"))
         {
-            reader.Advance();
+            names.Receiver = reader.Read().Span;
             if (!reader.Expect(TokenKind.Colon))
             {
                 goto CloseParameters;
@@ -345,7 +350,7 @@ public static partial class Parser
         {
             if (reader.IsCurrentIdentifier("value"))
             {
-                reader.Advance();
+                names.Value = reader.Read().Span;
                 if (!reader.Expect(TokenKind.Colon))
                 {
                     goto CloseParameters;
@@ -364,7 +369,7 @@ CloseParameters:
         // Whatever remains of the list is skipped after the one report at its first token.
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
 
-        return new(receiverType, valueType, Math.Max(end, close.End));
+        return new(receiverType, valueType, names, Math.Max(end, close.End));
     }
 
     private static Koto? ParseAccessorReturnType(ref TokenReader reader)

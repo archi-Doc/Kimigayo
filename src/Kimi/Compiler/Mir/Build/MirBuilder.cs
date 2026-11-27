@@ -468,12 +468,18 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each at its written Type occurrence
-        // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration.
+        // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration, and its exit Drop
+        // at its written declaration's start (SPEC 22.5.1).
         for (var position = 0; !template && function is not null && position < CallPlan.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
             var parameter = CallPlan.Parameter(compilation.Binding, function, slot)!;
-            this.locals[parameter] = this.Argument(parameter.Type, parameter.Name, TyCtxt.SignatureSite(declaration, slot), parameters);
+            this.locals[parameter] = this.Argument(
+                parameter.Type,
+                parameter.Name,
+                TyCtxt.SignatureSite(declaration, slot),
+                parameters,
+                offset: (function.Declaration as FunctionKoto)?.Parameters[slot].DeclarationStart ?? -1);
         }
 
         this.current = body.AddBlock();
@@ -550,11 +556,12 @@ internal sealed partial class MirBuilder(Compilation compilation)
         return true;
     }
 
-    // An argument local located at a syntax node, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
-    private int ArgumentAt(BoundType? type, string? name, Koto source, int parameters, MirLocalRole role)
+    // An argument local located at a syntax node, dropped when the body is left where its Type may need drop (SPEC 16.2.1), that Drop at
+    // an offset of its document (MirTerminator.Offset).
+    private int ArgumentAt(BoundType? type, string? name, Koto source, int parameters, MirLocalRole role, int offset)
     {
         var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(source, local: true), Name: name, Role: role));
-        this.Created(local, parameters);
+        this.Created(local, parameters, offset);
         return local;
     }
 }

@@ -22227,6 +22227,12 @@ structure is recorded here by the unit that first implements it.
 
 - **R5-M93 The requirement calls and the caller location of MIR code generation** (2026-10-21; plan C3b; under R5-M61, R5-M67,
   R5-M70, R5-M89 and R5-M92)
+  - G1017 refines a scope-exit Drop's runtime location to the start of a written parameter declaration (SPEC 22.5.1).
+    The builder carries the syntax-provided offset from registration into the Drop's own `MirTerminator.Offset` (-1 for the
+    syntax site); a Drop's `Count` stays the zero inputs MirBorrows composes its destruction over. The MIR dump omits the offset,
+    as it omits every terminator's source. Copies preserve it. The argument local retains its Type site for layout. Code generation still forwards
+    the caller location when required. SourceLocationTable renders the offset in the site's document. Retargeting the parameter
+    Type's SourceRef would also move unrelated layout diagnostics.
   - Requirement row: a Requirement callee is called by the collector's target at the call, as a Fn callee is (`FunctionCodegen.Function`):
     a Body witness (a conformance's, an inherited one, a generic Type's instance, one through a bound Contract reference, an accessor's
     Getter or Setter, a fixed array's entry member, Position's i32 specialization) under its own signature (`ModuleCodegen.Signature`),
