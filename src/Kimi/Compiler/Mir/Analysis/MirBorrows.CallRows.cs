@@ -34,9 +34,10 @@ namespace Kimi.Compiler.Mir;
 //   shared borrows of the slots, and each input's Content, its slot's value, reaches the result; no store (the omitting call's own
 //   records apply the default's raw stores, SPEC 7.2.3, 5.2.1 Retained dependencies; R4-M116 PQ-5).
 // Invariants: a CallRetention.Limit, a genuine limit (Binding's storage bounds or a keeper cycle), retains nothing the stratum follows;
+// a Deep contract's rows (CallRetention.IsDeep, a part past a walk's bound beside them) are planned as any rows, a lower bound;
 // another terminator, an intrinsic without a declaration and a default template's call have no CallRetention.
 // Must not read a state or apply a record (MirBorrows.Calls), derive retention (TyCtxt.Retains) or record a problem: the checks record the
-// Limit as OwnershipDepthLimit_Kd at the call (R4-M51, R4-M153, MirBorrows.Locations).
+// Limit and the Deep part as OwnershipDepthLimit_Kd at the call (R4-M51, R4-M153, MirBorrows.Locations).
 internal sealed partial class MirBorrows
 {
     private readonly List<int> covering = []; // By operand position: the inputs whose storage the store being kept also writes (Cover).
@@ -185,8 +186,9 @@ internal sealed partial class MirBorrows
     // its substitution's case (TyCtxt.CaseSubst). So a Closure callee's call receiver input is the receiver its case admits
     // (TyCtxt.ClosureReceiverIn), and an input of a pair layer is its case's Type, by value in the owner case, so the call writes nothing
     // through it there (SPEC 15.6.4); none for another terminator, an intrinsic without a declaration or a default template's call. Its
-    // Limit, a genuine limit, retains nothing the stratum follows: the checks record it as OwnershipDepthLimit_Kd at the call (R4-M51,
-    // R4-M153, MirBorrows.Locations); a call over storage Binding rejected has its rows (G240).
+    // Limit, a genuine limit, retains nothing the stratum follows, and a Deep contract's rows are followed beside its Deep part: the checks
+    // record either as OwnershipDepthLimit_Kd at the call (R4-M51, R4-M153, MirBorrows.Locations); a call over storage Binding rejected
+    // has its rows (G240).
     private CallRetention? Retaining(in MirTerminator call)
     {
         var callee = call.Callee;

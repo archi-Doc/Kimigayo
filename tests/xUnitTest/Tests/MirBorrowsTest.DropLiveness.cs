@@ -167,10 +167,12 @@ public sealed partial class MirBorrowsTest
     // abstract part's erased destruction (BU-47's `0 Content store 0`), which stores what the part carries within its reach: slot's address
     // and w's Loan of y (SPEC 15.6.4's reach rule), so `y = 5` errs, as clearGenOk (AReferentsDestructionIsComposedAtItsCall). R4-M147's
     // located Unsupported_Kd is gone with the composition (the owner's G264 (S) instruction of 2026-11-04). At depth 40 a's own guard is
-    // Deep (R4-M170: the part past the bound decides it), so W does not pass a and the store is the depth limit at the call, a limit
-    // record in place of `y = 5`'s.
+    // Deep (R4-M170: the part past the bound decides it), so W does not pass a. The element `(T, ...)` beside its part past the bound
+    // holds the abstract T, which can carry, so append's and consume's contracts are Deep, recorded at those calls (G408B-17; the Middle's
+    // A5 ruling C4), and append's decided rows let A5 reach `a.clear()`'s own limit again (G408-B design-rev3 section 3, under section
+    // 2): limit records in place of `y = 5`'s (a Q13 class 4 move from dev's `a.clear()` alone).
     [Theory]
-    [InlineData("deep", 40, "a.clear() OwnershipDepthLimit_Kd")]
+    [InlineData("deep", 40, "a.append({value}) OwnershipDepthLimit_Kd|a.clear() OwnershipDepthLimit_Kd|consume(a@move) OwnershipDepthLimit_Kd")]
     [InlineData("deep", 10, "y = 5 ComparisonLoanConflict_Kd")]
     [InlineData("alone", 0, "y = 5 ComparisonLoanConflict_Kd")]
     public void AnAbstractPartBesideAPartPastTheBoundIsComposedAtAReferentStore(string form, int depth, string expected)
@@ -181,14 +183,18 @@ public sealed partial class MirBorrowsTest
         var c = CompileDepthForm(Prelude + RawShapes + ReferentShapes + "func clearGen<T>()\n    T is MakeW\n    var y: i32 = 1\n" +
             $"    var w: ref/i32 = y@ref\n    var slot: raw/u8 = null\n    var a: Array<{element}> = []\n    a.append({value})\n    a.clear()\n" +
             "    consume(a@move)\n    usep(slot)\n    y = 5\n");
-        Assert.Equal(expected.Split('|'), DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
+        Assert.Equal(
+            expected.Replace("{value}", value, StringComparison.Ordinal).Split('|'),
+            DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
     }
 
     // SPEC 23.1.2 (R4-M153's revision 3, implementation review 3's N1): a limit record is one failure's, so independent checks at one
     // subject keep their own records: `replace` destroys s's old value in place, whose destruction passes the bound (err(destroy): the depth
     // limit), and its W store reaches s, whose guard a stored raw layer a Type argument supplies leaves undecided (its address taken past
     // the shared c: Z6's named limit R6.1, the located Unsupported_Kd); s's own depth limit, at its declaration, is a third verdict's (the
-    // drop tier). At depth 10 the store's alone.
+    // drop tier). At depth 10 the store's alone. Valid (SPEC 5.4, 15.6.4: c's last use ends r's Loan; G408-B design-rev3 section 2): at
+    // depth 40 replace's contract is Deep (z's `ref` lies 41 entries down), its decided Writes row (s, with) beside that part, so W
+    // reaches the store and the call's verdict joins W's Limit over Deep (the Middle's A5 ruling C4, C5): dev's three records.
     [Theory]
     [InlineData(40, "{call} Unsupported_Kd|{call} OwnershipDepthLimit_Kd|{s} OwnershipDepthLimit_Kd")]
     [InlineData(10, "{call} Unsupported_Kd")]

@@ -250,7 +250,7 @@ public sealed partial class Binding
             }
         }
 
-        if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } || ReferenceEquals(adapted, parameter) ||
+        if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } ||
             ((!adapted.StoresOrigin || !parameter.StoresOrigin) && !adapted.CarriesRawOrigin && !parameter.CarriesRawOrigin))
         {
             return;

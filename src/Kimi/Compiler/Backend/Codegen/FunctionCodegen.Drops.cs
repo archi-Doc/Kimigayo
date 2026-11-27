@@ -66,7 +66,7 @@ internal sealed partial class FunctionCodegen
         }
 
         this.cursor = this.end;
-        if (!this.Address(drop.Place, out var address) || !this.Location(drop.Source, out var site))
+        if (!this.Address(drop.Place, out var address) || !this.Location(drop.Source, out var site, drop.Offset))
         {
             return false; // A broken contract, recorded.
         }

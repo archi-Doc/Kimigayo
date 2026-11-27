@@ -37,6 +37,20 @@ public sealed record class FunctionParameterKoto
 
     internal SourceSpan InternalNameSpan { get; init; }
 
+    internal int? DeclarationStart
+    {
+        get
+        {
+            int? start = this.ExternalNameSpan.Length == 0 ? null : this.ExternalNameSpan.Start;
+            for (var attribute = this.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+            {
+                start = attribute.Span.Start;
+            }
+
+            return start;
+        }
+    }
+
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>
@@ -388,12 +402,14 @@ public sealed class FunctionKoto : DeclarationKoto
         this.parameters = new();
         if (accessor.Receiver is not null)
         {
-            this.parameters.Add(new("self", "self", new IdentifierNameKoto(accessor.Declaration, "self"), null));
+            var name = accessor.Declaration.ParameterNames.Receiver;
+            this.parameters.Add(new("self", "self", new IdentifierNameKoto(accessor.Declaration, "self"), null) { ExternalNameSpan = name, InternalNameSpan = name });
         }
 
         if (accessor.Input is not null)
         {
-            this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null));
+            var name = accessor.Declaration.ParameterNames.Value;
+            this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null) { ExternalNameSpan = name, InternalNameSpan = name });
         }
 
         foreach (var parameter in this.parameters)
