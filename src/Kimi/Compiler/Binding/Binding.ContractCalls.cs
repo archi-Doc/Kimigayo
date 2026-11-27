@@ -50,7 +50,7 @@ public sealed partial class Binding
         // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, each non-Alias row of Enumerate's rows (the use is
         // judged); the reader (Identified) identifies the rest.
         var start = this.premiseRows.Count;
-        this.PremiseRows(type, scope, this.premiseRows);
+        var classes = this.PremiseRows(type, scope, this.premiseRows);
         for (var i = start; i < this.premiseRows.Count; i++)
         {
             if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
@@ -131,6 +131,11 @@ public sealed partial class Binding
         }
 
         group.Active = group.Members.Count != 0;
+        if (!group.Active)
+        {
+            this.ReadIdentityLimit(member, scope, classes); // SPEC 8.3.3 (G1406-57): a miss over cut rows is a negative answer
+        }
+
         return group.Active ? group.Members[0] : null;
 
         // The members of the name a Contract holds: the one reading of its member table, before any judgment adds them.

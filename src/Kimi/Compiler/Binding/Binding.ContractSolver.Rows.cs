@@ -475,9 +475,10 @@ public sealed partial class Binding
     // is Alias and no identity is judged here (the walk's class keys alone).
     // Returns the request's identity classes, in which PremiseRows forms its column. G1406-12, e2-7 R3.3 (SPEC 8.3.3 Limits): it answers
     // no judgment. Its rows at a Limited reading are cut at the round bound, so a reader whose answer the cut rows could make negative
-    // (CallableSelection, ValueCalls, EffectDeclarations, CallableEffects; Retention at `true`, G1406-16 C3) refuses through
-    // ReadIdentityLimit with these classes and its asking node, once per reading; ExactAssumption, discovery (PremiseRows) and the
-    // adapter answer no rows judgment.
+    // (CallableSelection, ValueCalls, EffectDeclarations, CallableEffects; Retention at `true`, G1406-16 C3; discovery's miss:
+    // RequirementMember, G1406-57) refuses through ReadIdentityLimit with these classes and its asking node, once per reading;
+    // ExactAssumption and the adapter answer no rows judgment, and neither does discovery's found member (PremiseRows), whose use is
+    // judged afterwards.
     private IdentityClasses? FirstRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
         var (view, serial, classes, key, final, keep) = this.RowsRequest(subject, scope);
@@ -522,11 +523,14 @@ public sealed partial class Binding
 
     // R7-C2c2 c2-3a: the candidate readers' rows (name discovery: FindAssociated, RequirementMember): FirstRows' rows, whatever
     // their availability (a lookup is not a proof: the use is judged, SPEC 9.6, 8.5.2), with one non-Alias row per Contract
-    // (FormAliases). A candidate reader demands no Contract, so it never extends.
-    private void PremiseRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
+    // (FormAliases). A candidate reader demands no Contract, so it never extends. Returns FirstRows' classes, with which a miss
+    // refuses (G1406-57).
+    private IdentityClasses? PremiseRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
         var start = into.Count;
-        FormAliases(into, start, this.FirstRows(subject, scope, into));
+        var classes = this.FirstRows(subject, scope, into);
+        FormAliases(into, start, classes);
+        return classes;
     }
 
     // The premise-row locator (R7-E3 E3b-1 and E3c-1, one component; DECISIONS R7-M75): the location a record relates for a premise.
