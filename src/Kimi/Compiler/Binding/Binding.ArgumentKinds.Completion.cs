@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Argument completion (SPEC 10.5, 10.5.4, 10.2, 7.7.4, 23.1.2; DECISIONS BU-2, BU-43): the completion of a call's argument parts, an
-// output of Binding.ArgumentKinds.cs. CompleteWaiting takes each argument of the selected candidate (TakeArgument), completes its
+// output of Binding.ArgumentKinds.cs. CompleteAtSelectedParameters takes each argument of the selected candidate (TakeArgument), completes its
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
 // CompleteValueCallPart completes a value call's part at its one candidate's parameter Type, a waiting one (WaitsForValueCallSolve) at
@@ -19,7 +19,7 @@ public sealed partial class Binding
     // arguments' results that bind an F, `ref/F` or `uniq/F` of it, a join they alone kept waiting then decided (DecideTaken; DECISIONS
     // BU-43). A body or capture failure never retries another candidate, and an inferred result never supplies outer signature
     // evidence. Every part is completed, a failed one being its own record (SPEC 23.1.2, PLAN G418); false when one fails.
-    private bool CompleteWaiting(ref CallEvaluation evaluation, int winner, bool[] completedWaiting, BoundType?[] waitingContexts)
+    private bool CompleteAtSelectedParameters(ref CallEvaluation evaluation, int winner, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
@@ -35,7 +35,7 @@ public sealed partial class Binding
                 var argument = call.ArgumentNodes[i];
                 var pattern = selected.Parameters[solution.Mapping[i]].Type.BoundType!;
                 this.TakeArgument(argument); // SPEC 10.5.1: the call has selected; no conflict in the argument waits for it since.
-                if (this.IsWaiting(argument))
+                if (this.AwaitsParameterType(argument))
                 {
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
@@ -145,7 +145,7 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 10.5.4, 7.7.4, 15.6.4 step 2 (PLAN G494): whether a value call's prepared part waits for the call's solve, to be completed
-    // at its instantiated parameter, as a named call completes its waiting parts and erasures after selection (CompleteWaiting,
+    // at its instantiated parameter, as a named call completes its waiting parts and erasures after selection (CompleteAtSelectedParameters,
     // CompleteArguments): every part CompleteValueCallPart binds at its parameter or erases there. A Literal is no Type evidence (SPEC
     // 10.5.1; `null` takes any Origin, SPEC 5.7, PLAN G584); the temporary's bound is AddTemporaryBound's. An aggregate or a join its call
     // classifies is the solve's evidence only by its typed parts' rows (PLAN G504, SolveValueCallOrigins).

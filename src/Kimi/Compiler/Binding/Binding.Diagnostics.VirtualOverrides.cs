@@ -73,7 +73,7 @@ public sealed partial class Binding
                     facts.Second = (FunctionKoto)this.compilation.SyntaxOf(fact.Site);
                     break;
                 case ProblemFactKind.Span:
-                    facts.Span = new((int)(fact.Value >> 32), (int)fact.Value);
+                    facts.Span = LocatedPart(fact);
                     break;
                 case ProblemFactKind.Expected:
                     types.Expected = this.report.Value(fact);

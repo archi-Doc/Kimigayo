@@ -203,7 +203,6 @@ public class ArchitectureRulesTest
         "Binding.BoundContracts.cs:BoundContractReference=2 declared",
         "Binding.BoundContracts.cs:SubstituteRequirementContract=1 unchanged",
         "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",
-        "Binding.CallRelations.cs:JudgeCallFit=1 sufficient",
         "Binding.CallSelection.Candidates.cs:InferExpectedResult=1 unchanged",
         "Binding.CallSelection.Candidates.cs:TryCandidateCore=1 unchanged",
         "Binding.CallSlots.cs:FittedPattern=1 unchanged",

@@ -294,7 +294,7 @@ public sealed class CommandExecutionTest : IDisposable
         public void Dispose() => Directory.Delete(this.directory, true);
 
         // The removed options (Tatara B6b4, decision 20; design §5.2 rows 1, 2 and 4, C4, N4-2, N4-3; C-449 B1, N1): a command other than
-        // test and lsp whose arguments name --ToolchainRoot or --LlvmBin, in any spelling the reader names an option by (KimiOptions.Read),
+        // test whose arguments name --ToolchainRoot or --LlvmBin, in any spelling the reader names an option by (KimiOptions.Read),
         // fails before its work as its input error (CommandExecution), toolchain verify included: each occurrence's text on standard
         // error, nothing on standard output (check --Format json writes no document), no file written, exit 1. The reader reads an option
         // word after -- (an input word: no Kimi command forwards arguments after it, run takes no program arguments, IMPL 20.3; the
@@ -302,6 +302,8 @@ public sealed class CommandExecutionTest : IDisposable
         [Theory]
         [InlineData("build <lib> --ToolchainRoot C:\\tc", "--ToolchainRoot")]
         [InlineData("toolchain verify --ToolchainRoot x", "--ToolchainRoot")]
+        [InlineData("lsp --ToolchainRoot x --debugwait false", "--ToolchainRoot")]
+        [InlineData("lsp --debugwait false --LlvmBin x --ToolchainRoot y", "--LlvmBin", "--ToolchainRoot")]
         [InlineData("run <lib> --LlvmBin x", "--LlvmBin")]
         [InlineData("build <lib> -ToolchainRoot x", "--ToolchainRoot")]
         [InlineData("build <lib> --TOOLCHAINROOT x", "--ToolchainRoot")]
