@@ -34574,13 +34574,14 @@ Closure row of `MirCases.Branch`).
 - **R9-M13 The command line's one option table** (Middle, 2026-11-24; PLAN G1236, G1237; Q-750, D-1246; Major; the owner's O-525, O-526,
   O-527 (a); design review REVISE then ACCEPT WITH CONDITIONS, implementation review ACCEPT WITH CONDITIONS)
   - `KimiOptions` owns the options of every command after lsp's debugger option has been consumed (G1251 supersedes T-M15's consequence 1): one table, a row per option (name as IMPL spells it, kind
-    `Value`/`BareBoolean`/`Flag`/`Removed`, the commands that take it, the values IMPL lists for it), and one reader,
+    `Value`/`Boolean`/`BareBoolean`/`Flag`/`Removed`, the commands that take it, the values IMPL lists for it), and one reader,
     `KimiOptions.Read(command, args)`: the values by row name, the inputs, the invalid options' texts in order. `KimiOptions.From` gives
     the compiler options (`Manifest`, `NoBuild`, `Report` added).
   - Rule (O-525, O-526): an option word (`SimpleParserHelper.IsOptionName`) names the row whose name equals it after its leading dashes,
-    ignoring case; a word of dashes alone is an input; a value is never an option word; a listed value compares by spelling ignoring case, including Boolean values
-    (G1368 supersedes O-525's `bool.TryParse` rule: IMPL 20.3 lists only `true` and `false`); `--no-build` and `--locked` stand alone. An unknown option, a removed one (its removal
-    text), a missing value, a value outside the listed set and a repeated option in any spelling are invalid. `CommandExecution.Execute`
+    ignoring case; a word of dashes alone is an input; a value is never an option word; a Boolean value reads as `bool.TryParse` reads it
+    and a listed value exactly but ignoring case; `--no-build` and `--locked` stand alone. An unknown option, a removed one (its removal
+    text), a missing value, a value outside the listed set and a repeated option in any spelling (by its name, before its value: G1368)
+    are invalid. `CommandExecution.Execute`
     prints each on standard error before the action (exit 1); `TestOptions.Read` binds first, so `kimi test` reads `--Format`, and
     `TestOptions.Validate` raises the first (exit 2). `restore` takes `--Target` (O-527 (a)); a quoted option word is an option on every
     command; a help request runs no command and lists no options (PLAN G1367).

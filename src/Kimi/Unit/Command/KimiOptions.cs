@@ -9,7 +9,7 @@ namespace Kimi.Command;
 // name, a Boolean or a listed value in the table's spelling; the inputs, in order; the invalid options, in order, each one text, which
 // CommandExecution prints each of (exit 1) and TestOptions raises the first of (exit 2). The rule (the owner's O-525 and O-526): an
 // option word (SimpleParserHelper.IsOptionName) names the row whose name equals it after their leading dashes, ignoring case; a word of
-// dashes alone is an input; a value is never an option word; listed values, including Booleans, compare by spelling ignoring
+// dashes alone is an input; a value is never an option word; a Boolean value is read as bool.TryParse reads it, a listed value ignoring
 // case; --locked and --no-build alone mean true; an option the command does not take, a removed one, a missing or invalid value and a
 // repeated option are invalid. Invariants: each option one row; a command takes the rows naming it (IMPL's, with restore's --Target,
 // the owner's O-527); consumers compare values exactly. Prohibitions: no command reads an option word itself and no other copy of the
@@ -18,18 +18,17 @@ public class KimiOptions
 {
     private static readonly string[] Compiling = [CheckCommand.Name, EmitCommand.Name, BuildCommand.Name, RunCommand.Name, TestCommand.Name];
     private static readonly string[] Testing = [TestCommand.Name];
-    private static readonly string[] Booleans = ["true", "false"];
 
     // Each option once: its name as IMPL spells it, its kind, the commands that take it and the values IMPL lists for it (a path, a
     // target, a number or a filter text has none: its consumer reads it, in its case).
     private static readonly (string Name, Kind Kind, string[] Commands, string[]? Values)[] Table =
     [
         ("--Target", Kind.Value, [.. Compiling, RestoreCommand.Name], null),
-        ("--Debug", Kind.Value, Compiling, Booleans),
-        ("--locked", Kind.BareBoolean, Compiling, Booleans),
+        ("--Debug", Kind.Boolean, Compiling, null),
+        ("--locked", Kind.BareBoolean, Compiling, null),
         ("--Format", Kind.Value, [CheckCommand.Name, TestCommand.Name], ["text", "json"]),
         ("--Manifest", Kind.Value, [BuildCommand.Name], null),
-        ("--no-build", Kind.BareBoolean, [RunCommand.Name], Booleans),
+        ("--no-build", Kind.BareBoolean, [RunCommand.Name], null),
         ("--Report", Kind.Value, [ToolchainCommand.Name], null),
         ("--list", Kind.Flag, Testing, null),
         ("--allow-empty", Kind.Flag, Testing, null),
@@ -53,6 +52,7 @@ public class KimiOptions
     private enum Kind : byte
     {
         Value, // Takes the next word.
+        Boolean, // Takes the next word, true or false.
         BareBoolean, // A Boolean that alone means true: it takes the next word only when that is true or false.
         Flag, // Takes no word: its presence.
         Removed, // Invalid on every command, named by its removal, whatever its value (Tatara B6b4, decision 20; IMPL 20.3.2).
@@ -117,8 +117,8 @@ public class KimiOptions
 
             seen[row] = true;
             var next = i + 1 < args.Length && !args[i + 1].AsSpan().IsOptionName() ? args[i + 1] : null;
-            var read = listed is null ? next : Array.Find(listed, x => x.Equals(next, StringComparison.OrdinalIgnoreCase));
-            if (kind == Kind.Value || (kind == Kind.BareBoolean && read is not null))
+            var value = "true";
+            if (kind is Kind.Value or Kind.Boolean || (kind == Kind.BareBoolean && bool.TryParse(next, out _)))
             {
                 if (next is null)
                 {
@@ -126,19 +126,22 @@ public class KimiOptions
                     continue;
                 }
 
+                value = next;
                 i++;
-                if (read is null)
-                {
-                    errors.Add($"Invalid value: {option} {next}");
-                    continue;
-                }
+            }
+
+            // A Boolean as bool.TryParse reads it (case and surrounding white space ignored), a listed value ignoring case (the owner's
+            // O-525; the Middle's D1: today's reading), each kept in the table's spelling.
+            var read = kind is Kind.Boolean or Kind.BareBoolean ? (bool.TryParse(value, out var truth) ? (truth ? "true" : "false") : null) :
+                listed is null ? value : Array.Find(listed, x => x.Equals(value, StringComparison.OrdinalIgnoreCase));
+            if (read is null)
+            {
+                errors.Add($"Invalid value: {option} {value}");
             }
             else
             {
-                read = "true";
+                values.TryAdd(option, read);
             }
-
-            values.TryAdd(option, read);
         }
 
         return values;
