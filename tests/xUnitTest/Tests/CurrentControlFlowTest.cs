@@ -167,6 +167,22 @@ public class CurrentControlFlowTest
     }
 
     [Theory]
+    [InlineData("let f = func ()\n    compute()", 1)]
+    [InlineData("let f = func ()\n    if true => compute() else => compute()", 2)]
+    [InlineData("let f = func () -> ()\n    compute()", 0)]
+    [InlineData("let f: () -> () = func ()\n    compute()", 0)]
+    [InlineData("let f = func () => compute()", 0)]
+    public void OnlyAnInferredUnitClosureWarnsAtItsDiscardedTails(string declaration, int count)
+    {
+        var c = Parse("func compute() -> i32 => 1\n" + declaration);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var tails = CompilationTestHelper.BindingWarnings(c).Where(x => x.Code == nameof(Kimi.DiagnosticCode.DiscardedTail_Kd)).ToArray();
+        Assert.Equal(count, tails.Length);
+        Assert.All(tails, x => Assert.Equal("compute()", x.Text));
+    }
+
+    [Theory]
     [InlineData("func close() -> bool => true\nfunc cleanup() => close()")]
     [InlineData("func f() => ()")]
     [InlineData("func f() => defer => ()")]

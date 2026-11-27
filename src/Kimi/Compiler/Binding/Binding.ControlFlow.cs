@@ -96,10 +96,15 @@ public sealed partial class Binding
 
     /// <summary>Gets whether Binding inferred Unit for a result target that no declaration, construct rule or expected Type
     /// fixed (SPEC 17.5.2).</summary>
-    /// <param name="target">A do or a selection.</param>
+    /// <param name="target">A function, do or selection.</param>
     /// <returns>Whether the target's final result is that inferred Unit.</returns>
-    internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
-        target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
+    internal bool InfersUnit(Koto target)
+    {
+        var (inferred, result) = target is FunctionKoto function
+            ? (function.ClosureStorage is { InfersResult: true }, function.BoundSymbol?.Type)
+            : (this.resultContexts.TryGetValue(target, out var context) && context.Inferred, target.BoundType);
+        return inferred && target.BindingState == BindingState.Resolved && ReferenceEquals(result, BoundType.Unit);
+    }
 
     // SPEC 14.5.2, 14.9.1 (DECISIONS BU-101): the construct a transfer goes to (TransferTarget), which the jump binding writes
     // to the jump's target row. A null row is a jump the HIR lints record as invalid (rows 9-10): it supplies no result source and its

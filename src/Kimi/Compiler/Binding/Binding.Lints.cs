@@ -737,6 +737,11 @@ public sealed partial class Binding
         {
             if (this.VisitPart(body))
             {
+                if (owner is FunctionKoto { Body: { } block } && binding.InfersUnit(owner))
+                {
+                    binding.LintUnitTail(block, block, this.completion);
+                }
+
                 binding.EndArrival(owner, this.completion);
             }
         }
