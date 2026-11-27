@@ -3,7 +3,7 @@
 // Owns drop elaboration (A2; SPEC 16.2, 16.3.2, 15.1.3; DECISIONS R4-M6, R4-M6a) of one body per Semantics case view.
 // Input: the state MirInit's checks replay holds before each Drop (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
-// no subtree event, so no point); the selected view (MirCases); the programs' TyCtxt (MirAnalysis's).
+// no subtree event, so no point); the selected view and the body's identity premises (MirCases); the programs' TyCtxt (MirAnalysis's).
 // Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
 // for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
 // the views judged (A1 and A2 completed them), whether the table holds a body (Holds: the driver's one stepping path closed its entry in
@@ -13,9 +13,10 @@
 // A1 or A2 problem, an inline copy's included (its code and its subject in its location's scope; the table is exact only without one,
 // R4-M6a, R4-M102), which both record through Problem, the one path of their Language problems to MirReport: one inside an inline
 // default copy is its template's check and is not added (SPEC 7.2.3, R4-M69); A1's broken contract and storage limit reach MirReport
-// directly; and MovedPlace_Kd through Problem where a layer with its own drop may be incomplete at a runtime Drop. Elide where the view's
-// Type needs no drop (MirTypes.MayNeedDrop) or nothing is initialized on any path; Keep where the whole is initialized on every path or
-// the Place has no Move Path, and in a check-only group
+// directly; and MovedPlace_Kd through Problem where a layer with its own drop may be incomplete at a runtime Drop. Elide where the Type
+// of the Drop's Place in the view, as the body's identity premises make it (MirCases.PremisedTypeOf; PLAN G355's interim until R7-Y5),
+// needs no drop (MirTypes.MayNeedDrop) or nothing is initialized on any path; Keep where the whole is initialized on every path or the
+// Place has no Move Path, and in a check-only group
 // also where Flag or an incomplete layer with its own drop would be; Flag where it is complete or wholly absent on every path, the flag
 // mirroring the path's own bit; Open where a part may be missing: the components without a child path follow the own bit, each child
 // path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per view. Flags are numbered in path

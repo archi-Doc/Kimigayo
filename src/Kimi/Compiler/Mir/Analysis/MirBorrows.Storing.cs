@@ -51,7 +51,9 @@ namespace Kimi.Compiler.Mir;
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
 // and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
 // exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
-// and a body whose own contract is the Limit (no rows; O-62 (a)).
+// an owned value's Drop A2 keeps (its destruction may run code), and a view A5 does not run: a body no view decides is checked once, in
+// view 0 (MirBorrows.Run), so the Drop row reads view 0's verdict for every view (PLAN G1507), and a body whose own contract is the
+// Limit (no rows; O-62 (a)).
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
