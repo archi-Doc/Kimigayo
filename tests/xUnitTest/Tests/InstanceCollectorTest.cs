@@ -1678,7 +1678,8 @@ public sealed partial class InstanceCollectorTest
     // K 4.5 rows 5, 12 and 13, DECISIONS R5-M70: a requirement's function item is, in the instance, the item of the witness its requirement
     // runs on the Item's Self through the Contract reference it records (TyCtxt.Witness(item)), where it is made, where it is called and as
     // its adapter's target: a user conformance's body, a built-in Type's Builtin shim, and through a bound reference the witness of the
-    // conformance it names (Tag<bool>, not Tag<i32>), the body Binding's Item context also runs.
+    // conformance it names (Tag<bool>, not Tag<i32>). Binding's Item context is the requirement's call on the Item's Self, and
+    // Witness(item) runs that body from that call.
     [Fact]
     public void ARequirementItemIsItsWitnessInTheInstance()
     {
@@ -1697,7 +1698,10 @@ public sealed partial class InstanceCollectorTest
             x => Assert.Equal(witness, x.Item));
         Assert.Equal("bool", TyCtxt.Name(((FunctionKoto)program.Body(set.Items[witness].BodyOrdinal).Key.Decl!.Declaration).Parameters[0].Type.TypeOf()!));
         var item = set.Items[adapter].RepresentativeType!;
-        Assert.Same(c.Types.SubstOfItem(item), c.Types.Witness(item)!.Value.Subst);
+        Assert.Same(item.Symbol, c.Types.SubstOfItem(item)!.Target); // SPEC 7.3, R5-M70: the Item's call is the requirement's.
+        var runs = c.Types.Witness(item)!.Value; // SPEC 8.6.1: what that call runs, the body the collector's adapter targets.
+        Assert.Equal(RequirementTargetKind.Body, runs.Kind);
+        Assert.Same(program.Body(set.Items[witness].BodyOrdinal).Key.Decl, runs.Target);
     }
 
     // K 4.5 row 3, F package 4.5 (DECISIONS R5-M61, R5-M67): a requirement call in an instance is the item of its witness there. A conformance
