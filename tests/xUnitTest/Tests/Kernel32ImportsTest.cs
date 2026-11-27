@@ -110,7 +110,7 @@ public sealed class Kernel32ImportsTest
     public void TheRuntimeTemplatesUnmarkedFactsHold()
     {
         Assert.Equal((0, 1), (RuntimeAbi.StaticReleaseKind, RuntimeAbi.HeapReleaseKind));
-        Assert.All(TargetProfile.AllRows, static row => Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, row.UnmappedBound - 1));
+        Assert.All(TargetProfile.Rows, static row => Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, row.UnmappedBound - 1));
     }
 
     // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, a row's runtime (its

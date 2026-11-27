@@ -75,7 +75,8 @@ internal sealed partial class TyCtxt
     internal BoundType CallsSignature(BindingSymbol operation, int calls)
         => binding.OneCallable(operation, this.Signature(operation, null, calls, out _)!)!.Value.Signature;
 
-    // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
+    // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract), the recorded one for every
+    // Self; null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
 
     // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per definition, whose premises are read at its

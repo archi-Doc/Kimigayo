@@ -8,8 +8,8 @@ namespace XunitTest;
 // form with its labelled records as a build checks the program (TestDiagnostics.ErrorSites; the unit's probes and the review's twins,
 // labelled from SPEC before any run; E7's located Unsupported_Kd is gone): a published row's requirement and an atom composed into a
 // Tuple with an abstract part (W, A), a default's copy the body writes (C), a standard Property witness (P), a Refused witness (R), a
-// conformance only a premise states (N, also read by a confined obligation: P1prem, P2prem) and a formation past IMPL A.4's height
-// (H). Fail-before (dev 79934ae85): W1-W5, A1-A3, C3, C4 and P1-P4
+// conformance only a premise states (N, also read by a confined obligation: P1prem, P2prem), a formation past IMPL A.4's height
+// (H) and a requirement Item on a Self that is not abstract (X4, R7-P5b). Fail-before (dev 79934ae85): W1-W5, A1-A3, C3, C4 and P1-P4
 // were E7's located Unsupported_Kd at the conformance, beside W2's and A2's P42 record and P3's and P4's DefaultArgumentAccess_Kd.
 // W2 and A2 keep P42's independent Unsupported_Kd at the mutable static's declaration (R5-M82).
 public sealed partial class MirEffectsTest
@@ -513,6 +513,148 @@ public sealed partial class MirEffectsTest
         public func main() => ()
         """;
 
+    private const string ItemThroughDefaultCopy = """
+        contract Sink
+            func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                effect confined
+        struct S<A>
+            Self is Equatable when A is Equatable
+                public func equals(self: ref/Self, other: ref/Self) -> bool => true
+            public init() => ()
+        group H
+            public func apply<F, K>(operation: ref/F, k: ref/K) -> bool
+                F is Callable<(ref/K, ref/K) -> bool>
+                return operation(k, k)
+            public func check<T>(k: ref/T, same: bool = H.apply(T.equals, k)) -> bool
+                T is Equatable
+                return same
+            public func outer<A>(k: ref/S<A>)
+                A is Equatable
+                _ = H.check(k)
+        struct Q
+            Self is Sink
+            var key: S<i32>
+            public init(key: S<i32>) => self.key = key@move
+            public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                H.outer(self.key@ref)
+                return .Ok(())
+        public func main() => ()
+        """;
+
+    private const string ItemThroughDefaultCopyEnvironment = """
+        contract Sink
+            func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                effect confined
+        group State
+            public var value: i32 = 0
+        struct S<A>
+            Self is Equatable when A is Equatable
+                public func equals(self: ref/Self, other: ref/Self) -> bool
+                    _ = State.value
+                    return true
+            public init() => ()
+        group H
+            public func apply<F, K>(operation: ref/F, k: ref/K) -> bool
+                F is Callable<(ref/K, ref/K) -> bool>
+                return operation(k, k)
+            public func check<T>(k: ref/T, same: bool = H.apply(T.equals, k)) -> bool
+                T is Equatable
+                return same
+            public func outer<A>(k: ref/S<A>)
+                A is Equatable
+                _ = H.check(k)
+        struct Q
+            Self is Sink
+            var key: S<i32>
+            public init(key: S<i32>) => self.key = key@move
+            public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                H.outer(self.key@ref)
+                return .Ok(())
+        public func main() => ()
+        """;
+
+    private const string ItemThroughDefaultCopyConsole = """
+        contract Sink
+            func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                effect confined
+        struct S<A>
+            Self is Equatable when A is Equatable
+                public func equals(self: ref/Self, other: ref/Self) -> bool
+                    Console.writeLine("eq")
+                    return true
+            public init() => ()
+        group H
+            public func apply<F, K>(operation: ref/F, k: ref/K) -> bool
+                F is Callable<(ref/K, ref/K) -> bool>
+                return operation(k, k)
+            public func check<T>(k: ref/T, same: bool = H.apply(T.equals, k)) -> bool
+                T is Equatable
+                return same
+            public func outer<A>(k: ref/S<A>)
+                A is Equatable
+                _ = H.check(k)
+        struct Q
+            Self is Sink
+            var key: S<i32>
+            public init(key: S<i32>) => self.key = key@move
+            public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                H.outer(self.key@ref)
+                return .Ok(())
+        public func main() => ()
+        """;
+
+    private const string ClosedItemThroughDefaultCopy = """
+        contract Sink
+            func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                effect confined
+        struct Key
+            Self is Equatable
+            public func equals(self: ref/Self, other: ref/Self) -> bool => true
+            public init() => ()
+        group H
+            public func apply<F, K>(operation: ref/F, k: ref/K) -> bool
+                F is Callable<(ref/K, ref/K) -> bool>
+                return operation(k, k)
+            public func check<T>(k: ref/T, same: bool = H.apply(T.equals, k)) -> bool
+                T is Equatable
+                return same
+        struct Q
+            Self is Sink
+            var key: Key
+            public init(key: Key) => self.key = key@move
+            public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                _ = H.check(self.key@ref)
+                return .Ok(())
+        public func main() => ()
+        """;
+
+    private const string ClosedItemThroughDefaultCopyConsole = """
+        contract Sink
+            func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                effect confined
+        struct Key
+            Self is Equatable
+            public func equals(self: ref/Self, other: ref/Self) -> bool
+                Console.writeLine("eq")
+                return true
+            public init() => ()
+        group H
+            public func apply<F, K>(operation: ref/F, k: ref/K) -> bool
+                F is Callable<(ref/K, ref/K) -> bool>
+                return operation(k, k)
+            public func check<T>(k: ref/T, same: bool = H.apply(T.equals, k)) -> bool
+                T is Equatable
+                return same
+        struct Q
+            Self is Sink
+            var key: Key
+            public init(key: Key) => self.key = key@move
+            public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+                _ = H.check(self.key@ref)
+                return .Ok(())
+        public func main() => ()
+        """;
+
     private const string HeightFromStartup = """
         contract HasItem
             associate Item
@@ -641,6 +783,23 @@ public sealed partial class MirEffectsTest
     [InlineData(PremiseUnboundedUnderConfined, "IncompatibleContractImplementation_Kd@12:5")]
     [InlineData(PremiseBoundedUnderConfined, "")]
     public void APremiseOnlyConformanceTakesThePremisesBound(string source, string expected)
+        => Assert.Equal(expected, TestDiagnostics.ErrorSites(MinimalEmissionTest.Check(source + "\n"), source));
+
+    // SPEC 8.15, 8.11.3, 8.11.4, 8.11.2, 4.9.6, 7.2.3 (R7-P5b X4): the Item formed as `T.equals` in a default and copied at T = S<A>, a
+    // Self with an abstract part, or at T = Key, a closed Self, is a requirement Item on a Self that is not abstract, and runs what its
+    // call runs (A4's Require) under the reading definition's premises (outer's `A is Equatable` proves S<A>'s conditional conformance),
+    // so its effects reach put's confined obligation: a pure equals keeps put confined (X4-V, X4-Cv, V); one that reads a mutable static
+    // conflicts at `Self is Sink` beside P42's record at the static (X4-I, I), and one that writes the Console conflicts there alone
+    // (X4-Ee, X4-Ce, I). Labelled from SPEC before any run; fail-before: X4-V against dev, whose Item entered the requirement's
+    // declaration and was rejected at `Self is Sink`; X4-I, X4-Ee and X4-Ce against the arm that wrote the Item into Local's store
+    // (`Item`), which no solve reads. Mutant: A4's Item arm removed rejects X4-V again.
+    [Theory]
+    [InlineData(ItemThroughDefaultCopy, "")]
+    [InlineData(ItemThroughDefaultCopyEnvironment, "Unsupported_Kd@5:12 | IncompatibleContractImplementation_Kd@23:5")]
+    [InlineData(ItemThroughDefaultCopyConsole, "IncompatibleContractImplementation_Kd@21:5")]
+    [InlineData(ClosedItemThroughDefaultCopy, "")]
+    [InlineData(ClosedItemThroughDefaultCopyConsole, "IncompatibleContractImplementation_Kd@18:5")]
+    public void ARequirementItemOnASelfThatIsNotAbstractRunsItsWitness(string source, string expected)
         => Assert.Equal(expected, TestDiagnostics.ErrorSites(MinimalEmissionTest.Check(source + "\n"), source));
 
     // IMPL 21.3.2, A.4, SPEC 23.1.2: a premise the collector forms past the height in h, reached from startup through g1 and g2, is the

@@ -39,10 +39,43 @@ internal static class KotoTree
         }
     }
 
-    private sealed class Collector : KotoVisitor
+    /// <summary>Gets the direct children of a node with its source slot (a directive marker's Conditions and excluded parts, a list
+    /// owner's decided markers), in the order <see cref="Koto.VisitChildren"/> visits them.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>A new list of the children and source parts.</returns>
+    internal static List<Koto> ChildrenWithSource(this Koto node)
+    {
+        var collector = new SourceCollector();
+        node.VisitChildren(collector);
+        return collector.Nodes;
+    }
+
+    /// <summary>Enumerates a node and every descendant, source slots included, by an explicit stack (the test thread has the default
+    /// stack).</summary>
+    /// <param name="node">The root node.</param>
+    /// <returns>The node and every descendant.</returns>
+    internal static IEnumerable<Koto> WalkWithSource(Koto node)
+    {
+        var stack = new Stack<Koto>([node]);
+        while (stack.TryPop(out var top))
+        {
+            yield return top;
+            foreach (var child in top.ChildrenWithSource())
+            {
+                stack.Push(child);
+            }
+        }
+    }
+
+    private class Collector : KotoVisitor
     {
         internal List<Koto> Nodes { get; } = [];
 
         public override void Visit(Koto node) => this.Nodes.Add(node);
+    }
+
+    private sealed class SourceCollector : Collector
+    {
+        public override void VisitSource(IReadOnlyList<Koto> source) => this.Nodes.AddRange(source);
     }
 }
