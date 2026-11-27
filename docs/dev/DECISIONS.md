@@ -36670,6 +36670,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `Staged` in each reader (notes D3); lines in the gate and `Build` instead of `ArtifactTarget` (two lines, C-575 N1's one answer
     split; ruling 118 R1 (b)); `PrepareTests` reading `Find` itself (a second selection, T-M51); the LSP's test key testing `Rows`
     membership (two more copies of the line; R2 (b)).
+    Removed by B9g (B9g): `Staged`, the table's array `AllRows` and the membership line; `Rows` is `[Windows, Linux, None]`.
   - **Record moves, `os` (every triple whose OS component is `none`):** those of the OS family `none` bullet above.
   - **Record moves (x86_64-unknown-none only; they read `Find`):** `#LibraryImport("c", "write")` and `kernel32 GetLastError` are
     the located `Unsupported_Kd` (base: accepted, a target without a row, T-M34 G2); a Kind-`import` requirement's imports
@@ -36678,7 +36679,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     CLI's Test-mode record; until B9g an AllTargets project listing none first gets its test unit on none). Hosted rows: none.
   - **Until B9d1** a none module's generation is a broken contract no product path reaches (`LlvmModuleText.Frame` refuses a row
     outside `Rows`). Superseded by T-M56 and T-M57: the frames and `CoreModelTest.EveryRowNamesOneRuntimeLayer`
-    cover `AllRows`, and until B9f a none module's generation fails at the link.
+    cover `Rows` (`AllRows` until B9g), and until B9f a none module's generation fails at the link.
 
 - **T-M56 The none row's layer: Limine's boot, the busy flag and the platform's adapters** (Tatara, 2026-11-26; the plan's unit B9d1,
   Q-817, D-1325; Major; the Tatara plan's decisions 30 and 31; T's rulings 119, 121, 122, 123, 127 and 133; rulings-briefs-w2 E1, E8, O4):
@@ -36706,9 +36707,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **The start text:** one function of the row's entry symbol (`RuntimeAbi.StartAssembly(entry)`), linux-x64's and
     x86_64-unknown-none's records each calling it with its row's `EntrySymbol`; linux-x64's bytes are unchanged (E8). Rejected: a second
     copy of the text for the none row.
-  - **The frames cover the table's rows:** `LlvmModuleText.Frames` holds one lazily built frame per row of `TargetProfile.AllRows`,
-    and `CoreModelTest.EveryRowNamesOneRuntimeLayer` pins every row of `AllRows` (T-M55's `Layer`; Transitional until B9g, ruling
-    123 N4: no new Transitional).
+  - **The frames cover the table's rows:** `LlvmModuleText.Frames` holds one lazily built frame per row of `TargetProfile.Rows` (`AllRows` until B9g),
+    and `CoreModelTest.EveryRowNamesOneRuntimeLayer` pins every row of `Rows` (T-M55's `Layer`).
 
 - **T-M57 The none row's platform adapters and output roots** (Tatara, 2026-11-26; the plan's unit B9d2, Q-817, D-1325; Major; the
   Tatara plan's decision 30; T's rulings 139, 140 and 143):
@@ -36773,7 +36773,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **The catalog:** `src/backend/none-x64/profile.json` in the Linux catalog's form (profile, library, providedSymbols, files), plus
     `compilerRt` (version, source, sourceSha256, signingKey, licenseSha256), `sources`, and the identity fields Windows' carries
     (`packageId` `kimi-backend-none-x64`, `abiVersion` 1, `llvmVersion`; F4) for B9f's head, unread until then. `ToolchainIdentity`
-    reads it through the Linux record's read (`ReadCatalog(row, stem)`; `ReadFile` takes the stem), its supplies over `AllRows`;
+    reads it through the Linux record's read (`ReadCatalog(row, stem)`; `ReadFile` takes the stem), its supplies over `Rows` (`AllRows` until B9g);
     a mismatch is the initializer's `InvalidDataException`. The licence `LICENSE-compiler-rt.txt` is pinned by `licenseSha256` and
     embedded.
   - **Rejected:** a per-row reserved list (one name's validity would depend on the target); leaving the names unreserved (a program
@@ -36846,7 +36846,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     version (a row without an identity states no package id); `Packages` gives each row reserving the backend supply its head's
     `backendSupport.*` (the compiler's version, the row's backend supply's name and symbols, the archive's hash; the row's backend
     supply is one file). `LinkManifest`'s heads are
-    built over the table's array (`AllRows`), so a staged row's pair is published and built.
+    built over the table's array (`Rows`; `AllRows` until B9g), so the none row's pair is published and built.
   - **Build:** the script is staged as a supply's file is (`StageSupply`, `.ld` kept), held to the build's end; the ELF line adds
     `-T <staged> --orphan-handling=error` after `-e` for a row with a script; the record gains `linkerScript` (`path` redacted, `sha256`)
     only for such a row, so hosted records are byte-equal. The libc-free path already places the program's libraries before the row's
