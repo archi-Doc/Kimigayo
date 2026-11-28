@@ -113,6 +113,34 @@ public static partial class Parser
             => $"A Contract, original virtual function or Callable Constraint declares bounds; {owner} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound";
     }
 
+    /// <summary>Parses an effect item that starts an item of an executable body (SPEC 8.11.1, 7.5, F.3), never read as an
+    /// expression: in a function's leading region it is kept and judged from that function (<see cref="ParseEffectItem"/>); anywhere
+    /// else, including the top level, it is misplaced and, as a misplaced <c>origin</c> clause, introduces nothing.</summary>
+    /// <param name="reader">The token reader, at <c>effect</c>.</param>
+    /// <param name="leading">The function whose leading region holds the item, or <see langword="null"/>.</param>
+    /// <returns>The key of the misplaced item's Error, or <see langword="null"/> when the item is kept or reports nowhere.</returns>
+    internal static DiagnosticKey? ParseBodyEffect(ref TokenReader reader, FunctionKoto? leading)
+    {
+        ReportPendingAttributes(ref reader);
+        RejectAccessWord(ref reader);
+        var effect = ParseEffectItem(ref reader, leading);
+        if (leading is null)
+        {
+            return effect.Misplacement;
+        }
+
+        if (reader.ExcludingMarker is { } marker)
+        {
+            marker.AddSource(effect); // Excluded syntax keeps the item in its directive's marker (SPEC 19.4).
+        }
+        else
+        {
+            leading.AddEffectBound(effect);
+        }
+
+        return null;
+    }
+
     // SPEC 8.11.1: an effect clause or an effect specification; the reader stands at `effect`. The item ends with its line in an
     // indented list; in a single-item body it ends where the enclosing construct's own syntax, such as a closer, `,` or `else`,
     // continues the line (SPEC 14.2.1, F.4.4). A missing or unknown bound reports the Error and leaves the item as its recovery.
@@ -171,34 +199,6 @@ public static partial class Parser
         }
 
         return effect;
-    }
-
-    /// <summary>Parses an effect item that starts an item of an executable body (SPEC 8.11.1, 7.5, F.3), never read as an
-    /// expression: in a function's leading region it is kept and judged from that function (<see cref="ParseEffectItem"/>); anywhere
-    /// else, including the top level, it is misplaced and, as a misplaced <c>origin</c> clause, introduces nothing.</summary>
-    /// <param name="reader">The token reader, at <c>effect</c>.</param>
-    /// <param name="leading">The function whose leading region holds the item, or <see langword="null"/>.</param>
-    /// <returns>The key of the misplaced item's Error, or <see langword="null"/> when the item is kept or reports nowhere.</returns>
-    internal static DiagnosticKey? ParseBodyEffect(ref TokenReader reader, FunctionKoto? leading)
-    {
-        ReportPendingAttributes(ref reader);
-        RejectAccessWord(ref reader);
-        var effect = ParseEffectItem(ref reader, leading);
-        if (leading is null)
-        {
-            return effect.Misplacement;
-        }
-
-        if (reader.ExcludingMarker is { } marker)
-        {
-            marker.AddSource(effect); // Excluded syntax keeps the item in its directive's marker (SPEC 19.4).
-        }
-        else
-        {
-            leading.AddEffectBound(effect);
-        }
-
-        return null;
     }
 
     // ContractSelector "." Name (SPEC F.6.2), read by the one ContractSelector reader (ParseContractSelectorPath, shared with an
