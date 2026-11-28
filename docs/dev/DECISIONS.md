@@ -31400,6 +31400,22 @@ Closure row of `MirCases.Branch`).
   - **Parameter symbols after a partial Origin completion (a2-0).** When a header's result alone is pending and its Origin
     contract is ready, `BindFunctionHeader` completes the Origin declaration and the parameter symbols take the completed Types,
     in the completion's one path (SPEC 15.4.1), so a named function's parameter symbol and its node agree in every state.
+- **R7-M135 A nested definition's Type shows the instance it holds (PLAN G343, R7-P8a)** (2026-11-28; Back; Major; design
+  `artifacts/units/r7p8/design-a.md`, the Front's P8-F1) SPEC 3.2.1, 23.1; DIAGNOSTICS (a mismatch's Types keep their differing
+  parts).
+  - Rule: `Binding.DisplayTypeName`'s `Show` writes a Type's form (`ShowForm`), then ` in ` and `TyCtxt.HeldType` where it is not
+    null: `closure (T) -> T in Box<i32>`, `function item pk in Box<A>` (BU-60, BU-222: both kinds hold it). A context a function's
+    instance made, a Type read in its own frame and a flat Closure add nothing; a Closure that a held definition's signature names
+    shows its own instance. One more part of the same list (BU-153). The step is in `Show` because a held Item has the Closure's
+    fact (BU-222): the Closure arm alone would need a second copy in the Item arm.
+  - Consequence: the held instance is erased modulo Origins (BU-60), so Hover's every-Origin rule shows its Origins as `static`
+    (`in Box<ref/i32 during static>`, `in Box{a = static}`), and a record whose shown Origin is `static` can mark a layer inside the
+    held part (`Binding.DiagnosticTypes.cs`' `mark`). Today only programs with BU-222's located `Unsupported_Kd` (a withheld
+    instance) reach it; valid programs will after PLAN G300's per-use opening, whose unit inherits the text.
+  - Rejected: the substituted signature (`ClosureSignature`: a Binding judgment in a static display, equal for a signature-free
+    Closure, and moved by PLAN G300's opening); the Closure arm alone (the held Item would need a second copy in the Item arm);
+    the holder before the signature (two Types of one definition already differ in their last ` in H`; the suffix follows
+    ` during `'s precedent); no Origins in Hover's held part (a mode carried down that part's subtree).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -35038,8 +35054,9 @@ Closure row of `MirCases.Branch`).
 
 ## Tatara (adopted 2026-11-19)
 
-Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
-holds the owner's decisions 1–17). Units of the Tatara lane record their entries here as T-M*.
+Entries of the [Tatara Implementation Plan](../../draft/Changes/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
+holds the owner's decisions 1–17). Units of the Tatara lane recorded their entries here as T-M1–T-M66; the Back's later Build and Tatara entries take the
+current plan's prefix (R7-M* during R7).
 
 - **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
   「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
@@ -35058,6 +35075,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     its units; seats 1+1. AGENTS (Roles), WORKFLOW (Sessions) and COMPILER_ARCHITECTURE (the sessions paragraph, the stage ledger)
     name it from the plan's adopting commit.
   - Amends R9-M6 (`src/Kimi/Build` was the Middle's) and R7-M4 (P13 was the Back's).
+  - Superseded in part by T-M66: from 2026-11-28 the Back plans P13 and `src/Tatara`; the Middle's review stays.
 - **T-M3 The Tatara component is `src/Tatara`: a C ABI over LLVM and LLD, built from the pinned archive** (Tatara, 2026-11-20; the
   plan's unit A1a; Major; design review C-420).
   - `src/Tatara` (`tatara.h` the ABI and contract, `tatara.cpp`, `build.ps1`) is P13's native part. It is not C#, `Kimi.csproj` does
@@ -37325,6 +37343,13 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     21.6.2), two field-less boards (`mapPages` null; one `write` reading past its text), and the rows' startup bodies; test-cli's
     kernel row builds row 1's two files from this folder (the one committed Kernel program; `KernelSources.cs` stays the SPEC 22.4.5
     example).
+  - **The interrupt rows** (OSF3c; T's rulings 194 and 199): the programs' interrupt gates use Limine's 64-bit code selector, 0x28
+    (PROTOCOL.md at limine-protocol c5a7f597a, base revision 6). Limine masks LVT LINT0 at entry, so `Interrupts.install` disables the
+    local APIC globally (`IA32_APIC_BASE` bits 11 and 10 cleared: "disabled" is reachable from xAPIC and from x2APIC mode, while
+    clearing bit 11 alone in x2APIC mode is the invalid state and raises #GP) and the 8259's INTR reaches the processor. Rejected: B10 §6.1's selector 0x08
+    (Limine's 16-bit code segment); LINT0 unmasked through the xAPIC's page (a page mapping) or x2APIC (a QEMU `-cpu` option).
+    A probe (OSF3c-2) entered an `X86.errorCodeEntry<H>()` thunk from a page fault at vector 14 (error code 0, CR2 the read's address)
+    and found `rsp` 16-aligned at the thunk's call (O0). It is no row: its read of a page no mapping covers is undefined by SPEC 5.2.1.
   - **Downloads:** QEMU for Windows 11.1.0 (7-Zip unpack, no install) and Limine v11.2.1's binary release, under `artifacts/`, owner's
     O-543 (a); their provenance is in the unit's commit.
   - **Rejected:** a test or a CI job (QEMU and Limine are downloads per run); the VGA path and `pmemsave` (O-489 (g) (b)); a pattern or
@@ -37363,8 +37388,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     forecast ("RFLAGS can join it ... without a code generation change") and changes its two records' types. `popfq`'s operand is the
     saved RFLAGS alone (the busy bit and bits 32-63 cleared). `__kimi_exit` begins with `cli` (shutdown and every Abort pass through
     it; the none template has no Abort entry of its own). With interrupts off across every platform member, no platform member may
-    wait for an interrupt it does not enable itself (a future clock or input member that halts for a tick would hang). Rejected: an
-    aggregate `{ i64, i8 }` (two values for one word); the six routines.
+    wait for a maskable interrupt without enabling interrupts itself (`X86.enableInterruptsAndHalt`): a future clock or input member
+    that halts for a tick with `X86.halt` would hang. Rejected: an aggregate `{ i64, i8 }` (two values for one word); the six routines.
   - **`KimiDeclarationId` +3** (ruling 193 (b); design: +2; not a closed vocabulary): `InterruptFrame`, `InterruptHandler` and
     `ErrorCodeHandler`, each a `#Lang` catalog row. First readers: the two Contracts', the collector's entry edge (`OwnRequirement` of
     the variant's lang item, by `InterruptEntries`); the frame's, the thunk writer (`Layout.Of` of its symbol's Type, the `byval`
@@ -37393,3 +37418,13 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Rejected** (design §6.3-§6.4): a user Attribute `#Interrupt` with a function-address form (`AttributeKind` 8 of 8); a
     calling-convention word; `Address` generalized (its check is the reserve's ABI); a second call writer or call text in the thunk;
     `@__kimi_entry.<H>` names.
+- **T-M66 The Back plans `src/Kimi/Build` and `src/Tatara`; the Tatara session ends** (owner, 2026-11-28; O-557 (b))
+  - Rule: Tatara is complete (the owner, 2026-11-28; the plan closed in `draft/Changes`), so the restart creates no Tatara session, and
+    the Back session plans and implements P13 (`src/Kimi/Build`) and `src/Tatara`; the Middle still reviews their units. AGENTS
+    (Roles), WORKFLOW (Sessions, the planning session and a window's size per area), VERIFICATION (the `kimi` job),
+    COMPILER_ARCHITECTURE (the sessions paragraph, the Tatara row of the stage ledger) and PLAN (the stages and sessions items,
+    the open issues' owners) name the Back; G1452, whose cause lies in `MirEffects.Solve`, is the Middle's. B8 stays deferred (O-479); when
+    scheduled, it is the Back's unit.
+  - Supersedes in part T-M2's session rule: its reason, a session for the plan's stages, ended with the plan. T-M2's Middle review
+    stays. Rejected: (a) the Middle (K's recommendation: `src/Kimi/Build` was the Middle's before the plan, and the Middle reviewed
+    every Tatara unit); the owner chose the Back, whose code generation and link lie next to Build.

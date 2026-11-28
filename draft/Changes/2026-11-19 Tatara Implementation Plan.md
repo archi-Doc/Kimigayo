@@ -1,6 +1,6 @@
 # Tatara Implementation Plan
 
-2026-11-19. Approved by the owner on 2026-11-19 (decisions 1–13 below, each "as recommended"). Base dev `5dd6543e6`. LLVM / LLD 22.1.8.
+2026-11-19. Integrated (取り込み済み): closed by the owner on 2026-11-28, Tatara complete (stages A, B5–B7, B9 and B10 implemented; B8 deferred, O-479); approved on 2026-11-19 (decisions 1–13 below, each "as recommended"). Base dev `5dd6543e6`. LLVM / LLD 22.1.8.
 
 The design it follows is the owner's Tatara Design r3 (a skeleton; r2 is the reference for per-unit detail, and r3 wins where they
 differ). Both are outside the repository (`OneDrive\Dev\Kimigayo\Design\2026-11-19 Tatara Design r3.md`, `... r2.md`); this plan
