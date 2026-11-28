@@ -13,6 +13,10 @@ public class TimeLibraryTest
     // A Stopwatch reaching each clock read (start, stop and elapsed), which the Linux row's modules emit and link too (TataraExecutorTest).
     internal const string Measured = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nlet duration = watch.elapsed()";
 
+    // Design 6.2's handler (OSF3b) and a Library that takes its entry's address.
+    internal const string Tick = "struct Tick\n    Self is X86.InterruptHandler\n\n    public func handle(frame: ref/X86.InterruptFrame) => ()\n";
+    internal const string Install = "public group Interrupts\n    public func install() -> usize\n        unsafe => return X86.entry<Tick>()\n";
+
     private const string WindowsCounter = "var count: i64 = 0\nlet ok = Windows.queryPerformanceCounter(count@uniq)";
     private const string SelectedCounter = "#if windows\n    var count: i64 = 0\n    let ok = Windows.queryPerformanceCounter(count@uniq)\n" + Measured;
     private const string Started = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()";
@@ -71,8 +75,10 @@ public class TimeLibraryTest
 
     // SPEC 19.2, IMPL 21.6 (OSF's row 4): Kimi.X86's halt, interrupt-flag and port members are declared where `os == "none"` holds, so on
     // a hosted row `X86.halt` names no member, while pause and readTimestamp are declared on every x86-64 row; so are OSF1b's control
-    // register reads (where `os == "none"`) and cpuid (every x86-64 row).
+    // register reads (where `os == "none"`) and cpuid (every x86-64 row); OSF3b's interrupt entries where `os == "none"` (design 6.2).
     [Theory]
+    [InlineData("x86_64-pc-windows-msvc", Tick + Install, "UnresolvedBinding_Kd X86.entry")]
+    [InlineData("x86_64-unknown-none", Tick + Install, "")]
     [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
     [InlineData("x86_64-unknown-linux-musl", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
     [InlineData("x86_64-unknown-none", "public group Board\n    public func stop() => X86.halt()\n", "")]

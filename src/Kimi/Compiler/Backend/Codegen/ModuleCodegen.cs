@@ -24,8 +24,9 @@
 // (__kimi_builtin<item>, a comparison's or an arithmetic operation's function under its requirement's signature,
 // Shim, written by FunctionCodegen.Shims; R5-M126), the property witnesses (__kimi_witness<item>, a standard property witness's
 // function under its key's signature, Shim, written by FunctionCodegen.Shims; R5-M141), K8's ObjectDescriptor items (the module's runtime
-// identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable
-// items, whose text is their descriptors' virtual tables (R5-M114).
+// identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110), VTable
+// items, whose text is their descriptors' virtual tables (R5-M114), and InterruptEntry items (__kimi_f<item>, the x86_intrcc thunk of an
+// interrupt entry under its variant's signature, Thunk, written by FunctionCodegen.Entries; IMPL 21.6).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection; the test catalog, a test build's cases, identity and verification site
@@ -45,14 +46,14 @@
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
 // record was made; deterministic (admission order, item-indexed names); each item's and unnamed signature is reused while Abi.Matches holds
 // and every buffer is kept, so a warm module allocates nothing; a request naming an item outside Generated (Requested: its Signature, Glue,
-// Ensure, Shim, Adapter, Factory or Row) is a broken contract, InternalInvariant_Kd at the item's site.
+// Ensure, Shim, Adapter, Thunk, Factory or Row) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax or HIR, write a
 // partial module, use LINQ, Supports* or catch-alls, or do file I/O but through the caller's writer (it reads embedded templates), whose
 // I/O exceptions are therefore the output's (DECISIONS R5-M169); a broken contract it throws is the command's fault.
 // Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations and the required libraries (ModuleCodegen.Imports.cs),
-// the common Function values' entries (ModuleCodegen.Erasures.cs), the object descriptors
-// with their virtual tables (ModuleCodegen.Objects.cs), and the Dictionary rows' routines and helpers
+// the common Function values' entries (ModuleCodegen.Erasures.cs), the interrupt entries' signatures (ModuleCodegen.Entries.cs), the
+// object descriptors with their virtual tables (ModuleCodegen.Objects.cs), and the Dictionary rows' routines and helpers
 // (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs), and its platform part: the storage, the
 // adapters and their declarations and the witnesses (ModuleCodegen.Platform.cs).
 
@@ -168,8 +169,9 @@ internal sealed partial class ModuleCodegen
         }
     }
 
-    // An item by its kind's row: a body item, a glue and an adapter through FunctionCodegen, a Builtin or PropertyWitness shim, a descriptor
-    // through ObjectRuntime, a VTable as its descriptor's table, an Import as its callers' declaration; MonoKind has no other member.
+    // An item by its kind's row: a body item, a glue, an adapter and an interrupt entry's thunk through FunctionCodegen, a Builtin or
+    // PropertyWitness shim, a descriptor through ObjectRuntime, a VTable as its descriptor's table, an Import as its callers' declaration;
+    // MonoKind has no other member.
     private void Item(MirProgram program, InstanceCollector collector, int item)
     {
         var entry = collector.Set.Items[item];
@@ -183,6 +185,9 @@ internal sealed partial class ModuleCodegen
                 return;
             case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
                 this.bodies.WriteAdapter(collector, item, this.functions);
+                return;
+            case MonoKind.InterruptEntry:
+                this.bodies.WriteThunk(collector, item, this.functions); // Its thunk (FunctionCodegen.Entries; IMPL 21.6).
                 return;
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 this.bodies.WriteShim(collector, item, this.functions); // Its shim's function (FunctionCodegen.Shims; R5-M126, R5-M141).

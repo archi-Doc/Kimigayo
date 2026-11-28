@@ -103,7 +103,7 @@ internal sealed partial class InstanceCollector
             this.LaysOutArguments(item, subject, subst!);
         }
 
-        return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
+        return this.Intrinsic(program, item, subject, function.Definition, subst!.Types[0]);
     }
 
     // SPEC 22.6 (DECISIONS R8-M19): what a call of a function without a MIR body that is no intrinsic or shim runs, its direct call or a

@@ -690,6 +690,30 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(sites, Enumerable.Range(0, set.Items.Length).Sum(x => set.Targets(x).ToArray().Count(t => t.Item == import)));
     }
 
+    // SPEC 22.6 ¶2, 8.6.3 (OSF3b's row 29; T's ruling 196, PLAN G1454 folded into OSF3b): a handler whose `handle` is a #LibraryImport
+    // witness, a receiverless struct Type function, is valid: check has no record, and its interrupt entry's one target is the import's
+    // item, which has none of its own (the import's own rule, Imported).
+    [Fact]
+    public void AnImportHandlerIsItsEntrysTarget()
+    {
+        const string Source = "#if os == \"none\"\n    struct TimerTick\n        Self is X86.InterruptHandler\n\n" +
+            "        #LibraryImport(\"board\", \"on_tick\")\n        public func handle(frame: ref/X86.InterruptFrame)\n\n" +
+            "    group Interrupts\n        func install(table: raw/u64)\n            unsafe\n                table[64] = X86.entry<TimerTick>()@u64\n";
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.OutputKind = OutputKind.Library;
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.None.Target] = new(StringComparer.Ordinal) { ["board"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(TargetProfile.None.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Board.kimi", Source));
+        c.Check();
+        Assert.Equal(string.Empty, TimeLibraryTest.Errors(c));
+        var set = c.Instances!;
+        var entry = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.InterruptEntry);
+        var import = Assert.Single(set.Targets(entry).ToArray()).Item;
+        Assert.Equal((MonoKind.Import, "handle"), (set.Items[import].Key.Kind, set.Items[import].Key.Symbol!.Name));
+        Assert.Empty(set.Targets(import).ToArray());
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
+    }
+
     // DECISIONS BU-11 (PLAN G153 (2)), R7-T1 (the owner's RQ12): Binding's storage bound is a property of each instance, whatever was
     // prepared before it and in whatever order its parts are walked, and the collector reads none of it, so each is an instance with no
     // collector record in every order. `h` places its Type argument 3 levels down, so Box^61 (i32 at level 64) is within Binding's bound
@@ -2952,14 +2976,17 @@ public sealed partial class InstanceCollectorTest
             .Order(StringComparer.Ordinal).ToArray();
     }
 
-    // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ReserveDispatch, StaticEnsure, the creations and DestroyValues name a
-    // target (a type test and a clone acquire nothing, SPEC 13.6.4).
+    // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ReserveDispatch, StaticEnsure, the creations, DestroyValues and
+    // InterruptEntry (its thunk, IMPL 21.6) name a target (a type test and a clone acquire nothing, SPEC 13.6.4).
     [Fact]
     public void OnlyTheWhitelistedIntrinsicsCarryATarget()
     {
         var targets = Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None && IntrinsicRows.Of(x).Target != IntrinsicTarget.None);
         Assert.Equal(
-            [IntrinsicId.DestroyValues, IntrinsicId.ReserveDispatch, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
+            [
+                IntrinsicId.DestroyValues, IntrinsicId.ReserveDispatch, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc,
+                IntrinsicId.StaticEnsure, IntrinsicId.InterruptEntry,
+            ],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }
