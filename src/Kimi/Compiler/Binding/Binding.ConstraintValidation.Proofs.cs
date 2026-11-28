@@ -483,7 +483,8 @@ public sealed partial class Binding
     // its request answers Unknown, as without the analysis (PLAN G651 U2 gives the after-run queries their outcome). Returns the
     // record's node (Refusal.Use) once the run has recorded it (settled here or earlier: Refusal.Recorded), which a check failing on
     // the refused reading rests on (rule W, RecordTypeMismatch); null while it is held (a candidate trial's, a proof's limit: no node
-    // state rests on a refusal that may be dropped, G1406-16 C4) and after the pass.
+    // state rests on a refusal that may be dropped, G1406-16 C4) and after the pass. Its callers are ReadIdentityLimit and
+    // TypeHeightLimit alone (ArchitectureRulesTest).
     private Koto? RefuseProof(BindingScope scope, BindingFailure limit)
     {
         if (!this.producing)

@@ -148,9 +148,12 @@ public sealed partial class Binding
 
         // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence alongside ordinary
         // inputs, before expected results and literal defaults. An anonymous waiting body is never evidence; its written header is
-        // handled separately. The signature's own Origins become open regions.
-        internal readonly bool InferCallableSignatures(Span<BoundArgumentOperation> operations)
+        // handled separately. The signature's own Origins become open regions. `read` is the first Limited reading of a call signature
+        // missed at a parameter (S in the callee's scope, SPEC 10.5.2, or the argument's known call signature in the call's), which the
+        // call's unbound-slot record reads (FailUnboundSlots; G1406-65 12a (ii), G1406-66).
+        internal readonly bool InferCallableSignatures(Span<BoundArgumentOperation> operations, out IdentityClasses? read)
         {
+            read = null;
             var binding = this.Binding;
             var arguments = this.Call.ArgumentNodes;
             for (var i = 0; i < arguments.Count; i++)
@@ -158,10 +161,15 @@ public sealed partial class Binding
                 var source = arguments[i];
                 if (this.Function.Parameters[this.Mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
                     binding.KindOf(source) == PartKind.Function || binding.WasDeferred(source) ||
-                    this.Binding.ArgumentTypeAt(source) is not { } actual ||
-                    !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
-                    !binding.TryCallable(actual, this.Scope, out var actualSignature, out _))
+                    this.Binding.ArgumentTypeAt(source) is not { } actual)
                 {
+                    continue;
+                }
+
+                if (!binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _, out _, out var miss) ||
+                    !binding.TryCallable(actual, this.Scope, out var actualSignature, out _, out _, out miss))
+                {
+                    read ??= miss is { Limited: true } ? miss : null;
                     continue;
                 }
 

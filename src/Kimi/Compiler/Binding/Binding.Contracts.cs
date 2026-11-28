@@ -330,7 +330,7 @@ public sealed partial class Binding
                 if (parent is null)
                 {
                     var site = this.UnselectedTypeSite(name);
-                    this.FailMissing(site, this.scopes[contract], BindingFailure.MissingType);
+                    this.FailMissing(site, this.scopes[contract], BindingFailure.MissingType, null);
                     if (!ReferenceEquals(name, site))
                     {
                         this.CompleteDependent(name, site);

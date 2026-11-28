@@ -272,12 +272,9 @@ public sealed partial class Binding
 
             if (this.DependentType(subject) || this.DependentType(required))
             {
-                // G1406-11 C-a (SPEC 8.3.3): an erroneous class reads its error (IdentityProven), else a Limited reading is refused.
-                if (read is { Limited: true } && this.IdentityPremiseErrorRead(scope, subject, required) is null)
-                {
-                    this.ReadIdentityLimit(null, scope, read);
-                }
-
+                // G1406-11 C-a (SPEC 8.3.3): a Limited reading is refused; an erroneous class reads its error instead (IdentityProven),
+                // and its answer reads no table (IdentityRead, G1406-60).
+                this.ReadIdentityLimit(null, scope, read);
                 return ConstraintProof.Unknown;
             }
 
@@ -298,7 +295,15 @@ public sealed partial class Binding
             var signature = this.ClosureSignature(subject) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             if (signature is null)
             {
-                return this.DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
+                if (!this.DependentType(subject))
+                {
+                    return ConstraintProof.Refuted;
+                }
+
+                // G1406-65 12a (i) (SPEC 8.3.3): the judge's own Unknown reads the subject's reading, the one MemberOf formed above (a memo
+                // hit: ReadingOf's), on this arm alone; a Limited one is refused.
+                this.ReadIdentityLimit(null, scope, HasTypeIdentity(scope) ? this.ClassesOf(scope, [subject], out _) : null);
+                return ConstraintProof.Unknown;
             }
 
             var receiver = closure?.Receiver ?? SemanticsKind.Ref;

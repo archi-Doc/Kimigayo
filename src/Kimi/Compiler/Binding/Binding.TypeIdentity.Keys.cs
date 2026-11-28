@@ -294,7 +294,7 @@ public sealed partial class Binding
     }
 
     // The table's part of the key: its least member per class (Representative) and the keys it keeps (cleared at Open with the rest).
-    private sealed partial class IdentityClasses
+    internal sealed partial class IdentityClasses
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
         private readonly Dictionary<int, (BoundType? Least, BoundType? Member)> scanned = new(); // per class root: Representative's and Member's answers

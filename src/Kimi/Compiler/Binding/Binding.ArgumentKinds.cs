@@ -635,7 +635,7 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-            this.FailUnboundSlots(in solution, operations);
+            this.FailUnboundSlots(in solution, operations, evaluation.Evaluated[winner].CallableRead);
         }
 
         return false;

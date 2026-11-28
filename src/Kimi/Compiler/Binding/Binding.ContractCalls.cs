@@ -38,6 +38,7 @@ public sealed partial class Binding
         group.Seen.Clear();
         group.Self = type;
         group.Active = true;
+        group.Read = null;
         group.PropertyRequirement = false;
         group.Properties.Clear();
         group.PropertyContracts.Clear();
@@ -131,11 +132,7 @@ public sealed partial class Binding
         }
 
         group.Active = group.Members.Count != 0;
-        if (!group.Active)
-        {
-            this.ReadIdentityLimit(member, scope, classes); // SPEC 8.3.3 (G1406-57): a miss over cut rows is a negative answer
-        }
-
+        group.Read = group.Active ? null : classes; // the miss's reading, which the member-miss record reads (RequirementRead)
         return group.Active ? group.Members[0] : null;
 
         // The members of the name a Contract holds: the one reading of its member table, before any judgment adds them.
@@ -263,6 +260,9 @@ public sealed partial class Binding
         internal BoundType Self { get; set; } = null!;
 
         internal bool Active { get; set; }
+
+        /// <summary>Gets or sets the premise rows' reading of a miss (none of the name), which its record's writer reads (G1406-64).</summary>
+        internal IdentityClasses? Read { get; set; }
 
         /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }

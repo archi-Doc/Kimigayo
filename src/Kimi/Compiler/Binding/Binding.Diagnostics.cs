@@ -671,12 +671,16 @@ public sealed partial class Binding
     private BindingFailure MissingFailure(Koto name, BindingFailure missing)
         => name is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement ? BindingFailure.Unsupported : missing;
 
+    // The premise rows' reading of a requirement member's miss (RequirementGroup.Read), which the miss's record reads.
+    private IdentityClasses? RequirementRead(Koto name)
+        => name is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) ? group.Read : null;
+
     // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
-    // explains the miss, otherwise it is the resolver's miss (FailUnselected).
-    private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
-        => this.ReportUnavailableQualifier(name, scope) is { } qualifier
-            ? this.CompleteDependent(name, qualifier)
-            : this.FailUnselected(name, this.MissingFailure(name, missing));
+    // explains the miss, a Limited reading of the search's rows (`read`: a requirement's or an associated Type's) is the limit's
+    // (ReadIdentityLimit, SPEC 8.3.3), otherwise it is the resolver's miss (FailUnselected).
+    private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing, IdentityClasses? read)
+        => this.ReportUnavailableQualifier(name, scope) is { } qualifier ? this.CompleteDependent(name, qualifier)
+            : this.ReadIdentityLimit(name, scope, read) ? null : this.FailUnselected(name, this.MissingFailure(name, missing));
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.

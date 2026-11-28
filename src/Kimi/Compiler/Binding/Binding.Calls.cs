@@ -148,6 +148,7 @@ public sealed partial class Binding
                 : this.Record(call, BindingFailure.NotCallable, []);
         }
 
+        IdentityClasses? read = null; // the callable rows' reading (TryCallable), which a not-callable record reads (ReadIdentityLimit)
         if (callee is InvocationKoto || group?.Kind != BindingSymbolKind.Function)
         {
             var callableType = callee is InvocationKoto || group is null ? callee.BoundType : this.BindReference(callee, group, scope);
@@ -155,7 +156,7 @@ public sealed partial class Binding
             BoundType signature = null!;
             var receiverKind = SemanticsKind.Owner;
             var unformedMark = this.unformedWrites;
-            var callable = callableType is not null && this.TryCallable(callableType, scope, out signature, out receiverKind, out several);
+            var callable = callableType is not null && this.TryCallable(callableType, scope, out signature, out receiverKind, out several, out read);
             if (this.UnformedSince(unformedMark))
             {
                 // DECISIONS BU-240 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents:
@@ -184,7 +185,8 @@ public sealed partial class Binding
                 // target, no group of this call. Without a Type it rests the call (its failure is the call's prerequisite); with one that
                 // takes no call it is not callable: the rule of a callee whose symbol is no function's (below), taken before the arguments
                 // are prepared against a group, so they are bound on their own (CompleteUnselected).
-                return callableType is null ? Complete(call, null) : this.Record(call, BindingFailure.NotCallable, []);
+                return callableType is null ? Complete(call, null)
+                    : this.ReadIdentityLimit(call, scope, read) ? null : this.Record(call, BindingFailure.NotCallable, []);
             }
         }
 
@@ -197,7 +199,7 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(callee, qualifier);
             }
-            else
+            else if (!this.ReadIdentityLimit(callee, scope, this.RequirementRead(callee)))
             {
                 this.FailUnselected(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, BindingFailure.MissingName));
             }
@@ -210,7 +212,8 @@ public sealed partial class Binding
             // A callee whose symbol is no function's: without a Type it rests the call, with one that takes no call it is not callable,
             // the rule of the invocation callee's exit (above); here the arguments were prepared in the call's frame, so a failed one is
             // the call's prerequisite.
-            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Record(call, BindingFailure.NotCallable, []);
+            return this.BindReference(callee, group, scope) is null ? Complete(call, null)
+                : this.ReadIdentityLimit(call, scope, read) ? null : this.Record(call, BindingFailure.NotCallable, []);
         }
 
         var requirementGroup = candidates.Requirements;

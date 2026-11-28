@@ -167,25 +167,37 @@ public sealed partial class Binding
     private BoundType? RecordNumbered(Koto node, BindingFailure failure, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
         => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
 
-    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them; a node's further mismatch with other sides takes its own
-    // key (RecordNumbered). e2-7 (G1406-11 C-a, G1406-12; SPEC 8.3.3 Limits, R2.1's Mismatch writers row): a mismatch whose sides'
-    // reading is a Limited reading's table (R(A)) with no recorded error class is the analysis limit, not a Type mismatch: the reading's
-    // one refusal (ReadIdentityLimit, in a site frame at the node where none is open), the declaration's AnalysisLimit_Kd once per run
-    // (RefuseProof), on which the node rests as its asking node (ReadIdentityLimit, rule W) where the record stands at another node, only
-    // once it is recorded (RefuseProof answers null while a trial holds it, G1406-16 C4); it records nothing of its own.
+    // SPEC 23.3: a mismatch of a check that compared its sides' Types. e2-7 (G1406-11 C-a, G1406-12; SPEC 8.3.3 Limits, R2.1's Mismatch
+    // writers row): it rests on the limit only where the identity judge's reading of its sides (IdentityRead: none where known heads
+    // differ, a form meets a known head or a premise error is read; G1406-58/-59/-60) is Limited. Then it is the analysis limit, not a
+    // Type mismatch: the reading's one refusal (ReadIdentityLimit, in a site frame at the node where none is open), the declaration's
+    // AnalysisLimit_Kd once per run (RefuseProof), on which the node rests as its asking node (rule W) where the record stands at another
+    // node, only once it is recorded (RefuseProof answers null while a trial holds it, G1406-16 C4); it records nothing of its own.
+    // Otherwise the mismatch is decided (RecordDecidedMismatch). A form side, either side (a literal's or a closure's actual, a position's
+    // expected), is the reading's form side.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
         var scope = this.ConstraintScope(node);
-        if (this.IdentityPremiseErrorRead(scope, actual.Type, expected.Type) is { } premise)
+        var read = HasTypeIdentity(scope)
+            ? this.IdentityRead(scope, expected.Type is null ? null : actual.Type, expected.Type ?? actual.Type!, this.ClassesOf(scope, [actual.Type, expected.Type], out _))
+            : null;
+        var frame = this.OpenQuerySite(node);
+        var limited = this.ReadIdentityLimit(node, scope, read);
+        this.CloseQuerySite(frame);
+        return limited ? null : this.RecordDecidedMismatch(node, at, actual, expected);
+    }
+
+    // SPEC 23.3 (G1406-61): the record of a decided mismatch: the sides it compared and the syntax that shows them, with the record's
+    // dependence on a premise error its sides read (rule W, G1406-60); a node's further mismatch with other sides takes its own key
+    // (RecordNumbered). RecordTypeMismatch reaches it once its reading is not Limited. A check whose mismatch compares no Type calls it
+    // with no reading: a floating-point literal at a generic literal position (BindNodeCore's and BindUnary's; SPEC 12.3.1, 8.7.4),
+    // which the literal decides alone once TakesGenericLiterals holds, a Proven that stands at a limit (SPEC 8.3.3). A check that reads
+    // the Type side's head (a literal's category at DefaultLiteralType's Type, a closure's shape and arity) asks RecordTypeMismatch.
+    private BoundType? RecordDecidedMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
+    {
+        if (this.IdentityPremiseErrorRead(this.ConstraintScope(node), actual.Type, expected.Type) is { } premise)
         {
             this.AddPrerequisite(node, premise.Use); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
-        }
-        else if (HasTypeIdentity(scope) && this.ClassesOf(scope, [actual.Type, expected.Type], out _) is { Limited: true } read)
-        {
-            var frame = this.OpenQuerySite(node);
-            this.ReadIdentityLimit(node, scope, read);
-            this.CloseQuerySite(frame);
-            return null;
         }
 
         var site = this.FactSite(at);

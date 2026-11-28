@@ -527,8 +527,8 @@ public sealed partial class Binding
                 if (this.TakesGenericLiterals(expected, scope, node))
                 {
                     // SPEC 12.3.1, 8.7.4: a generic literal position takes integer literals only (a floating-point literal adopts only an
-                    // expected f32 or f64); the mismatch names both sides.
-                    return !number.IsInteger ? this.RecordTypeMismatch(node, node, new(null, MismatchForm.FloatingPointLiteral), expected!) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Record(node, BindingFailure.InvalidLiteral, []);
+                    // expected f32 or f64); the mismatch names both sides and compares no Type (RecordDecidedMismatch, G1406-61).
+                    return !number.IsInteger ? this.RecordDecidedMismatch(node, node, new(null, MismatchForm.FloatingPointLiteral), expected!) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Record(node, BindingFailure.InvalidLiteral, []);
                 }
 
                 var numberType = DefaultLiteralType(number, expected);
@@ -570,7 +570,7 @@ public sealed partial class Binding
                 var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)
                 {
-                    return this.FailMissing(member, scope, BindingFailure.MissingName);
+                    return this.FailMissing(member, scope, BindingFailure.MissingName, this.RequirementRead(member));
                 }
 
                 return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, this.PublishedTarget(member, memberSymbol, expected), null, scope, expected) : this.BindReference(member, memberSymbol, scope);

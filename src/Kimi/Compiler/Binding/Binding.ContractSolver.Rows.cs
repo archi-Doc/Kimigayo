@@ -190,8 +190,8 @@ public sealed partial class Binding
     // part of G, G1406-27; set at the root's first walk): one count, a
     // function of (root, G) and linear in both, so a closure whose classes grow without bound (two recursive associates double them a
     // round) ends however its rounds go. Rows past it spend the whole budget. Past the budget the closure ends (null) and CloseRoot
-    // files it Limited, so the round refuses nothing: a reader of a Limited root refuses (ReadIdentityLimit: AnalysisLimit_Kd, the
-    // premise closure's bound). So a closure builds at most PremiseClosureLimit round tables beside T(G), however often it re-roots,
+    // files it Limited, so the round refuses nothing: a judgment's writer over a Limited root's reading refuses (ReadIdentityLimit:
+    // AnalysisLimit_Kd, the premise closure's bound). So a closure builds at most PremiseClosureLimit round tables beside T(G), however often it re-roots,
     // each from at most `closure.Rows` rows, and keeps at most those and its last round's walk's.
     // Returns the round's table and the entry its walk reads, or null when the closure ended or the table's build answered none.
     private (IdentityClasses Table, ViewIndex Entry)? ExtendRound(ref (int Joined, int Spent, int Rooted, int Rows) closure, BindingScope scope, int serial, EvidenceView view, ViewIndex grounds, ViewIndex own)
@@ -211,7 +211,7 @@ public sealed partial class Binding
             }
             else if (++closure.Spent > PremiseClosureLimit || this.enumerateJoined > closure.Rows)
             {
-                closure.Spent = PremiseClosureLimit + 1; // the budget is spent: the closure is Limited (CloseRoot reads it); its reader refuses
+                closure.Spent = PremiseClosureLimit + 1; // the budget is spent: the closure is Limited (CloseRoot reads it)
                 return null;
             }
 
@@ -266,7 +266,7 @@ public sealed partial class Binding
     // as rows (C-f). A lower key in a later round's table re-roots and restarts with no rows; a restart onto a root filed in the
     // publication ends it. A walk whose rows join no two classes ends it with its rows; past its one budget
     // (PremiseClosureLimit: rounds and re-rootings together, G1406-19, and rows per Type of the root and G, O-532 (b)) it is Limited
-    // with the last round's rows, and its reader refuses (ReadIdentityLimit). Filed by FileClosure, which keeps E (the rows that join
+    // with the last round's rows, which a judgment's writer refuses (ReadIdentityLimit). Filed by FileClosure, which keeps E (the rows that join
     // the key's class), the entry's pair row and what the entry and its key spent (G1406-16 B1, C2). It records nothing: the scope's
     // premise error is its validation step's (RecordIdentityPremiseError, R3.2). A closure is a function of (root, G): no use's ask or
     // earlier request's rows enter it. Every proof limit its frame writes (its tables' builds, its walks, its key's nested closure,
@@ -474,11 +474,9 @@ public sealed partial class Binding
     // the kept rows, which are a first walk's, and joins the limit their walk wrote (W6, the class header's Not replayed). No row
     // is Alias and no identity is judged here (the walk's class keys alone).
     // Returns the request's identity classes, in which PremiseRows forms its column. G1406-12, e2-7 R3.3 (SPEC 8.3.3 Limits): it answers
-    // no judgment. Its rows at a Limited reading are cut at the round bound, so a reader whose answer the cut rows could make negative
-    // (CallableSelection, ValueCalls, EffectDeclarations, CallableEffects; Retention at `true`, G1406-16 C3; discovery's miss:
-    // RequirementMember, FindAssociated, G1406-57) refuses through ReadIdentityLimit with these classes and its asking node, once per reading;
-    // ExactAssumption and the adapter answer no rows judgment, and neither does discovery's found member (PremiseRows), whose use is
-    // judged afterwards.
+    // no judgment. Its rows at a Limited reading are cut at the round bound: its readers return these classes, and a judgment's writer
+    // whose answer the cut rows could make negative refuses (ReadIdentityLimit, G1406-64), once per reading; ExactAssumption and the
+    // adapter answer no rows judgment, and neither does discovery's found member (PremiseRows), whose use is judged afterwards.
     private IdentityClasses? FirstRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
         var (view, serial, classes, key, final, keep) = this.RowsRequest(subject, scope);
@@ -523,8 +521,8 @@ public sealed partial class Binding
 
     // R7-C2c2 c2-3a: the candidate readers' rows (name discovery: FindAssociated, RequirementMember): FirstRows' rows, whatever
     // their availability (a lookup is not a proof: the use is judged, SPEC 9.6, 8.5.2), with one non-Alias row per Contract
-    // (FormAliases). A candidate reader demands no Contract, so it never extends. Returns FirstRows' classes, with which a miss
-    // refuses (G1406-57).
+    // (FormAliases). A candidate reader demands no Contract, so it never extends. Returns FirstRows' classes, which a miss's writer
+    // reads (G1406-64).
     private IdentityClasses? PremiseRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
         var start = into.Count;

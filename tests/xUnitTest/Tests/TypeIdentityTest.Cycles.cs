@@ -144,13 +144,15 @@ public partial class TypeIdentityTest
         // SPEC 8.3.3): fu's lookups ask no judgment of T's cut closure (neither Position nor an arithmetic Contract holds a `next` or a
         // `getG`, so no PrimitiveInteger judgment is asked), so its result depends on no answer the limit cuts.
         { "u-callee", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\n", string.Empty },
-        { "u-bad", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "AnalysisLimit_Kd" }, // e2-7 (G1406-56, G1406-53 S5, SPEC 8.3.3; Q13 class 4, counted): fu is valid and clean (u-callee); fuBad's call reads T's closure, which the round limit cuts, a resource failure at the declaration that reaches it, and the conflict at `y = 5` reads that call's refused retention directly (rule W). The program stays rejected
+        { "u-bad", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "OwnershipDepthLimit_Kd" }, // e2-7 (G1406-56, G1406-53 S5, SPEC 8.3.3): fu is valid and clean (u-callee); fuBad's call is u-con's rule (G1406-65, G1406-67): its Loan judgment reads fu's retention, which reads T's closure past the round bound, so the call's retention is the limit, a resource failure at the call (OwnershipDepthLimit_Kd), and the conflict at `y = 5` reads that retention directly (rule W); Q13 class 4, counted: against fe99a67df5 AnalysisLimit_Kd -> OwnershipDepthLimit_Kd at the same node, Resource to Resource. The program stays rejected
         // e2-7 (G1406-56 x1-dep; SPEC 8.7.4, 8.3.3): fu's `src.tryResolve(0)` finds HasTry's requirement, and Position's would join if T
         // were PrimitiveInteger, so the lookup's result depends on that judgment, which T's cut closure leaves Unknown: a resource failure
-        // at fu's member, which the callee keeps where its call resolves it (G1406-54); fuBad's records read fu's failure directly (rule W).
-        // Before, the Resolved callee hid it, and the call published a PrerequisiteUnavailable_Kd resting on a cause with no record.
-        { "x1-dep", Mk + "contract HasTry\n    func tryResolve(self: ref/Self, length: isize) -> Option<isize>\nfunc fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    T is HasTry\n    let r = src.tryResolve(0)\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    T is HasTry\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "AnalysisLimit_Kd" },
-        { "u-con", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    return\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "AnalysisLimit_Kd" }, // e2-7 (G1406-53 S4, G1406-26 D1, SPEC 8.3.3; Q13 class 4, counted): fu's handed signatures read T's closure, which the round limit cuts, so their universal answer over the cut rows is refused at the call, a resource failure at the declaration that reaches it; the conflict at `y = 5` reads that call's refused retention directly, so it rests on the limit (rule W). The program stays rejected
+        // at fu's member, which the callee keeps where its call resolves it (G1406-54). Before, the Resolved callee hid it, and the call
+        // published a PrerequisiteUnavailable_Kd resting on a cause with no record. fuBad's call is u-con's rule (G1406-65, G1406-66): its
+        // Loan judgment reads fu's signature, not fu's failed body, so it is independent (SPEC 23.1.2), and fu's retention reads T's cut
+        // closure, a resource failure at the call (OwnershipDepthLimit_Kd); Q13: a record added on a rejected program, counted.
+        { "x1-dep", Mk + "contract HasTry\n    func tryResolve(self: ref/Self, length: isize) -> Option<isize>\nfunc fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    T is HasTry\n    let r = src.tryResolve(0)\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    T is HasTry\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "AnalysisLimit_Kd OwnershipDepthLimit_Kd" },
+        { "u-con", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    return\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "OwnershipDepthLimit_Kd" }, // e2-7 (G1406-53 S4, G1406-26 D1, SPEC 8.3.3; Q13 class 4, counted): fu's handed signatures read T's closure, which the round limit cuts, so the call's retention is the limit (CallRetention.Limit), which the ownership check after the pass reads as Deep: a resource failure at the call (G1406-65: no reader refuses, and the retention walk runs after the pass, where its refusal records nothing; against fe99a67df5 AnalysisLimit_Kd -> OwnershipDepthLimit_Kd at the same node, Resource to Resource). The program stays rejected
         { "recn", Mk + "func f<T>(t: ref/T)\n    T is Mk\n    need(t)\n", "AnalysisLimit_Kd" }, // e2-7 (G1406-53 S4, G1406-26 D1, SPEC 8.3.3; Q13 class 4, counted): Mk's `Self.(Mk).Next.(Mk).Up is Self` gives T a closure the round limit cuts, so `T is Inner` is Unknown over a Limited reading; D1 refuses that negative answer, a resource failure at the same use, where dev read the cut rows as a refutation (UnprovenConstraint_Kd). The program stays rejected
         { "recv", Mk + "func f<T>(x: ref/T.(Mk).Next.(Mk).Up)\n    T is Mk\n    T is Inner\n    need(x)\n", string.Empty },
         { "pathq", "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    return\n", string.Empty },
@@ -362,6 +364,10 @@ public partial class TypeIdentityTest
     private const string Pq =
         "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\n";
 
+    // Pq with a generic integer Up (G1406-61): a literal at Up is at a generic literal position (SPEC 12.3.1, 8.7.4).
+    private const string Gq =
+        "contract Pq\n    associate Next is Pq\n    associate Up is PrimitiveInteger\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\n";
+
     private const string PqNeeds =
         "func needIO<X>(x: ref/X)\n    X is Inner or Other\n    return\nfunc needOI<X>(x: ref/X)\n    X is Other or Inner\n" +
         "    return\nfunc needB<X>(x: ref/X)\n    X is Other\n    X is Inner\n    return\n";
@@ -469,7 +475,16 @@ public partial class TypeIdentityTest
     // at known heads, an answer that reads no closure, so it keeps its UnprovenConstraint_Kd (bt-indep0), beside a let the closure
     // leaves open, whose record is the limit's (bt-indep). G1406-57 (SPEC 8.5.2, 8.3.3): the fa- form reads `T.(Pq).Up.F`
     // unqualified, so F is discovered over x's rows: at `T.Next^4.Up` it is found (fa-2, VALID, accepted); at 3 links x's class never
-    // closes (fa-o3, INVALID), so the miss is the limit's record, not a Language miss.
+    // closes (fa-o3, INVALID), so the miss is the limit's record, not a Language miss. G1406-58/-59/-60 (SPEC 8.2.3, 8.3.3): a mismatch
+    // under Pq's cut closure whose heads differ reads no closure, so it keeps its TypeMismatch_Kd: Option against Result (b1o, b1p), a literal
+    // (b1q) or a closure (f3) at Option, a closure's arity at a Function Type (f-clo); a literal at Up itself reads Up's class, so it
+    // is the limit's record (f-lit). d1v's clause is reflexive after substitution, so it is accepted. G1406-65 (SPEC 8.2.3, 10.8;
+    // acceptance moves against fe99a67df5, as dev): with U explicit no callable evidence is needed, so a choice refuses nothing and the
+    // clause's Proven stands (d1v, p2-proj, p5-joined, whose Option<T.Next^2.Up> is Option<T.Up> by Pq's own clause); p4-inferred is
+    // invalid, T in no argument, and keeps its UnboundTypeArgument_Kd; d1v-na, d1v-np, p2-na and p5-na (no U slot evidence, the
+    // subject's Member judged, R7-C2c2 c2-4) are accepted. G1406-61 (SPEC 12.3.1, 8.7.4):
+    // under Gq, Up is proven PrimitiveInteger (a Proven stands at a limit), so a floating-point literal at Up, unsigned or signed,
+    // is decided by the literal alone and keeps its TypeMismatch_Kd (g-flt, g-neg), and an integer literal is accepted (g-int).
     public static TheoryData<string, string, string> RoundBoundProgramRows => new()
     {
         { "spm-a", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    need(x)\npublic func main() => ()\n", string.Empty },
@@ -512,6 +527,29 @@ public partial class TypeIdentityTest
         { "fa-2", Fa(Up(4, "Inner")), string.Empty },
         { "bt-indep", "contract Bt\n    associate L is Bt\n    associate R is Bt\n    associate Up\n    Self.(Bt).L.(Bt).Up is Self\n    Self.(Bt).R.(Bt).Up is Self\nfunc same<A, B>(x: ref/A, y: ref/B) -> i32\n    A is B\n    return 0\nfunc probe<T>(a: ref/T.(Bt).L.(Bt).Up, o: ref/Option<T>, r: ref/Result<T, i32>) -> i32\n    T is Bt\n    let x: ref/T.(Bt).R = a\n    return same(o, r)\npublic func main() => ()\n", "AnalysisLimit_Kd UnprovenConstraint_Kd" },
         { "bt-indep0", "contract Bt\n    associate L is Bt\n    associate R is Bt\n    associate Up\n    Self.(Bt).L.(Bt).Up is Self\n    Self.(Bt).R.(Bt).Up is Self\nfunc same<A, B>(x: ref/A, y: ref/B) -> i32\n    A is B\n    return 0\nfunc probe<T>(o: ref/Option<T>, r: ref/Result<T, i32>) -> i32\n    T is Bt\n    return same(o, r)\npublic func main() => ()\n", "UnprovenConstraint_Kd" },
+        { "b1o", Pq + "func f<T>(o: Option<T.(Pq).Up>) -> i32\n    T is Pq\n    let r: Result<i32, i32> = o@move\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd" },
+        { "b1p", Pq + "func f<T>(o: ref/Option<T.(Pq).Up>) -> i32\n    T is Pq\n    let r: ref/Result<i32, i32> = o\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd" },
+        { "b1q", Pq + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let r: Option<T.(Pq).Up> = 1\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd" },
+        { "f3", Pq + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let g: Option<T.(Pq).Up> = func () => 1\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd" },
+        { "f-clo", Pq + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let g: (T.(Pq).Up) -> i32 = func (a, b) => 1\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd" },
+        { "f-lit", Pq + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let r: T.(Pq).Up = 1\n    return 0\npublic func main() => ()\n", "AnalysisLimit_Kd" },
+        { "d1v", Pq + "func need<U, T>(u: ref/U) -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>(o: ref/Option<T.(Pq).Up>) -> i32\n    T is Pq\n    return need<Option<T.(Pq).Up>, T>(o)\npublic func main() => ()\n", string.Empty },
+        { "p2-proj", Pq + "func need<U, T>(u: ref/U) -> i32\n    T is Pq\n    U is T.(Pq).Up\n    return 0\nfunc f<T>(o: ref/T.(Pq).Up) -> i32\n    T is Pq\n    return need<T.(Pq).Up, T>(o)\npublic func main() => ()\n", string.Empty },
+        { "p5-joined", Pq + "func need<U, T>(u: ref/U) -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>(o: ref/Option<T.(Pq).Next.(Pq).Next.(Pq).Up>) -> i32\n    T is Pq\n    return need<Option<T.(Pq).Next.(Pq).Next.(Pq).Up>, T>(o)\npublic func main() => ()\n", string.Empty },
+        { "p4-inferred", Pq + "func need<U, T>(u: ref/U) -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>(o: ref/Option<T.(Pq).Up>) -> i32\n    T is Pq\n    return need(o)\npublic func main() => ()\n", "UnboundTypeArgument_Kd" },
+        // G1406-67 (SPEC 10.5.2, 10.8, 8.3.3): U's Callable Constraint, at T.Next^40.Up in U's class (8.2.3), gives the fixed expected
+        // call signature S = `() -> X`, and x's `() -> i32` binds X through S; X is in no parameter and S's Constraint needs no slot
+        // the call leaves unbound. t1: S past the round bound, so "X unbound" rests on the cut, the limit at the call; t1b: S inside
+        // the bound, X = i32, accepted.
+        { "t1", Called("func need<U, X, T>(u: ref/U, t: ref/T) -> i32\n    T is Pq\n    U is T.(Pq).Up\n" + Up(40, "Callable<() -> X>") + "    return 0\n", "x: ref/T.(Pq).Up, t: ref/T) -> i32", "    T.(Pq).Up is Callable<() -> i32>\n    return need(x, t)\n"), "AnalysisLimit_Kd" },
+        { "t1b", Called("func need<U, X, T>(u: ref/U, t: ref/T) -> i32\n    T is Pq\n    U is T.(Pq).Up\n" + Up(1, "Callable<() -> X>") + "    return 0\n", "x: ref/T.(Pq).Up, t: ref/T) -> i32", "    T.(Pq).Up is Callable<() -> i32>\n    return need(x, t)\n"), string.Empty },
+        { "d1v-na", Pq + "func need<U, T>() -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>() -> i32\n    T is Pq\n    return need<Option<T.(Pq).Up>, T>()\npublic func main() => ()\n", string.Empty },
+        { "d1v-np", Pq + "func need<U, T>(u: ref/Option<T.(Pq).Up>) -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>(o: ref/Option<T.(Pq).Up>) -> i32\n    T is Pq\n    return need<Option<T.(Pq).Up>, T>(o)\npublic func main() => ()\n", string.Empty },
+        { "p2-na", Pq + "func need<U, T>() -> i32\n    T is Pq\n    U is T.(Pq).Up\n    return 0\nfunc f<T>() -> i32\n    T is Pq\n    return need<T.(Pq).Up, T>()\npublic func main() => ()\n", string.Empty },
+        { "p5-na", Pq + "func need<U, T>() -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>() -> i32\n    T is Pq\n    return need<Option<T.(Pq).Next.(Pq).Next.(Pq).Up>, T>()\npublic func main() => ()\n", string.Empty },
+        { "g-flt", Gq + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let r: T.(Pq).Up = 1.5\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd" },
+        { "g-neg", Gq + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let r: T.(Pq).Up = -1.5\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd" },
+        { "g-int", Gq + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let r: T.(Pq).Up = 1\n    return 0\npublic func main() => ()\n", string.Empty },
     };
 
     [Theory]
@@ -660,12 +698,19 @@ public partial class TypeIdentityTest
     // valid: by the grounds (8.2.3) x at `T.(Pq).Up` is x at `T.Next^k.Up` for every k, so the premise at 40 links, past the round
     // bound, applies; the allowed outcomes are acceptance or the limit once at the use (8.3.3), never a Language record from the cut
     // rows (one failed requirement, the callee's premise, which the limit answers: 23.1.2). c5c-nc: x's one Callable premise past the
-    // bound (71dc3559a: NotCallable_Kd beside the limit, which its row pins under PLAN G1495); c5c-sel: two premises within the
-    // bound and the applicable one past it (FailCallableCandidates); c5c-ef: a confined Callable premise past the bound used through a
-    // confined requirement (UnsatisfiedEffectBound_Kd).
+    // bound, the not-callable record's writer refusing over the callable rows' reading (Calls.cs; G1406-64, G1406-65: PLAN G1495
+    // closes, no NotCallable_Kd beside the limit); c5c-sel: two premises within the bound and the applicable one past it
+    // (FailCallableCandidates); c5c-ef: a confined Callable premise past the bound used through a confined requirement
+    // (UnsatisfiedEffectBound_Kd). G1406-65 (the writers of a reader's miss; SPEC 8.3.3): e12-inf and e12-exp, F's Callable clause
+    // judged over x's cut rows (10.8; the judge's own Unknown, 12a (i)); e12-noexp, R bound only by F's call signature, which the
+    // cut rows hide (the unbound-slot record's writer, 12a (ii)); e7-req, Hm's requirement `get` through Up's premise (8.4; the
+    // requirement miss's writer); e1-unq, `Up.Z` naming Hz's Z unqualified (8.5.2; the associated miss's writer); e1-assoc, the
+    // qualified `.(Hz).Z`, a conformance judgment. Each -in twin has its premise within the bound and is accepted. Against dev (Q13
+    // class 3, counted, to 8.3.3): c5c-nc NotCallable_Kd, e12-inf and e12-exp UnprovenConstraint_Kd, e12-noexp UnboundTypeArgument_Kd,
+    // e1-unq UnresolvedBinding_Kd.
     public static TheoryData<string, string, string> RefusedReadingReaderRows => new()
     {
-        { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x() | NotCallable_Kd: return x()" }, // PLAN G1495 (G1406-52; Q17 class 3, pre-existing: dev records NotCallable_Kd alone on this valid program). e2-7 adds the limit (SPEC 8.3.3); the NotCallable_Kd is the open row's, and its fix leaves the limit alone (G1406-18 C1)
+        { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x()" }, // PLAN G1495 closes (G1406-65; Q13 class 3, counted: dev records NotCallable_Kd alone on this valid program, fe99a67df5 the limit beside it; 23.1.2, one failed requirement)
         {
             "c5c-sel", Called(
                 string.Empty,
@@ -680,6 +725,16 @@ public partial class TypeIdentityTest
                 $"    T{Next(40)}.(Pq).Up is Callable<(raw/u8) -> ()>\n        effect confined\n    applyC(w, p)\n"),
             "AnalysisLimit_Kd: applyC(w, p)"
         },
+        { "e12-inf", Called("func call<F, R>(f: ref/F) -> R\n    F is Callable<() -> R>\n    return f()\n", "x: ref/T.(Pq).Up) -> i32", Up(40, "Callable<() -> i32>") + "    return call(x)\n"), "AnalysisLimit_Kd: return call(x)" },
+        { "e12-exp", Called("func call<F, R>(f: ref/F) -> R\n    F is Callable<() -> R>\n    return f()\n", "x: ref/T.(Pq).Up) -> i32", Up(40, "Callable<() -> i32>") + "    return call<T.(Pq).Up, i32>(x)\n"), "AnalysisLimit_Kd: return call<T.(Pq).Up, i32>(x)" },
+        { "e12-noexp", Called("func call<F, R>(f: ref/F) -> R\n    F is Callable<() -> R>\n    return f()\n", "x: ref/T.(Pq).Up) -> i32", Up(40, "Callable<() -> i32>") + "    let r = call(x)\n    return 0\n"), "AnalysisLimit_Kd: let r = call(x)" },
+        { "e12-inf-in", Called("func call<F, R>(f: ref/F) -> R\n    F is Callable<() -> R>\n    return f()\n", "x: ref/T.(Pq).Up) -> i32", Up(1, "Callable<() -> i32>") + "    return call(x)\n"), string.Empty },
+        { "e7-req", Called("contract Hm\n    func get(self: ref/Self) -> i32\n", "x: ref/T.(Pq).Up) -> i32", Up(40, "Hm") + "    return x.get()\n"), "AnalysisLimit_Kd: return x.get()" },
+        { "e7-req-in", Called("contract Hm\n    func get(self: ref/Self) -> i32\n", "x: ref/T.(Pq).Up) -> i32", Up(1, "Hm") + "    return x.get()\n"), string.Empty },
+        { "e1-unq", Called("contract Hz\n    associate Z\n", "x: ref/T.(Pq).Up.Z) -> i32", Up(40, "Hz") + "    return 0\n"), "AnalysisLimit_Kd: func f<T>(x: ref/T.(Pq).Up.Z) -> i32" },
+        { "e1-unq-in", Called("contract Hz\n    associate Z\n", "x: ref/T.(Pq).Up.Z) -> i32", Up(1, "Hz") + "    return 0\n"), string.Empty },
+        { "e1-assoc", Called("contract Hz\n    associate Z\n", "x: ref/T.(Pq).Up.(Hz).Z) -> i32", Up(40, "Hz") + "    return 0\n"), "AnalysisLimit_Kd: func f<T>(x: ref/T.(Pq).Up.(Hz).Z) -> i32" },
+        { "e1-assoc-in", Called("contract Hz\n    associate Z\n", "x: ref/T.(Pq).Up.(Hz).Z) -> i32", Up(1, "Hz") + "    return 0\n"), string.Empty },
     };
 
     [Theory]

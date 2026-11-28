@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // closed under decomposition and congruence, each class with its state and its finality.
 public sealed partial class Binding
 {
-    private sealed partial class IdentityClasses(Binding binding)
+    internal sealed partial class IdentityClasses(Binding binding)
     {
         internal const byte One = 0;
         internal const byte Limit = 1; // R7-C2c2 c2-4: the binding grounds' closure limit (PremiseClosureLimit), below every error state
@@ -67,7 +67,7 @@ public sealed partial class Binding
         internal int Work { get; private set; }
 
         // G1406-11 C-a: whether this is a Limited reading's table (R(A), Binding.ReadingOf, its one writer by MarkLimited);
-        // a judge left Unknown over it refuses (ReadIdentityLimit) and its Refuted answers false (Binding.IdentityRefuted). Open clears it.
+        // its judgment's writer refuses an answer left Unknown over it (ReadIdentityLimit) and its Refuted answers false (Binding.IdentityRefuted). Open clears it.
         internal bool Limited { get; private set; }
 
         // SPEC 8.2.3's Refuted at known heads (G1406-26 D1): whether `a` and `b` differ at a corresponding position where both heads are
@@ -95,9 +95,11 @@ public sealed partial class Binding
             }
 
             return false;
-
-            static bool Known(BoundType type) => !type.IsAbstract && !type.IsPairLayer && type.Kind is not (BoundTypeKind.Open or BoundTypeKind.OpenSlot);
         }
+
+        // A known head (Distinct's): no abstract Type, pair layer or open position, so a check that read only the head and its arity read
+        // no class (G1406-59: a written form's side, Binding.IdentityRead).
+        internal static bool Known(BoundType type) => !type.IsAbstract && !type.IsPairLayer && type.Kind is not (BoundTypeKind.Open or BoundTypeKind.OpenSlot);
 
         internal void Read(Completion availability) => this.provisional |= availability == Completion.Provisional;
 

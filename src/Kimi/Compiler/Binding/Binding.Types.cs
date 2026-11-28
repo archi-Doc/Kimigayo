@@ -357,18 +357,19 @@ public sealed partial class Binding
         var symbol = head.Symbol;
         if (syntax is MemberAccessKoto projection && head.End == PathEnd.Projection)
         {
-            return this.BindAssociatedProjection(projection, scope) ?? this.FailMissing(syntax, scope, BindingFailure.MissingType);
+            return this.BindAssociatedProjection(projection, scope) ?? this.FailMissing(syntax, scope, BindingFailure.MissingType, null);
         }
 
+        AssociatedSearch search = default;
         if (symbol is null && this.EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
         {
             var name = syntax is IdentifierNameKoto identifier ? identifier.IdentifierName : ((TypeSemanticsKoto)syntax).Identifier;
-            symbol = this.FindAssociated(contractSelf, scope, name, null, syntax);
+            symbol = this.FindAssociated(contractSelf, scope, name, null, syntax, out search);
         }
 
         if (symbol is null)
         {
-            return this.FailMissing(this.UnselectedTypeSite(syntax), scope, BindingFailure.MissingType);
+            return this.FailMissing(this.UnselectedTypeSite(syntax), scope, BindingFailure.MissingType, search.MissRead);
         }
 
         syntax.BoundSymbol = symbol;
@@ -390,15 +391,16 @@ public sealed partial class Binding
                 return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
-            symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax, out var reference);
+            symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax, out search);
             if (symbol is null)
             {
+                this.ReadIdentityLimit(syntax, scope, search.MissRead); // SPEC 8.3.3: a miss over cut rows is the limit's
                 return null;
             }
 
             syntax.BoundSymbol = symbol;
 
-            return this.NormalizedProjection(this.ProjectionIdentity(self, symbol, reference, null), scope, applyingOrigins);
+            return this.NormalizedProjection(this.ProjectionIdentity(self, symbol, search.Reference, null), scope, applyingOrigins);
         }
 
         if (symbol.Kind == BindingSymbolKind.SemanticsTarget && !IsDirectObjectTarget(syntax))
@@ -428,7 +430,7 @@ public sealed partial class Binding
             // A missing Name, a head that is no Type or a wrong arity (the symbol's own: a Self has none) forms no application (SPEC 9.5,
             // 9.7), and each is its own record.
             this.BindUnappliedArguments(generic, scope, context.Nested);
-            return definition is null ? this.FailMissing(this.UnselectedTypeSite(generic), scope, BindingFailure.MissingType)
+            return definition is null ? this.FailMissing(this.UnselectedTypeSite(generic), scope, BindingFailure.MissingType, null)
                 : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
                 : this.RecordArity(generic, definition, definition.GenericArity, generic.TypeArguments.Count);
         }

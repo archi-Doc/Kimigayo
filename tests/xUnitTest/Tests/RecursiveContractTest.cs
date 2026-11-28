@@ -637,7 +637,10 @@ public sealed partial class RecursiveContractTest
     // again at uses"): the candidate's result fit reads the premise error as its limit (IdentityPremiseErrorRead), but the selection
     // rejects on the fit's answer and its NoneApplicable record reads no limit (the PLAN open issue). ord-a, ord-b and arg-b are valid
     // and rejected before e2-7 and after it (Q13 class 3, G1406-8 Stop 4; G1406-60): e2-7 does not deliver them, so they stay Explicit
-    // until the unit of their PLAN open issue (E27's class 3 row, rev 69's schedule).
+    // until the unit of their PLAN open issue (E27's class 3 row, rev 69's schedule). tdec is rejected at `func probe`, not at its
+    // clause (Q13 class 4 against its label; G1406-60, G1406-61): its error group is formed by decomposing A's class, and the clause's
+    // sides have no part in the group (PremiseErrorClause), so the record is the owner's; it stays Explicit until the unit of its PLAN
+    // open issue (E27's row beside the class 3 row).
     [InlineData("e2-7", "tconf2", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is i32\n    return 0\n", "InvalidConstraint_Kd: T.(KP).Next.(KP).V is i32")]
     [InlineData("e2-7", "tdec", "contract KS\n    associate V\n    Self.(KS).V is string\ncontract K\n    associate A\n    associate B\n    associate C is KS\n    Self.(K).A is Option<Self.(K).C.(KS).V>\n    Self.(K).B is Option<i32>\nfunc probe<T>(t: ref/T) -> i32\n    T is K\n    T.(K).A is T.(K).B\n    return 0\n", "InvalidConstraint_Kd: T.(K).A is T.(K).B", Explicit = true)]
     [InlineData("guard", "hc-use", "contract HC\n    associate Next is HC\n    associate V\n    Self.(HC).V is string\n    Self.(HC).Next.(HC).V is i32\n    func deep(self: ref/Self) -> ref/Self.(HC).Next.(HC).V\nfunc probe<T>(t: ref/T) -> i32\n    T is HC\n    let s: ref/i32 = t.deep()\n    return 0\n", "InvalidConstraint_Kd: Self.(HC).Next.(HC).V is i32 | NoApplicableOverload_Kd: let s: ref/i32 = t.deep()")]
@@ -670,6 +673,10 @@ public sealed partial class RecursiveContractTest
     [InlineData("e2-7", "pqerr-use", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is string\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32\n    let s: ref/i32 = x\n    return 0\n", "InvalidConstraint_Kd: T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32")]
     [InlineData("e2-7", "mkv-a", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let s: ref/string = t.d3v()\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    return 0\n", "")]
     [InlineData("e2-7", "mkv-b", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    let s: ref/string = t.d3v()\n    return 0\n", "")]
+    // G1406-60 N2 (G1406-55 S3's filing; SPEC 8.2.3, 8.3.3 Finality): a member of its key's closure rows (`T.Next^4.Up`, filed under
+    // the key's closure where the key is asked first) asked before its key (s3-mk) or after it (s3-km) reads one identity: both accepted.
+    [InlineData("guard", "s3-mk", PathEquation + "func f<T>(y: ref/T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up) -> i32\n    T is Pq\n    let k: ref/T.(Pq).Up = y\n    return 0\n", "")]
+    [InlineData("guard", "s3-km", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let m: ref/T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up = x\n    return 0\n", "")]
 
     // SPEC 8.3.2 Contract refinement, 8.4.1, 8.4.3 (R7-C2c2 c2-5a; PLAN G402, G837, G849): `T is C<i32>` supplies C's own and
     // inherited Constraints with T for Self and i32 for C's parameter, at every projection a query needs: a clause naming the Contract's

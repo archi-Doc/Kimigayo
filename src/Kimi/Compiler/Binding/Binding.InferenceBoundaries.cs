@@ -207,8 +207,11 @@ public sealed partial class Binding
     // leaves without a Type, rests on the call. Where every unsolved slot stands at a position with a part whose own
     // binding failed (RestSlots), the call rests on such a part instead (SPEC 23.1.2; DECISIONS U1.6h-1): its record is that part's.
     // Otherwise the record names the first slot that does not rest (`boundary`): a slot at a failed part's position is no independent fact.
-    // The record is the selection's (RecordSelection), so a call that already failed keeps its first failure.
-    private BoundType? FailUnboundSlots(in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations)
+    // The record is the selection's (RecordSelection), so a call that already failed keeps its first failure. Where the candidate's
+    // callable evidence missed a known call signature over a Limited reading (`read`, its row's CallableRead), the slot that signature
+    // could bind is the limit's instead (ReadIdentityLimit; SPEC 8.3.3, G1406-65 12a (ii)), unless the reading is cut over a Constraint
+    // that needs a slot the call leaves unbound, which is not judged (CutNamesSlots; SPEC 10.8, G1406-66: p4-inferred, t1).
+    private BoundType? FailUnboundSlots(in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, IdentityClasses? read)
     {
         var (call, selected, scope, self, declaringType) = (solution.Call, solution.Function, solution.Scope, solution.Self, solution.DeclaringType);
         var slots = solution.Types;
@@ -219,6 +222,7 @@ public sealed partial class Binding
         try
         {
             this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref boundary);
+            var limit = read is { Limited: true } && !this.CutNamesSlots(read, CallSlotOwner(selected), boundary) ? read : null;
             Koto? failed = null;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
@@ -279,6 +283,11 @@ public sealed partial class Binding
             finally
             {
                 this.activeRequirementContract = contract;
+            }
+
+            if (this.ReadIdentityLimit(call, scope, limit))
+            {
+                return null;
             }
 
             this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(CallOwnSlots(selected)[first]), 0));

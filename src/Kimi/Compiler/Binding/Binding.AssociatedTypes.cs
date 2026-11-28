@@ -79,20 +79,15 @@ public sealed partial class Binding
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use)
         => this.FindAssociated(type, scope, name, qualifier, use, out _);
 
-    // The associated Type `name` of `type`, its declaring reference out; an ambiguity is recorded at `use` (SPEC 8.5.2).
-    private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use, out BindingSymbol? reference)
+    // The associated Type `name` of `type`, its search out (the declaring reference, a miss's reading); an ambiguity is recorded at
+    // `use` (SPEC 8.5.2). A miss records nothing: its writer reads the search's MissRead (ReadIdentityLimit, G1406-64).
+    private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use, out AssociatedSearch search)
     {
-        var search = this.SearchAssociated(type, scope, name, qualifier, use);
-        reference = search.Reference;
+        search = this.SearchAssociated(type, scope, name, qualifier, use);
         if (search.Alternative is { } second)
         {
             this.RecordAssociatedAmbiguity(use, new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count);
             return null;
-        }
-
-        if (search.Found is null)
-        {
-            this.ReadIdentityLimit(use, scope, search.Classes); // SPEC 8.3.3 (G1406-57): a miss over cut rows is a negative answer
         }
 
         return search.Found;
@@ -148,7 +143,7 @@ public sealed partial class Binding
 
     // The search alone, recording nothing (a walk's question, 9.7.3's evidence): the candidate Contracts are the qualifier's, else the
     // Type's own Contract, the scope's Contract facts on it and its conformances; Source is the conformance that supplied the match,
-    // Classes the premise rows' (PremiseRows), with which FindAssociated's miss refuses.
+    // Classes the premise rows' (PremiseRows), which a miss's writer reads (MissRead).
     private AssociatedSearch SearchAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, QuerySite site)
     {
         BindingSymbol? found = null;
@@ -285,7 +280,7 @@ public sealed partial class Binding
             // nothing; one naming no Contract is the path's failing step, missing there.
             if (this.ProjectionQualifier(qualified, scope) is not { } contract)
             {
-                return WrittenReference(qualified.Right) is { BindingFailure: not BindingFailure.None } ? null : this.FailMissing(qualified, scope, BindingFailure.MissingType);
+                return WrittenReference(qualified.Right) is { BindingFailure: not BindingFailure.None } ? null : this.FailMissing(qualified, scope, BindingFailure.MissingType, null);
             }
 
             qualifier = contract;
@@ -317,7 +312,7 @@ public sealed partial class Binding
             return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
-        var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
+        var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var search);
         if (associated is null)
         {
             this.NoteEarlyProjection(syntax, type, scope, name, qualifier);
@@ -332,6 +327,10 @@ public sealed partial class Binding
                 {
                     this.PublishHiddenMember(syntax, hidden); // SPEC 9.4: a member Type of the normal form inaccessible from the use.
                 }
+                else
+                {
+                    this.ReadIdentityLimit(syntax, scope, search.MissRead); // SPEC 8.3.3: a miss over cut rows is the limit's
+                }
 
                 return null;
             }
@@ -345,7 +344,7 @@ public sealed partial class Binding
             return this.Record(syntax, BindingFailure.InvalidAssociatedType, []);
         }
 
-        var evidence = ProjectionEvidence(associated, reference, qualifier);
+        var evidence = ProjectionEvidence(associated, search.Reference, qualifier);
         this.projectionUses.Add((syntax, type, evidence));
         if (this.SuppliesPremises(type, evidence, scope, syntax))
         {
@@ -354,7 +353,7 @@ public sealed partial class Binding
             this.AddContractPremises(evidence.Contract!, type, scope);
         }
 
-        var projection = this.ProjectionIdentity(type, associated, reference, qualifier);
+        var projection = this.ProjectionIdentity(type, associated, search.Reference, qualifier);
         this.PublishProjectionMember(syntax, associated);
         Complete(syntax.Right, projection);
         if (!ReferenceEquals(receiver, syntax.Left))
@@ -384,7 +383,11 @@ public sealed partial class Binding
 
     // One associated search (SearchAssociated): the match, its declaring reference, a second distinct match, the match's conformance
     // and the classes its premise rows were read in.
-    private readonly record struct AssociatedSearch(BindingSymbol? Found, BindingSymbol? Reference, BoundRequirement? Alternative, BoundConformance? Source, IdentityClasses? Classes);
+    private readonly record struct AssociatedSearch(BindingSymbol? Found, BindingSymbol? Reference, BoundRequirement? Alternative, BoundConformance? Source, IdentityClasses? Classes)
+    {
+        // A miss's reading (none found; an ambiguity is a match), which the miss's writer reads (ReadIdentityLimit).
+        internal IdentityClasses? MissRead => this.Found is null ? this.Classes : null;
+    }
 
     // SPEC 8.5.2: only the suffix `.(C).` names a projection's Contract (its `C` in the Contract Reference row); `T.C.X` is an ordinary
     // path (9.6, 9.7.3), never read as `T.(C).X`.
@@ -510,16 +513,17 @@ public sealed partial class Binding
             CompleteQualifier(member.Left, selection, bound);
         }
 
-        BindingSymbol? reference = null;
-        var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out reference) : null;
+        AssociatedSearch search = default;
+        var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out search) : null;
         var candidates = 0;
         BoundConformance? selected = null;
         if (associated is null || (owner.Declaration is not ContractKoto &&
-            (selected = this.SelectConformance(self, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, scope, clause, out candidates)) is null))
+            (selected = this.SelectConformance(self, search.Reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, scope, clause, out candidates)) is null))
         {
             // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
-            // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
-            return this.Fail(clause, candidates != 0 ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
+            // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1). A miss
+            // over cut rows is the limit's (SPEC 8.3.3).
+            return associated is null && this.ReadIdentityLimit(clause, scope, search.MissRead) ? null : this.Fail(clause, candidates != 0 ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
         }
 
         var parameters = this.AssociatedParameters(associated.Declaration);
@@ -530,7 +534,7 @@ public sealed partial class Binding
 
         // SPEC 8.5.1, 8.5.5, 8.6.1: a bound reference names the conformance it selects, so the projection carries that conformance's
         // reference (`Iter<S.(HasItem).Item>` for a written `Iter<i32>` under `S.(HasItem).Item is i32`), the requirement its paths have.
-        var named = reference ?? qualifier;
+        var named = search.Reference ?? qualifier;
         var contract = named is not null && IsBoundContractReference(named) && selected is not null ? selected.Contract : named;
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, contract)], originArguments: parameters);
         clause.BoundSymbol = associated;

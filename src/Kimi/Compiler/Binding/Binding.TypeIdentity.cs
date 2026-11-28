@@ -463,20 +463,51 @@ public sealed partial class Binding
         return true;
     }
 
-    // G1406-11 C-a (SPEC 8.3.3 Limits), e2-7 R3.3: a judgment that its reading of a Limited table (R(A), ClassesOf) leaves unproven, or
-    // a rows reader's answer that the cut rows could make negative (FirstRows' readers), is refused (RefuseProof: AnalysisLimit, at
-    // the use whose check asked, else at the scope's owner), read from that reading alone, never from scope state; a judgment over a
-    // table that is not Limited reads nothing. G1406-18 C1 (rule W, SPEC 23.1.2): the asking `node`, whose check reads the negative
-    // answer, rests on the refusal's recorded site where that is another node (RestOnPart), so the check's later records over the same
-    // reading derive from the limit (IsDerived); a refusal held (a trial or proof) or after the pass records nothing and rests nothing.
-    // A judge inside a proof passes null: its answer reaches its check through the proof's own limit.
-    private void ReadIdentityLimit(Koto? node, BindingScope scope, IdentityClasses? classes)
+    // The identity limit (SPEC 8.3.3, 23.1.1; DECISIONS R7-M38, BU-22; G1406-64). Owner: Binding.TypeIdentity, over Proofs' RefuseProof.
+    // Input: the reading a judgment's own answer read (the IdentityClasses of IdentityRead, FirstRows, PremiseRows or
+    // SearchAssociated.Classes). Output: false, and nothing, unless the reading is Limited; then true, and the declaration's one refusal
+    // reached at `node` (RefuseProof; `node` rests on it where the refusal's node is another, rule W). Callers: a judgment's record
+    // writer, where its own answer is Refuted, Unknown or a miss (none, several), before its decided record, which it then omits
+    // (RecordTypeMismatch's form); in the proof channel the judge itself with no node, whose answer joins as L and settles as R7-M38 says.
+    // Invariants: one refusal a declaration and limit, recorded once and only while the pass produces; a Proven answer read beside a
+    // Limited reading stands. Prohibited: a reader or search step refusing (FirstRows, PremiseRows, TryCallable, RequirementMember,
+    // FindAssociated), except the retention verdict's one, HandedSignatures' in-pass refusal over a cut walk (G1406-65 11b:
+    // CallRetention.Limit carries no reading; its carrying the cut is the PLAN open issue); a choice between valid alternatives
+    // refusing (its later verdict refuses); a Language record beside the refusal for the same answer. ArchitectureRulesTest's "Callers
+    // of the identity limit" lists every caller.
+    private bool ReadIdentityLimit(Koto? node, BindingScope scope, IdentityClasses? classes)
     {
-        if (classes is { Limited: true } && this.RefuseProof(scope, BindingFailure.AnalysisLimit) is { } refused &&
-            node is not null && !ReferenceEquals(refused, node))
+        if (classes is not { Limited: true })
+        {
+            return false;
+        }
+
+        if (this.RefuseProof(scope, BindingFailure.AnalysisLimit) is { } refused && node is not null && !ReferenceEquals(refused, node))
         {
             this.RestOnPart(node, refused);
         }
+
+        return true;
+    }
+
+    // G1406-66 (SPEC 10.8, 8.3.3): whether the Limited reading `classes` (ReadingOf's table) is cut over a Constraint that needs one of
+    // `function`'s slots in `slots`: a Limited closure of its closure set (identityReadings' range) is keyed by a Type naming such a slot.
+    // A Constraint needing an unbound slot is not judged, so a cut over it answers no judgment of the call.
+    private bool CutNamesSlots(IdentityClasses classes, Koto function, SlotSet slots)
+    {
+        for (var k = 0; k < this.identityReadings.Count; k++)
+        {
+            var reading = this.identityReadings[k];
+            for (var c = reading.Start; ReferenceEquals(reading.Classes, classes) && c < reading.Start + reading.Count; c++)
+            {
+                if (this.identityClosures[this.identityReadingClosures[c]] is { Limited: true } closure && MentionsSlots(closure.Key, function, slots))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // R7-C2c2 c2-2, e2-7 R3.4: a closure's round table, the declaration's classes with the identity rows its walks recorded (SPEC 8.2.3's
@@ -624,11 +655,20 @@ public sealed partial class Binding
         }
     }
 
+    // G1406-58/-59/-60/-62 (SPEC 8.2.3, 8.3.3; G1406-26 D1): the reading for the limit of an identity answer for `a` and `b`, refused
+    // where it is Limited (ReadIdentityLimit): `classes`, the table the answer read in the view (ClassesOf over both), or none (null)
+    // where the answer rests on no cut: no table; two identical Types (Proven); known heads that differ (IdentityClasses.Distinct,
+    // Refuted); a written form `a` (null) at a known head (IdentityClasses.Known), whose check read the head and its arity alone; and an
+    // answer resting on a premise error (IdentityPremiseErrorRead: the error, not the limit). Its readers are the judges (IdentityProven,
+    // IdentityRefuted), whose verdicts read the table itself, and the mismatch writer (RecordTypeMismatch).
+    private IdentityClasses? IdentityRead(BindingScope scope, BoundType? a, BoundType b, IdentityClasses? classes)
+        => classes is null || (a is null ? IdentityClasses.Known(b) : this.SameCompleteType(a, b) || IdentityClasses.Distinct(a, b)) ||
+            this.IdentityPremiseErrorRead(scope, a, b) is not null ? null : classes;
+
     // SPEC 8.2.3: `a is b` holds in the view when the two are one complete Type, or the classes of its reading (ClassesOf over a and b)
-    // make them one (Verdict's Proven); an erroneous or provisional class proves nothing. `read` is the table the answer read: a judge
-    // that leaves the judgment unproven reads its Limited bit (ReadIdentityLimit; G1406-11 C-a); none (null) where known heads differ
-    // (IdentityClasses.Distinct: the answer reads no closure, G1406-26 D1). It never refuses, so a branch that reads it records nothing
-    // of its own (C3).
+    // make them one (Verdict's Proven); an erroneous or provisional class proves nothing. `read` is the answer's reading for the limit
+    // (IdentityRead): a judge that leaves the judgment unproven passes it to ReadIdentityLimit (G1406-11 C-a). It never refuses, so a
+    // branch that reads it records nothing of its own (C3).
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope, out IdentityClasses? read)
     {
         read = null;
@@ -637,7 +677,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (!HasTypeIdentity(scope) || (read = this.ClassesOf(scope, [a, b], out _)) is not { } classes)
+        if (!HasTypeIdentity(scope) || this.ClassesOf(scope, [a, b], out _) is not { } classes)
         {
             return false;
         }
@@ -648,7 +688,7 @@ public sealed partial class Binding
         }
 
         this.ReadIdentityPremiseError(scope, a, b);
-        read = IdentityClasses.Distinct(a, b) ? null : classes;
+        read = this.IdentityRead(scope, a, b, classes);
         return false;
     }
 
@@ -659,13 +699,14 @@ public sealed partial class Binding
     // refutes two Types' agreement only so; a pair with no known difference that it cannot prove is Unknown (the Contract judge's
     // paths, the Callable judge's signature), and so is any pair while the view's table is being built, and any pair at a Limited root
     // (SPEC 8.3.3: no Refuted rests on the limited analysis; G1406-11 N1) unless known heads differ (IdentityClasses.Distinct: the
-    // answer reads no closure, G1406-26 D1): its judge left Unknown reads the limit of `read`, the table the answer read (ReadIdentityLimit).
+    // answer reads no closure, G1406-26 D1): its judge left Unknown reads the limit of `read`, the answer's reading for the limit
+    // (IdentityRead, ReadIdentityLimit; G1406-62: none under a premise error too, which the verdict does not read).
     private bool IdentityRefuted(BoundType a, BoundType b, BindingScope scope, BoundType? self, out IdentityClasses? read)
     {
         var (left, right) = (this.ContractType(a, scope, self), this.ContractType(b, scope));
         var classes = this.ClassesOf(scope, [left, right], out _);
-        read = IdentityClasses.Distinct(left, right) ? null : classes;
-        return classes is not null && read is not { Limited: true } && classes.Refuted(left, right);
+        read = this.IdentityRead(scope, left, right, classes);
+        return classes is not null && (!classes.Limited || IdentityClasses.Distinct(left, right)) && classes.Refuted(left, right);
     }
 
     // SPEC 8.2.3 ("an abstract Type ... takes the form its binding, a completed projection or its admitted set fixes"): the members of a

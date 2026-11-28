@@ -429,6 +429,10 @@ public sealed partial class Binding
         // (ProbedResultOpen), which gives the part no class: applicable, the candidate makes the call not independently typable
         // whatever the others give, so the call defers unranked (ClassifySelection, SolveSelected).
         internal bool Deferred { get; set; }
+
+        // SPEC 10.8, 8.3.3 (G1406-65 12a (ii)): the Limited reading of a known call signature its callable evidence did not find
+        // (InferCallableSignatures), which the selected call's unbound-slot record reads (FailUnboundSlots).
+        internal IdentityClasses? CallableRead { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

@@ -256,7 +256,7 @@ public sealed partial class Binding
         return ReferenceEquals(normalized, owner) ? null : this.CallableClosure(normalized, scope);
     }
 
-    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
+    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _, out _);
 
     // SPEC 7.3.3, 3.4.3: a callee is called below its acquisition layers (CallableCore) and an object layer in every case (ObjectCases).
     private BoundType CalledThrough(BoundType type, BindingScope scope)
@@ -267,10 +267,12 @@ public sealed partial class Binding
 
     // SPEC 8.10, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
     // (`several`); with them there is no single signature S. A Closure Type's signature and receiver are its definition's
-    // (BoundClosure.Of), whatever its literal's creation outcome (DECISIONS R5-M63, R4-M152).
-    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
+    // (BoundClosure.Of), whatever its literal's creation outcome (DECISIONS R5-M63, R4-M152). `read` is the premise rows' reading
+    // (FirstRows), which a miss's writer reads (ReadIdentityLimit): a reader, it refuses nothing (G1406-64).
+    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several, out IdentityClasses? read)
     {
         several = false;
+        read = null;
         var owner = this.CalledThrough(type, scope);
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
@@ -296,7 +298,7 @@ public sealed partial class Binding
         var normalizedOwner = this.CallableContractType(owner, scope);
         if (!ReferenceEquals(normalizedOwner, owner))
         {
-            return this.TryCallable(normalizedOwner, scope, out signature, out receiver, out several);
+            return this.TryCallable(normalizedOwner, scope, out signature, out receiver, out several, out read);
         }
 
         // SPEC 8.10, 8.3.2: the Callable Constraints on the callee are the available Callable rows its premises supply, at every
@@ -304,7 +306,7 @@ public sealed partial class Binding
         signature = null!;
         receiver = SemanticsKind.Owner;
         var start = this.premiseRows.Count;
-        var classes = this.FirstRows(owner, scope, this.premiseRows);
+        read = this.FirstRows(owner, scope, this.premiseRows);
         for (var i = start; i < this.premiseRows.Count; i++)
         {
             if (this.premiseRows[i] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact })
@@ -331,12 +333,6 @@ public sealed partial class Binding
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
-        if (several || signature is null)
-        {
-            // e2-7 R3.3: none or several over cut rows is a negative answer, read by the open site frame's node (QuerySite's carrier).
-            this.ReadIdentityLimit(this.consultationNode, scope, classes);
-        }
-
         return !several && signature is not null;
     }
 

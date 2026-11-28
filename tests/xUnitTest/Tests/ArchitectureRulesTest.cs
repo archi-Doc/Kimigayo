@@ -721,6 +721,11 @@ public class ArchitectureRulesTest
     // judged `origin outlives static`, R7-M123). A further site fails here until its row is reviewed.
     [InlineData("The relation judge's call sites (OJ1, OJ3, OJ4)", "src/Kimi/Compiler/Binding", @"\bJudgeOriginRelation\(", "Binding.OriginClauses.cs=2;Binding.OriginProof.cs=6;Binding.OwnedConversions.cs=1;Binding.TypeRelations.Walk.cs=1")]
     [InlineData("Binding's Origin relation records (V5, V6, V7)", "src/Kimi/Compiler", @"\bnew OriginRelationFact\(", "Binding/Binding.Obligations.cs=1;Binding/Binding.OriginClauses.cs=2;Binding/Binding.OwnedConversions.cs=1;Binding/Binding.RawOrigins.Holder.cs=1")]
+    // The identity limit's contract (SPEC 8.3.3; G1406-64, G1406-65; Binding.TypeIdentity's ReadIdentityLimit): only a judgment's
+    // record writer refuses, over the reading its own answer read, and a judge in the proof channel; no reader or search step does,
+    // except HandedSignatures' in-pass verdict over a cut walk (Retention, G1406-65 11b). RefuseProof's callers are ReadIdentityLimit
+    // and TypeHeightLimit alone. A further caller fails here until its row is reviewed.
+    [InlineData("Callers of the identity limit", "src/Kimi/Compiler/Binding", @"\bthis\.(?:ReadIdentityLimit|RefuseProof)\(", "Binding.AssociatedTypes.cs=2;Binding.CallableEffects.cs=1;Binding.CallableSelection.cs=1;Binding.Calls.cs=3;Binding.ConditionalConformances.cs=1;Binding.Constraints.cs=3;Binding.ContractSolver.Rows.cs=1;Binding.Diagnostics.cs=1;Binding.EffectDeclarations.cs=1;Binding.InferenceBoundaries.cs=1;Binding.Problems.cs=1;Binding.Retention.cs=1;Binding.TypeHeight.cs=1;Binding.TypeIdentity.cs=1;Binding.Types.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
