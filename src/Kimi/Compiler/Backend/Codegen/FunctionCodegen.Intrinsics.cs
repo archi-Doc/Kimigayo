@@ -11,7 +11,8 @@ namespace Kimi.Compiler.Backend;
 // retain, FunctionCodegen.Objects, and a machine instruction's routine by its member, InstructionRows, which the module defines on
 // request), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort
 // reason, Raw.initialize's copy, Raw.slice's record, Raw.readVolatile's and Raw.writeVolatile's volatile access, a staticEnsure's state test
-// (FunctionCodegen.Statics), a runtime Type test (FunctionCodegen.Objects), a reserve witness's code address (FunctionCodegen.Formatting) and a
+// (FunctionCodegen.Statics), a runtime Type test (FunctionCodegen.Objects), a reserve witness's code address (FunctionCodegen.Formatting), an
+// interrupt entry's thunk's code address (FunctionCodegen.Entries) and a
 // verification's compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes its operands at its
 // declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the collector's target, read
 // once by the cursor (I8) and given to the row's writer. In a caller-location body a location is C3b's row (Location).
@@ -56,6 +57,9 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Address:
                 this.Dispatch(call, target);
+                return;
+            case IntrinsicWriter.Entry:
+                this.EntryAddress(call, target);
                 return;
             case IntrinsicWriter.VolatileRead:
                 this.VolatileRead(call);

@@ -46,8 +46,8 @@ internal sealed partial class FunctionCodegen
 
     // The global of an item a Value prefix names, the prefix and suffix of its name around the item's index: an adapter item's table
     // @__kimi_erase<item>_table (ModuleCodegen.AdapterPrefix), a StaticInit item's slot @__kimi_static<item> and its state
-    // @__kimi_static<item>_state (ModuleCodegen.StaticPrefix), a body item's function @__kimi_f<item> (ModuleCodegen.FunctionPrefix, a user
-    // Writer's dispatch word); none for another prefix.
+    // @__kimi_static<item>_state (ModuleCodegen.StaticPrefix), a body item's function or an InterruptEntry item's thunk @__kimi_f<item>
+    // (ModuleCodegen.FunctionPrefix, a user Writer's dispatch word, an entry's code address); none for another prefix.
     private static (string Prefix, string Suffix)? ItemGlobal(char prefix) => prefix switch
     {
         'g' => (ModuleCodegen.AdapterPrefix, ModuleCodegen.TableSuffix),

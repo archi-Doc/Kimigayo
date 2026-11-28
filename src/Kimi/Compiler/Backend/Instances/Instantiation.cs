@@ -27,7 +27,7 @@ internal enum MonoKind : byte
     ObjectDescriptor, // The runtime descriptor of an object payload (IMPL 21.1.3, SPEC 13.6): its erased payload Type.
     VTable, // The virtual table of a struct with a slot (SPEC 6.4, F package 4.2): its erased struct Type.
     Import, // A #LibraryImport function a call runs (SPEC 22.6): the function, never generic; no body, no target, nothing generated.
-    InterruptEntry, // A compiler-generated interrupt thunk (IMPL 21.6): its erased handler Type H and its variant (0 plain, 1 code); no
+    InterruptEntry, // A compiler-generated interrupt thunk (IMPL 21.6): its erased handler Type H and its InterruptEntries variant; no
     // body, no symbol.
 }
 

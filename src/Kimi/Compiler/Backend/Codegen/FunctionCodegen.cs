@@ -2,7 +2,8 @@
 
 // FunctionCodegen (R5 package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS R5-M65), MIR code generation: the LLVM definition of one body
 // item of the checked set from its validated, analyzed MIR body in the item's instance (a StaticInit item's with its static's slot), of
-// one DropGlue item by its Type's row, of one ClosureErasure or ItemAdapter item or of one Builtin or PropertyWitness item; and, in a
+// one DropGlue item by its Type's row, of one ClosureErasure or ItemAdapter item, of one Builtin or PropertyWitness item or of one
+// InterruptEntry item's thunk; and, in a
 // function the module frame writes (its entry, a platform adapter), the frame-function writers: its begin, a text slot, the root's call
 // and an adapter's end (.Calls.cs: BeginFrameFunction, WriteTextSlot, WriteEntryCall, End). Every MIR form of an accepted program has its
 // row; a form the backend does not generate is the capability table's gap at check (DECISIONS R5-M146). Each concern file (Files) owns its
@@ -31,7 +32,7 @@
 // calls (.Closures.cs), the shims' functions, Builtin and PropertyWitness (.Shims.cs; DECISIONS R5-M126, R5-M130, R5-M141), intrinsics
 // (.Intrinsics.cs), the Drop terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a value's destruction one level per
 // Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the adapter items' functions and a
-// Function value's glue row (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle
+// Function value's glue row (.Erasures.cs); an interrupt entry's thunk and an entry call's code address (.Entries.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle
 // operations: a creation, a clone, a runtime Type test and a virtual slot's entry (.Objects.cs); Text.writer's words
 // (.Formatting.cs; DECISIONS R5-M130); the Array rows
 // written in place: an Array from none, capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written

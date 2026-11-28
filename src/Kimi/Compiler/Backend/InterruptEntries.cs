@@ -4,7 +4,8 @@
 // IntrinsicId.InterruptEntry, the member a library declaration's `#Intrinsic("InterruptEntry", "<member>")` names (IntrinsicDisposition's
 // Member): the lang item of the Contract whose `handle` the entry's thunk runs, and whether the processor pushes an error code, which the
 // thunk passes to `handle` after the frame (`ptr byval(<frame>) %frame`, then `i64 %code`). A row's index is its variant, the
-// MonoKey.Variant of the MonoKind.InterruptEntry item an entry call targets (InstanceCollector.Edges' Entry).
+// MonoKey.Variant of the MonoKind.InterruptEntry item an entry call targets (InstanceCollector.Edges' Entry), whose thunk's signature
+// (ModuleCodegen.Thunk) takes the code where Code holds.
 // Input: a member name, or a variant. Output: the member's variant (Find) and the row (Row).
 // Invariants: one row per member; each row's Contract has one requirement, `handle`, whose parameters are the frame and, where Code
 // holds, the code (KimiLibraryShapeTest).

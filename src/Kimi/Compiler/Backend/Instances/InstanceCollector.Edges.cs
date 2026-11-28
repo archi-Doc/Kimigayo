@@ -9,7 +9,7 @@
 // an owner Value call's body, the operand's glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets
 // from its representative Type by its kind's row (Expand).
 // Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Answered, Implementation, Witness,
-// OwnRequirement); the intrinsic rows.
+// OwnRequirement); the intrinsic rows; InterruptEntries, an interrupt entry's member variant (its thunk item's, Entry).
 // Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
 // without one or a refused edge), a Drop's glue of each part its group destroys (DropTargets) and an owner Value call's second target
 // (Rest); a type-driven item's at the default site; on the way the site's by-value uses take their layout verdict (K 4.8) and an operation
@@ -140,8 +140,9 @@ internal sealed partial class InstanceCollector
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
     // (InstanceCollector.Witnesses.cs), a tuple operator's its comparison item (Compared); the body a Value callee's Closure or function
     // item runs; an intrinsic's target where its row names one (an erased writer's reserve witness, a staticEnsure's StaticInit, a
-    // creation's payload descriptor, a DestroyValues' glue) and a Drop's targets, the glue of what its group destroys (DropTargets), none
-    // for a part in a receiver's own storage (never past a Deref) without a layout (Received: no use; its body is checked only); an
+    // creation's payload descriptor, a DestroyValues' glue, an interrupt entry's thunk item of its handler in its InterruptEntries
+    // variant) and a Drop's targets, the glue of what its group destroys (DropTargets), none for a part in a receiver's own storage (never
+    // past a Deref) without a layout (Received: no use; its body is checked only); an
     // intrinsic's Type arguments uses where its row's need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without
     // a body or row or a refused edge, and for a Drop, whose targets are added at its site (the template's, its location and runtime bit).
     private int Edge(MirProgram program, int item, MirBody body, in (MirLocation At, bool Runtime) site, in MirTerminator call)
