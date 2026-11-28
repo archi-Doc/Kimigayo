@@ -1150,6 +1150,8 @@
     "Records": [ { "Code": "InvalidEffectBound_Kd", "At": "effect confined" } ] },
   { "Name": "effect-item-excluded-in-a-virtual-function", "Source": "open struct S\n    public virtual func f(self: objref/Self) -> i32\n        #if false\n            effect confined\n        return 0\npublic func main() => ()\n", "Intended": "an original virtual function's leading region takes an effect clause in excluded syntax too: the program is accepted (SPEC 8.11.1, 19.4)",
     "Records": [] },
+  { "Name": "effect-item-in-a-conformance-block-function", "Source": "contract Describe\n    func describe(self) -> string\n\nstruct B<T>\n    Self is Describe when T is Describe\n        public func describe(self) -> string\n            effect confined\n            return \"b\"\npublic func main() => ()\n", "Intended": "a function of a struct's conditional conformance Block implements the Contract and is not virtual, so its effect clause declares no bound (SPEC 8.8.1, 8.11.1; F's SC-5 guard)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "At": "effect confined" } ] },
   { "Name": "receiver-shorthand-in-a-group", "Source": "group G\n    func f(self) -> i32 => 0\npublic func main() => ()\n", "Intended": "a group's function has no receiver (SPEC 7.3.1): a bare self is a parameter without its Type",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "ParameterType", "At": ") -> i32", "Length": 1, "Found": ")" } ] },
   { "Name": "receiver-shorthand-at-the-source-root", "Source": "func f(self) -> i32 => 0\npublic func main() => ()\n", "Intended": "the source root's function has no receiver (SPEC 7.3.1): a bare self is a parameter without its Type",
