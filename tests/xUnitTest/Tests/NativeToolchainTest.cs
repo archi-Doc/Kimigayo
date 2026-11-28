@@ -78,7 +78,7 @@ public sealed class NativeToolchainTest : IDisposable
     // start, libc.a library, crtn.o end), and the catalog's providedSymbols are c's symbols. Each file's SHA-256 is its catalog's, and each
     // embedded resource has that SHA-256 and is the file committed beside the catalog, so a build stages the adopted bytes. musl's notice,
     // which the compiler carries as Kimi.Linux.COPYRIGHT, is the tarball's COPYRIGHT: the catalog's copyrightSha256, which build-musl.ps1
-    // checks in the extracted tarball. The staged none-x64 row's kimi_backend (the Tatara plan's B9e, IMPL 21.6.7): compiler-rt's
+    // checks in the extracted tarball. The none-x64 row's kimi_backend (the Tatara plan's B9e, IMPL 21.6.7): compiler-rt's
     // soft-float archive, one file at the library place, its catalog's providedSymbols the supply's symbols, and compiler-rt's licence,
     // carried as Kimi.None.LICENSE-compiler-rt.txt, the tarball's LICENSE.TXT (the catalog's licenseSha256, build-compiler-rt.ps1's
     // check). Each catalog's linkerScript is its row's script (Scripts takes every catalog's; none-x64's kernel.ld, its embedded bytes
@@ -487,15 +487,16 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Executable));
     }
 
-    // IMPL 20.3: a build records its one selected target's output; several selected targets or one without a row (the Tatara plan's
-    // B7b8: Unsupported), a staged row (none-x64) included, fail before the output's paths, so no record is written under any bin\
-    // directory. Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete")
-    // whatever target was selected.
+    // IMPL 20.3: a build records its one selected target's output, under bin\<target>\; several selected targets or one without a row
+    // (the Tatara plan's B7b8: Unsupported) fail before the output's paths, so no record is written under any bin\ directory.
+    // Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete") whatever
+    // target was selected; the x86_64-unknown-none row (the Tatara plan's B9g; B9b's membership line, removed with TargetProfile.Staged
+    // as planned) wrote no record.
     [Theory]
     [InlineData("", false)]
     [InlineData("aarch64-pc-windows-msvc", false)]
     [InlineData("x86_64-unknown-linux-gnu", false)]
-    [InlineData("x86_64-unknown-none", false)]
+    [InlineData("x86_64-unknown-none", true)]
     [InlineData("x86_64-pc-windows-msvc", true)]
     public async Task LibraryBuildRequiresOneSelectedSupportedTarget(string selected, bool accepted)
     {
@@ -511,7 +512,7 @@ public sealed class NativeToolchainTest : IDisposable
             return;
         }
 
-        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project, TargetProfile.Windows).Record));
+        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project, TargetProfile.Find(selected)!).Record));
         Assert.Equal("checked", record.RootElement.GetProperty("status").GetString());
         Assert.Equal(selected, record.RootElement.GetProperty("target").GetString());
     }

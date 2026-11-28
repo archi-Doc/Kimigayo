@@ -38,7 +38,8 @@
 // allocates nothing.
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, select a call's Callable signature again, report a failure
 // that only an Opaque site or a callee
-// Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
+// Binding rejected causes (derived, R4-M10), read a body with a validator finding (Views: derived, R5-M183), or write a local fact
+// in the solve (Item, AddEdge and AddKey are Local's; the solve runs a requirement by Require and keeps an atom by AddAtom).
 
 using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;

@@ -41,17 +41,12 @@ public sealed partial class Binding
         => this.ProveConstraint(this.SubstituteConstraint(constraint, new CallSubstitution(binder, arguments)), this.ConstraintScope(context), context);
 
     // The scope a node's names and premises are judged in: its nearest enclosing scope, where a match arm's body is in its pattern's
-    // scope (SPEC 14.8.2) and a standard witness bridge has its conformance path's premises (SPEC 11.9.2).
+    // scope (SPEC 14.8.2).
     internal BindingScope ConstraintScope(Koto node)
     {
         Koto? child = null;
         for (Koto? current = node; current is not null; child = current, current = current.Parent)
         {
-            if (current is FunctionKoto { IsPropertyWitness: true, BoundSymbol.Scope: { } bridge })
-            {
-                return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
-            }
-
             if (this.ScopeStop(current, child) is { } scope)
             {
                 return this.NodeScope(node, scope);

@@ -389,7 +389,7 @@ public sealed partial class TyCtxtTest
         var function = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "identity");
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "identity").Select(static x => x.CallOf()!).ToArray();
-        var closed = calls.Select(x => c.Types.ReadableInstance(closure.EnvironmentType!, c.Types.StorageSubst(x))!).ToArray();
+        var closed = calls.Select(x => c.Types.ReadableInstance(closure.EnvironmentType!, c.Types.SubstOf(x)!)!).ToArray();
         Assert.All(closed, static x => Assert.NotNull(x.InstanceContext));
         Assert.Equal(calls.Select(c.Types.SubstOf), closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(c.Types.SubstOf(calls[0]), c.Types.SubstOf(calls[1]));
@@ -408,7 +408,7 @@ public sealed partial class TyCtxtTest
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var declared = nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "p").TypeKoto!.TypeOf();
         var call = nodes.OfType<InvocationKoto>().Single().CallOf()!;
-        Assert.Same(declared, c.Types.ReadableInstance(call.Target.Type!, c.Types.StorageSubst(call)));
+        Assert.Same(declared, c.Types.ReadableInstance(call.Target.Type!, c.Types.SubstOf(call)!));
     }
 
     // SPEC 6.1.3, 8.1.3, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
@@ -1506,7 +1506,7 @@ public sealed partial class TyCtxtTest
         var closure = g.ClosureOf()!;
         Assert.Equal((null, 0), (closure.EnvironmentType!.InstanceContext, closure.EnvironmentType.Height));
         var instances = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x?.Target.Name == "g")
-            .Select(x => c.Types.ReadableInstance(closure.EnvironmentType!, c.Types.StorageSubst(x!))!).ToArray();
+            .Select(x => c.Types.ReadableInstance(closure.EnvironmentType!, c.Types.SubstOf(x!)!)!).ToArray();
         Assert.All(instances, static x => Assert.True(x.Components.Count == 0 && x.Height == x.InstanceContext!.Height + 1));
         Assert.Equal([1, 3], instances.Select(static x => x.Height));
         var reads = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "reads");
@@ -1916,6 +1916,56 @@ public sealed partial class TyCtxtTest
         Assert.True(ReferenceEquals(moved.Self, BoundType.I32) && moved.Types.SequenceEqual(subst.Types) && moved.Lengths.SequenceEqual(subst.Lengths));
     }
 
+    // SPEC 4.9.6, 8.8.2, 8.11.3 (R7-P5b N1): Witness's key holds the reading definition's premise scope only for a Self with an abstract
+    // part: one Subst on Box<A>, A inside's, runs Box's equals under inside's `A is Equatable` (Body) and nothing under outside's premises
+    // (None); Box<i32> runs it in inside, in outside and at the library root, one memoized answer. Labelled from SPEC before any run.
+    [Fact]
+    public void AWitnessKeyHoldsThePremiseScopeOnlyForAnAbstractPart()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "struct Box<A>\n    Self is Equatable when A is Equatable\n        public func equals(self: ref/Self, other: ref/Self) -> bool => true\n    public init() => ()\n" +
+            "func inside<A>(b: Box<A>, k: Box<i32>)\n    A is Equatable\n    _ = 1\nfunc outside<A>(b: Box<A>)\n    _ = 1\n");
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.Name is "inside" or "outside").ToDictionary(static x => x.Name);
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
+        var requirement = contract.Contract!.OwnRequirement()!;
+        var open = functions["inside"].Parameters[0].Type.TypeOf()!;
+        var closed = functions["inside"].Parameters[1].Type.TypeOf()!;
+        Assert.Equal(RequirementTargetKind.Body, At(open, "inside").Kind);
+        Assert.Equal(RequirementTargetKind.None, At(open, "outside").Kind);
+        var answers = new[] { At(closed, "inside"), At(closed, "outside"), At(closed, null) };
+        Assert.All(answers, x => Assert.Equal(RequirementTargetKind.Body, x.Kind));
+        Assert.All(answers, x => Assert.Equal(answers[0], x));
+        Assert.All(answers, x => Assert.Same(answers[0].Subst, x.Subst));
+
+        RequirementTarget At(BoundType self, string? definition)
+            => c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!), definition is null ? null : functions[definition].SymbolOf());
+    }
+
+    // PLAN G157 (5) (R7-P5b): TyCtxt is the compilation's and outlives an edit, which discards Witness's memo with the other views
+    // (Binding's ResetViews): Box runs its equals (Body), and after an edit that removes its conformance the same TyCtxt answers None for
+    // the edited Box. Labelled from SPEC 8.6.1 before any run.
+    [Fact]
+    public void AnEditDiscardsTheWitnessMemo()
+    {
+        const string Conforming = "struct Box\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc use(b: Box) => ()\n";
+        var c = MinimalEmissionTest.Analyze(Conforming);
+        var types = c.Types;
+        var contract = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
+        var requirement = contract.Contract!.OwnRequirement()!;
+        Assert.Equal(RequirementTargetKind.Body, At().Kind);
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Conforming.Replace("    Self is Equatable\n", string.Empty, StringComparison.Ordinal));
+        c.Binding.Bind(BindingMode.Final);
+        Assert.Same(types, c.Types);
+        Assert.Equal(RequirementTargetKind.None, At().Kind);
+
+        RequirementTarget At()
+        {
+            var box = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "use").Parameters[0].Type.TypeOf()!;
+            return c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, box, contract.Type!), null);
+        }
+    }
+
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
     // does not substitute is null, as a Field is: E's B and C beside its failed A, and G<i32>'s B, whose growth the storage verdict then
     // meets beside the failed A (fail-before: no Case published, and G<i32> Rejected).
@@ -2238,12 +2288,13 @@ public sealed partial class TyCtxtTest
                 return;
             }
 
+            var dispatched = SlotSubst(c, call);
             for (var i = 0; i <= count; i++)
             {
                 var own = i < count ? implementation.Parameters[i].Type.TypeOf() : subst.Target.Type;
                 var contract = i < count ? slot.Parameters[i].Type.TypeOf() : call.Target.Type;
                 if (i != call.Target.ReceiverIndex && (own is null || contract is null ||
-                    c.Types.Apply(own, subst).Type is not { } applied || !ReferenceEquals(applied, c.Types.ReadableInstance(contract, c.Types.StorageSubst(call)))))
+                    c.Types.Apply(own, subst).Type is not { } applied || !ReferenceEquals(applied, c.Types.ReadableInstance(contract, dispatched))))
                 {
                     problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} contract {(i < count ? $"slot {i}" : "result")}");
                 }
@@ -2295,11 +2346,10 @@ public sealed partial class TyCtxtTest
         Assert.True(calls > 0 && problems.Count == 0, $"{calls} calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
     }
 
-    // Binding's instantiation for a call's context. A requirement's, under its conforming Self and bound Contract reference, and a direct
-    // base call's into an implementation other than the slot's original, of that implementation in the implementing Type, have no
-    // CallPlan form: theirs is Binding's instantiation under the substitution once it names the
-    // call's target and conforming Self (a base call's: the implementation, no Self, the implementing Type) and binds the call's Type and
-    // length arguments and Origins. Any other call's is its CallPlan form.
+    // Binding's instantiation for a call's context, SubstOf's: a requirement's names the call's target and conforming Self, its declaring
+    // Type the bound Contract reference; a direct base call's into an implementation other than the slot's original names that
+    // implementation, no Self and the implementing Type; each binds the call's Type and length arguments and Origins. Any other call's,
+    // a function item's context included, is its context's SubstOf.
     private static BoundType? Instance(Compilation c, BoundType declared, Subst subst, CallPlan context) => context switch
     {
         { Kind: CalleeKind.Requirement } when ReferenceEquals(subst.Target, context.Target) && ReferenceEquals(subst.Self, context.ConformingType) &&
@@ -2308,13 +2358,22 @@ public sealed partial class TyCtxtTest
         { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation: { } body } when !ReferenceEquals(body, context.Target.Declaration)
             => ReferenceEquals(subst.Binder, body) && subst.Self is null && ReferenceEquals(subst.Declaring, context.VirtualImplementingType) &&
                 Binds(subst, context) ? c.Types.ReadableInstance(declared, subst) : null,
-        _ => c.Types.ReadableInstance(declared, c.Types.StorageSubst(context)),
+        _ => c.Types.ReadableInstance(declared, c.Types.SubstOf(context)!),
     };
 
     // The substitution binds the call's Type and length arguments, declared Origins and input Origins.
     private static bool Binds(Subst subst, CallPlan call)
         => subst.Types.SequenceEqual(call.TypeArguments) && subst.Lengths.SequenceEqual(call.LengthArguments) &&
             subst.Origins.SequenceEqual(call.Origins) && subst.Inputs.SequenceEqual(call.InputOrigins);
+
+    // SPEC 6.4.4: the slot's public contract at a direct base call, the substitution of the same selection dispatched through the slot (no
+    // base receiver): SubstOf's general form, the slot with the call's declaring Type, Type and length arguments and Origins.
+    private static Subst SlotSubst(Compilation c, CallPlan call)
+    {
+        var dispatched = new CallPlan();
+        dispatched.Set(c.Binding, call.Target, call.ReturnType, null, [], call.TypeArguments, declaringType: call.DeclaringType, origins: call.Origins, inputOrigins: call.InputOrigins, lengthArguments: call.LengthArguments);
+        return c.Types.SubstOf(dispatched)!;
+    }
 
     // Each requirement call in the body of a generic function, with each call of that function in a module whose instance closes the
     // requirement's Self (a call in a nested function or closure is its own binder's).
@@ -2378,7 +2437,7 @@ public sealed partial class TyCtxtTest
             if (inner.RequirementContract is { Type: { } bound } contract && !ReferenceEquals(bound.Symbol, contract))
             {
                 Count("bound");
-                if (!ReferenceEquals(subst.Declaring, c.Types.ReadableInstance(bound, c.Types.StorageSubst(outer))))
+                if (!ReferenceEquals(subst.Declaring, c.Types.ReadableInstance(bound, c.Types.SubstOf(outer)!)))
                 {
                     problems.Add($"{where} bound reference");
                 }

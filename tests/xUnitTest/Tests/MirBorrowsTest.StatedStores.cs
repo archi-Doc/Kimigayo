@@ -802,7 +802,8 @@ public sealed partial class MirBorrowsTest
     // body) and a call result are never null, so a scalar written through a raw pointer A5 does not follow, a store over q, a heap address
     // on one arm, a later iteration, in a Tuple, from a call or from Raw.allocate keeps E (the Bad rows from punnedBad to allocatedBad,
     // dev's records; fieldPunBad, tuplePunnedBad and tupleCopiedPunBad, a Scalar at a struct's or a Tuple's whole address, rest on the
-    // layout since PLAN G667c: MirBorrowsTest.Puns' AScalarOverAStatedLayersHolderRestsOnItsLayout). A null A5 cannot prove at the
+    // layout since PLAN G667c, but fieldPunBad's call-built struct keeps E's decided Φ_E entry, so its store is decided past the pun at
+    // kk = 2: MirBorrowsTest.Puns' AScalarOverAStatedLayersHolderRestsOnItsLayout). A null A5 cannot prove at the
     // store stays dev's false error under the owner's exception O-60 (DECISIONS R4-M183):
     // here a null whose address is taken after the call, or whose Copy was taken before a pun of the original (the FalseError rows).
     // Binding's row keeps target's own value through q (BU-24 C4, BU-52 rule A), so a read of spare after the call errs

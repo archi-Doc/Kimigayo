@@ -46,10 +46,11 @@ public class PropertyWitnessEmissionTest
     public void InheritedBridgesKeepTheirChecks(string source, string code)
         => Assert.Contains(code, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
 
-    // SPEC 11.9.2: an inherited bridge is a verified ordinary body that warm passes reuse, also when no call reaches it.
+    // SPEC 11.9.2: an inherited standard bridge runs its Field operation (TyCtxt.Witness's Storage target), with no generated body, so
+    // warm Bind, Analyze and Generate allocate nothing for it; a program with no call of it generates too.
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void InheritedBridgeBodiesAreReused()
+    public void AnInheritedStandardBridgeAllocatesNothingWarm()
     {
         var c = MinimalEmissionTest.Analyze(Counted + "func bump<T>(x: uniq/T) -> i32\n    T is Counted\n    x.count += 1\n    return x.count\nvar x = Leaf.init()\n_ = bump(x@uniq)");
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));

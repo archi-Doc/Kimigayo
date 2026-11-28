@@ -29,10 +29,9 @@ namespace Kimi.Build;
 /// <summary>The link manifest's fixed fields, the compiler's supplies' entries and the readers (R9-B1).</summary>
 internal static class LinkManifest
 {
-    // Each row's head, built once, in TargetProfile.AllRows' order (a staged row's pair is published and built): the fixed fields in
-    // writing and checking order, by path, each a string, an Int32 or a string list; the common rows from the row's columns, then its
-    // backend package's identity rows.
-    private static readonly (string Path, object Value)[][] Heads = [.. TargetProfile.AllRows.Select(static row => Head(row))];
+    // Each row's head, built once, in TargetProfile.Rows' order: the fixed fields in writing and checking order, by path, each a string,
+    // an Int32 or a string list; the common rows from the row's columns, then its backend package's identity rows.
+    private static readonly (string Path, object Value)[][] Heads = [.. TargetProfile.Rows.Select(static row => Head(row))];
 
     // The root members this compiler no longer accepts, each with its text, checked after the fixed fields. A later removal adds a row.
     private static readonly (string Name, string Text)[] Removed =
@@ -46,7 +45,7 @@ internal static class LinkManifest
     internal static void WriteFixed(Utf8JsonWriter json, TargetProfile row)
     {
         var open = ReadOnlySpan<char>.Empty;
-        foreach (var (path, value) in Heads[Array.IndexOf(TargetProfile.AllRows, row)])
+        foreach (var (path, value) in Heads[Array.IndexOf(TargetProfile.Rows, row)])
         {
             var section = Section(path);
             if (!section.SequenceEqual(open))
@@ -99,7 +98,7 @@ internal static class LinkManifest
     /// missing, of another kind or another value; else the first removed member.</exception>
     internal static TargetProfile CheckFixed(JsonElement root)
     {
-        var index = Array.IndexOf(TargetProfile.AllRows, TargetProfile.Find(Text(root, "target")));
+        var index = Array.IndexOf(TargetProfile.Rows, TargetProfile.Find(Text(root, "target")));
         if (index < 0)
         {
             throw new InvalidDataException("The link manifest's 'target' is not this compiler's. Re-emit the manifest.");
@@ -135,7 +134,7 @@ internal static class LinkManifest
             }
         }
 
-        return TargetProfile.AllRows[index];
+        return TargetProfile.Rows[index];
     }
 
     /// <summary>Writes a compiler's supply's libraries entry: its name, its kind and its row's identifying fields, in that order.</summary>

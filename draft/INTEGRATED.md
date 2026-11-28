@@ -1502,6 +1502,16 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   both landed, with H11b's remainder (O1 H1-H2). No SPEC or IMPL text. Nothing frozen.
 - Revision 122 (2026-11-27, plan §14; the Middle's D-1330, R7-O1 c+f's landing): §5.0's O1 row marks c done (Q-818) and
   keeps f with its reason (DECISIONS R7-M120). No SPEC or IMPL text. Nothing frozen.
+- Revision 123 (2026-11-28, plan §14; the Middle's D-1356 item 5, R7-O2 A4-L's landing in W-392): §5.1's O2 row drops
+  "through I2's OriginVar" (O-442 (a), R7-M89), reads "`SolveLocalBounds` goes" (a declaration-time candidate stays,
+  `FixDeclaredRegions`'), marks A4-L landed (R7-M128) and A4-P dropped (SPEC 14.8.3, 14.6.2), and depends on A1+A2, O1 H
+  and G230 (A) (landed) for I2 and O1. No SPEC or IMPL text. Nothing frozen.
+- Revision 124 (2026-11-28, plan §14; the owner's O-553 (b), K's question with the R7 census on dev c76f8d461): §3.1 moves
+  R7-P6, P3, P7-P11 and T3 to the Back and C5, C7 and C9 to the Middle (after its own units); §5.1's rows carry (B) or (M);
+  the revision 96 paragraph's Front list drops them. No SPEC or IMPL text. Nothing frozen.
+- Revision 125 (2026-11-28, plan §14; the Middle's D-1363, the owner's O-554 (a)): §5.1's Z13 row's "no spec variant" reads
+  SPEC 14.10.3's second block, the case `14.10.3-abandoned-comparison`. SPEC 14.10.3 gains an example block (D-1363); no rule
+  text changes. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1

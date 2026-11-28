@@ -12,6 +12,13 @@ namespace XunitTest;
 
 public partial class LocalRegionInferenceTest(ITestOutputHelper output)
 {
+    // inv_low: three slots a projection drops (no fit, no position), bounded by clauses alone; its premise follows (also
+    // LocalOriginClauseTest's C7 row).
+    internal const string InvLow = LocalOriginClauseTest.Dropped + "func f(p: ref/i32, q: ref/i32) -> i32\n";
+
+    internal const string InvLowBody = "    let t: ((S{w}).Item, (S{k}).Item, (S{l}).Item) = (1, 2, 3)\n        origin k.s outlives w.s\n" +
+        "        origin w.s outlives l.s\n        origin p outlives l.s\n        origin l.s outlives q\n    return t.0\n";
+
     // A stored function's input makes `s` contravariant.
     private const string Callback = "struct C {s}\n    public let call: (ref/i32 during s) -> i32\n    public init(call: (ref/i32 during s) -> i32) => self.call = call@move\n\n";
 
@@ -44,10 +51,37 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
         "                    return old\n            _ => return 0\n";
 
     // The S3 demo (audit-origins 5): a local Function input bounded through a clause by another inferred slot.
-    private const string S3Demo = "struct View<T> {source}\n    public let data: ref/T during source\n" +
-        "func demo<T>(x: View<T>, anchor: ref/i32 during s, sink: (View<T> during s) -> ()) -> View<T> during x.source\n    origin x.source outlives s\n" +
-        "    let pair: (View<T>{w}, (View<T>{k}) -> ()) = (x@move, sink@move)\n        origin k.source outlives w.source\n    return pair.0@move\n" +
-        "public func main() => ()";
+    private const string S3Demo = S3Signature + "    let pair: (View<T>{w}, (View<T>{k}) -> ()) = (x@move, sink@move)\n        origin k.source outlives w.source\n" +
+        "    return pair.0@move\npublic func main() => ()";
+
+    // The S3 demo's View, with an init for the rows that build one, and its signature with its premise (R7-O2 A4-L's sibling rows).
+    private const string S3View = "struct View<T> {source}\n    public let data: ref/T during source\n";
+
+    private const string S3ViewInit = S3View + "    public init(data: ref/T during source) => self.data = data\n";
+
+    private const string S3Signature = S3View +
+        "func demo<T>(x: View<T>, anchor: ref/i32 during s, sink: (View<T> during s) -> ()) -> View<T> during x.source\n    origin x.source outlives s\n";
+
+    // s3_sib: the S3 demo with a third sibling m that bounds k, which w reads; the result's Origin follows.
+    private const string S3Sib = S3View + "func demo<T>(x: View<T>, y: View<T>, anchor: ref/i32 during s, sink: (View<T> during s) -> ()) -> View<T> during ";
+
+    private const string S3SibBody = "\n    origin x.source outlives s\n    origin y.source outlives s\n" +
+        "    let pair: (View<T>{w}, (View<T>{k}) -> (), View<T>{m}) = (x@move, sink@move, y@move)\n        origin k.source outlives w.source\n" +
+        "        origin m.source outlives k.source\n    return pair.0@move\n";
+
+    // sib_rev: a Type whose second slot outlives its first, so a local's x.s reads its sibling x.t; the result's Origin follows.
+    private const string SibRev = "struct V2 {s, t}\n    origin t outlives s\n    public let a: ref/i32 during s\n    public let b: ref/i32 during t\n" +
+        "    public init(a: ref/i32 during s, b: ref/i32 during t)\n        self.a = a\n        self.b = b\nfunc f(p: ref/i32, q: ref/i32) -> ref/i32 during ";
+
+    private const string SibRevBody = "\n    origin q outlives p\n    let h: V2{x} = V2.init(p, q)\n    return h.a\n";
+
+    // rb_let: an annotated `let` in a Closure body, which Bind binds again once the generic call classifies the Closure; its premise
+    // follows.
+    private const string RbLet = LocalOriginClauseTest.Holder + "func apply<F>(f: F) -> i32\n    F is Callable<() -> i32>\n    return f()\n" +
+        "func g(a: ref/i32, b: ref/i32) -> i32\n";
+
+    private const string RbLetBody = "    let n = apply(func [a, b] () -> i32\n        var r = a\n        let h: H{x} = H.init(r)\n" +
+        "        let k: ref/i32 during b = h.item\n        return k@follow\n    )\n    return n\n";
 
     [Theory]
     [InlineData("Reassign", "let first = 0\nvar view = first@ref\nlet second = 5\nview = second@ref\nrequire view@follow == 5 else => $abort(\"view\")")]
@@ -292,6 +326,61 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
     [Fact]
     public void TheS3DemosComparisonIsItsBodysRow() => Assert.Empty(DiagnosticCorpus.Check(S3Demo).Diagnostics);
 
+    // C4: V, SPEC 15.3.6 under the owner's O-544 (b): the S3 demo without its premise, `let` and `var`. The Function input's k has the
+    // lower bounds s and w, and w reads k back, so w stays that variable and is no proven lower bound: k has no candidate and stays a
+    // region (the body's open region), and w is x.source and k. The comparison row `k.source outlives s` and the return's
+    // `k outlives x.source` are chains with an inferred end (15.6.5), no record (R7-O2 A4-L; o544 ruling 2).
+    [Theory]
+    [InlineData("let")]
+    [InlineData("var")]
+    public void TheS3DemoWithoutItsPremiseIsValid(string keyword)
+    {
+        var source = S3Demo.Replace("    origin x.source outlives s\n", string.Empty, StringComparison.Ordinal).Replace("let pair", keyword + " pair", StringComparison.Ordinal);
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
+    // SPEC 15.3.6, 15.4.4 (R7-O2 A4-L): an annotated `let` local's omitted slots are regions whose values its declaration fixes, each
+    // the candidate of its own row over the declaration's bounds, a sibling region read as its candidate in turn, and one that reads
+    // back staying that variable, no proven lower bound (FixDeclaredRegions; the owner's O-544 (b)). Each row's records by code,
+    // labelled from SPEC before any run.
+    [Theory]
+    // s3_swap: V, as the S3 demo with its components swapped; the slot order changes nothing (15.3.6).
+    [InlineData(S3Signature + "    let pair: ((View<T>{k}) -> (), View<T>{w}) = (sink@move, x@move)\n        origin k.source outlives w.source\n    return pair.1@move\n", "clean")]
+    // s3_sib: V, 15.3.6: w's upper bounds are x.source (the fit) and the Function input's k (the clause), which stays that region; k
+    // is bounded by m, whose candidate is y.source; x.source and y.source outlive s by both premises. s3_sib_bad: I, the result
+    // `during x.source` needs the chain y.source, m, k, w to reach x.source, which nothing proves (15.6.5 Unknown): one record at the
+    // return.
+    [InlineData(S3Sib + "s" + S3SibBody, "clean")]
+    [InlineData(S3Sib + "x.source" + S3SibBody, "1*UnprovenOriginRelation_Kd")]
+    // sib_rev: V, 15.3.6 with D-993: x.s's upper bounds are p (the fit) and its sibling x.t (the Type's relation), read as x.t's
+    // candidate q, so x.s is p and q, which outlives p. sib_rev_bad: I, h.a's Origin is at most p, and nothing proves p outlives q
+    // (15.6.5 Unknown).
+    [InlineData(SibRev + "p" + SibRevBody, "clean")]
+    [InlineData(SibRev + "q" + SibRevBody, "1*UnprovenOriginRelation_Kd")]
+    // C5's s3_ref: V, 15.3.6 under O-544 (b): as C4, the Function input's k has no candidate and stays a region, and w is l@ref's
+    // Borrow and k; no chain from k reaches a fixed end, so no record (o544 ruling 2).
+    [InlineData(S3ViewInit + "func demo(anchor: ref/i32 during s, sink: (View<i32> during s) -> ()) -> i32\n    let l = 5\n    let pair: (View<i32>{w}, (View<i32>{k}) -> ()) = (View<i32>.init(l@ref), sink@move)\n        origin k.source outlives w.source\n    return pair.0.data@follow\n", "clean")]
+    // C5's cl_cut: I, 15.3.6 with 15.6.5 Refuted: the sibling clause replaced by one on another local's `var` region, k is at least s by
+    // its fit and at most v's region, which holds l@ref.
+    [InlineData(S3ViewInit + "func demo(anchor: ref/i32 during s, sink: (View<i32> during s) -> ()) -> i32\n    let l = 5\n    var v = View<i32>.init(l@ref)\n    let pair: (View<i32>{w}, (View<i32>{k}) -> ()) = (View<i32>.init(anchor), sink@move)\n        origin v.source outlives k.source\n    return pair.0.data@follow + v.data@follow\n", "1*UnsatisfiedOriginRelation_Kd")]
+    // F's B1: V, 15.3.6: a `var` region is an atom of a `let` region's bound, so s's invariant slot is r's region itself, never a value
+    // naming s's own region.
+    [InlineData("func f(x: i32) -> i32\n    var r = x@ref\n    let s: uniq/(ref/i32) = r@uniq\n    return s@follow@follow\n", "clean")]
+    // rb_let: V, 15.4.4 with 15.3.6: h's slot candidate is r's `var` region of the Closure body, an atom (F's B1) whose source is the
+    // captured a, and the premise proves a outlives b at k's fit; the classified Closure's body, bound again, reads the published value
+    // (the Middle's answer 1). I: without the premise, 15.6.5 Unknown: one record, at `h.item`.
+    [InlineData(RbLet + "    origin a outlives b\n" + RbLetBody, "clean")]
+    [InlineData(RbLet + RbLetBody, "1*UnprovenOriginRelation_Kd")]
+    // inv_low: V, 15.3.6: the slots are at no position, so each takes the covariant candidate, else the contravariant one. w's upper
+    // bound is k, and k, with none, reads its lower bound w, which reads k back: a reading cycle, so w is the region k and k, its lower
+    // bound no proven one, has no candidate; l's upper bounds are w and p, whose meet outlives q by the premise. I: without it,
+    // `l.s outlives q` needs p outlives q, 15.6.5 Unknown: one record, whose site LocalOriginClauseTest's C7 row pins. It pins the Unused
+    // row's lower bounds (the Middle's ruling 3) and O-544 (b)'s lower half.
+    [InlineData(InvLow + "    origin p outlives q\n" + InvLowBody, "clean")]
+    [InlineData(InvLow + InvLowBody, "1*UnprovenOriginRelation_Kd")]
+    public void ALetDeclarationsSiblingRegionsAreEachTheirOwnVariable(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
+
     // SPEC 15.4.2, 15.6.5 (PLAN G758): a `var` local's pair slot, the original's `o` or an annotation, is a region of the local as a
     // concrete layer's Origin is, in every pair set; a written original keeps `o` (qb7) and a `let` local is not opened (qb8). Each row's
     // records by code, its concrete twin beside it. Dev gave UnprovenOriginRelation_Kd on the clean qb1, k01, k02, k03v and e2v rows, and
@@ -355,5 +444,17 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
+    }
+
+    // C6: a warm re-bind of inv_low, whose declaration closes a reading cycle of two sibling regions (FixWaiting's set and its
+    // candidates; R7-O2 A4-L, review C6), allocates nothing.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void AWarmRebindOfASiblingSetDoesNotAllocate()
+    {
+        var c = MinimalEmissionTest.Analyze(InvLow + "    origin p outlives q\n" + InvLowBody + "public func main() => ()\n");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

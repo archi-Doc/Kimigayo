@@ -13,7 +13,8 @@ namespace Kimi.Compiler;
 // Directive<Item>, with its directive targets and arms (SPEC 19.4); an executable body's items and their Constraint prefix (SPEC 7.5);
 // one block item's dispatch, a required indented block and a single-item body.
 // Input: a reader at a body or an item; an IItemList for the enclosing list. Output: a CodeBlockKoto, or an item's node, or null when the
-// item was omitted. Selected items only: excluded syntax is parsed with the same grammar into the owner its list prepares.
+// item was omitted. Selected items only: excluded syntax is parsed with the same grammar into its directive's marker, and each
+// list's owner adopts the markers of its directives (ParseItemList).
 // Invariants: an indented body's items are regions of their own; a block ends at its last written token; an item that read nothing is
 // stepped over, so the loop ends.
 // Prohibitions: the forms of an item belong to their own parts and lists; the selection of a directive to Parser.Directives.
@@ -39,13 +40,15 @@ public static partial class Parser
         var blockContext = reader.TakeContext();
         var list = new ExecutableItems(function, originOwner);
         reader.Advance(); // StartBlock
-        var end = ParseItems(ref reader, ref list);
+        var end = ParseItemList(ref reader, ref list, out var markers);
         reader.RestoreContext(blockContext);
         reader.RestoreRegion(region);
-        return new CodeBlockKoto(
+        var block = new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, end)),
             list.Items.ToArray());
+        block.AdoptSource(markers);
+        return block;
     }
 
     /// <summary>An item list that names <c>Directive&lt;Item&gt;</c> (SPEC F.11): its directive targets and arms keep its item category.</summary>
@@ -53,10 +56,6 @@ public static partial class Parser
     {
         /// <summary>Gets a value indicating whether each indented list of this category needs a source item before selection (SPEC 14.2.1).</summary>
         bool RequiresItem { get; }
-
-        /// <summary>Prepares the owner of the excluded syntax the loop enters next (SPEC 19.4).</summary>
-        /// <param name="reader">The token reader, before the excluded syntax.</param>
-        void EnterExcluded(ref TokenReader reader);
 
         /// <summary>Parses one item of this category at the reader, its prefixes consumed.</summary>
         /// <param name="reader">The token reader.</param>
@@ -68,6 +67,27 @@ public static partial class Parser
         void AddUnselected(ref TokenReader reader, Koto unselected);
     }
 
+    /// <summary>Parses one item list after its StartBlock, through its EndBlock, as its own: its items are its own even inside excluded
+    /// syntax, and its directives' markers are its owner's (SPEC 19.4).</summary>
+    /// <typeparam name="TList">The item category of the list.</typeparam>
+    /// <param name="reader">The token reader after the list's StartBlock.</param>
+    /// <param name="list">The list.</param>
+    /// <param name="markers">The markers of the list's directives that no directive of the list excludes, for its owner's source slot.</param>
+    /// <returns>The end offset of the list.</returns>
+    internal static int ParseItemList<TList>(ref TokenReader reader, ref TList list, out List<Koto>? markers)
+        where TList : IItemList, allows ref struct
+    {
+        var excluding = reader.ExcludingMarker;
+        var outer = reader.ListMarkers;
+        reader.ExcludingMarker = null;
+        reader.ListMarkers = null;
+        var end = ParseItems(ref reader, ref list);
+        markers = reader.ListMarkers;
+        reader.ExcludingMarker = excluding;
+        reader.ListMarkers = outer;
+        return end;
+    }
+
     /// <summary>Parses the items of one indented list after its StartBlock, through its EndBlock: the one item loop of every list that
     /// names <c>Directive&lt;Item&gt;</c> (SPEC F.6, F.10.1, F.11).</summary>
     /// <typeparam name="TList">The item category of the list.</typeparam>
@@ -77,7 +97,7 @@ public static partial class Parser
     /// <returns>The end offset of the list.</returns>
     /// <remarks>
     /// Directive targets and arms are parsed by this same loop (SPEC 19.4): a selected one adds its items to the list; excluded
-    /// syntax is parsed with the same grammar and recovery into the owner <see cref="IItemList.EnterExcluded"/> prepares.
+    /// syntax is parsed with the same grammar and recovery into its directive's marker (<see cref="TokenReader.ExcludingMarker"/>).
     /// </remarks>
     internal static int ParseItems<TList>(ref TokenReader reader, ref TList list, bool stopAtCaseGroupBoundary = false)
         where TList : IItemList, allows ref struct
@@ -132,7 +152,6 @@ public static partial class Parser
             hasSourceItem = true;
             if (reader.IsExcluded)
             {
-                list.EnterExcluded(ref reader);
                 var region = BeginExcludedRegion(ref reader);
                 ParseDirectiveOrItem(ref reader, ref list);
                 EndExcludedRegion(ref reader, region);
@@ -161,10 +180,9 @@ public static partial class Parser
             {
                 if (arm.Kind == CompileTimeSwitchArmKind.InvalidItems)
                 {
-                    list.EnterExcluded(ref reader);
-                    var start = BeginInvalidSwitchItems(ref reader);
+                    var invalid = BeginInvalidSwitchItems(ref reader, arms.Marker);
                     ParseItems(ref reader, ref list, stopAtCaseGroupBoundary: true);
-                    EndInvalidSwitchItems(ref reader, start);
+                    EndInvalidSwitchItems(ref reader, invalid);
                 }
                 else if (arm.Kind == CompileTimeSwitchArmKind.Selected)
                 {
@@ -173,8 +191,7 @@ public static partial class Parser
                 }
                 else
                 {
-                    list.EnterExcluded(ref reader);
-                    var region = BeginExcludedRegion(ref reader, arm.Header, arm.Header.Start);
+                    var region = BeginExcludedRegion(ref reader, arms.Marker, arm.Header, arm.Header.Start);
                     reader.Advance(); // StartBlock
                     ParseItems(ref reader, ref list);
                     EndExcludedRegion(ref reader, region);
@@ -200,7 +217,7 @@ public static partial class Parser
         list.ParseItem(ref reader);
     }
 
-    /// <summary>The items of an executable body (SPEC F.10.1): excluded syntax extends its Constraint prefix and is dropped.</summary>
+    /// <summary>The items of an executable body (SPEC F.10.1): excluded syntax extends its Constraint prefix and goes to its directive's marker.</summary>
     /// <param name="function">The function whose body this is, if any.</param>
     /// <param name="originOwner">The declaration that owns leading Origin relations, if not the function.</param>
     private ref struct ExecutableItems(FunctionKoto? function, Koto? originOwner) : IItemList
@@ -210,10 +227,6 @@ public static partial class Parser
         private ExecutableItemState state = new(function, originOwner);
 
         public readonly bool RequiresItem => true;
-
-        public readonly void EnterExcluded(ref TokenReader reader)
-        {
-        }
 
         public void ParseItem(ref TokenReader reader)
             => ParseExecutableItem(ref reader, ref this.Items, ref this.state);
@@ -225,8 +238,8 @@ public static partial class Parser
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ParseExecutableItem(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
     {
-        // Excluded syntax is parsed like selected syntax but registers nothing with the enclosing declarations (SPEC 19.4).
-        var excluded = reader.InExcludedSyntax;
+        // Excluded syntax is parsed like selected syntax but registers nothing with the enclosing declarations: its parts go to the
+        // marker of its directive (SPEC 19.4).
         var function = state.Function;
         if (IsOriginRelationStart(ref reader))
         {
@@ -235,7 +248,11 @@ public static partial class Parser
             var relation = ParseOriginRelation(ref reader);
             if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true })
             {
-                if (!excluded)
+                if (reader.ExcludingMarker is { } marker)
+                {
+                    marker.AddSource(relation);
+                }
+                else
                 {
                     OriginClauses.Add(owner, relation);
                 }
@@ -267,7 +284,7 @@ public static partial class Parser
             ReportPendingAttributes(ref reader);
             RejectAccessWord(ref reader);
             var misplaced = MisplacedConstraint(ref reader, state, function, reader.CurrentTokenRange);
-            AddBodyConstraint(ref reader, function, ParseTypeConstraint(ref reader), misplaced, excluded);
+            AddBodyConstraint(ref reader, function, ParseTypeConstraint(ref reader), misplaced);
             return;
         }
 
@@ -285,7 +302,7 @@ public static partial class Parser
             if (reader.CurrentTokenKind == TokenKind.Is && (!state.SeenExecutableItem || rooted) && AsConstraintSubject(ref reader, operand) is { } subject)
             {
                 var misplaced = MisplacedConstraint(ref reader, state, function, start);
-                AddBodyConstraint(ref reader, function, FinishConstraint(ref reader, subject, lastError, finishLine: true), misplaced, excluded);
+                AddBodyConstraint(ref reader, function, FinishConstraint(ref reader, subject, lastError, finishLine: true), misplaced);
                 return;
             }
 
@@ -293,9 +310,16 @@ public static partial class Parser
         }
 
         state.SeenExecutableItem = true;
-        if (item is not null && !excluded)
+        if (item is not null)
         {
-            items.Add(item);
+            if (reader.ExcludingMarker is { } marker)
+            {
+                marker.AddSource(item);
+            }
+            else
+            {
+                items.Add(item);
+            }
         }
 
         if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock))
@@ -323,15 +347,24 @@ public static partial class Parser
         => state.SeenExecutableItem || function is not { IsDestructor: false } ? reader.Unexpected(SyntaxForm.ConstraintPrefix, subject) : null;
 
     // The prefix stays a Constraint of the function (SPEC 7.5); a misplaced one is a recovery, so Binding's own judgement of it is derived.
-    private static void AddBodyConstraint(ref TokenReader reader, FunctionKoto? function, IsKoto constraint, DiagnosticKey? misplaced, bool excluded)
+    // Excluded syntax registers no recovery, and its directive's marker keeps the Constraint (SPEC 19.4).
+    private static void AddBodyConstraint(ref TokenReader reader, FunctionKoto? function, IsKoto constraint, DiagnosticKey? misplaced)
     {
-        if (function is { IsDestructor: false } && !excluded)
+        if (function is not { IsDestructor: false })
         {
-            function.AddTypeConstraint(constraint);
-            if (misplaced is { } cause)
-            {
-                reader.CodeContext.RecordRecovery(constraint, cause);
-            }
+            return;
+        }
+
+        if (reader.ExcludingMarker is { } marker)
+        {
+            marker.AddSource(constraint);
+            return;
+        }
+
+        function.AddTypeConstraint(constraint);
+        if (misplaced is { } cause && !reader.InExcludedSyntax)
+        {
+            reader.CodeContext.RecordRecovery(constraint, cause);
         }
     }
 

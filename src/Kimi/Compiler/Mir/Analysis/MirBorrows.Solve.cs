@@ -34,7 +34,7 @@ internal sealed partial class MirBorrows
         (this.escapedSet, this.readEscapedSet) = (this.sets.Add(this.writableSet, Escaped), this.sets.Add(0, Escaped));
         this.unformedSet = this.sets.Add(0, Unformed);
         this.offgridSet = this.sets.Add(0, Offgrid);
-        (this.maybeSet, this.undecidedSet) = (this.sets.Add(this.escapedSet, Maybe), this.sets.Add(0, Undecided));
+        this.maybeSet = this.sets.Add(this.sets.Rest(this.escapedSet), Maybe);
         this.builtSet = this.sets.Add(0, Built);
         this.Loans();
         this.Addresses();
@@ -43,7 +43,7 @@ internal sealed partial class MirBorrows
         this.producing |= this.owning; // The storing rule reads an own part formed without a Loan (MirBorrows.Storing; PLAN G581).
         if (!this.producing)
         {
-            // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, PQ-10, an own-step entry an access may
+            // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, an own-step entry an access may
             // depart and the storing rule's own part formed without a Loan need no Loan, R4-M141).
             return;
         }

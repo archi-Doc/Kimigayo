@@ -108,19 +108,18 @@ public partial class KimiLibraryShapeTest
 
     // k3 (E4's tripwire; F's ruling 167, Q3), strengthened as t3 (PLAN G949 Stage 2 U3, design R3.7 C2): no library contract declares a
     // Property requirement, so no library conformance path has a Property witness, and so none a standard one (SPEC 11.9.2: a stored Field
-    // witnessing a Property requirement, which a bridge accessor executes): no program makes or refreshes a witness bridge on a frozen
-    // path (PropertyWitnessFunction makes one per path and witness) and S1-1 needs no eager bridge step. The unit that gives a library
-    // contract the first Property requirement routes those writes by U4's two levels, adds the eager step over the base paths (s11-design
-    // section 4, E4) and removes this Fact.
+    // witnessing a Property requirement, its Storage target, TyCtxt.Property, which the collector's PropertyWitness shim executes): no
+    // program reads a standard witness of a frozen path, and S1-1 needs no eager step. The unit that gives a library contract the first
+    // Property requirement routes OperationOrigins' writes by U4's two levels, adds an eager step over the frozen paths' standard
+    // witnesses' Storage targets (s11-design section 4's E4, whose bridge step R7-P5b deleted) and removes this Fact.
     [Fact]
     public void TheLibraryDeclaresNoStandardPropertyWitness()
     {
         var c = Bound(string.Empty);
         var requirements = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<PropertyKoto>().Where(static x => x.DeclarationKind == PropertyDeclarationKind.Requirement).Select(static x => Line(x)).ToArray();
-        var removal = "A library contract declares a Property requirement, so PropertyWitnessFunction (through InstantiatePropertyRequirementCall) " +
-            "creates or refreshes in place a bridge on a frozen path (PropertyBridges; the bridge's receiver, Type, accessor and body) and " +
-            "OperationOrigins extends its PropertyWitnessOrigins: route them by U4's two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), with " +
-            "k3's E4 eager step, then remove this row: ";
+        var removal = "A library contract declares a Property requirement, so a standard witness on a frozen path is a Storage target " +
+            "(TyCtxt.Property, the collector's PropertyWitness shim) and OperationOrigins extends its PropertyWitnessOrigins: route them by " +
+            "U4's two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), with k3's E4 eager step, then remove this row: ";
         Assert.True(requirements.Length == 0, removal + string.Join(", ", requirements));
         var paths = DeclaredSymbols(c)
             .Where(x => x.Kind == BindingSymbolKind.Type && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha))

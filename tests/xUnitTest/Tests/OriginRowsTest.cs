@@ -324,13 +324,28 @@ public sealed partial class OriginRowsTest
     }
 
     // 2a0-D D1 (PLAN G962): a Type's clause at a local annotation whose substituted relation is fixed-fixed and entailed by the premises
-    // at the annotation (`p outlives q`) is Binding's direct proof and forms no row, as a declaration row its premises entail.
+    // at the annotation (`p outlives q`) is Binding's direct proof and forms no row, as a declaration row its premises entail. Both of
+    // the clause's ends are fixed by equalities, so the relation is fixed-fixed when it is formed (R7-O2 A4-L under the owner's
+    // O-544 (b), design-a4l §1: an omitted slot is a region with no value then; AnOmittedSlotsTypeClauseIsAChainRow).
     [Fact]
     public void AFixedTypeClauseThePremisesEntailFormsNoRow()
     {
         var c = MirBuildTest.Compile(ClauseS + "func f(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let s: S{w} = S.init(p, q)\n" +
-            "        origin w.a == p\n    return keep(s@move)\n" + Main);
+            "        origin w.a == p\n        origin w.b == q\n    return keep(s@move)\n" + Main);
         Assert.DoesNotContain(Rows(c, false), static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto));
+    }
+
+    // SPEC 15.3.3, 15.3.6 (R7-O2 A4-L under the owner's O-544 (b), design-a4l §1): with w.b omitted, the Type's clause at the `let`
+    // (`w.a outlives w.b`) is formed while w.b's region has no value, so it is a body chain A5 judges with the value the declaration
+    // fixes (q, from the fit), not Binding's direct proof; the premise `p outlives q` proves it and the program is accepted.
+    [Fact]
+    public void AnOmittedSlotsTypeClauseIsAChainRow()
+    {
+        const string Program = ClauseS + "func f(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let s: S{w} = S.init(p, q)\n" +
+            "        origin w.a == p\n    return keep(s@move)\n" + Main;
+        Assert.Empty(DiagnosticCorpus.Check(Program).Diagnostics);
+        var row = Assert.Single(Rows(MirBuildTest.Compile(Program), false), static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto));
+        Assert.Equal(("S{w}", "origin a outlives b"), (First(row.Use), First(row.Clause!)));
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a

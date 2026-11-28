@@ -14,8 +14,8 @@ namespace Kimi.Compiler;
 //   verified path and operation, the implementing Type's instance); LibraryWitness (a group's function and its row); Refused (a
 //   base-path witness whose requirement receiver is not `ref`, OCC-X); None.
 // - Invariants: a caller forwards an abstract Self before it calls the core (SPEC 8.15) and keeps its own premise scope: the
-//   materializer its call's ConstraintScope, TyCtxt.Witness the library root's, or the reading definition's EffectPremises for a Self
-//   with an abstract part.
+//   Binding's selection its call's ConstraintScope (ProjectReceiver), TyCtxt.Witness the library root's, or the reading
+//   definition's EffectPremises for a Self with an abstract part.
 // - Prohibitions: no member lookup, CallPlan, Origin translation, receiver projection, bridge or diagnostic; no written state beyond
 //   interning, proof caches and instance storage preparation.
 public sealed partial class Binding

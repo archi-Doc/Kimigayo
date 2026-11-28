@@ -103,7 +103,7 @@ public class MinimalEmissionTest
         Assert.Throws<InvalidOperationException>(() => c.Generate(TextWriter.Null));
     }
 
-    // IMPL 21.6: Kernel's module on the staged none row defines the platform storage of Board's layout and one adapter per Platform
+    // IMPL 21.6: Kernel's module on the none row defines the platform storage of Board's layout and one adapter per Platform
     // requirement (PlatformRows' records), each calling its witness's function through the entry call: the storage as start's result
     // slot and as every receiver, the loader's boot passed through, write's text a Utf8Slice slot of the template's data and length,
     // terminate's call followed by unreachable. The start is the layer's libc-free form: the global module asm entry, and the start body

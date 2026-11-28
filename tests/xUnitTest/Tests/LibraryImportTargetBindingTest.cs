@@ -594,7 +594,7 @@ public class LibraryImportTargetBindingTest
     // supply of the name and the reserved external names are the table's, so an import of a symbol no row's supply of that name provides is
     // unavailable, and one of a reserved name (a memory function, main) invalid, on every target; the selected row decides only the located
     // Unsupported_Kd at the import, for another row's supply or symbol (the Windows import of c's write, the Linux one of kernel32's
-    // GetLastError, which joins Windows' runtime declaration with no conflict; both on the staged none-x64 row, whose one supply is its
+    // GetLastError, which joins Windows' runtime declaration with no conflict; both on the none-x64 row, whose one supply is its
     // kimi_backend); a target without a row (x86_64-unknown-linux-gnu) reports none (G2). The Tatara plan's B9e (IMPL 21.2, 20.4; design
     // §5 rows 15 and 16, change N1): the none row's kimi_backend symbols, compiler-rt's soft-float routines and its fp_mode.c's, are
     // reserved external names on every target, so a program library's import of one is invalid on each, as is the none row's own

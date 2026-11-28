@@ -558,7 +558,7 @@ public sealed class SemanticSnapshotTest
                 text.Append(" map=[").AppendJoin(',', call.ArgumentToParameter.ToArray().Select(static x => x.ToString(CultureInfo.InvariantCulture))).Append(']');
                 if (invocation.Method is RequirementCalleeKoto requirement)
                 {
-                    text.Append(" requirement=").Append(Symbol(requirement.RequirementStorage?.Target)).Append(" implementation=").Append(Symbol(requirement.ImplementationStorage?.Target));
+                    text.Append(" requirement=").Append(Symbol(requirement.RequirementStorage?.Target));
                 }
             }
             else if (this.Query.ValueCallOf(invocation) is { } value)

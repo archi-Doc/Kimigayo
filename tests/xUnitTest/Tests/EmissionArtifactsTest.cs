@@ -57,7 +57,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(paths.Ir)!, "*.tmp"));
     }
 
-    // SPEC 21.4.7 (C-597 N1; the Tatara plan's B9f): the staged none row's manifest head states its own backend package, not Windows':
+    // SPEC 21.4.7 (C-597 N1; the Tatara plan's B9f): the none row's manifest head states its own backend package, not Windows':
     // its package id and ABI version, and its archive hash the none catalog's kimi_backend file (ToolchainIdentity.Packages).
     [Fact]
     public void ANoneManifestHeadStatesItsRowsPackage()

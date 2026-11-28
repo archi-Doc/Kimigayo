@@ -228,11 +228,13 @@ public class RawStorageTest
     }
 
     // IMPL 21.6, SPEC 7.6, 10.1 (OSF's rows 2 and 3): a port member is an unsafe function of its declared Types: a call outside an
-    // unsafe context needs one, and with a u16 value where its byte goes the call has no applicable candidate.
+    // unsafe context needs one, and with a u16 value where its byte goes the call has no applicable candidate. A control register write
+    // is unsafe and its read is not (OSF1b, design 4.3's safety rule).
     [Theory]
     [InlineData("    unsafe => X86.writePort8(0x3F8, value)", "")]
     [InlineData("    X86.writePort8(0x3F8, 65)", "UnsafeBlockRequired_Kd X86.writePort8(0x3F8, 65)")]
     [InlineData("    unsafe => X86.writePort8(0x3F8, value@u16)", "NoApplicableOverload_Kd X86.writePort8(0x3F8, value@u16)")]
+    [InlineData("    X86.writeCr3(X86.readCr3())", "UnsafeBlockRequired_Kd X86.writeCr3(X86.readCr3())")]
     public void APortWriteIsUnsafeAndTyped(string body, string errors)
         => Assert.Equal(errors, TimeLibraryTest.Errors(MinimalEmissionTest.Check(TargetProfile.None, "public group Board\n    public func send(value: u8)\n    " + body + "\n", "Board.kimi", OutputKind.Library)));
 
@@ -282,8 +284,9 @@ public class RawStorageTest
     // the whole Place, the layer's element included (SPEC 13.5.3, 15.1.2), so only a whole write restores it. Since the MIR
     // decides acceptance (R6-check H5), its records on these Binding-rejected programs are published beside Binding's (DECISIONS
     // R5-M184, until A6's 2g-1; H3b T51, class 4). R7-O1 H (B4: a relation problem leaves the access Resolved, so A5 reaches it; Q13
-    // rule 3, the Middle's (iii)): PQ-10's located Unsupported_Kd stands beside the relation record at an update, A5's own limit whatever
-    // the verdict (R4-M120); a Copy or Move of an enclosing Place carries its owner's own-step entry (Z5-R2) and a borrow of a layer's
+    // rule 3): at an update, G1301 C removes PQ-10's read limit (DECISIONS R7-M129), and the rested Loan of the update's borrow, which
+    // the update stores back into the layer, meets b's drop, so A5's located Unsupported_Kd stands at `var b` beside the relation
+    // record; a Copy or Move of an enclosing Place carries its owner's own-step entry (Z5-R2) and a borrow of a layer's
     // Place or an enclosing one issues its Loan (Z5-R1's R-B), each with no mark, so the relation record of an exclusive borrow or of a
     // write of a Copy stands alone, as does the conflict of the Move beside a shared one; the restore `b.data = fresh` after `b.data@move`
     // reinitializes the Place (SPEC 15.1), so b1's two MovedPlace_Kd, read through the failed write's Opaque node, were false records
@@ -291,7 +294,7 @@ public class RawStorageTest
     [Theory]
     [InlineData("()", "b.data = fresh", "UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     [InlineData("()", "b.data = shared", "UnsatisfiedOriginRelation_Kd: b.data = shared")]
-    [InlineData("()", "unsafe => b.data += 1", "Unsupported_Kd: b.data += 1 | UnsatisfiedOriginRelation_Kd: b.data += 1")]
+    [InlineData("()", "unsafe => b.data += 1", "Unsupported_Kd: var b = Block.init() | UnsatisfiedOriginRelation_Kd: b.data += 1")]
     [InlineData("()", "let w = b.data@uniq", "UnsatisfiedOriginRelation_Kd: b.data@uniq")]
     [InlineData("()", "b.pair = (fresh, 1)", "UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 1)")]
     [InlineData("()", "b.pair = (b.data, 1)", "UnsatisfiedOriginRelation_Kd: b.pair = (b.data, 1)")]
@@ -316,8 +319,8 @@ public class RawStorageTest
     [InlineData("()", "_ = Kimi.Intrinsics.exchange(b.pair@uniq, with: (null, 1))", "UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "let w = b.arr@(uniq/[2 of raw/u8])", "UnsatisfiedOriginRelation_Kd: b.arr@(uniq/[2 of raw/u8])")]
     [InlineData("()", "var s = b.arr.sliceUniq()\n    s[0] = fresh", "UnsatisfiedOriginRelation_Kd: b.arr")]
-    // The PQ-10 limit beside the relation (as above), and a Loan conflict at `var b` that the failed borrow's node hid (added on a
-    // rejected program, counted: DECISIONS Q13).
+    // A Loan conflict at `var b` beside the relation (as above), which the failed borrow's node hid (added on a rejected program,
+    // counted: DECISIONS Q13).
     [InlineData("()", "for _ in b.arr@uniq => _ = 0", "ComparisonLoanConflict_Kd: var b = Block.init() | UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     // A Move of an enclosing Place (Z5; Z5-R2: it carries its owner's own-step entry, with no mark): each program's own A1 or A5
@@ -342,7 +345,7 @@ public class RawStorageTest
     [InlineData("()", "b.pair = nope", "UnresolvedBinding_Kd: nope")]
     [InlineData("()", "b.data = 5", "TypeMismatch_Kd: 5")]
     [InlineData("()", "b.arr = [nope, shared]", "UnsatisfiedOriginRelation_Kd: b.arr = [nope, shared] | UnresolvedBinding_Kd: nope")]
-    [InlineData("()", "unsafe => b.data += nope", "Unsupported_Kd: b.data += nope | UnsatisfiedOriginRelation_Kd: b.data += nope | UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "unsafe => b.data += nope", "Unsupported_Kd: var b = Block.init() | UnsatisfiedOriginRelation_Kd: b.data += nope | UnresolvedBinding_Kd: nope")]
     // A Case payload's layers are judged over its failed parts as a write's are: a non-null source at a layer beside a failed part keeps
     // its record, a failed part at the layer gives none.
     [InlineData("()", "let c = Cell.Two((fresh, nope))", "UnsatisfiedOriginRelation_Kd: (fresh, nope) | UnresolvedBinding_Kd: nope")]
