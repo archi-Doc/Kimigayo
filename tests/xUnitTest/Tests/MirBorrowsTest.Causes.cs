@@ -106,8 +106,9 @@ public sealed partial class MirBorrowsTest
             "func g(p: uniq/Holder<ref/i32 during a> during u) -> i32\n    let b = 1\n    var r = p@move\n    r@follow.value = b@ref\n    return 0\n",
         ["call-store-var"] = "func put(t: uniq/(ref/i32 during c) during w, v: ref/i32 during c)\n    t@follow = v\n" +
             "func g(p: uniq/(ref/i32 during a) during u) -> i32\n    let b = 1\n    var r = p@move\n    put(r@move, b@ref)\n    return 0\n",
-        ["pair-views-slot"] = "func pw<s/T>(p: uniq/(ref/i32 during a) during u, m: s/T) -> i32\n    s is owner or ref\n" +
-            "    let w: Option<s/(ref/i32 during a) during u> = .None\n    let b = 1\n    var r = p@move\n    r@follow = b@ref\n    return 0\n",
+        ["pair-views-slot"] = "func pw<s/T>(p: uniq/(ref/i32 during a) during u, m: ref/(s/T), o: ref/(Option<s/(ref/i32 during a) during u>)) -> i32\n" +
+            "    s is owner or ref\n    let w: ref/(Option<s/(ref/i32 during a) during u>) = o\n    let b = 1\n    var r = p@move\n    r@follow = b@ref\n" +
+            "    return 0\n",
         ["g786-four-causes"] = "func put(p: raw/(ref/i32 during a), v: ref/i32 during a)\n    unsafe => *p = v\n" +
             "func shape(c: i32, target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n    var x0: ref/i32 during a = q\n" +
             "    var x1: ref/i32 during a = q\n    var x2: ref/i32 during a = q\n    var x3: ref/i32 during a = q\n    var p = x0@raw\n" +
@@ -383,8 +384,9 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(48, causes);
     }
 
-    // PLAN G824: pair-views-slot's one run covers both views (no view decides a check), which its masked row (the pair layer's
-    // well-formedness, the ref case only) puts in two classes, so Fixed reads the slot's equality in each.
+    // PLAN G824: pair-views-slot's one run covers both views (no view decides a check: m and w lie behind references, so no Drop has a
+    // Type a case substitutes, PLAN G1507), which its masked row (the pair layer's well-formedness, the ref case only) puts in two
+    // classes, so Fixed reads the slot's equality in each.
     [Fact]
     public void AnEquatedSlotsRunCoversTwoClasses()
     {

@@ -45,12 +45,14 @@ internal static partial class KimiLibraryCatalog
     internal static KimiDeclarationId? PresentationOf(KimiDeclarationId id) => Index(id) is >= 0 and var index && Presentations[index] >= 0 ? Definitions[Presentations[index]].Id : null;
 
     // An entry's declaration is the one whose `#Lang` names its Id (IMPL 21.3.4), which the library's registration reads; a Form entry's
-    // is a bodyless function whose call the MIR builder writes as a MIR form (DispositionKind.Form).
+    // is a bodyless function whose call the MIR builder writes as a MIR form (DispositionKind.Form). X86, SPEC 22.1: a member of the group
+    // `Kimi.X86`, declared only where `arch == "x86_64"` holds, so absent from another target's library.
     internal readonly record struct Entry(
         KimiDeclarationId Id,
         IntrinsicKind Intrinsic = IntrinsicKind.None,
         bool ManagedRepresentation = false,
         PublishedRow? Row = null,
         KimiDeclarationId? Implementation = null,
-        bool Form = false);
+        bool Form = false,
+        bool X86 = false);
 }

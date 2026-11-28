@@ -35,9 +35,9 @@ internal sealed partial class InstanceCollector
         return this.types.Comparison(TyCtxt.Contract(entry.Key.Symbol!), self, operators: entry.Key.Variant != (byte)ComparisonMode.Mapping);
     }
 
-    // K 4.5 rows 2, 3, 5, 6, 12 and 13: what a requirement runs in the item's instance, TyCtxt.Witness of it with the Contract reference its
-    // call recorded and the call's closed substitution (X16): a requirement call's composed one, a compiler function's call on a Self or a
-    // requirement Item's call. A Body's function item, the implementation its instance selects (SPEC 8.13.3; -1 without a body); a Builtin's
+    // K 4.5 rows 2, 3, 5, 6, 12 and 13: what a requirement's non-Body witness runs in the item's instance (Called's row for a Builtin,
+    // Storage, Refused or None target), TyCtxt.Witness of it with the Contract reference its call recorded and the call's closed
+    // substitution (X16): a requirement call's composed one, a compiler function's call on a Self or a requirement Item's call. A Builtin's
     // shim item, keyed by its compiler function and the erased Self; a Storage witness's property-witness item, keyed by its Field, the
     // erased Self and its operation (X14, X28), whose key's signature agrees with the requirement's in the instance; a shim item represented
     // by the call's substitution, a Builtin's and a Storage witness's, whose bound reference instantiates the requirement's signature (one
@@ -51,11 +51,11 @@ internal sealed partial class InstanceCollector
         DiagnosticCode? refused = target.Kind switch
         {
             RequirementTargetKind.Builtin when ArithmeticGap(target) is { } gap => Capability.Code(gap),
-            RequirementTargetKind.Body or RequirementTargetKind.Builtin => null,
+            RequirementTargetKind.Builtin => null,
             RequirementTargetKind.Storage when this.Agrees(requirement, target) => null,
             RequirementTargetKind.Storage or RequirementTargetKind.None => DiagnosticCode.InternalInvariant_Kd,
             RequirementTargetKind.Refused => Capability.Code(CapabilityGap.ExclusiveInheritedWitness),
-            _ => throw new InvalidOperationException($"The witness kind {target.Kind} has no edge row."),
+            _ => throw new InvalidOperationException($"The witness kind {target.Kind} has no edge row."), // Body is Called's.
         };
 
         if (refused is { } code)
@@ -64,22 +64,17 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        if (target.Kind == RequirementTargetKind.Body)
-        {
-            return this.Implementation(program, item, subject, target.Target!, target.Subst);
-        }
-
         var key = target.Kind == RequirementTargetKind.Builtin ? new MonoKey(MonoKind.Builtin, default, null, target.Target, 0, null)
             : new MonoKey(MonoKind.PropertyWitness, default, null, target.Target, (byte)target.Access, null);
         return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
-    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146, R8-M19): the target of a requirement call or of a requirement Item, where it is formed,
-    // called or erased, which code generation runs as a body, shim or import item (FunctionCodegen.Calls' Witness). A Body witness without a
-    // MIR body is an import's item (Imported, SPEC 22.6), whose own rule also covers a witness Binding rejected and a broken contract; a
-    // compiler function is no requirement's witness (the library's bodyless functions implement no Contract), so its row, which its direct
-    // call runs, is never taken here. The other edges a requirement runs on (a compiler function's published row, Text.writer's reserve
-    // witness) take Requirement's row: their requirements take a receiver, which an import never has.
+    // K 4.5 rows 3, 5, 6 and 13 (DECISIONS R5-M146, R8-M19): the target of every edge a requirement runs on, a requirement call or Item
+    // where it is formed, called or erased and a compiler function's call of one (Runs), which code generation runs as a body, shim or
+    // import item (FunctionCodegen.Calls' Witness). A Body witness without a MIR body is an import's item (Imported, SPEC 22.6),
+    // receiverless or not, whose own rule also covers a witness Binding rejected and a broken contract; a compiler function is no
+    // requirement's witness (the library's bodyless functions implement no Contract), so its row, which its direct call runs, is never
+    // taken here. Any other kind takes Requirement's row.
     private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
         if (target.Kind != RequirementTargetKind.Body)
@@ -93,12 +88,12 @@ internal sealed partial class InstanceCollector
 
     // K 4.5 row 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
     // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose formation its caller read (an intrinsic's argument In or
-    // Edge's composition); the resolution's cause is read here, keyed by the site (Formed).
+    // Edge's composition); the resolution's cause is read here, keyed by the site (Formed), then Called's row, as a program's call of it.
     private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType self)
     {
         var contract = TyCtxt.Contract(requirement);
         var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, self, contract.Type!), null);
-        return this.Formed(target.Cause, item, subject, subject) ? this.Requirement(program, item, subject, requirement, target) : -1;
+        return this.Formed(target.Cause, item, subject, subject) ? this.Called(program, item, subject, requirement, target) : -1;
     }
 
     // F 4.5, X14: the signature a property-witness key fixes, the one statement of it, which K6's agreement (Agrees) and the shim's function

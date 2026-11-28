@@ -309,6 +309,20 @@ public partial class EffectBoundImplementationTest
         AssertBound(MinimalEmissionTest.Analyze(TargetProfile.Find(triple)!, Probe + body + "\n", "Hello.kimi", OutputKind.Library), false, "Self is Probe");
     }
 
+    // SPEC 8.11.2, 15.6.4 (OSF3b's row 28; design C-457 C4): an interrupt entry's call returns a code address and runs nothing, since the
+    // processor runs the entry, so its handler's effects (a port write, an environment effect) enter no caller's summary and a `confined`
+    // implementation that takes the address keeps its bound; MIR validates.
+    [Fact]
+    public void AnInterruptEntryRunsNoHandlerEffect()
+    {
+        const string Probe = "contract Probe\n    func read(self: uniq/Self) -> usize\n        effect confined\n" +
+            "struct TimerTick\n    Self is X86.InterruptHandler\n\n    public func handle(frame: ref/X86.InterruptFrame)\n        unsafe => X86.writePort8(0x20, 0x20)\n" +
+            "struct Register\n    Self is Probe\n    public func read(self: uniq/Self) -> usize\n        unsafe => return X86.entry<TimerTick>()\n";
+        var c = MinimalEmissionTest.Analyze(TargetProfile.None, Probe, "Hello.kimi", OutputKind.Library);
+        AssertBound(c, true, "Self is Probe");
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
     // Warm rebinding of user-declared bounds and their witness summaries allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]

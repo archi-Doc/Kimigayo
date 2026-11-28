@@ -235,10 +235,10 @@ public sealed partial class Binding
     }
 
     // SPEC 13.5.5, 15.6.1, 8.15.2: a followed pair layer met into the walk (MeetLayers' pair layers, MeetStep's pair follow) by its cases
-    // under the walk's case assignment (CaseAdmitted, PathAuthority's rule); whether it is shared.
+    // under the walk's case assignment (PairCase.Cases, PathAuthority's rule); whether it is shared.
     private bool MeetPair(ref ContainmentWalk walk, BoundType? pair, SemanticsMask admitted)
     {
-        admitted = !walk.Cases.IsEmpty && TryPairLayer(pair, out var whole, out _) ? CaseAdmitted(whole, admitted, walk.Cases) : admitted;
+        admitted = !walk.Cases.IsEmpty && TryPairLayer(pair, out var whole, out _) ? PairCase.Cases(walk.Cases, whole.Symbol!, admitted) : admitted;
         var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
         walk.Dereferenced |= !inPlace;
         this.MeetOuter(ref walk, shared ? slot : null, shared ? null : slot, inPlace);
