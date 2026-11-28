@@ -356,6 +356,42 @@ public sealed class CompilationEntryTest
         Assert.Equal(records, string.Join(" | ", errors.Select(static x => $"{x.Code}@{x.Path}:{x.Span.Start}")));
     }
 
+    // G144-39 (G144-38 N7): a root `#if` whose Condition is 1,100 terms joined by `or`, `true` but the one p from the end (0-based) or
+    // every one an interpolated string, which a Condition does not admit (SPEC 19.2: PlainString has no interpolation). At the root the
+    // reader's count is A.4's, so F-I's mark meets the module walk where its cut stands. A string above the cut keeps its
+    // InvalidCompileTimeCondition_Kd beside the NL (no rest); at L (p 1,022) the string, whose segments take no mark, is the cut: its
+    // mark stands one level above the node past L (ErrorKoto.SkipReach) and is cut as the string, NL alone, the rest (the invalid-form
+    // record under a cut is commit (c)'s F-I move, as under the cut). Fail-before: p 1,022 and every-term threw "A skip mark at depth
+    // 1024 lies under no cut" (CheckFaulted_Kd).
+    // Rows: the interpolated term's place p (n7-interp-p<p>-I), or null for every term (n7-interp-all-I).
+    public static TheoryData<int?, string> InterpolatedTerms => new()
+    {
+        { 1018, "NestingLimit_Kd@1:5 | InvalidCompileTimeCondition_Kd@1:653" },
+        { 1019, "NestingLimit_Kd@1:5 | InvalidCompileTimeCondition_Kd@1:645" },
+        { 1020, "NestingLimit_Kd@1:5 | InvalidCompileTimeCondition_Kd@1:637" },
+        { 1021, "NestingLimit_Kd@1:5 | InvalidCompileTimeCondition_Kd@1:629" },
+        { 1022, "NestingLimit_Kd@1:5 | NestingLimit_Kd@1:621" },
+        { 1023, "NestingLimit_Kd@1:5" },
+        { 1024, "NestingLimit_Kd@1:5" },
+        { 1025, "NestingLimit_Kd@1:5" },
+        { 1026, "NestingLimit_Kd@1:5" },
+        { 1027, "NestingLimit_Kd@1:5" },
+        { null, string.Join(" | ", ["NestingLimit_Kd@1:5", "NestingLimit_Kd@1:852", .. Enumerable.Range(78, 1022).Select(static i => $"InvalidCompileTimeCondition_Kd@1:{5 + (11 * i)}")]) },
+    };
+
+    [Theory]
+    [MemberData(nameof(InterpolatedTerms))]
+    public void AMarkAboveASlotThatTakesNoMarkStandsAtTheCut(int? interpolated, string records)
+    {
+        var terms = Enumerable.Repeat(interpolated is null ? "\"a\\(1)\"" : "true", 1100).ToArray();
+        if (interpolated is { } p)
+        {
+            terms[1099 - p] = "\"a\\(1)\"";
+        }
+
+        Assert.Equal(records, CheckedSites($"#if {string.Join(" or ", terms)}\nfunc f() => ()\n\npublic func main() => ()\n"));
+    }
+
     // `#if` with `true or` written `terms` times (G144x U3's `<ors>`): a left-deep chain past L at 1,025 terms.
     internal static string Ors(int terms)
         => string.Join(" or ", Enumerable.Repeat("true", terms));

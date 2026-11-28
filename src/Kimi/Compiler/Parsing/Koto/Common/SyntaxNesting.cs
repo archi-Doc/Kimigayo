@@ -8,8 +8,9 @@
 // at the cut's span, which the ErrorKoto or the emptied container rests on; this walk is the one writer of that record.
 // F-I (G144-21; MarkPastLimit): an unrecorded formation-time skip at the parser's lower-bound count, for a detached tree a parse-time
 // walk reads first (a directive's Condition, a runtime type test's target): each first node past L, counted from depth
-// (TokenReader.Depth), becomes an ErrorKoto.IsSkip mark; siblings within L stay; nothing is recorded; the module walk's cut, at least
-// as deep, records it once.
+// (TokenReader.Depth), becomes an ErrorKoto.IsSkip mark, or its parent does where its slot takes no ErrorKoto, a mark that records
+// how far it stands above that node (ErrorKoto.SkipReach, G144-39); siblings within L stay; nothing is recorded; the module walk's
+// cut, at least as deep, records it once.
 // Depth: two places count no level, a directive's marker (its Source slot, the Conditions and excluded parts, is walked at the
 // marker's own depth) and the generated function with its Body (G144-25), so every root item stands at depth 1, and an excluded part
 // or a Condition stands where selected syntax at its place stands (SPEC 19.4). A marker past L is cut like any node. DepthOf gives a
@@ -19,7 +20,8 @@
 // recurses at most L + 1 counted levels, with at most one marker above each, as a marker's Source holds no marker (G144-27 N8);
 // nodes of earlier documents are walked only at the module's merge points (declaration containers, the generated function and its
 // body). The parser reads past L without nodes (TokenReader.Depth, at most the depth counted here), leaving ErrorKoto.IsSkip marks,
-// which lie under a cut: a mark met at depth <= L is InternalInvariant_Kd. A child left in a slot typed to one form of a container (a
+// which lie at or under a cut: a mark met at depth d with d + SkipReach <= L is InternalInvariant_Kd; one with d <= L < d + SkipReach
+// stands for a node with a child past L and is cut as that node is. A child left in a slot typed to one form of a container (a
 // constraint, a generic parameter) is recorded where it stands at the root. The library's trees (KimiLibrarySources) are checked by
 // KimiLibraryShapeTest, not walked at run time: compiler-owned source fixed at build time.
 // Must not decide anything but depth, must not be bypassed by another parse entry that publishes syntax to later phases, and must not
@@ -64,9 +66,14 @@ internal sealed class SyntaxNesting : KotoVisitor
             return;
         }
 
-        if (node is ErrorKoto { IsSkip: true })
+        if (node is ErrorKoto { IsSkip: true } mark)
         {
-            throw new InvalidOperationException($"A skip mark at depth {this.depth} lies under no cut (InternalInvariant; DECISIONS BU-112).");
+            if (this.depth + mark.SkipReach <= Limit)
+            {
+                throw new InvalidOperationException($"A skip mark at depth {this.depth} lies under no cut (InternalInvariant; DECISIONS BU-112).");
+            }
+
+            this.deeper = true; // It stands for a node with a child past L, which waits for its parent's cut (G144-39).
         }
 
         var made = this.cuts?.Count ?? 0;
@@ -140,8 +147,9 @@ internal sealed class SyntaxNesting : KotoVisitor
 
     /// <summary>Marks a tree before a parse-time walk reads it, ahead of the module's walk: a directive's Condition or a runtime type
     /// test's target (F-I, G144-21; DECISIONS BU-112). Each first node past L, counted from <paramref name="depth"/>, becomes an
-    /// <see cref="ErrorKoto.IsSkip"/> mark, or its parent does where its slot takes no ErrorKoto; nothing is recorded. The reader's
-    /// count is at most the root's depth in the module, so each mark lies under a cut of the module's walk, which records it once.</summary>
+    /// <see cref="ErrorKoto.IsSkip"/> mark, or its parent does where its slot takes no ErrorKoto, one level more
+    /// (<see cref="ErrorKoto.SkipReach"/>); nothing is recorded. The reader's count is at most the root's depth in the module, so each
+    /// mark lies at or under a cut of the module's walk, which records it once; d + SkipReach &lt;= L is InternalInvariant_Kd.</summary>
     /// <param name="tree">The tree, not yet attached; it holds no marker and no generated function.</param>
     /// <param name="depth">The depth of its root: the reader's count.</param>
     /// <returns>The tree, or the mark that replaces it.</returns>
@@ -149,12 +157,12 @@ internal sealed class SyntaxNesting : KotoVisitor
     {
         var walk = new LimitMarks(depth);
         walk.Visit(tree);
-        return walk.Past ? Mark(tree) : tree;
+        return walk.Past ? Mark(tree, Math.Max(0, Limit + 1 - depth)) : tree;
     }
 
-    // An unrecorded skip mark in place of a node past L (F-I).
-    private static ErrorKoto Mark(Koto node)
-        => new(node.CodeContext, node.Span) { IsSkip = true };
+    // An unrecorded skip mark in place of a node past L, or of one reach levels above the first node past L (F-I).
+    private static ErrorKoto Mark(Koto node, int reach)
+        => new(node.CodeContext, node.Span) { IsSkip = true, SkipReach = reach };
 
     // The levels a node adds to its children's depth: none for a directive's marker and for the generated function or its Body
     // (G144-25), one for every other node.
@@ -238,10 +246,11 @@ internal sealed class SyntaxNesting : KotoVisitor
                 return;
             }
 
+            var reach = Limit + 1 - this.depth - level; // The children's: they stand at depth + level, the first node past L at L + 1.
             var refused = false;
             for (var i = first; i < past.Count; i++)
             {
-                refused |= !node.ReplaceChild(past[i], Mark(past[i]));
+                refused |= !node.ReplaceChild(past[i], Mark(past[i], reach));
             }
 
             past.RemoveRange(first, past.Count - first);

@@ -260,11 +260,17 @@ public class CompileTimeSwitchParseTest
     // complete its selection, so the Compilation rests on it (m-switch-use-V; t-se-switch-I, whose first arm is True: an Error in any
     // Condition selects nothing, SPEC 19.3). Another recorded failure in it (D, y-switch-mixed-I) or excluded syntax around it
     // (y-rest-in-excl-switch-I) keeps dev's records. Fail-before: t-se-switch-I had dev's UnresolvedBinding_Kd@3:28 (class 4, Q13).
+    // G144-38 N8: an excluded `#switch` with a cut Condition after an unrelated earlier record (`1 2`'s ExpectedSyntax_Kd) selects
+    // nothing and rests nothing, whether nested in the excluded part or its target: the earlier record and the NL, nothing else, as
+    // without it (n8-control). dev gives the same records.
     [Theory]
     [InlineData("m-switch-use-V", "NestingLimit_Kd@2:11")]
     [InlineData("t-se-switch-I", "NestingLimit_Kd@4:11")]
     [InlineData("y-switch-mixed-I", "NestingLimit_Kd@2:11 | UnknownCompileTimeName_Kd@4:11 | UnresolvedBinding_Kd@7:23")]
     [InlineData("y-rest-in-excl-switch-I", "NestingLimit_Kd@4:19 | UnresolvedBinding_Kd@9:23")]
+    [InlineData("n8-excl-switch-nested-I", "ExpectedSyntax_Kd@1:22 | NestingLimit_Kd@4:15")]
+    [InlineData("n8-excl-switch-target-I", "ExpectedSyntax_Kd@1:22 | NestingLimit_Kd@4:11")]
+    [InlineData("n8-control-no-earlier-I", "NestingLimit_Kd@3:11")]
     public void ASwitchWithACutConditionRestsOnlyWhereItSelects(string row, string records)
     {
         var ors = CompilationEntryTest.Ors(3000);
@@ -273,6 +279,9 @@ public class CompileTimeSwitchParseTest
             "m-switch-use-V" => $"#switch\n    #case {ors}\n        func p() => ()\n    #case _\n        func p() => ()\n\npublic func main() => p()\n",
             "t-se-switch-I" => $"#switch\n    #case true\n        func g() -> i32 => missing\n    #case {ors}\n        func h() -> () => ()\n    #case _\n        func k() -> () => ()\n",
             "y-switch-mixed-I" => $"#switch\n    #case {ors}\n        func f() => ()\n    #case missing\n        func g() => ()\n\npublic func main() => f()\n",
+            "n8-excl-switch-nested-I" => $"func k() -> i32 => 1 2\n#if false\n    #switch\n        #case {ors}\n            func g() => ()\n        #case _\n            func h() => ()\n\npublic func main() => ()\n",
+            "n8-excl-switch-target-I" => $"func k() -> i32 => 1 2\n#if false\n#switch\n    #case {ors}\n        func g() => ()\n\npublic func main() => ()\n",
+            "n8-control-no-earlier-I" => $"#if false\n#switch\n    #case {ors}\n        func g() => ()\n\npublic func main() => ()\n",
             _ => $"#if false\n    func g() -> ()\n        #switch\n            #case {ors}\n                let x = 1\n            #case _\n                let x = 2\n\npublic func main() => missing\n",
         };
         Assert.Equal(records, CompilationEntryTest.CheckedSites(source));

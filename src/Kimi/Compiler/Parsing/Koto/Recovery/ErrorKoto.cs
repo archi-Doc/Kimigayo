@@ -17,8 +17,13 @@ public sealed class ErrorKoto : ExpressionKoto
     internal DiagnosticKey? Cause { get; set; }
 
     /// <summary>Gets a value indicating whether this mark stands for a delimited construct the parser read without nodes past the syntax
-    /// nesting limit (DECISIONS BU-112): it lies under a cut of <see cref="SyntaxNesting"/>, the one writer of its record.</summary>
+    /// nesting limit (DECISIONS BU-112): it lies at or under a cut of <see cref="SyntaxNesting"/>, the one writer of its record.</summary>
     internal bool IsSkip { get; init; }
+
+    /// <summary>Gets how many levels this skip mark stands above the first node past the syntax nesting limit it stands for: 0 for the
+    /// parser's marks and for a mark of that node itself, one more for each slot above it that took no mark (G144-39). A mark met at
+    /// depth d with d + SkipReach at most the limit lies under no cut.</summary>
+    internal int SkipReach { get; init; }
 
     /// <summary>Initializes a new instance of the <see cref="ErrorKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
