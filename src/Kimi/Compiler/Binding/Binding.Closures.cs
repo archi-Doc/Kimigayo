@@ -356,6 +356,12 @@ public sealed partial class Binding
         // classification: one naming a pending atom is a row, which A5 judges (SPEC 15.8.2; DECISIONS R7-M66).
         var effects = this.closureEffects ??= new(this);
         effects.Classify(function, plan);
+
+        // The Closure's receiver atoms now read by its receiver (the receiver resolution's Closure row, ResolveReceiver), so a reading
+        // cached from them before is stale: the one invalidation point of the region graph's sources, solutions, carried walks and
+        // ValueIn's memo (PLAN G922 envr R1.2).
+        this.regionVersion++;
+        this.OriginProofMetrics?.ClassifyMove();
         foreach (var use in effects.Unlisted)
         {
             this.Fail(use, BindingFailure.Internal);
@@ -679,7 +685,7 @@ public sealed partial class Binding
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
-            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type!, closureBody));
+            symbol.Type = this.PublishedResult(function, closureBody, this.ResolveLocalResultOrigins(symbol.Type!, closureBody));
         }
 
         // SPEC 23.1.2 (PLAN G1110, DECISIONS R5-M63 (1) as amended): a parameter or result slot that failed (the failed-slot fact) leaves the

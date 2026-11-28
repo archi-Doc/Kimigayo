@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 // Owned read a region with no answer while a body is bound is judged at Final (R7-O2 O2-F: ProveDefaultOwned, the slot's
 // DeferredDefaults row and its obligation, JudgeDeferredDefault). Until then the slot's provisional Origin is its own pending atom (the
 // atom PendingOrigin forms), which every reader names; Final proves it, and the atom reads as its completion at the intakes every Origin
-// passes (CompletedOrigin: DeclaredAtUse and SuppliedAtUse, ReadValueIn, the C1-F4 view's InternAtom, the Hover printer), or
+// passes (CompletedOrigin: DeclaredAtUse and SuppliedAtUse, RegionValue, the C1-F4 view's InternAtom, the Hover printer), or
 // refutes it, and the atom stays Unbound resting on the failed slot (UnboundCause's path b). Before Final, DeferredIn and DeferredAtomIn
 // are the one reading of "names an uncompleted deferred atom" (a comparison's row, LeavesBodyRows; an erasure's deferral).
 // Must not: publish `static` or any other Origin for a deferred slot before Final, or complete a refuted atom.
@@ -23,7 +23,9 @@ public sealed partial class Binding
 
     // SPEC 15.4.4 (R7-O2 O2-F): `origin` with each deferred slot's atom that Final proved read as the default it completes to, a meet
     // operand by operand; an atom not proven, and any other Origin, as it is. The one completion reading: every reader of an Origin after
-    // the slot's resolution passes through it (DeclaredAtUse, SuppliedAtUse, ReadValueIn, InternAtom, HoverTypeName, SemanticQuery.OriginOf).
+    // the slot's resolution passes through it (DeclaredAtUse, SuppliedAtUse, RegionValue, InternAtom, HoverTypeName, SemanticQuery.OriginOf).
+    // It is a step before the receiver resolution (DECISIONS R4-M133): a Closure's environment Borrow stays its own atom here, which a
+    // record's Supplier and the displays read; a reader that judges reads ResolveReceiver over it (Binding.OriginProof.cs).
     internal BoundOrigin CompletedOrigin(BoundOrigin origin)
     {
         if (this.completedDefaults == 0)

@@ -109,9 +109,9 @@ public sealed partial class Binding
     }
 
     // The atom that supplies an Origin at its use (DECISIONS R4-M133): the Origin declarations and local initializers that enclose the use
-    // applied, innermost first, and no receiver resolution: a Borrow's own atom, which a classified Closure's receiver resolution alone
-    // turns into ρ. A record's Supplier is this, at its use. A `let` region, written or a declaration's replacement, reads as its value in
-    // its own body (RegionValueAtUse; PLAN G492-a (ii)).
+    // applied, innermost first, completed (CompletedOrigin), and no receiver resolution: a Borrow's own atom, which a classified Closure's
+    // receiver resolution alone turns into ρ (ResolveReceiver, the step after this one). A record's Supplier is this, at its use. A `let`
+    // region, written or a declaration's replacement, reads as its value in its own body (RegionValueAtUse; PLAN G492-a (ii)).
     internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use) => this.CompletedOrigin(this.RegionValueAtUse(this.DeclaredAtUse(origin, use), use));
 
     // O-400 (b) (PLAN G492-a (ii) Revision 5): a failed condition of a Callable comparison is the located limit where a direction its
@@ -250,8 +250,8 @@ public sealed partial class Binding
 
     // The one resolution of an Origin at its use (2a0-D D4), which every judgment, record, the old reporter and the C1-F4 view read: the
     // atom that supplies it there (SuppliedAtUse; a deferred result slot's atom Final proved first read as its completion, R7-O2 O2-F),
-    // then the receiver of each classified Closure that encloses the use (ResolveReceiver), innermost first.
-    private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use) => this.ReceiverAtUse(this.SuppliedAtUse(origin, use), use);
+    // then the receiver resolution (ResolveReceiver): DECISIONS R4-M133's composition.
+    private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use) => this.ResolveReceiver(this.SuppliedAtUse(origin, use));
 
     // SPEC 15.3.7, 15.4.4 under the owner's O-363 (a): an end of a relation of the Callable comparison `comparison` (InComparison) at its
     // use, in its walk and in its conditions alike. A comparison is a later use that constrains a `let` local's slot, so a `let` region of
@@ -269,11 +269,11 @@ public sealed partial class Binding
 
     // A row's end as its producer read it (SuppliedAtUse with the row), its receivers resolved: OriginAtUse's composition for a row.
     private BoundOrigin OriginAtUse(BoundOrigin origin, in BindingObligation obligation)
-        => this.ReceiverAtUse(this.SuppliedAtUse(origin, obligation), obligation.Use);
+        => this.ResolveReceiver(this.SuppliedAtUse(origin, obligation));
 
     // An Origin at its use as written: OriginAtUse with a `let` region kept as the slot, not its value (RegionValueAtUse). A written
     // Origin binds so (BindOrigin), and a comparison's relation reads so (above); Binding.LocalRegions.cs's contract.
-    private BoundOrigin SlotAtUse(BoundOrigin origin, Koto use) => this.ReceiverAtUse(this.DeclaredAtUse(origin, use), use);
+    private BoundOrigin SlotAtUse(BoundOrigin origin, Koto use) => this.ResolveReceiver(this.DeclaredAtUse(origin, use));
 
     // The Origin declarations and local initializers that enclose the use applied, innermost first.
     private BoundOrigin DeclaredAtUse(BoundOrigin origin, Koto use)
@@ -295,58 +295,49 @@ public sealed partial class Binding
         return origin;
     }
 
-    // The receiver of each classified Closure that encloses the use, innermost first (ResolveReceiver).
-    private BoundOrigin ReceiverAtUse(BoundOrigin origin, Koto use)
-    {
-        for (var node = use; node is not null; node = node.Parent)
-        {
-            if (origin.Kind is OriginKind.Projection or OriginKind.Intersection &&
-                node is FunctionKoto { IsAnonymous: true, ClosureStorage: { Classified: true } plan } closure)
-            {
-                origin = this.ResolveReceiver(origin, closure, plan.Receiver);
-            }
-        }
-
-        return origin;
-    }
-
-    // SPEC 15.8.2, 15.6.5 (DECISIONS R4-M126 P5): in a classified Closure's body an environment binding is a Field of the call receiver's
-    // referent, so its own atom resolves to the receiver Origin ρ under a borrowed receiver, and ρ, no borrow under `owner/Self`, to
-    // static (the binding is then the call's own storage); a meet resolves operand by operand. An Origin without the Closure's atoms is
-    // returned as it is.
-    private BoundOrigin ResolveReceiver(BoundOrigin origin, FunctionKoto closure, SemanticsKind receiver)
+    // SPEC 15.8.2, 15.6.5 (DECISIONS R4-M126 P5, R4-M133; PLAN G922 envr R1.4, ruling G922-43): the receiver resolution, the step after
+    // SuppliedAtUse that alone turns an environment Borrow's atom into ρ, one row read per atom from its Binder and that Closure's Classify
+    // result. In a classified Closure's body an environment binding is a Field of the call receiver's referent, so its atom, its own or a
+    // Borrow's of it, reads as the receiver Origin ρ under a borrowed receiver, and ρ, no borrow under `owner/Self`, as static (the binding
+    // is then the call's own storage); an unclassified Closure's atom stays pending (PendingAtom), any other atom as it is, and a meet is
+    // read operand by operand. A judging reader reads it over CompletedOrigin (OriginAtUse, the region graph's bounds as stored,
+    // RegionValue, a Closure's published result); a record's Supplier and the displays read the end before it.
+    private BoundOrigin ResolveReceiver(BoundOrigin origin)
     {
         if (origin.Kind == OriginKind.Intersection)
         {
-            var resolved = origin;
+            BoundOrigin? result = null; // The meet so far, from the first operand that reads otherwise.
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                if (!ReferenceEquals(this.ResolveReceiver(origin.Operands[i], closure, receiver), origin.Operands[i]))
+                var operand = this.ResolveReceiver(origin.Operands[i]);
+                if (result is null && !ReferenceEquals(operand, origin.Operands[i]))
                 {
-                    resolved = BoundOrigin.Static;
-                    for (var j = 0; j < origin.Operands.Count; j++)
+                    result = BoundOrigin.Static;
+                    for (var j = 0; j < i; j++)
                     {
-                        resolved = this.Meet(resolved, this.ResolveReceiver(origin.Operands[j], closure, receiver));
+                        result = this.Meet(result, origin.Operands[j]);
                     }
-
-                    break;
                 }
+
+                result = result is null ? null : this.Meet(result, operand);
             }
 
-            return resolved;
+            return result ?? origin;
         }
 
-        if (origin.Kind != OriginKind.Projection || !ReferenceEquals(origin.Binder, closure))
+        if (!ReceiverAtom(origin) || origin.Binder is not FunctionKoto { ClosureStorage: { Classified: true } plan } closure)
         {
             return origin;
         }
 
-        return (RoleOf(origin), receiver == SemanticsKind.Owner) switch
+        var read = (RoleOf(origin), plan.Receiver == SemanticsKind.Owner) switch
         {
             (ProjectionRole.ClosureValue, true) => BoundOrigin.Static,
             (ProjectionRole.Environment, false) => this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot),
             _ => origin,
         };
+        this.OriginProofMetrics?.ClosureRow(origin, read);
+        return read;
     }
 
     // SPEC 15.3.6 (PLAN G74): a pure question: whether the premises visible at `use` entail `longer outlives shorter`

@@ -100,12 +100,13 @@ public sealed partial class Binding
         : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
 
     // SPEC 15.6.5: the atom of a Borrow that dereferences nothing, named by its Place's binder and Projection slot (PlaceOriginBinder,
-    // PlaceOriginSlot; a capture entry's, Binding.Captures). The one form of such an atom. A Borrow whose root binding `root` is a local
-    // or a parameter (a constructor's or destructor's `self` among them) has its own finite Origin, so its root occurrence `at` is also its
-    // atom's identity (BorrowRoot); any other root names the Place's one atom, and so does a capture entry, whose root stays unsited (PLAN
-    // G922).
+    // PlaceOriginSlot; a capture entry's, Binding.Captures). The one form of such an atom. A Borrow whose root binding `root` is a local,
+    // a parameter (a constructor's or destructor's `self` among them) or an environment binding has its own finite Origin, so its root
+    // occurrence `at` is also its atom's identity (BorrowRoot), a capture entry's being its literal; any other root names the Place's one
+    // atom (PLAN G922 tms, envr R1.1). An environment binding's Borrow reads as its Closure's receiver Origin under a borrowed receiver
+    // (the receiver resolution, ResolveReceiver; DECISIONS R4-M133).
     private BoundOrigin PlaceAtom(Koto binder, int slot, BindingSymbol? root, Koto at)
-        => this.OriginAtom(binder, OriginKind.Projection, slot, borrowRoot: root?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter ? at : null);
+        => this.OriginAtom(binder, OriginKind.Projection, slot, borrowRoot: root?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture ? at : null);
 
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
     // (SPEC 13.5.5), as the adaptation recorded it; otherwise the source Place's.

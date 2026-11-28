@@ -159,8 +159,8 @@ public sealed partial class Binding
     // its clause names the region, PLAN G962) names an inference variable no other row of the body names (they read its value). Its
     // value, which the declaration fixes, is its bound: the row `value outlives region` beside it, under its condition, so A5 solves
     // the region from the value and the row alone (the region stays the region; SPEC 15.3.4). The value is the published one
-    // (Binding.LocalRegions.cs), its receivers resolved at the row's use; a region of another body (an enclosing one, fixed in a
-    // nested body, DECISIONS BU-28) and any other end form no row.
+    // (Binding.LocalRegions.cs), its receivers resolved (RegionValue); a region of another body (an enclosing one, fixed in a nested
+    // body, DECISIONS BU-28) and any other end form no row.
     private void AddRegionValueRows(List<OriginRowDraft> unit, BoundOrigin end, in BindingObligation obligation, ulong mask)
     {
         var parts = end.Kind == OriginKind.Intersection ? end.Operands.Count : 1;
@@ -169,7 +169,7 @@ public sealed partial class Binding
             var region = parts == 1 ? end : end.Operands[i];
             if (region.Body == obligation.Body && this.Region(region) is { Value: { } value })
             {
-                unit.Add(new(obligation.Site ?? obligation.Use, this.CanonicalOrigin(this.ReceiverAtUse(value, obligation.Use)), region, false, OriginRowSource.Fit, null, null, mask, null, value));
+                unit.Add(new(obligation.Site ?? obligation.Use, this.CanonicalOrigin(this.RegionValue(region)!), region, false, OriginRowSource.Fit, null, null, mask, null, value));
             }
         }
     }

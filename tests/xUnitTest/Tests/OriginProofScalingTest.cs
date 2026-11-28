@@ -235,6 +235,36 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(MirBorrowsTest.Grows(values, 2.5), $"ValueIn reads {string.Join(", ", values)}");
     }
 
+    // SPEC 15.8.2, 15.6.5 (PLAN G922 envr R1.6): d nested Closures (d = 1 to 4), each capturing the n `let` bindings of the level above
+    // and the innermost Borrowing each, under borrowed receivers: each Borrow's atom reads as its Closure's receiver Origin by one row
+    // (the receiver resolution's Closure row, after SuppliedAtUse; DECISIONS R4-M133), and each classification moves the region-graph
+    // version once whatever n is, so the premise closures' work, the MIR's Origin work and the Closure-row reads grow linearly with n =
+    // 10, 20, 40 at each depth (asserted; the counts and the time are printed). Each is valid.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void EnvironmentBorrowsReadByTheirReceiverLinearly(int depth)
+    {
+        var (work, mir, rows, moves, times) = (new long[3], new long[3], new long[3], new long[3], new long[3]);
+        int[] sizes = [10, 20, 40];
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var metrics = CarriedMetrics(EnvironmentBorrows(sizes[i], depth));
+            var (receiver, toStatic, unchanged) = metrics.ClosureRows;
+            (work[i], rows[i], moves[i], times[i]) = (metrics.Insertions + metrics.Activations + metrics.Decrements, receiver + toStatic + unchanged, metrics.ClassifyMoves, watch.ElapsedMilliseconds);
+            mir[i] = OriginWork(EnvironmentBorrows(sizes[i], depth));
+            Assert.NotEqual(0, receiver);
+        }
+
+        var series = $"closure work {string.Join(", ", work)}; MIR work {string.Join(", ", mir)}; Closure rows {string.Join(", ", rows)}; version moves {string.Join(", ", moves)}";
+        output.WriteLine($"environment Borrows d {depth}, n 10, 20, 40: {series}; ms {string.Join(", ", times)}");
+        Assert.True(MirBorrowsTest.Grows(work, 2.5) && MirBorrowsTest.Grows(mir, 2.5) && MirBorrowsTest.Grows(rows, 2.5), series);
+        Assert.True(moves[0] == moves[2], series);
+    }
+
     // R7-N5 B8a (R7-O2's ValueIn memo, one run's): a second Bind of the same compilation, warm (the edit counter moved or not), reads every
     // carried candidate again (as many ValueIn reads as the first run, never the first run's entries at an equal region-graph version).
     [Theory]
@@ -508,6 +538,30 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         {
             indent = indent[..^4];
             source.Append($"{indent}c{i}()\n");
+        }
+
+        return source.Append("public func main() => ()\n").ToString();
+    }
+
+    // EnvironmentBorrowsReadByTheirReceiverLinearly's program: c1 ... c{depth} nested, each capturing t1 ... t{n}, the innermost
+    // Borrowing each.
+    private static string EnvironmentBorrows(int n, int depth)
+    {
+        var names = string.Join(", ", Enumerable.Range(1, n).Select(static i => $"t{i}"));
+        var source = new StringBuilder("func see<T>(x: ref/T) => ()\nfunc f(p: ref/i32) -> i32\n");
+        source.Append(string.Concat(Enumerable.Range(1, n).Select(static i => $"    let t{i} = p\n")));
+        var indent = "    ";
+        for (var level = 1; level <= depth; level++)
+        {
+            source.Append(CultureInfo.InvariantCulture, $"{indent}let c{level} = func [{names}] () -> i32\n");
+            indent += "    ";
+        }
+
+        source.Append(string.Concat(Enumerable.Range(1, n).Select(i => $"{indent}see(t{i}@ref)\n"))).Append(CultureInfo.InvariantCulture, $"{indent}return 0\n");
+        for (var level = depth; level > 0; level--)
+        {
+            indent = indent[..^4];
+            source.Append(CultureInfo.InvariantCulture, $"{indent}return c{level}()\n");
         }
 
         return source.Append("public func main() => ()\n").ToString();

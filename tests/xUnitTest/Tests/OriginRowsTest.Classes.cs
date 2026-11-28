@@ -207,13 +207,15 @@ public sealed partial class OriginRowsTest
         Assert.Equal((OriginAtomKind.Inferred, ProjectionRole.Place), (atom.Kind, atom.Role));
     }
 
-    // SPEC 15.6.5 (PLAN G922 tms): each Borrow of a local, a parameter or a constructor's receiver has its own finite Origin, so two Borrows
-    // of one Place are two atoms (one before), each a Finite root of the role its Place's binder gives (rows 3 and 4's Place, Parameter
-    // and Receiver).
+    // SPEC 15.6.5 (PLAN G922 tms, envr): each Borrow of a local, a parameter, a constructor's receiver or an environment binding has its
+    // own finite Origin, so two Borrows of one Place are two atoms (one before), each a Finite root of the role its Place's binder gives
+    // (rows 3 and 4's Place, Parameter, Receiver and Environment: a Closure that consumes its environment, whose bindings are its call's
+    // own storage, SPEC 15.8.2).
     [Theory]
     [InlineData("func outer(p: ref/i64) -> i32\n    let t = (p, p)\n    let a = t@ref\n    let b = t@ref\n    return 0\n", "outer", "t@ref", "Place")]
     [InlineData("func outer(q: i64) -> i32\n    let a = q@ref\n    let b = q@ref\n    return 0\n", "outer", "q@ref", "Parameter")]
     [InlineData("struct S\n    var m: i64\n    var n: i64\n    init(v: i64)\n        self.m = v\n        self.n = v\n        let a = self.m@ref\n        let b = self.m@ref\n", "init", "self.m@ref", "Receiver")]
+    [InlineData("func consume(s: string) => ()\nfunc outer(p: ref/i64, s: string) -> i32\n    let t = (p, p)\n    let h = func [t@move, s@move] () -> i32\n        let a = t@ref\n        let b = t@ref\n        consume(s@move)\n        return 0\n    return h@move()\n", "", "t@ref", "Environment")]
     public void EachBorrowOfARootIsItsOwnAtomOfTheRootsRole(string source, string body, string site, string role)
     {
         var c = MirBuildTest.Compile(source + Main);
