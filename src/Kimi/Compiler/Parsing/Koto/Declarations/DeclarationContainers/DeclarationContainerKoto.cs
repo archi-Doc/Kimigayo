@@ -726,7 +726,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         reader.Hover(container, nameSpan);
         if (container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto))
         {
-            Parser.JudgeProtectedPlacement(ref reader, container, (DeclarationContainerKoto)container.Parent!);
+            Parser.JudgeProtectedPlacement(container, (DeclarationContainerKoto)container.Parent!);
         }
 
         container.SetBases(declaration.Bases);
@@ -820,7 +820,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     }
                 }
 
-                Parser.JudgeProtectedPlacement(ref reader, propertyKoto, this);
+                Parser.JudgeProtectedPlacement(propertyKoto, this);
                 this.AddLast(propertyKoto);
             }
 
@@ -867,7 +867,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         functionKoto.DeclaringContainer = this.Declaring;
-        Parser.JudgeProtectedPlacement(ref reader, functionKoto, this);
+        Parser.JudgeProtectedPlacement(functionKoto, this);
         if (form == Parser.FunctionForm.Requirement)
         {
             Parser.ParseRequirementBody(ref reader, functionKoto);

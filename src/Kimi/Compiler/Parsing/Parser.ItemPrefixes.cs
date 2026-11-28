@@ -120,11 +120,11 @@ public static partial class Parser
     /// struct, including Containers declared directly in it. The row reads the declaration's written access and the kind of the container
     /// that declares it (<see cref="DeclarationContainerKoto.Declaring"/>), a source check (SPEC 19.4). The record names that container at
     /// the function's signature, the binding's Name or the Container's word. The access word stays and nothing is recovered, so the
-    /// declaration and its uses are checked as written. Called once the declaration has taken its prefix.</summary>
-    /// <param name="reader">The token reader.</param>
+    /// declaration and its uses are checked as written, in selected and excluded syntax alike. Called once the declaration has taken its
+    /// prefix.</summary>
     /// <param name="declaration">A Container, function, Property or binding, which takes an access word.</param>
     /// <param name="host">The container whose items include the declaration.</param>
-    internal static void JudgeProtectedPlacement(ref TokenReader reader, DeclarationKoto declaration, DeclarationContainerKoto host)
+    internal static void JudgeProtectedPlacement(DeclarationKoto declaration, DeclarationContainerKoto host)
     {
         var access = (declaration switch
         {
@@ -134,8 +134,7 @@ public static partial class Parser
             _ => ModifierKind.NoModifier,
         }).ExtractAccessibilityModifiers();
 
-        // Removed by SRCCHK c2 (PLAN G1511): excluded syntax receives the check.
-        if (reader.InExcludedSyntax || access is not (ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal))
+        if (access is not (ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal))
         {
             return;
         }

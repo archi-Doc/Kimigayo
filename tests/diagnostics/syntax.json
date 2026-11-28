@@ -1119,5 +1119,17 @@
   { "Name": "static-without-initializer-before-arrow", "Source": "group G\n    public let s: i32 => 1\npublic func main() => ()\n", "Intended": "an expression body on a static stored Property is no initializer: the line should end at '=>'",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "s: i32" }, { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "=> 1", "Length": 2, "Found": "=>" } ] },
   { "Name": "protected-placement-group-member", "Source": "group G\n    protected func h() => ()\npublic func main() => ()\n", "Intended": "a protected form on a group member is judged by the parser from the declaring Container's kind (SPEC 9.4.1, 19.4), at the signature",
-    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "h()" } ] }
+    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "h()" } ] },
+  { "Name": "protected-placement-excluded-group-member", "Source": "#if false\n    group G\n        protected func h() => ()\n\npublic func main() => ()\n", "Intended": "excluded syntax receives the source check (SPEC 19.4): its group member's protected form is reported as the selected twin's",
+    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "h()" } ] },
+  { "Name": "protected-placement-excluded-root-container", "Source": "#if false\n    protected struct S\n\npublic func main() => ()\n", "Intended": "an excluded root Container's protected form is judged from the source root, the Container its detached host parses for",
+    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "struct" } ] },
+  { "Name": "protected-placement-unselected-arm", "Source": "#switch\n    #case false\n        group G\n            protected func h() => ()\n    #case _\n        func k() => ()\n\npublic func main() => ()\n", "Intended": "an unselected #switch arm is excluded syntax and receives the source check (SPEC 19.4)",
+    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "h()" } ] },
+  { "Name": "protected-placement-excluded-in-group", "Source": "group G\n    #if false\n        protected func f() -> i32 => 0\npublic func main() => ()\n", "Intended": "an excluded member of a group is declared by that group, not by the detached host the excluded item parses in",
+    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "f() -> i32" } ] },
+  { "Name": "protected-placement-excluded-in-enum-conformance", "Source": "contract Describe\n    func describe(self) -> string\n\nenum E<T>\n    A\n    Self is Describe when T is Describe\n        public func describe(self) -> string => \"e\"\n        #if false\n            protected func h() -> i32 => 0\npublic func main() => ()\n", "Intended": "an excluded member of a conditional conformance Block is declared by the Block's owner, an enum",
+    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "h() -> i32" } ] },
+  { "Name": "protected-placement-excluded-in-struct", "Source": "struct S\n    #if false\n        protected func f() -> i32 => 0\npublic func main() => ()\n", "Intended": "an excluded member of a struct may be protected: the check reads the declaring struct, so the program is accepted",
+    "Records": [] }
 ]
