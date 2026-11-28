@@ -736,7 +736,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // ih-q, where Box<D>'s `T is C` reads the held `D is C`; accepted on dev, Q13 class 1), Explicit until commit 5, since its base
     // clause is formed outside every evidence; and an identification refuted whatever Item is (rid-i, `u8` against `i32`), a guard at
     // dev's record: its label adds MissingContractImplementation_Kd@6:5 before Item's record (8.6.3, 8.5.5 Completion, 23.1.2), which
-    // dev loses because the conformance's check returns at the inference hole before its requirements (a Front open issue, Q13 class 4).
+    // dev loses because the conformance's check returns at the inference hole before its requirements (PLAN G1530, a Front open issue, Q13 class 4).
     [InlineData("ih-q", "contract K\n    associate X\ncontract C\n    associate Item\n    func put(self: ref/Self, x: Self.Item) -> ()\nstruct R\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nopen struct B<Y>\n    Y is C\n    Self is C\n    associate C.Item is Box<Y>.(K).X\n    public func put(self: ref/Self, x: R) -> () => ()\nstruct D : B<D>\n", "UnprovenConstraint_Kd@16:12", Explicit = true)] // e2-5b
     [InlineData("rid-i", "contract C\n    associate Item\n    func put(self: ref/Self, x: Pair<Self.Item, u8>) -> ()\nstruct Pair<A, B>\nstruct S\n    Self is C\n    public func put(self: ref/Self, x: Pair<i32, i32>) -> () => ()\n", "AssociatedTypeInferenceFailed_Kd@6:5")]
     // R7-C2e2 e2-5b 3a (design-e25b-p0.md R3.1.1; guards of the evidence memo and the batch, dev's records): c1-g, a read with a guard
