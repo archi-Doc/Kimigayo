@@ -243,15 +243,11 @@ public sealed partial class Binding
             pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.HoldsPendingProjection(parameterType);
         }
 
-        if (pendingInputs || (symbol.Type is { } resultType && this.HoldsPendingProjection(resultType)))
+        // A pending input leaves the Origin declaration open; a pending result alone completes it once its clauses are ready, and the
+        // parameter symbols then take the completed Types, as on the header's completion (DECISIONS R7-M<next>).
+        var pendingResult = !pendingInputs && symbol.Type is { } resultType && this.HoldsPendingProjection(resultType);
+        if (pendingInputs || (pendingResult && !this.PartialOriginContractReady(function)))
         {
-            // Result portions that do not depend on missing Type values use the ordinary Origin
-            // completion. Unrelated result holes do not hide a determined input/elision contract.
-            if (!pendingInputs && this.PartialOriginContractReady(function))
-            {
-                this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
-            }
-
             return false;
         }
 
@@ -259,6 +255,11 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.ParameterSymbol(function, i).Type = function.Parameters[i].Type.BoundType;
+        }
+
+        if (pendingResult)
+        {
+            return false;
         }
 
         if (symbol.ReceiverIndex >= 0)
