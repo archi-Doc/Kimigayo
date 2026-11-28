@@ -20969,8 +20969,7 @@ structure is recorded here by the unit that first implements it.
 - **R5-M36 Closure contexts as `Subst`** (2026-10-18; plan K2 (A5P-C1); under R5-M18; amended by R5-M162) `BoundType.ClosureContext`
   is the `Subst` of the instance that closed the closure. `CloseClosureTypes(type, instance)` sets it to exactly the substitution
   `Binding.InstantiateStorageType(type, subst)` instantiates under, its conforming Self included (PLAN G142, closed: `TyCtxt.Apply`
-  passes its substitution whole; the CallPlan form instantiates under `TyCtxt.StorageSubst(call)`, the Self-less substitution the
-  old paths have always applied), so one instance's closures share it, and interning replaces the never-cleared list of synthetic
+  passes its substitution whole), so one instance's closures share it, and interning replaces the never-cleared list of synthetic
   CallPlans and its linear scan; the closure's result in the instance stays the failure check, while the CallPlan's ReturnType, a
   function of the rest, is dropped. `SubstOfClosure` reads the field, `ClosureSignature` is `Apply(signature, context)`, and Hover
   identifies a context by `SubstIdentity` (`Checking/Hover/HoverBuilder.Substitutions.cs`): its binder and every binding. The
@@ -20979,21 +20978,18 @@ structure is recorded here by the unit that first implements it.
     old
     generator keys a closure's instance by. There is one per (closure symbol, context), as the old scan gave, so two closures of one
     instance keep two (X10). It is kept with the function item contexts until an edit (`ResetCallContexts`; G7 inlines it).
-  - Temporary structure, removed at R7: `[Transitional("R7")] TyCtxt.StorageSubst(call)`, a second substitution per call beside
-    `SubstOf`, which the CallPlan form `Binding.InstantiateStorageType(type, call)` instantiates under. It goes when that form's
-    readers
-    apply `SubstOf` instead: the old generator's (Emission) at G7, the old analyses' (`Analysis/Ownership*`) at R6-check and
-    Binding's
-    own (requirement instantiation under `SelectedRequirements`, forwarded calls, formatting implementations, and the effect-bound
-    summary unless R6-check deletes it with the old effect checks) with R7's CallPlan pipeline.
+  - Temporary structure `[Transitional("R7")] TyCtxt.StorageSubst(call)`, a second, Self-less substitution per call beside `SubstOf`:
+    its readers went at G7 (Emission), R6-check H10b (the old analyses), R6-check H11a (Binding's forwarded calls, R5-M192), R7-P5a
+    (the legacy comparison composition) and R7-P5b (Binding's requirement instantiation); R7-P6 deleted it, its test reads applying
+    `SubstOf` (one interned `Subst` wherever the call has no Self, bound Contract reference or base implementation).
   - Rejected: a memo per Subst (two closures of one instance would share one CallPlan: wrong code); a memo cleared per pass (each
     warm
     rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (a fact outside R7's shape); a comparer
     modulo Origins (D1's Design B).
   - Amended by R5-M162 (G7): `Binding.ClosureCall` and its memo are deleted with their readers, `ResetCallContexts` is inlined, and
     `TyCtxt.StorageSubst`'s Emission readers are gone (its old-analysis and Binding readers stay until R6-check and R7).
-  - Amended by R7-M127 (R7-P5b): Binding's last reader, requirement instantiation, went with the materializer. Only tests read
-    `TyCtxt.StorageSubst`, and R7-P6 re-points them to `SubstOf` (its Transitional reason).
+  - Amended by R7-M127 (R7-P5b): Binding's last reader, requirement instantiation, went with the materializer. R7-P6 then deleted
+    it (the Temporary structure line).
 - **R5-M37 `Layout` per compilation: memo, bounds and outcomes** (2026-10-18; plan P7c, full process; supersedes R5-M19's static
   `Layout.Of`, and R5-M29's rejected per-compilation instance, its records "shared by every Type, compilation and thread" and its
   Limit "neither"; its outcome list and precedence superseded by R5-M52)
