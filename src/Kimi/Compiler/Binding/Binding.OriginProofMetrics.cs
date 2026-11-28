@@ -15,6 +15,9 @@ public sealed partial class Binding
 internal sealed class OriginProofMetrics
 {
     private readonly long[] edges = new long[(int)OriginPremiseRule.Value + 1];
+    private long toReceiver;
+    private long toStatic;
+    private long unchanged;
 
     /// <summary>Gets the top-level proof requests: requests made while no premise environment was active.</summary>
     internal long Requests { get; private set; }
@@ -64,6 +67,14 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the reads of a region's value in a body that were computed (<c>Binding.ValueIn</c>: once per Origin and body per
     /// region-graph version once no body is being bound).</summary>
     internal long ValueInReads { get; private set; }
+
+    /// <summary>Gets the receiver resolution's Closure-row reads (<c>Binding.ResolveReceiver</c>, the step after SuppliedAtUse; PLAN G922
+    /// envr R1.6, ruling G922-43): an environment atom read as its Closure's receiver Origin ρ, ρ read as static, and a receiver atom read
+    /// as itself.</summary>
+    internal (long ToReceiver, long ToStatic, long Unchanged) ClosureRows => (this.toReceiver, this.toStatic, this.unchanged);
+
+    /// <summary>Gets the region-graph version moves a Closure's classification made (<c>Binding.BindClosureChecks</c>).</summary>
+    internal long ClassifyMoves { get; private set; }
 
     /// <summary>Gets the regions whose recorded bounds a local region's candidate walks read (<c>Binding.BoundAtoms</c>: one per region
     /// UpperBound's or ReachesRegion's walk enters); at most the sum over UpperBound reads of one plus, over their read-through atoms,
@@ -123,6 +134,8 @@ internal sealed class OriginProofMetrics
         this.CarriedAdmissions = 0;
         this.ValueInReads = 0;
         this.CandidateSteps = 0;
+        (this.toReceiver, this.toStatic, this.unchanged) = (0, 0, 0);
+        this.ClassifyMoves = 0;
         Array.Clear(this.edges);
     }
 
@@ -135,6 +148,24 @@ internal sealed class OriginProofMetrics
     internal void ValueInRead() => this.ValueInReads++;
 
     internal void CandidateStep() => this.CandidateSteps++;
+
+    internal void ClosureRow(BoundOrigin atom, BoundOrigin read)
+    {
+        if (ReferenceEquals(read, atom))
+        {
+            this.unchanged++;
+        }
+        else if (read.Kind == OriginKind.Static)
+        {
+            this.toStatic++;
+        }
+        else
+        {
+            this.toReceiver++;
+        }
+    }
+
+    internal void ClassifyMove() => this.ClassifyMoves++;
 
     internal void Chained(long work) => this.ChainWork += work;
 

@@ -24,9 +24,10 @@ namespace Kimi.Compiler;
 // RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
 // one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
-// body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
-// proved it, and before as a reading with no answer yet (the deferral fact). A `let` region that merges a stored part met on several
-// of the local's paths is marked so (LocalRegion.Merged, LocalBorrowType), read by the name limit alone (PLAN G922 U1).
+// body's oracle, StaticOrigin through ValueIn). ValueIn reads RegionValue's result, completed in RegionValue's returns
+// (ResolveReceiver(CompletedOrigin(x))), and a deferred result slot's atom (R7-O2 O2-F) that Final has not proven as a reading with no
+// answer yet (the deferral fact). A `let` region that merges a stored part met on several of the local's paths is marked so
+// (LocalRegion.Merged, LocalBorrowType), read by the name limit alone (PLAN G922 U1).
 // FixDeclaredRegions (R7-O2 A4-L) reads a local's declaration once its last bound is recorded (its fit, its Type's well-formedness, its
 // clauses, which it records itself as region bounds) and publishes each of a `let` local's regions with no value with its own
 // candidate, or leaves it without one; a sibling region that reads back to it stays that variable (FixWaiting; the owner's O-544 (b)).
@@ -41,7 +42,8 @@ namespace Kimi.Compiler;
 // bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
 // O-385 (a): a body row's ends as the row reads them, SuppliedAtUse with the row; a `let` value as published; an initializer alias as
 // its producers read it) and read as held: LocalRegionSources, LocalRegionBound and LocalRegionSourceUse apply the receiver resolution
-// alone (ReceiverAtUse; a Closure is classified after its body's bounds are stored), never OriginAtUse (DECISIONS R4-M133 as amended).
+// alone over its completion (ResolveReceiver over CompletedOrigin; a Closure is classified after its body's bounds are stored, which
+// moves the graph's version), never OriginAtUse (DECISIONS R4-M133 as amended).
 // A written Origin binds as the slot it names, not its value (BindOrigin through SlotAtUse): the value is read at each use, by the
 // readers above, and a written Origin's region is what a comparison constrains.
 // Must not: let a reader at a use in the local's own body take a `let` slot as written. The one exception, decided at one place
@@ -172,7 +174,7 @@ public sealed partial class Binding
                 {
                     for (var i = parents.Parents.Count - 1; i >= 0; i--)
                     {
-                        this.regionWork.Add(this.ReceiverAtUse(parents.Parents[i], parents.Values[i]));
+                        this.regionWork.Add(this.ResolveReceiver(this.CompletedOrigin(parents.Parents[i])));
                     }
                 }
 
@@ -200,7 +202,7 @@ public sealed partial class Binding
     // them to the finite sources); null past the last.
     internal BoundOrigin? LocalRegionBound(BoundOrigin origin, int index)
         => this.Region(origin) is { } region && index < region.Parents.Count
-            ? this.ReceiverAtUse(region.Parents[index], region.Values[index]) : null;
+            ? this.ResolveReceiver(this.CompletedOrigin(region.Parents[index])) : null;
 
     internal bool HasRegionBounds(BoundOrigin origin)
         => IsLocalRegion(origin) || this.Region(origin) is { Parents.Count: not 0 };
@@ -237,7 +239,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < bounds.Parents.Count; i++)
                 {
-                    var parent = this.ReceiverAtUse(bounds.Parents[i], bounds.Values[i]);
+                    var parent = this.ResolveReceiver(this.CompletedOrigin(bounds.Parents[i]));
                     if (ReferenceEquals(parent, source))
                     {
                         return Use(bounds.Values[i], bounds.Parents[i]); // A direct parent first, before a longer path.
@@ -320,13 +322,15 @@ public sealed partial class Binding
     // through its own bounds, so a value names regions of enclosing bodies and `var` regions of its own body that do not reach the region:
     // each read moves down that body's definitions or one body outward. A `var` region's value is computed once per graph version once
     // its body is bound (the owner's O-426 (a)); a frozen row of the library layer is read, never written (contract C, PLAN G949 S1-1),
-    // so its value is computed at each read.
+    // so its value is computed at each read. Each result is read as a judging reader reads it, its receivers resolved over its completion
+    // (ResolveReceiver over CompletedOrigin; DECISIONS R4-M133; PLAN G922 envr R1.2), as stored values are raw: so every reader of a value,
+    // the view's row 6, the oracle's and ValueIn's included, reads a classified Closure's receiver atoms by its receiver.
     internal BoundOrigin? RegionValue(BoundOrigin origin)
     {
         var region = this.Region(origin);
         if (region is null || origin.Binder is not { } binder || !SlotRegion(origin) || region.Value is not null || !IsMutableDeclaration(binder))
         {
-            return region?.Value;
+            return region?.Value is { } value ? this.ResolveReceiver(this.CompletedOrigin(value)) : null;
         }
 
         if (!this.RegionBounded(origin))
@@ -336,7 +340,7 @@ public sealed partial class Binding
 
         if (region.SolutionVersion == this.regionVersion)
         {
-            return region.Solution;
+            return region.Solution is { } solved ? this.ResolveReceiver(this.CompletedOrigin(solved)) : null;
         }
 
         var solution = this.VarCandidate(origin, region, BodyOwner(binder), binder);
@@ -345,7 +349,7 @@ public sealed partial class Binding
             (region.Solution, region.SolutionVersion) = (solution, this.regionVersion); // Contract C: a frozen library row is never written.
         }
 
-        return solution;
+        return solution is null ? null : this.ResolveReceiver(this.CompletedOrigin(solution));
     }
 
     // Whether `origin` is a region slot of a region owner's Type (LocalRegionSlot), not a call's open region.
@@ -412,9 +416,9 @@ public sealed partial class Binding
         this.OriginProofMetrics?.ValueInRead();
         if (origin.Kind != OriginKind.Intersection)
         {
-            if (this.Region(origin) is { Value: { } published } own && ReferenceEquals(own.Body, function))
+            if (this.Region(origin) is { Value: not null } own && ReferenceEquals(own.Body, function))
             {
-                return this.ValueIn(published, function);
+                return this.ValueIn(this.RegionValue(origin)!, function);
             }
 
             if ((OwnVarRegion(origin, function) ? this.RegionValue(origin) : this.CarriedRegion(origin, function, out var value) ? value : null) is { } candidate)
@@ -422,13 +426,8 @@ public sealed partial class Binding
                 return this.ValueIn(candidate, function);
             }
 
-            // R7-O2 O2-F: a deferred slot's atom reads as its completion once Final proved it (CompletedOrigin); before, it has no answer
-            // yet (DeferredIn), as a local region with no bound.
-            if (this.CompletedOrigin(origin) is var completed && !ReferenceEquals(completed, origin))
-            {
-                return this.ValueIn(completed, function);
-            }
-
+            // R7-O2 O2-F: a deferred slot's atom Final has not proven has no answer yet (DeferredIn), as a local region with no bound; a
+            // proven one was read completed by its reader (StaticOrigin) or by RegionValue.
             this.readsUnboundedRegion |= this.DeferredIn(origin) is not null || (IsLocalRegion(origin) && !this.RegionBounded(origin));
             return origin;
         }
@@ -539,7 +538,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < region.Targets.Count; i++)
             {
-                lowers[i] = this.RegionValueIn(this.ReceiverAtUse(region.Targets[i], region.TargetValues[i]), body);
+                lowers[i] = this.RegionValueIn(this.ResolveReceiver(this.CompletedOrigin(region.Targets[i])), body);
                 if (this.NamesWaiting(lowers[i], variable))
                 {
                     return null;
@@ -563,7 +562,7 @@ public sealed partial class Binding
         atoms.Clear();
         for (var i = 0; this.Region(region) is { } bounds && i < bounds.Parents.Count; i++)
         {
-            var bound = this.RegionValueIn(this.ReceiverAtUse(bounds.Parents[i], bounds.Values[i]), body);
+            var bound = this.RegionValueIn(this.ResolveReceiver(this.CompletedOrigin(bounds.Parents[i])), body);
             for (var k = 0; k < (bound.Kind == OriginKind.Intersection ? bound.Operands.Count : 1); k++)
             {
                 atoms.Add(bound.Kind == OriginKind.Intersection ? bound.Operands[k] : bound);
@@ -774,13 +773,13 @@ public sealed partial class Binding
         var low = own;
         for (var i = 0; record.Row != OriginVariance.Contravariant && i < record.Parents.Count; i++)
         {
-            low = this.VisitWaiting(record.Parents[i], record.Values[i], local, body, low, ref counter);
+            low = this.VisitWaiting(record.Parents[i], local, body, low, ref counter);
         }
 
         var lowers = ReadsLowerBounds(record.Row, this.UpperBound(region, body));
         for (var i = 0; lowers && i < record.Targets.Count; i++)
         {
-            low = this.VisitWaiting(record.Targets[i], record.TargetValues[i], local, body, low, ref counter);
+            low = this.VisitWaiting(record.Targets[i], local, body, low, ref counter);
         }
 
         if (low != own)
@@ -841,9 +840,9 @@ public sealed partial class Binding
     // FixWaiting's visit of one recorded bound, read as VarCandidate reads it (its receivers resolved, a `let` region of `body` as its
     // value, a meet as its operands): each waiting region it names is visited, or, on the stack, lowers `low` to its index (a fixed
     // one's is int.MaxValue). Returns the low link.
-    private int VisitWaiting(BoundOrigin bound, Koto evidence, VariableKoto local, Koto? body, int low, ref int counter)
+    private int VisitWaiting(BoundOrigin bound, VariableKoto local, Koto? body, int low, ref int counter)
     {
-        var read = this.RegionValueIn(this.ReceiverAtUse(bound, evidence), body);
+        var read = this.RegionValueIn(this.ResolveReceiver(this.CompletedOrigin(bound)), body);
         for (var k = 0; k < (read.Kind == OriginKind.Intersection ? read.Operands.Count : 1); k++)
         {
             var atom = read.Kind == OriginKind.Intersection ? read.Operands[k] : read;
@@ -888,7 +887,6 @@ public sealed partial class Binding
             region.Parents.Clear();
             region.Values.Clear();
             region.Targets.Clear();
-            region.TargetValues.Clear();
             region.Sources.Clear();
             region.Row = OriginVariance.Unused;
             region.Version = -1;
@@ -977,7 +975,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.RecordRegionTarget(source, target, evidence);
+                this.RecordRegionTarget(source, target);
             }
         }
     }
@@ -1000,7 +998,7 @@ public sealed partial class Binding
             this.regionVersion++;
         }
 
-        this.RecordRegionTarget(source, target, evidence);
+        this.RecordRegionTarget(source, target);
 
         // J2: a bound of a waited variable's own solution `(E and region)` bounds its region too (RecordOpening).
         if (region.Solved is { } solved && BoundsSolved(source, target, solved))
@@ -1011,13 +1009,12 @@ public sealed partial class Binding
 
     // SPEC 15.3.6: a region slot at the longer end of a recorded bound has its shorter end as a lower bound (LocalRegion.Targets), a fixed
     // Origin included, which no region row bounds; it moves the graph's version, as its value reads it.
-    private void RecordRegionTarget(BoundOrigin source, BoundOrigin target, Koto evidence)
+    private void RecordRegionTarget(BoundOrigin source, BoundOrigin target)
     {
         if (SlotRegion(source) && this.WrittenRegion(source) is var region && !region.Targets.Contains(target))
         {
             EnsureWritable(region);
             region.Targets.Add(target);
-            region.TargetValues.Add(evidence);
             this.regionVersion++;
         }
     }
@@ -1081,16 +1078,13 @@ public sealed partial class Binding
     }
 
     // A target Origin's row: the bounds recorded on it (Parents, each with its Values entry), for a local region the Origins it is
-    // recorded to outlive (Targets, each with its TargetValues entry) and its slot's variance (Row, LocalRegionSlot), the memo of its sources
-    // (Sources, current while Version is the graph's version) and, for a `let` region, its value and the body that reads it so
-    // (PublishRegionValue).
+    // recorded to outlive (Targets) and its slot's variance (Row, LocalRegionSlot), the memo of its sources (Sources, current while
+    // Version is the graph's version) and, for a `let` region, its value and the body that reads it so (PublishRegionValue).
     internal sealed class LocalRegion
     {
         internal List<BoundOrigin> Parents { get; } = new();
 
         internal List<BoundOrigin> Targets { get; } = new();
-
-        internal List<Koto> TargetValues { get; } = new();
 
         internal OriginVariance Row { get; set; }
 

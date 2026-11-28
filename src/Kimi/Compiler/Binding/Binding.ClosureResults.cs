@@ -25,27 +25,27 @@ public sealed partial class Binding
     // SPEC 15.8.2, 15.6.5: the inferred result a classified Closure publishes, each Origin by PublishedOrigin; a Function Type component
     // keeps its own per-call Origins. A part's result depends on the part alone, so each distinct part is rewritten once per call
     // (rewrittenParts; DECISIONS BU-19, PLAN G309).
-    private BoundType PublishedResult(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType type)
-        => this.PublishedParts(function, receiver, body, type, this.rewrittenParts.Begin(this.storageVersion));
+    private BoundType PublishedResult(FunctionKoto function, ExecutableBody body, BoundType type)
+        => this.PublishedParts(function, body, type, this.rewrittenParts.Begin(this.storageVersion));
 
     // A component's result (PublishedResult); a leaf is cheaper to rewrite again than to record.
-    private BoundType PublishedPart(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType part, uint query)
+    private BoundType PublishedPart(FunctionKoto function, ExecutableBody body, BoundType part, uint query)
     {
         if (part.Components.Count == 0)
         {
-            return this.PublishedParts(function, receiver, body, part, query);
+            return this.PublishedParts(function, body, part, query);
         }
 
         if (!this.rewrittenParts.TryGet(part, query, out var result))
         {
-            result = this.PublishedParts(function, receiver, body, part, query);
+            result = this.PublishedParts(function, body, part, query);
             this.rewrittenParts.Set(part, query, result);
         }
 
         return result!;
     }
 
-    private BoundType PublishedParts(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundType type, uint query)
+    private BoundType PublishedParts(FunctionKoto function, ExecutableBody body, BoundType type, uint query)
     {
         if (!type.CarriesAnyOrigin || type.Kind == BoundTypeKind.Function)
         {
@@ -59,17 +59,17 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.PublishedPart(function, receiver, body, type.Components[i], query);
+                components[i] = this.PublishedPart(function, body, type.Components[i], query);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                arguments[i] = this.PublishedOrigin(function, receiver, body, type.OriginArguments[i]);
+                arguments[i] = this.PublishedOrigin(function, body, type.OriginArguments[i]);
                 changed |= !ReferenceEquals(arguments[i], type.OriginArguments[i]);
             }
 
-            var origin = type.Origin is { } outer ? this.PublishedOrigin(function, receiver, body, outer) : null;
+            var origin = type.Origin is { } outer ? this.PublishedOrigin(function, body, outer) : null;
             changed |= !ReferenceEquals(origin, type.Origin);
             return changed
                 ? this.types.Rebuild(type, components.AsSpan(0, type.Components.Count), origin, arguments.AsSpan(0, type.OriginArguments.Count))
@@ -84,9 +84,9 @@ public sealed partial class Binding
 
     // One published position (R4-M126 P8): the meet of the admissible operands; the call result atom when one was left out and none
     // remains, or when one rests on a failure; static when there is no source.
-    private BoundOrigin PublishedOrigin(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundOrigin origin)
+    private BoundOrigin PublishedOrigin(FunctionKoto function, ExecutableBody body, BoundOrigin origin)
     {
-        origin = this.ResolveReceiver(origin, function, receiver);
+        origin = this.ResolveReceiver(this.CompletedOrigin(origin));
         if (origin.Kind == OriginKind.Static)
         {
             return origin;

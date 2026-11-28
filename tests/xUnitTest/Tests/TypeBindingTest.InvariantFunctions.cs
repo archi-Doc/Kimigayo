@@ -1461,7 +1461,8 @@ public partial class TypeBindingTest
             """,
             "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
-        // k3 (invalid twice, re-review): the H11 move: two body chains after g.
+        // k3 (invalid twice, re-review): the H11 move: two body chains after g, one per Borrow of local, each its own Origin (SPEC
+        // 15.6.5, 23.1.2; PLAN G922 tms, Q13 class 4).
         {
             "k3",
             """
@@ -1472,7 +1473,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t"
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd t|UnsatisfiedOriginRelation_Kd t"
         },
         // k6 (invalid twice, re-review): the H11 move: a declared local after t. The first component's well-formedness bounds its omitted
         // outer slot, whose value satisfies it, so t's two records stay (R7-O2 A4-L under the owner's O-544 (b), Q-A).
