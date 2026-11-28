@@ -285,14 +285,15 @@ public class OriginProofScalingTest(ITestOutputHelper output)
     // PLAN G824 (SPEC 15.6.1, 15.6.5; its design review's B1): rule W reads a slot the body's relations make equal to a fixed Origin as
     // Fixed. N slots reborrow p's referent (each equal to a by uniq's invariance) and each receives a copy of the one before, from a
     // local's borrow (a covariant chain: each slot reaches the chain's start), in a body whose one run covers two classes (a pair binder's
-    // masked row). Each size is invalid with one conflict, derived. MirOrigins.Work, with the classes' edges re-formed and indexed for its
+    // masked row; m and w lie behind references, so no Drop has a Type a case substitutes, PLAN G1507). Each size is invalid with one
+    // conflict, derived. MirOrigins.Work, with the classes' edges re-formed and indexed for its
     // queries, grows linearly at N = 32 to 256: a walk per slot and a re-index per slot and class made it quadratic.
     [Fact]
     public void RuleWsEqualityIsLinearInTheChainAndItsClasses()
     {
         var rows = new[] { 32, 64, 128, 256 }.Select(static n => MirBorrowsTest.RuleW(
-            "func shape<s/T>(p: uniq/(ref/i32 during a) during u, m: s/T)\n    s is owner or ref\n" +
-            "    let w: Option<s/(ref/i32 during a) during u> = .None\n    var x = 0\n    var t0 = x@ref\n" +
+            "func shape<s/T>(p: uniq/(ref/i32 during a) during u, m: ref/(s/T), o: ref/(Option<s/(ref/i32 during a) during u>))\n" +
+            "    s is owner or ref\n    let w: ref/(Option<s/(ref/i32 during a) during u>) = o\n    var x = 0\n    var t0 = x@ref\n" +
             string.Concat(Enumerable.Range(0, n).Select(static i => $"    var t{i + 1} = t{i}\n    var r{i} = p@follow@uniq\n    r{i}@follow = t{i + 1}\n")))).ToArray();
         var work = rows.Select(static x => x.Origins).ToArray();
         output.WriteLine($"N 32, 64, 128, 256: origins {string.Join(", ", work)}");
