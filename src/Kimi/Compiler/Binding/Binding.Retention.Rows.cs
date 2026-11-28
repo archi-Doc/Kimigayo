@@ -1334,7 +1334,9 @@ public sealed partial class Binding
     // (stepping Exclusive or Shared: it retains as that borrow would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1;
     // PLAN G255's C1), Dependency in a Type argument that is no part by value (ByValue: a Loan entry, row 3b), whose layers give nothing;
     // and in which untie (R2: Writable at a hold, lowered to ReadOnly below a part whose entry steps Shared, an rc or arc payload included,
-    // EntryStep and StepWrites; a meeting of an Unstated or Static layer in Writable is Holding.Writable; DECISIONS BU-2xx).
+    // EntryStep and StepWrites; a meeting of an Unstated or Static layer in Writable is Holding.Writable; DECISIONS BU-2xx). The hold walk
+    // does not read Admitted's state, so inside a `during self` content it keeps dev's untie (that entry's Remaining, PLAN G416 U4); it rejects
+    // nothing dev accepts.
     // Each input other than `output` with a stated raw layer (retentionRawStated) is kept by its joined kind at a raw layer stating an
     // Origin or `static` where one of its layers fits that Origin, whatever its pointee Type (it retains as the borrow its Origin belongs to would, SPEC 15.6.4, and a raw cast keeps the
     // address and the Origin, 5.4; StatedFits judges the fit by the premise closure), at a `during self` layer or a pair layer's raw case, which

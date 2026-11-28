@@ -518,7 +518,7 @@ public sealed partial class Binding
     // names it. The storage an abstract part hides is the visit's (StorageWalk). A position in the binding of the callee's kept abstract
     // Type (Hides) is tested in the callee's terms (Binding.Retention.Rows.cs, Storages), so it has no target: the binding's Origins are
     // the caller's. Each test is with its untie (the visit's state lowered by the layer's step, where OwnNodes says the node's value states
-    // a non-static Origin that bound; DECISIONS BU-2xx).
+    // a non-static Origin that is bound; DECISIONS BU-2xx).
     private bool Position(OriginPremiseEnvironment environment, BoundType type, in StorageAt at, HoldStep step)
     {
         var (start, end) = this.Reads(type, at.Written, at.Signature);
@@ -526,8 +526,9 @@ public sealed partial class Binding
         var untie = UntieBelow(at.Untie, StepWrites(step));
         foreach (var (node, states) in this.OwnNodes(environment, type))
         {
-            // A static Origin is tied; an Unbound one, which only a Binding failure leaves (R4-M118), states nothing, since a part that
-            // failed has no untie (DECISIONS BU-36).
+            // A static Origin is tied; an Unbound one states nothing, in both of its cases: a failed part's (R4-M118), which states no
+            // Origin, so it has no untie (DECISIONS BU-36), and a deferred result-default slot's that Final proved (R7-M92), which SPEC
+            // 15.4.3 rule 3 completes to `static`, so it unties nothing either.
             var position = states && environment.Closure.Origin(node) is not { Kind: OriginKind.Static or OriginKind.Unbound } ? untie : RetentionUntie.None;
             for (var i = start; i < end; i++)
             {

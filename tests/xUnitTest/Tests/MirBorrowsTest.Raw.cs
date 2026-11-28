@@ -1641,8 +1641,9 @@ public sealed partial class MirBorrowsTest
     // reads none), carrying its parents whole (SPEC 15.6 Holders): layerRef's read carries y's Loan, which b holds, into the generic
     // call; under the owner's O-529 (a) that Loan is b's own `during self` content and ends with b, which ends first, so y's end
     // conflicts only where b outlives y and is used after it (layerOutlived; the Middle's ruling on G415-N3 b2's stop, 11-28, which
-    // supersedes Z5-R1's layerRef label); a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar
-    // beside the layer are precise.
+    // supersedes Z5-R1's layerRef label), not where b outlives y unused after it (layerEnded, the dropless twin of the Front's
+    // dropAfterEndBad: Buf declares no `drop`, so its end observes no Loan, SPEC 15.6.6; V, a family-1 acceptance move under O-529 (a));
+    // a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar beside the layer are precise.
     [Fact]
     public void ACopyOrBorrowOfADuringSelfLayersEnclosingPlaceIsPrecise()
     {
@@ -1670,6 +1671,11 @@ public sealed partial class MirBorrowsTest
                     b.push(y@ref)
                 let r = b.data@ref
                 usep(r@follow)
+            func layerEnded()
+                var b = Buf<ref/i32>.init(4)
+                if true
+                    var y: i32 = 1
+                    b.push(y@ref)
             func enclosingRef()
                 let s = Pairs.init()
                 let r = s.pair@ref

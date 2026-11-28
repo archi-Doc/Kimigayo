@@ -819,7 +819,9 @@ public sealed partial class RetentionTest
     // Origin no input reaches, outside a `during self` storage, and read-only past a shared layer, an rc payload included. The holder's own
     // `during self` content unties nothing (O-529 (a)), nor does a phantom Type argument (15.3.5) or a nominal's Origin argument; a
     // by-value position, a callable's occurrence (15.6.4 route 5) and a Type met again Writable after a ReadOnly visit do. A Type argument
-    // stating `during static` at the occurrence is static there.
+    // stating `during static` at the occurrence is static there. rcPastWriteBad (the `rc/Hold<raw/(ref/i32)>` row: z's borrow initialized
+    // through the raw layer past the rc payload, then `z = 3`) is I by 5.2.1 condition 3; its result is `untied read-only`, which A5 reads
+    // as dev's `untied`, so its record is dev's (pinned so that a reader of `read-only` cannot move it silently).
     [Theory]
     [InlineData("PunCell<ref/i32>.init()", "init", "")]
     [InlineData("Outer<ref/i32>.init()", "init", "")]
@@ -831,6 +833,7 @@ public sealed partial class RetentionTest
     [InlineData("make<ref/(ref/i32)>()", "make", "untied read-only")]
     [InlineData("make<ref/(uniq/i32)>()", "make", "untied read-only")]
     [InlineData("make<rc/Hold<uniq/i32>>()", "make", "untied read-only")]
+    [InlineData("make<rc/Hold<raw/(ref/i32)>>()\n    var z = 1\n    unsafe => Raw.initialize(v.item, z@ref)\n    z = 3", "make", "untied read-only")]
     [InlineData("make<uniq/(ref/i32)>()", "make", "untied")]
     [InlineData("mkF<uniq/i32>()", "mkF", "untied")]
     [InlineData("make<Two<uniq/i32>>()", "make", "untied")]
@@ -1243,7 +1246,7 @@ public sealed partial class RetentionTest
     // it has no write authority. Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
     // over every case its declaration admits, also under a `ref`-case instance (SPEC 15.3.5). Store 1's `untied` in the `ref`-kept
     // rows (put, get) is a known conservative reading, not the rule's label: SPEC 15.6.4 makes it read-only too, but HeldRun passes no
-    // signature, so BU-113's cap does not reach the hold walk (an open issue, PLAN G<n>).
+    // signature, so BU-113's cap does not reach the hold walk (an open issue, PLAN G1520).
     [Theory]
     [InlineData(ViewRef + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied read-only, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewUniq + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewUniqCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
@@ -1262,7 +1265,7 @@ public sealed partial class RetentionTest
     // `h: uniq/Wrap<raw/(raw/u8) during source>` states View's slot, so under a `ref`-kept slot relay stores nothing past the layer and
     // under a `uniq`-kept one it may store `v` there. Store 1's `untied` in the `ref`-kept row is a known conservative reading, not the
     // rule's label: SPEC 15.6.4 makes it read-only too, but HeldRun passes no signature, so BU-113's cap does not reach the hold walk
-    // (an open issue, PLAN G<n>).
+    // (an open issue, PLAN G1520).
     [Theory]
     [InlineData(ViewRef + ViewRelay, "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied read-only, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewUniq + ViewRelay, "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
