@@ -102,8 +102,10 @@ internal sealed class MirMoveData(TyCtxt types)
     internal int FlowCount { get; private set; }
 
     /// <summary>Gets a value indicating whether a view decides an access of the body: a case-dependent access (a PairLayer step, a
-    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>) or a case branch, whose side the view selects (<see
-    /// cref="MirBody.CaseSwitches"/>; a side may hold only case-free accesses, a by-case call's borrows of its callee).</summary>
+    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>); a Drop whose Type a case substitutes (<see cref="ViewDecided"/>: A2
+    /// judges per view what it destroys, and A5's <c>Dropping</c> and Storing's Drop row read that verdict); or a case branch, whose side
+    /// the view selects (<see cref="MirBody.CaseSwitches"/>; a side may hold only case-free accesses, a by-case call's borrows of its
+    /// callee).</summary>
     internal bool ViewDependent { get; private set; }
 
     /// <summary>Gets a value indicating whether the body constructs its object in _0 from fresh storage (SPEC 6.3).</summary>
@@ -310,6 +312,10 @@ internal sealed class MirMoveData(TyCtxt types)
         this.named[found >> 2] = true;
         return found;
     }
+
+    // Whether a view decides what a Drop of the Place destroys: its Type as the body's identity premises make it (A2's root,
+    // MirCases.PremisedTypeOf; PLAN G355's interim until R7-Y5) contains a pair layer, the only Types a case substitutes (SPEC 8.15).
+    private bool ViewDecided(MirPlace place) => MirTypes.Premised(types, this.body, this.body.TypeOf(place)) is { ContainsPairLayer: true };
 
     // The base subobject at a depth, one Base step per depth.
     private int Bases(int path, int depth)
@@ -807,7 +813,7 @@ internal sealed class MirMoveData(TyCtxt types)
             }
 
             _ = data.Resolve(place);
-            data.ViewDependent |= (access & MirAccess.CaseDependent) != 0;
+            data.ViewDependent = data.ViewDependent || (access & MirAccess.CaseDependent) != 0 || ((access & MirAccess.DropUse) != 0 && data.ViewDecided(place));
             if (this.kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead)
             {
                 data.placed[place.Root] = -1;

@@ -1,0 +1,9 @@
+// B10 row 16: timer ticks through the interrupt descriptor table. Only IRQ 0 is unmasked and `sti; hlt` loses no wake-up, so a
+// tick ends each wait, and each wait after the first needs the previous TimerTick's end of interrupt.
+Interrupts.install()
+var wakes: u64 = 0
+while wakes < 3
+    X86.enableInterruptsAndHalt()
+    X86.disableInterrupts()
+    wakes += 1
+    Console.writeLine("\(wakes)")

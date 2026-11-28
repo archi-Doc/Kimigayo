@@ -112,11 +112,6 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // SPEC 8.15.2: the cases of a pair layer, of the pair whose whole Type is given, under a case assignment: its binder's assigned
-    // Semantics, else its admitted set.
-    private static SemanticsMask CaseAdmitted(BoundType whole, SemanticsMask admitted, ReadOnlySpan<PairCase> assignment)
-        => CaseOf(assignment, whole.Symbol!) is { } assigned ? assigned.ToMask() : admitted;
-
     // SPEC 13.5.5: a pair layer's weakest admitted case: shared when it admits a shared one, and otherwise exclusive unless it
     // admits an owner, an owning handle or a raw pointer, which keeps the operand's own path.
     private static SemanticsKind? PairAuthority(SemanticsMask admitted) => admitted switch
@@ -265,7 +260,7 @@ public sealed partial class Binding
                 break;
             case PathStep.PairFollow:
                 var admitted = this.PairAdmitted(source);
-                admitted = TryPairLayer(next.BoundType, out var followed, out _) ? CaseAdmitted(followed, admitted, assignment) : admitted;
+                admitted = TryPairLayer(next.BoundType, out var followed, out _) ? PairCase.Cases(assignment, followed.Symbol!, admitted) : admitted;
                 layer = PairAuthority(admitted);
                 layers |= admitted;
                 break;
@@ -535,7 +530,7 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3, 8.15.2, 13.5.5: one layer of a Place's own Type, the step LayerAuthority and LayerCases walk: its cases (a pair
-    // layer's under the case assignment, CaseAdmitted; any other layer's Semantics) and what it adds to the path (a pair layer the
+    // layer's under the case assignment, PairCase.Cases; any other layer's Semantics) and what it adds to the path (a pair layer the
     // weakest of its cases, PairAuthority; any other layer its Semantics).
     private SemanticsKind? LayerStep(Koto place, BoundType layer, ReadOnlySpan<PairCase> assignment, out SemanticsMask cases)
     {
@@ -545,7 +540,7 @@ public sealed partial class Binding
             return layer.Semantics;
         }
 
-        cases = CaseAdmitted(whole, this.LayerAdmitted(layer), assignment);
+        cases = PairCase.Cases(assignment, whole.Symbol!, this.LayerAdmitted(layer));
         return PairAuthority(cases);
     }
 

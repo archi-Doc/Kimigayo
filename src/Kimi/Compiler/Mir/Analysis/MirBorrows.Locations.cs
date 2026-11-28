@@ -7,12 +7,11 @@ namespace Kimi.Compiler.Mir;
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
 // borrowed roots (MirBorrows.Accesses) with the check sets they take, a Call's or Drop's effect access after them, and the reservations it
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
-// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), W's undecided store
-// (MirWrites.Limit, R4-M147, MirBorrows.Calls) and a read the addresses leave Unplaced (PQ-10, MirBorrows.Addresses), each a
-// located Unsupported_Kd, a borrowed root's destruction past the destruction walk's bound, a call's retention Limit or Deep part
-// (R4-M51; CallRetention.IsDeep, beside its rows), a store undecided past a walk's bound (MirBorrows.Calls) and a store the storing
-// rule refuses on a body's Deep own contract (MirBorrows.Storing), each OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract
-// is broken (G136, MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
+// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)) and W's undecided store
+// (MirWrites.Limit, R4-M147, MirBorrows.Calls), each a located Unsupported_Kd, a borrowed root's destruction past the destruction walk's
+// bound, a call's retention Limit or Deep part (R4-M51; CallRetention.IsDeep, beside its rows), a store undecided past a walk's bound
+// (MirBorrows.Calls) and a store the storing rule refuses on a body's Deep own contract (MirBorrows.Storing), each
+// OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract is broken (G136, MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
 // location's activations (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its
 // effects (MirBorrows.Effects, whose keys select other case views), a default template's stores in E and at its Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
@@ -63,9 +62,8 @@ internal sealed partial class MirBorrows
         var terminator = index == this.body.Blocks[block].Count;
         if (terminator || this.limit)
         {
-            // The location's store and reads, one verdict: W's undecided store (R4-M147), a store undecided past a walk's bound and a
-            // retention Limit or Deep part (R4-M51, R4-M153), and an Unplaced read through a dereference carrying a Loan of a layer's or enclosing Place
-            // (PQ-10, narrowed; MirBorrows.Values' Layered), joined.
+            // The location's stores, one verdict: W's undecided store (R4-M147), a store undecided past a walk's bound and a retention
+            // Limit or Deep part (R4-M51, R4-M153), joined.
             var deep = terminator && (this.deep || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true } or { IsDeep: true });
             this.Limit(this.Subject(at), (this.limit ? MirOutcome.Limit : MirOutcome.None).Join(deep ? MirOutcome.Deep : MirOutcome.None));
         }

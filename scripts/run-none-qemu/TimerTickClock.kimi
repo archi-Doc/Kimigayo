@@ -1,0 +1,9 @@
+// Row 31's timer handler: TimerTick's end of interrupt, then a Stopwatch started, which reads the platform's clock (IMPL 21.6.5).
+// While a platform member runs, that read halts with interrupts disabled and writes no report (IMPL 21.6.3, 21.6.9).
+struct TimerTick
+    Self is X86.InterruptHandler
+
+    public func handle(frame: ref/X86.InterruptFrame)
+        unsafe => X86.writePort8(0x20, 0x20)
+        var watch = Time.Stopwatch.init()
+        watch.start()

@@ -129,8 +129,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var assigned = CaseOf(cases, whole.Symbol!);
-        var mask = assigned?.ToMask() ?? SemanticsMask.All;
+        var mask = PairCase.Cases(cases, whole.Symbol!, SemanticsMask.All);
         if ((this.BareAcquisition(stored, node, cases, out var reborrow) & mask) != SemanticsMask.None || (reborrow & mask) == SemanticsMask.None)
         {
             return null;
@@ -161,7 +160,7 @@ public sealed partial class Binding
         }
 
         var outer = result ?? stored;
-        var invariant = inner is not null && assigned is null && this.InvariantAdmitted(stored, node, default);
+        var invariant = inner is not null && PairCase.Of(cases, whole.Symbol!) is null && this.InvariantAdmitted(stored, node, default);
         if (inner is null || ReferenceEquals(inner, target))
         {
             limit = invariant && limit == ReborrowLimit.None ? ReborrowLimit.Possible : limit;
