@@ -805,7 +805,7 @@ public sealed partial class RetentionTest
     }
 
     // SPEC 15.6, design A3 3 (Φ_E): a result Origin tied to no input and not static, or a carrier no input names, is untied, read-only
-    // where the position's own layer or a layer above it is shared (SPEC 5.2.1 condition 3; DECISIONS BU-2xx); a static result is not.
+    // where the position's own layer or a layer above it is shared (SPEC 5.2.1 condition 3; DECISIONS BU-278); a static result is not.
     [Theory]
     [InlineData("func f() -> Option<ref/i32 during s> => .None", "untied read-only")]
     [InlineData("func f(x: ref/i32) -> Option<ref/i32 during s> => .None", "untied read-only")]
@@ -815,7 +815,7 @@ public sealed partial class RetentionTest
     public void UntiedResultsNameNoInput(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
-    // SPEC 15.6, 5.7 Calls, 5.2.1 condition 3 (DECISIONS BU-2xx): a call's result is untied only where its own value states a non-static
+    // SPEC 15.6, 5.7 Calls, 5.2.1 condition 3 (DECISIONS BU-278): a call's result is untied only where its own value states a non-static
     // Origin no input reaches, outside a `during self` storage, and read-only past a shared layer, an rc payload included. The holder's own
     // `during self` content unties nothing (O-529 (a)), nor does a phantom Type argument (15.3.5) or a nominal's Origin argument; a
     // by-value position, a callable's occurrence (15.6.4 route 5) and a Type met again Writable after a ReadOnly visit do. A Type argument
@@ -2369,7 +2369,7 @@ public sealed partial class RetentionTest
     }
 
     // SPEC 15.6.4, V16 (G243; DECISIONS BU-35): a row depends on the Type at a position and the Type its declaration writes there, not on
-    // the route to it through the interned Types, so the hold walk visits each position once per output and untie (DECISIONS BU-2xx).
+    // the route to it through the interned Types, so the hold walk visits each position once per output and untie (DECISIONS BU-278).
     // Chain's Types grow as trees eight wide (8^(n-1) leaves) but are 2n distinct Types, reached through rc handles, Tuples, fixed arrays
     // and enum payloads, raw leaves included, and a result holding them lent and written, which visits each position at most twice
     // (DECISIONS BU-40); walked as trees they take seconds to minutes, which the bound reports instead of hanging the run.

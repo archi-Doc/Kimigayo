@@ -175,7 +175,7 @@ public sealed partial class Binding
     // at one the result lends (R′); one stepping Unstated or Static,
     // not lent, unties every storage of the output, where a transfer operation writes it (TransferWrites, as for rule A), and a result
     // position stating a non-static Origin no input reaches, outside a `during self` storage, unties the result, with its mode (R1, R2;
-    // DECISIONS BU-2xx). A result the call forms within a raw parameter's storage
+    // DECISIONS BU-278). A result the call forms within a raw parameter's storage
     // (`within`) retains that argument's own value. The transfer key by declaring identity
     // also gives the stores written only where the receiver refers (ReferentStores). The work is one closure per node a target names, each
     // node with its incoming premises once, and the walks; the identity key is read once per contract, and for a callee it does not name
@@ -1334,7 +1334,7 @@ public sealed partial class Binding
     // (stepping Exclusive or Shared: it retains as that borrow would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1;
     // PLAN G255's C1), Dependency in a Type argument that is no part by value (ByValue: a Loan entry, row 3b), whose layers give nothing;
     // and in which untie (R2: Writable at a hold, lowered to ReadOnly below a part whose entry steps Shared, an rc or arc payload included,
-    // EntryStep and StepWrites; a meeting of an Unstated or Static layer in Writable is Holding.Writable; DECISIONS BU-2xx). The hold walk
+    // EntryStep and StepWrites; a meeting of an Unstated or Static layer in Writable is Holding.Writable; DECISIONS BU-278). The hold walk
     // does not read Admitted's state, so inside a `during self` content it keeps dev's untie (that entry's Remaining, PLAN G416 U4); it rejects
     // nothing dev accepts.
     // Each input other than `output` with a stated raw layer (retentionRawStated) is kept by its joined kind at a raw layer stating an

@@ -286,7 +286,7 @@ public sealed partial class Binding
         }
     }
 
-    // The step of a Type's own layer (SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-2xx), evaluated once per visit (StorageWalk; `run`, its
+    // The step of a Type's own layer (SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-278), evaluated once per visit (StorageWalk; `run`, its
     // entries) for the position's untie and what the walk goes past it to (Position, Reach, RawReach): a pair layer's is Exclusive where it
     // is invariant (admits an exclusive case), else Shared; a raw layer's in an output fold's walk its position's (RawStepAt), in an input
     // fold's walk its entry's, unread; an rc or arc handle's Shared (EntryStep); any other Type's its first entry's (a borrow's Shared or
@@ -518,7 +518,7 @@ public sealed partial class Binding
     // names it. The storage an abstract part hides is the visit's (StorageWalk). A position in the binding of the callee's kept abstract
     // Type (Hides) is tested in the callee's terms (Binding.Retention.Rows.cs, Storages), so it has no target: the binding's Origins are
     // the caller's. Each test is with its untie (the visit's state lowered by the layer's step, where OwnNodes says the node's value states
-    // a non-static Origin that is bound; DECISIONS BU-2xx).
+    // a non-static Origin that is bound; DECISIONS BU-278).
     private bool Position(OriginPremiseEnvironment environment, BoundType type, in StorageAt at, HoldStep step)
     {
         var (start, end) = this.Reads(type, at.Written, at.Signature);

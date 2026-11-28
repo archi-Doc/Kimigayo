@@ -116,7 +116,7 @@ internal enum RetentionKind : byte
     Chain = 4,
 }
 
-/// <summary>The untie a storage's record states (SPEC 15.6.4, 5.2.1 condition 3; design A3's Φ_E; DECISIONS BU-2xx): whether the storage may
+/// <summary>The untie a storage's record states (SPEC 15.6.4, 5.2.1 condition 3; design A3's Φ_E; DECISIONS BU-278): whether the storage may
 /// receive a pointer tied to no input, and with which authority. Ordered so that the join of two records' unties is the greater.</summary>
 internal enum RetentionUntie : byte
 {
