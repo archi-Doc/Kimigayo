@@ -37386,8 +37386,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     forecast ("RFLAGS can join it ... without a code generation change") and changes its two records' types. `popfq`'s operand is the
     saved RFLAGS alone (the busy bit and bits 32-63 cleared). `__kimi_exit` begins with `cli` (shutdown and every Abort pass through
     it; the none template has no Abort entry of its own). With interrupts off across every platform member, no platform member may
-    wait for an interrupt it does not enable itself (a future clock or input member that halts for a tick would hang). Rejected: an
-    aggregate `{ i64, i8 }` (two values for one word); the six routines.
+    wait for a maskable interrupt without enabling interrupts itself (`X86.enableInterruptsAndHalt`): a future clock or input member
+    that halts for a tick with `X86.halt` would hang. Rejected: an aggregate `{ i64, i8 }` (two values for one word); the six routines.
   - **`KimiDeclarationId` +3** (ruling 193 (b); design: +2; not a closed vocabulary): `InterruptFrame`, `InterruptHandler` and
     `ErrorCodeHandler`, each a `#Lang` catalog row. First readers: the two Contracts', the collector's entry edge (`OwnRequirement` of
     the variant's lang item, by `InterruptEntries`); the frame's, the thunk writer (`Layout.Of` of its symbol's Type, the `byval`
