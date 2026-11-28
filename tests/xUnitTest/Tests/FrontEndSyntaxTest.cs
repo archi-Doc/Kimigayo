@@ -117,7 +117,7 @@ public class FrontEndSyntaxTest
     [InlineData("func f<T>(x: T)\n    T.Element is Comparable\n    return")]
     [InlineData("func f<F>(x: F)\n    F is Callable<ref, (i32) -> bool>\n    return")]
     [InlineData("specialize func f<i32>(x: i32) -> i32 => x")]
-    [InlineData("protected internal struct S\n    private protected func f() => ()")]
+    [InlineData("struct O\n    protected internal struct S\n        private protected func f() => ()")]
     [InlineData("group G\n    func f(! other => self: i32) => ()")]
     [InlineData("struct S\n    func f(self: ref/Self, value => other: i32) => ()")]
     public void PreservesSpecifiedSyntax(string source)

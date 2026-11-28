@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler.Parsing;
 using Xunit;
 using static XunitTest.ParseTestHelper;
@@ -67,15 +68,21 @@ public class EffectBoundSyntaxTest
     }
 
     [Fact]
-    public void KeepsMisplacedEffectItemsForBinding()
+    public void KeepsMisplacedEffectItemsWithTheirPlaceRecord()
     {
-        // Ordinary functions and other containers accept no effect item; the syntax is kept so that Binding can say so.
-        var function = ParseSingleFunction("func f() -> ()\n    effect confined\n    let x = 1");
-        Assert.Single(function.EffectBounds);
+        // Ordinary functions and other containers accept no effect item (SPEC 8.11.1): the syntax is kept, and the item's one row
+        // (Parser.ParseEffectItem) records its place at the item, its key the item's Misplacement (PLAN G1511).
+        var source = Parse("func f() -> ()\n    effect confined\n    let x = 1");
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(source.RootKoto)));
+        var item = Assert.Single(function.EffectBounds);
         Assert.Single(function.Body!.Items);
+        Assert.NotNull(item.Misplacement);
+        Assert.Equal(nameof(DiagnosticCode.InvalidEffectBound_Kd), Assert.Single(TestDiagnostics.Of(source)).Code);
 
-        var tree = ParseSuccess("struct S\n    effect confined");
-        Assert.IsType<EffectBoundKoto>(Assert.Single(Assert.IsType<StructKoto>(Assert.Single(tree.RootKoto.NestedContainers)).Members));
+        var tree = Parse("struct S\n    effect confined");
+        var member = Assert.IsType<EffectBoundKoto>(Assert.Single(Assert.IsType<StructKoto>(Assert.Single(tree.RootKoto.NestedContainers)).Members));
+        Assert.NotNull(member.Misplacement);
+        Assert.Equal(nameof(DiagnosticCode.InvalidEffectBound_Kd), Assert.Single(TestDiagnostics.Of(tree)).Code);
     }
 
     private static void AssertRoundTrip(Kimi.Compiler.Kotonoha tree)

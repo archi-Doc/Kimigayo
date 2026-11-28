@@ -198,7 +198,7 @@ public partial class SyntaxIdTest
     // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
     // generic container's group whose struct a parameter names; FailingSteps: a path whose qualifier is missing (N1-13 B1); QualificationFailures: a member read without its `self.`, a failure
     // family's program, which reports its failure at each Bind; R7-N5's: PairFollows, a `@follow` of a pair layer;
-    // ImplicitPairFollows, Milestone28's implicit follows; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
+    // ImplicitPairFollows, Milestone28's implicit follows; EffectBoundRejections, a duplicate effect clause; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
     // under a holed annotation;
     // B2a-2's ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B2b-1's UniqIndexing, a
     // Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
@@ -236,7 +236,7 @@ public partial class SyntaxIdTest
     [InlineData("QualificationFailures", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
     [InlineData("PairFollows", "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc view<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref\n")]
     [InlineData("ImplicitPairFollows", "milestone:Milestone28")]
-    [InlineData("EffectBoundRejections", "enum E\n    A\n    effect confined\n    B\n", DiagnosticCode.InvalidEffectBound_Kd)]
+    [InlineData("EffectBoundRejections", "open struct B\n    public virtual func f(self: objref/Self) -> i32\n        effect confined\n        effect confined\n        return 1\n", DiagnosticCode.InvalidEffectBound_Kd)]
     [InlineData("ReceiverOperations", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
     [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
     [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
