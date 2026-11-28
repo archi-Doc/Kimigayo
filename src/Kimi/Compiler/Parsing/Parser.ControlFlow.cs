@@ -134,6 +134,9 @@ public static partial class Parser
     /// <returns>The key of the first Error, or <see langword="null"/> for a well-formed list.</returns>
     private static DiagnosticKey? ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings, ref bool[]? mutableSlots)
     {
+        // Each slot is a delimiter region of its own, as an element in parentheses is (SPEC F.4.4), so an enclosing if body's else
+        // ends no skipped slot.
+        var region = reader.EnterRegion();
         reader.Advance();
         DiagnosticKey? malformed = null;
         while (true)
@@ -186,6 +189,7 @@ public static partial class Parser
             }
         }
 
+        reader.RestoreRegion(region);
         return malformed;
     }
 

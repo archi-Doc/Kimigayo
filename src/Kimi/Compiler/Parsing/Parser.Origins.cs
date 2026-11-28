@@ -419,9 +419,12 @@ public static partial class Parser
     {
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
         {
+            // A grouped Origin expression is a delimiter region of its own, as a grouped expression is (SPEC F.4.4).
+            var region = reader.EnterRegion();
             var open = reader.Read().Span;
             var inner = ParseOriginExpression(ref reader);
             var cause = reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            reader.RestoreRegion(region);
             var grouped = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open.Start, Math.Max(inner.Span.End, close.End)), inner);
             RecoverItem(ref reader, grouped, cause);
             return grouped;

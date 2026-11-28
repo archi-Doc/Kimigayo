@@ -345,9 +345,12 @@ public static partial class Parser
     // (WrittenReference).
     private static Koto ParseContractGroup(ref TokenReader reader)
     {
+        // The group is a delimiter region of its own, as a grouped expression is (SPEC F.4.4).
+        var region = reader.EnterRegion();
         var open = reader.Read().Span.Start;
         var reference = RecoverContractReference(ref reader, ParseType(ref reader, TypeContext.Element));
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        reader.RestoreRegion(region);
         return new ParenthesizedTypeKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
     }
 

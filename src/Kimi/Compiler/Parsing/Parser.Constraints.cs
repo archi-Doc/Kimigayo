@@ -254,10 +254,13 @@ public static partial class Parser
                     return ParseType(ref reader, TypeContext.Type);
                 }
 
+                // A grouped requirement is a delimiter region of its own, as a grouped expression is (SPEC F.4.4).
+                var region = reader.EnterRegion();
                 var openRange = reader.CurrentTokenRange;
                 reader.Advance();
                 var operand = ParseCondition(ref reader);
                 reader.ExpectCloser(TokenKind.CloseParenthesis, out var closeRange);
+                reader.RestoreRegion(region);
                 return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(operand.Span.End, closeRange.End)), operand);
             }
 

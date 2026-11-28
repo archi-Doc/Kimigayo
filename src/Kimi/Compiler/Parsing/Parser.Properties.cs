@@ -326,6 +326,8 @@ public static partial class Parser
     // reader stands at "(".
     private static AccessorParameters ParseAccessorParameters(ref TokenReader reader, PropertyAccessorKind kind)
     {
+        // Each parameter is a delimiter region of its own, as a function's is (SPEC F.4.4).
+        var region = reader.EnterRegion();
         var end = reader.Read().Span.End;
         (SourceSpan Receiver, SourceSpan Value) names = default;
         Koto? receiverType = null;
@@ -368,6 +370,7 @@ public static partial class Parser
 CloseParameters:
         // Whatever remains of the list is skipped after the one report at its first token.
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        reader.RestoreRegion(region);
 
         return new(receiverType, valueType, names, Math.Max(end, close.End));
     }

@@ -114,6 +114,8 @@ public static partial class Parser
 
     private static CaptureKoto[] ParseCaptures(ref TokenReader reader)
     {
+        // Each capture is a delimiter region of its own, as an element in brackets is (SPEC F.4.4).
+        var region = reader.EnterRegion();
         reader.Advance();
         var captures = default(TemporaryList<CaptureKoto>);
         while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseBracket)
@@ -166,6 +168,7 @@ public static partial class Parser
         }
 
         reader.ExpectCloser(TokenKind.CloseBracket, out _);
+        reader.RestoreRegion(region);
         return captures.ToArray();
     }
 
@@ -305,7 +308,14 @@ public static partial class Parser
     }
 
     private static Koto ParseFixedArrayType(ref TokenReader reader)
-        => ParseFixedArrayTypeCore(ref reader);
+    {
+        // The length and the element are a delimiter region of their own, as an element in brackets is (SPEC F.4.4), so an enclosing
+        // if body's else ends neither; the nesting levels are unchanged.
+        var region = reader.EnterRegion();
+        var array = ParseFixedArrayTypeCore(ref reader);
+        reader.RestoreRegion(region);
+        return array;
+    }
 
     private static Koto ParseFixedArrayTypeCore(ref TokenReader reader)
     {
@@ -399,8 +409,11 @@ public static partial class Parser
         Koto left;
         if (reader.TryConsume(TokenKind.OpenParenthesis))
         {
+            // A grouped length is a delimiter region of its own, as a grouped expression is (SPEC F.4.4).
+            var region = reader.EnterRegion();
             var value = ParseArrayLength(ref reader, expression: true);
             RecoverItem(ref reader, value, reader.ExpectCloser(TokenKind.CloseParenthesis, out var close));
+            reader.RestoreRegion(region);
             left = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, Math.Max(value.Span.End, close.End)), value);
         }
         else if (expression && token.Kind is TokenKind.Plus or TokenKind.Minus)
@@ -539,6 +552,9 @@ public static partial class Parser
     // Patterns that start with "(", told apart by the number of Patterns read and by a "," after one.
     private static Koto ParseGroupedPattern(ref TokenReader reader)
     {
+        // Each Pattern is a delimiter region of its own, as an element in parentheses is (SPEC F.4.4), so an enclosing if body's
+        // else ends none of them and an if inside one is not nested in that body.
+        var region = reader.EnterRegion();
         var token = reader.Read();
         var items = default(TemporaryKotoList);
         var comma = false;
@@ -557,6 +573,7 @@ public static partial class Parser
         reader.Depth--;
 
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        reader.RestoreRegion(region);
         var children = items.ToArray();
         var end = Math.Max(token.Span.End, Math.Max(close.End, children.Length == 0 ? 0 : children[^1].Span.End));
         var span = SourceSpan.FromBounds(token.Span.Start, end);
@@ -632,6 +649,8 @@ public static partial class Parser
                 : new SyntaxFormKoto(ref reader, reference.Span, KotoKind.CasePattern, string.Empty, [reference]);
         }
 
+        // Each payload Pattern is a delimiter region of its own, as an element in parentheses is (SPEC F.4.4).
+        var region = reader.EnterRegion();
         var patterns = default(TemporaryKotoList);
         reader.Depth++; // The payload's Patterns lie below the Case Pattern (DECISIONS BU-112).
         while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
@@ -651,6 +670,7 @@ public static partial class Parser
         }
 
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var end);
+        reader.RestoreRegion(region);
         var span = SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, end.End));
         var payload = new SyntaxFormKoto(ref reader, span, KotoKind.TuplePattern, "(", patterns.ToArray(), suffix: ")");
         return cause is { } malformed
@@ -669,12 +689,15 @@ public static partial class Parser
         var payload = reader.TryConsume(TokenKind.OpenParenthesis);
         if (payload)
         {
+            // Each field Type is a delimiter region of its own, as an element in parentheses is (SPEC F.4.4).
+            var region = reader.EnterRegion();
             do
             {
                 fields.Add(ParseType(ref reader, TypeContext.Type));
             }
             while (reader.TryConsume(TokenKind.Comma) && reader.CurrentTokenKind != TokenKind.CloseParenthesis);
             reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            reader.RestoreRegion(region);
             end = Math.Max(end, close.End);
         }
 

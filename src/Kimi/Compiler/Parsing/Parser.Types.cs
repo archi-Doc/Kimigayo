@@ -352,6 +352,9 @@ public static partial class Parser
     /// </summary>
     private static Koto ParseBareParenthesizedType(ref TokenReader reader)
     {
+        // Each element is a delimiter region of its own, as an element in parentheses is (SPEC F.4.4), so an enclosing if body's
+        // else ends none of them; the nesting levels are unchanged.
+        var region = reader.EnterRegion();
         var openRange = reader.CurrentTokenRange;
         reader.Advance();
 
@@ -384,6 +387,7 @@ public static partial class Parser
 
         reader.Depth--;
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var closeRange);
+        reader.RestoreRegion(region);
         var end = Math.Max(Math.Max(openRange.End, lastEnd), closeRange.End);
 
         var range = SourceSpan.FromBounds(openRange.Start, end);

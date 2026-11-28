@@ -94,6 +94,8 @@ public static partial class Parser
 
     internal static OriginApplicationKoto ParseOriginApplication(ref TokenReader reader, Koto type)
     {
+        // Each argument is a delimiter region of its own (SPEC F.4.4).
+        var region = reader.EnterRegion();
         reader.Advance();
         var arguments = default(TemporaryKotoList);
         var end = reader.CurrentTokenRange.End;
@@ -117,6 +119,7 @@ public static partial class Parser
         }
 
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        reader.RestoreRegion(region);
         end = Math.Max(end, close.End);
 
         return new(ref reader, SourceSpan.FromBounds(type.Span.Start, end), type, arguments.ToArray());
