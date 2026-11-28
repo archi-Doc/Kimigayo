@@ -8634,10 +8634,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Moves: UnretainedRawStore_Kd on the I rows (G986: id, idLocal, idTwoRaw, idThreeLayers, idProjection, idDropGone, idDropKept,
     idRawPart, idRefBeside; G1506: pair, idPair, pairReturned, ownReturned); fewer Drops in generic MIR under premises; no V row moves.
     Limit: an owned `U`'s Drop (ownDropped, I) stays a redirect, as its destruction may run code and A2 keeps it.
-    Limit: a body no view decides is checked once, in view 0 (`MirBorrows.Run`), so the Drop row reads view 0's verdict for every
-    view: an owned `s/U`'s Drop A2 keeps under `owner` stays a redirect in every view (oneViewDropBad, I, accepted), and a Drop elided
-    in view 0 is no redirect where a later view keeps it (refObjBad, I, rejected; no V form found); the access rule's `Dropping` reads
-    the same (PLAN G1507).
+    Limit (superseded by R7-M131, PLAN G1507: a Drop whose Type a case substitutes makes its body view-dependent): a body no view
+    decides is checked once, in view 0 (`MirBorrows.Run`), so the Drop row reads view 0's verdict for every view: an owned `s/U`'s
+    Drop A2 keeps under `owner` stays a redirect in every view (oneViewDropBad, I, accepted), and a Drop elided in view 0 is no
+    redirect where a later view keeps it (refObjBad, I, rejected; no V form found); the access rule's `Dropping` reads the same.
   - Rejected: premising the MirCases tier (it moves A1, A2, A4, A5, Origins and their cost, a second path beside Y5's Places);
     premising inside `MirTypes.Destruction`'s abstract row (it moves A4's destruction composition, Observation and the Back's
     readers, which read closed instance Types); a located `Unsupported_Kd` (it rejects the valid V rows); waiting for Y5 (it waits
@@ -31375,6 +31375,23 @@ Closure row of `MirCases.Branch`).
     where the assignment gives none (`Binding.SemanticsAdaptations`' `TargetCases`).
   - **Rejected:** Mir reading its view by binder index (`cases[step.Arg]`): a second reading of the rule under Mir's view contract,
     with the empty assignment still special.
+- **R7-M131 A Drop whose Type a case substitutes makes its body view-dependent (PLAN G1507)** (2026-11-28; Middle, MirMoveData;
+  Major, an acceptance mover) SPEC 8.15.2 (each case is checked), 8.15 (a case substitutes only Types with a pair layer).
+  - Rule: `MirMoveData.ViewDependent` gains one row: a Drop whose Place's Type, as the body's identity premises make it (A2's root,
+    `MirCases.PremisedTypeOf`; `MirTypes.Premised`), contains a pair layer (`BoundType.ContainsPairLayer`; `MirMoveData.ViewDecided`).
+    A2 judges per view what such a Drop destroys, so A5's `Dropping` and Storing's Drop row, which read that verdict, run in every
+    view; A1, A2 and A5 already run per view for a view-dependent body, and no reader changes. The row is not evaluated once the body
+    is view-dependent. The `Premised` call goes at R7-Y5 with R4-M251's list.
+  - Rejected: a second A2 fact read in `MirBorrows.Run` (a second copy of "a view decides the body", read after A1, which it must
+    steer); `CaseDependent` on the Drop in `MirUses` (Type-free rows, no premise, and its other reader already excludes DropUse);
+    A2's per-view `MayNeedDrop` (narrower only where every case agrees, a second fact).
+  - Moves: records added on I rows only: oneViewDropBad (UnretainedRawStore_Kd under ref); reassignObjBad (LC at the overwrite and
+    at y's and x's storage ends, under obj); liveObjOk and reassignObjOk (I by SPEC 15.6 Holders with 16.3.3's retention and 15.6.4
+    item 2; LC under obj); rcLiveBad (LC under rc) and optionObjLiveBad (LC under obj, a Case payload); case notes on refObjBad,
+    reassignOwnerBad, liveOwnerOk and reassignOwnerOk (I, records unchanged). No V row moves. Cost: V runs of A1, A2 and A5 per such
+    body, V <= `PairBinder.CaseBound` = 64, linear in the body; none in the library or milestones (the design's count); records only,
+    the O2 IR is unchanged.
+  - Supersedes R4-M251's Limit "a body no view decides is checked once, in view 0".
 - **R7-M132 R7-P3: one call pipeline over `CallEvaluation`; each call form is a row of its table (`G:R7-pipeline`)** (2026-11-28;
   R7-P3, a Front unit the Back runs under O-553 (b); plan §5.0 P3, §5.1 P3; Major; behavior-preserving except the counted rows id, ov
   (a2-2) and vc (a3); a2-0 (its partial-completion window, the P-B1 family), a2-3 (I2 d1's rows), f, e2, g and j are decided by
