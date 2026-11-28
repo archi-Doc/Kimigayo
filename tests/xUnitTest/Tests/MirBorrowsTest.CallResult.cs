@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>A5's rule 4 at a call's result (PLAN G841 clause (3); SPEC 15.6.4 "a raw layer that the call may write, in its result, a
+/// <summary>A5's rule 4 at a call's result (DECISIONS R4-M245; SPEC 15.6.4 "a raw layer that the call may write, in its result, a
 /// nominal Type's Fields included, ... reaches storage the body does not own", 5.7 Calls; the owner's O-365 (a) and O-524 (a)): where the
 /// call composes, it may write its own pointer at a raw layer without an Origin of its result and store through it at the next layer,
 /// in storage the body does not own, what that layer's entry of the result's record keeps; a value stored there may be used after
@@ -367,7 +367,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), LoanCodes))}]");
     }
 
-    // PLAN G841's scaling row (Revision 3's review, C4): N calls, each with a by-value Tuple input of K two-layer raw elements (each
+    // DECISIONS R4-M245's scaling row (Revision 3's review, C4): N calls, each with a by-value Tuple input of K two-layer raw elements (each
     // addressing a local holder) and a composing result with a raw Field. W reads each input once per own layer of its key (clause (1))
     // and the result once at its key (clause (3)), so the work in N at K = 8 and in K at N = 8 stays within the class's bound.
     [Fact]

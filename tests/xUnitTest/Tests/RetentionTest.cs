@@ -94,6 +94,20 @@ public sealed partial class RetentionTest
     // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
     private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
 
+    // AResultUntiesOnlyWhereItsOwnValueStatesAnUnreachedOrigin's shapes (G415's probes): holders of a Type argument in their own `during
+    // self` content, one beside a Loan and one a Field down, a phantom holder, a holder by value, one Type argument at two positions, and
+    // makers of a T, of a callable returning one, of a holder of one and of a Wrap of a holder.
+    private const string Unties = Phantom + "    public init() => ()\n" + Wrap +
+        "struct PunCell<T>\n    internal var buffer: raw/u8 during self\n    public init()\n        unsafe => self.buffer = Raw.allocate<u8>(16)@(raw/u8 during self)\n" +
+        "struct Outer<T>\n    internal var inner: PunCell<T>\n    public init() => self.inner = PunCell<T>.init()\n" +
+        "struct PunCellO<T> {o}\n    internal var buffer: raw/u8 during self\n    internal let keep: Loan<ref/i32 during o>\n    public init(k: ref/i32 during o)\n" +
+        "        self.keep = Loan.init(k)\n        unsafe => self.buffer = Raw.allocate<u8>(16)@(raw/u8 during self)\n" +
+        "public struct Buffer<T>\n    internal let data: raw/T during self\n    public init(capacity: isize)\n" +
+        "        unsafe => self.data = Raw.allocate<T>(capacity)@(raw/T during self)\n" +
+        "struct Hold<T>\n    internal var item: T\nstruct Two<U> {o}\n    internal var r: ref/U during o\n    internal var u: U\n" +
+        "func make<T>() -> T => $abort(\"x\")\nfunc mkF<T>() -> (() -> T) => $abort(\"x\")\nfunc mkHold<T>() -> Hold<T> => $abort(\"x\")\n" +
+        "func mkWrap<T>() -> Wrap<PunCell<T>> => $abort(\"x\")\n";
+
     // A holder whose Type states an Origin and holds a u64 by value (the Middle's pins, MirBorrowsTest.Exposed on the one tree).
     private const string MixedHolder = "struct RS {s}\n    public let r: ref/u8 during s\n    public let n: u64\n    public init(r: ref/u8 during s, n: u64)\n" +
         "        self.r = r\n        self.n = n\n";
@@ -540,10 +554,10 @@ public sealed partial class RetentionTest
     // declaration states there, and a raw pointee below it stays stated by the Type: rule A keeps what a stored value brings (BU-1), and the
     // twin's write conflicts while h lives.
     [Theory]
-    [InlineData(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) => ()", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) => ()", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied read-only")]
     [InlineData(
         "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    let b: raw/(raw/u8 during static) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()",
-        "store 0: own {0 Content}, reached {} untied")]
+        "store 0: own {0 Content}, reached {} untied read-only")]
     public void ACapStepsOnlyTheLayerItsDeclarationStates(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -790,15 +804,39 @@ public sealed partial class RetentionTest
         Assert.Equal(["result {0 Value}", "result {0 Value}"], Calls(c, "pick")); // PLAN G935 (R, O-359 (a)): pick's result of its own T holds a, an Origin-free i32 too.
     }
 
-    // SPEC 15.6, design A3 3 (Φ_E): a result Origin tied to no input and not static, or a carrier no input names, is untied; a static
-    // result is not.
+    // SPEC 15.6, design A3 3 (Φ_E): a result Origin tied to no input and not static, or a carrier no input names, is untied, read-only
+    // where the position's own layer or a layer above it is shared (SPEC 5.2.1 condition 3; DECISIONS BU-2xx); a static result is not.
     [Theory]
-    [InlineData("func f() -> Option<ref/i32 during s> => .None", "untied")]
-    [InlineData("func f(x: ref/i32) -> Option<ref/i32 during s> => .None", "untied")]
+    [InlineData("func f() -> Option<ref/i32 during s> => .None", "untied read-only")]
+    [InlineData("func f(x: ref/i32) -> Option<ref/i32 during s> => .None", "untied read-only")]
+    [InlineData("func f() -> Option<uniq/i32 during s> => .None", "untied")]
     [InlineData("func f(n: i32) -> Option<ref/i32> => .None", "")]
     [InlineData("func f<T>() -> Option<T> => .None", "untied")]
     public void UntiedResultsNameNoInput(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6, 5.7 Calls, 5.2.1 condition 3 (DECISIONS BU-2xx): a call's result is untied only where its own value states a non-static
+    // Origin no input reaches, outside a `during self` storage, and read-only past a shared layer, an rc payload included. The holder's own
+    // `during self` content unties nothing (O-529 (a)), nor does a phantom Type argument (15.3.5) or a nominal's Origin argument; a
+    // by-value position, a callable's occurrence (15.6.4 route 5) and a Type met again Writable after a ReadOnly visit do. A Type argument
+    // stating `during static` at the occurrence is static there.
+    [Theory]
+    [InlineData("PunCell<ref/i32>.init()", "init", "")]
+    [InlineData("Outer<ref/i32>.init()", "init", "")]
+    [InlineData("mkWrap<ref/i32>()", "mkWrap", "")]
+    [InlineData("Ph<ref/i32>.init()", "init", "")]
+    [InlineData("Buffer<uniq/i32>.init(capacity: 4)", "init", "")]
+    [InlineData("PunCellO<ref/i32>.init(k: a@ref)", "init", "result {0 Value}")]
+    [InlineData("mkHold<ref/i32>()", "mkHold", "untied read-only")]
+    [InlineData("make<ref/(ref/i32)>()", "make", "untied read-only")]
+    [InlineData("make<ref/(uniq/i32)>()", "make", "untied read-only")]
+    [InlineData("make<rc/Hold<uniq/i32>>()", "make", "untied read-only")]
+    [InlineData("make<uniq/(ref/i32)>()", "make", "untied")]
+    [InlineData("mkF<uniq/i32>()", "mkF", "untied")]
+    [InlineData("make<Two<uniq/i32>>()", "make", "untied")]
+    [InlineData("make<ref/i32 during static>()", "make", "")]
+    public void AResultUntiesOnlyWhereItsOwnValueStatesAnUnreachedOrigin(string call, string callee, string expected)
+        => Assert.Equal(expected, Calls(Bind(Unties + $"func g()\n    var a = 1\n    let v = {call}\n"), callee)[^1]);
 
     // C8 (DECISIONS R4-M41): a Value call is read over the Callable signature its callee declares, a function item's, a Closure's or a
     // Function Type's, whose per-call Origins are the call's fresh regions; a Function Type input stores no per-call Origin of its own. A
@@ -1203,11 +1241,13 @@ public sealed partial class RetentionTest
     // instantiated reading). The layer lies in U's binding, and the holder it addresses is reached, hidden or not (the owner's
     // O-312 (a); PLAN G935 c3-5): under `uniq` the call may store v there (`reached`, the pre-c2 rows of that holder), under `ref`
     // it has no write authority. Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
-    // over every case its declaration admits, also under a `ref`-case instance (SPEC 15.3.5).
+    // over every case its declaration admits, also under a `ref`-case instance (SPEC 15.3.5). Store 1's `untied` in the `ref`-kept
+    // rows (put, get) is a known conservative reading, not the rule's label: SPEC 15.6.4 makes it read-only too, but HeldRun passes no
+    // signature, so BU-113's cap does not reach the hold walk (an open issue, PLAN G<n>).
     [Theory]
-    [InlineData(ViewRef + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewRef + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied read-only, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewUniq + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewUniqCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
-    [InlineData(ViewRef + "    public func get(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) -> raw/(raw/u8) during source => null\n" + ViewGet, "get", "result {0 Content, 1 Chain, 2 Value Chain}, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewRef + "    public func get(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) -> raw/(raw/u8) during source => null\n" + ViewGet, "get", "result {0 Content, 1 Chain, 2 Value Chain}, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied read-only, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewRef + ViewRelay, "keep", "store 0: own {0 Content}, reached {}")]
     [InlineData(ViewUniq + ViewRelay, "keep", "store 0: own {0 Content}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData(
@@ -1220,9 +1260,11 @@ public sealed partial class RetentionTest
 
     // The Type argument's layer of the rule above where the callee's own signature writes it (DECISIONS BU-113; PLAN G935): relay's
     // `h: uniq/Wrap<raw/(raw/u8) during source>` states View's slot, so under a `ref`-kept slot relay stores nothing past the layer and
-    // under a `uniq`-kept one it may store `v` there.
+    // under a `uniq`-kept one it may store `v` there. Store 1's `untied` in the `ref`-kept row is a known conservative reading, not the
+    // rule's label: SPEC 15.6.4 makes it read-only too, but HeldRun passes no signature, so BU-113's cap does not reach the hold walk
+    // (an open issue, PLAN G<n>).
     [Theory]
-    [InlineData(ViewRef + ViewRelay, "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewRef + ViewRelay, "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied read-only, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewUniq + ViewRelay, "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
     public void ATypeArgumentsLayerAMethodWritesIsReadByItsSlotsLoan(string source, string expected)
         => Assert.Equal(expected, Declared(Bind(source), "relay"));
@@ -1507,9 +1549,9 @@ public sealed partial class RetentionTest
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "result {0 Content}")]
     [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {1 Value}, reached {}")]
-    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value}, untied")]
+    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value}, untied read-only")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}")]
-    [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Chain}, untied")]
+    [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Chain}, untied read-only")]
     [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {1 Value}, reached {}")]
     [InlineData(Pp + "let s: raw/Pp = Raw.allocate(1)\nunsafe => Raw.initialize(s, Pp.init(p: null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Field's raw layer is a raw source (SPEC 15.6.4 "a Field"; fail-before: no row).
     [InlineData("enum Ep\n    A(raw/u8)\n    B\nlet s: raw/Ep = Raw.allocate(1)\nunsafe => Raw.initialize(s, .A(null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Case payload's (fail-before: no row).
@@ -1888,18 +1930,18 @@ public sealed partial class RetentionTest
     [InlineData(
         "struct R\n    public var q: raw/(raw/i32)\n    public init(q: raw/(raw/i32)) => self.q = q\nfunc f(p: raw/i32) -> R\n    let cell: raw/(raw/i32) = Raw.allocate(1)\n    return R.init(q: cell)",
         "result {0 Value Chain}, untied")]
-    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData("struct Sh {a}\n    public var r: ref/(raw/i32) during a\nfunc f(s: uniq/Sh, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied read-only")]
     [InlineData(
         "struct Cell {a}\n    public var keep: Loan<uniq/(raw/i32) during a>\n    public var at: raw/(raw/i32) during a\nfunc f(c: uniq/Cell, p: raw/i32)\n    unsafe => Raw.initialize(c.at, p)",
         "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
-    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@rc", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
-    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S)\n    let q: raw/i32 = Raw.allocate(1)\n    s.x = Bx.init(v: q)@rc", "store 0: own {0 Chain}, reached {} untied")]
-    [InlineData(Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f(p: raw/i32) -> S\n    return S.init(x: Bx.init(v: p)@rc)", "result {0 Value Chain}, untied")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@rc", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied read-only")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\nfunc f(s: uniq/S)\n    let q: raw/i32 = Raw.allocate(1)\n    s.x = Bx.init(v: q)@rc", "store 0: own {0 Chain}, reached {} untied read-only")]
+    [InlineData(Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f(p: raw/i32) -> S\n    return S.init(x: Bx.init(v: p)@rc)", "result {0 Value Chain}, untied read-only")]
     [InlineData(
         Shared + "struct S\n    public var x: rc/Bx\n    public init(x: rc/Bx) => self.x = x@move\nfunc f() -> S\n    let q: raw/i32 = Raw.allocate(1)\n    return S.init(x: Bx.init(v: q)@rc)",
-        "untied")]
-    [InlineData(Shared + "struct S\n    public var x: arc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@arc", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
-    [InlineData(Shared + "struct S\n    public var x: Option<rc/Bx>\nfunc f(s: uniq/S, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+        "untied read-only")]
+    [InlineData(Shared + "struct S\n    public var x: arc/Bx\nfunc f(s: uniq/S, p: raw/i32)\n    s.x = Bx.init(v: p)@arc", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied read-only")]
+    [InlineData(Shared + "struct S\n    public var x: Option<rc/Bx>\nfunc f(s: uniq/S, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied read-only")]
     [InlineData("struct G<T>\n    public var v: T\n    public var next: raw/G<T>\nfunc f(g: uniq/G<raw/i32>, p: raw/i32) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("func f(p: uniq/(raw/i32))\n    p@follow = Raw.allocate(1)", "store 0: own {0 Chain}, reached {} untied")]
     [InlineData("func f(p: uniq/(raw/i32 during static)) => ()", "store 0: own {0 Content}, reached {} untied")]
@@ -2062,7 +2104,7 @@ public sealed partial class RetentionTest
     [InlineData(RawIt + "var it = RawIt.init(items: [null])\nlet x = it.next()\n", "next", "result {0 Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
     [InlineData(RawLend + "var it = RawLend.init(items: [null])\nlet x = it.next()\n", "next", "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied")]
     [InlineData("let a: Array<raw/u8> = [null]\nvar it = Iteration.owning(a@move.intoIterator())\nlet x = it.next()\n", "next", "result {0 Chain}, untied, store 0: own {0 Chain}, reached {} untied")]
-    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.iterate()\nlet x = it.next()\n", "next", "result {0 Content}, store 0: own {0 Chain}, reached {} untied")]
+    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.iterate()\nlet x = it.next()\n", "next", "result {0 Content}, store 0: own {0 Chain}, reached {} untied read-only")]
     public void TransferOperationsRetainBorrowedArgumentsByTheirChains(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
@@ -2173,7 +2215,7 @@ public sealed partial class RetentionTest
     [InlineData(
         "let a: Array<raw/u8> = [null]\nvar s = a.slice()\nlet it = s.iterateUniq()\n",
         "iterateUniq",
-        "result {0 Content}, store 0: own {0 Chain}, reached {} untied, referent store 0")]
+        "result {0 Content}, store 0: own {0 Chain}, reached {} untied read-only, referent store 0")]
     [InlineData(
         "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.sliceUniq()\n",
         "sliceUniq",
@@ -2197,7 +2239,7 @@ public sealed partial class RetentionTest
         "let a: Array<raw/(raw/u8)> = [null]\nlet it = a@move.intoIterator()\n",
         "intoIterator",
         "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {} untied")]
-    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.slice().iterate()\nlet x = it.next()\n", "next", "result {0 Content}, store 0: own {0 Chain}, reached {} untied")]
+    [InlineData("let a: Array<raw/u8> = [null]\nvar it = a.slice().iterate()\nlet x = it.next()\n", "next", "result {0 Content}, store 0: own {0 Chain}, reached {} untied read-only")]
     public void AnOperationWritesItsBorrowedReceiversStoreOnlyInItsReferent(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
@@ -2324,16 +2366,16 @@ public sealed partial class RetentionTest
     }
 
     // SPEC 15.6.4, V16 (G243; DECISIONS BU-35): a row depends on the Type at a position and the Type its declaration writes there, not on
-    // the route to it through the interned Types, so the hold walk visits each position once per output. Chain's Types grow as trees
-    // eight wide (8^(n-1) leaves) but are 2n distinct Types, reached through rc handles, Tuples, fixed arrays and enum payloads, raw leaves
-    // included, and a result holding them lent and written, which visits each position at most twice (DECISIONS BU-40); walked as trees
-    // they take seconds to minutes, which the bound reports instead of hanging the run.
+    // the route to it through the interned Types, so the hold walk visits each position once per output and untie (DECISIONS BU-2xx).
+    // Chain's Types grow as trees eight wide (8^(n-1) leaves) but are 2n distinct Types, reached through rc handles, Tuples, fixed arrays
+    // and enum payloads, raw leaves included, and a result holding them lent and written, which visits each position at most twice
+    // (DECISIONS BU-40); walked as trees they take seconds to minutes, which the bound reports instead of hanging the run.
     [Theory]
     [InlineData("struct", 11, "")]
     [InlineData("array", 11, "")]
     [InlineData("enum", 11, "")]
-    [InlineData("raw", 10, "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
-    [InlineData("lent", 10, "result {0 Value Chain, 1 Value Chain}, untied")]
+    [InlineData("raw", 10, "store 0: own {0 Chain, 1 Value Chain}, reached {} untied read-only")]
+    [InlineData("lent", 10, "result {0 Value Chain, 1 Value Chain}, untied read-only")]
     public async Task AHoldWalkVisitsEachPositionOnce(string form, int n, string expected)
     {
         var c = Bind(Chain(form, n));
@@ -2595,15 +2637,17 @@ public sealed partial class RetentionTest
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
             .Select(x => c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(c.Binding, x.Node))).ToArray();
 
-    // A retention as the records spell it (DECISIONS R4-M154): `deep` for a Deep contract, the result's kinds and whether it is untied, then per output it writes its
-    // root's kinds (own) and those past it (reached, every Reached entry joined), each with its pairs (`if {i Value: longer > shorter}`),
-    // whether it is untied, and the referent stores; each input with its kinds.
+    // A retention as the records spell it (DECISIONS R4-M154): `deep` for a Deep contract, the result's kinds and its untie (`untied`, or `untied read-only` for
+    // ReadOnly), then per output it writes its root's kinds (own) and those past it (reached, every Reached entry joined), each with its pairs
+    // (`if {i Value: longer > shorter}`), its untie, and the referent stores; each input with its kinds.
     private static string Show(CallRetention retention)
     {
-        return retention.IsLimit ? "limit" : string.Join(", ", new[] { retention.IsDeep ? "deep" : null, Kinds(retention.Result.Kinds) is { Length: > 0 } result ? $"result {{{result}}}{Pairs(retention.Result)}" : null, retention.Result.Untied ? "untied" : null }
+        return retention.IsLimit ? "limit" : string.Join(", ", new[] { retention.IsDeep ? "deep" : null, Kinds(retention.Result.Kinds) is { Length: > 0 } result ? $"result {{{result}}}{Pairs(retention.Result)}" : null, Untie(retention.Result.Untie) }
             .Concat(retention.Writes.ToArray().Select(static x => $"store {x.Output}: own {{{Kinds(x.Own.Kinds)}}}{Pairs(x.Own)}, reached {{{Kinds(x.All.Kinds)}}}{Pairs(x.All)}" +
-                (x.Own.Untied ? " untied" : string.Empty)))
+                (Untie(x.Own.Untie) is { } u ? " " + u : string.Empty)))
             .Concat(retention.ReferentStores.ToArray().Select(static x => $"referent store {x}")).OfType<string>());
+
+        static string? Untie(RetentionUntie u) => u switch { RetentionUntie.Writable => "untied", RetentionUntie.ReadOnly => "untied read-only", _ => null };
 
         static string Kinds(ReadOnlySpan<RetentionKind> kinds)
         {

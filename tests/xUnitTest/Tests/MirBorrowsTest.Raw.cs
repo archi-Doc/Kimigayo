@@ -1004,7 +1004,7 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6 (condition 5, D6; DECISIONS R4-M116 S2, S3, R-B2, B-B1): a pointer the contract ties to nothing reaches storage the body
     // does not own: in a result's raw Field (hiddenInit, hiddenHolder, where make may also have put its own pointer and stored r through
-    // it, so the end of v's or t's storage destroys a Place that r's Loan covers: PLAN G841 (3), SPEC 15.6.4, 15.6.6, the owner's
+    // it, so the end of v's or t's storage destroys a Place that r's Loan covers: DECISIONS R4-M245, SPEC 15.6.4, 15.6.6, the owner's
     // O-524 (a)), written into an input's raw Field by the call (fill, which may also
     // store what a read through h carries, v's Loan, where h's untied pointer reaches); a pointer formed through a local that holds no
     // Loan stores y's Loan in that local, and a reference read from it carries the Loan (punCall: z is used after y = 5); a raw
@@ -1640,9 +1640,10 @@ public sealed partial class MirBorrowsTest
     // entry (enclosingCopy, enclosingOnly, arrayCopy, nestedCopy); a Borrow of a layer's Place or
     // of an enclosing one issues its Loan, and a read through it is placed by its exact lent position (layerRef, enclosingRef; arrayRef
     // reads none), carrying its parents whole (SPEC 15.6 Holders): layerRef's read carries y's Loan, which b holds, into the generic
-    // call, so y's end conflicts as for the same read through no dereference or through the holder's borrow (the base's CLC on those
-    // twins; the Middle's ruling on Z5-R1, 11-22 13:0x); a Borrow of the holder, a read of the layer through it, a read of an element and
-    // of a scalar beside the layer are precise.
+    // call; under the owner's O-529 (a) that Loan is b's own `during self` content and ends with b, which ends first, so y's end
+    // conflicts only where b outlives y and is used after it (layerOutlived; the Middle's ruling on G415-N3 b2's stop, 11-28, which
+    // supersedes Z5-R1's layerRef label); a Borrow of the holder, a read of the layer through it, a read of an element and of a scalar
+    // beside the layer are precise.
     [Fact]
     public void ACopyOrBorrowOfADuringSelfLayersEnclosingPlaceIsPrecise()
     {
@@ -1661,6 +1662,13 @@ public sealed partial class MirBorrowsTest
                 var y: i32 = 1
                 var b = Buf<ref/i32>.init(4)
                 b.push(y@ref)
+                let r = b.data@ref
+                usep(r@follow)
+            func layerOutlived()
+                var b = Buf<ref/i32>.init(4)
+                if true
+                    var y: i32 = 1
+                    b.push(y@ref)
                 let r = b.data@ref
                 usep(r@follow)
             func enclosingRef()
@@ -1701,7 +1709,7 @@ public sealed partial class MirBorrowsTest
                 return s.nest.1
             """);
         Assert.Equal(
-            "layerRef: var y: i32 = 1",
+            "layerOutlived: var y: i32 = 1",
             string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd])));
     }
 

@@ -116,15 +116,15 @@ internal enum RetentionKind : byte
     Chain = 4,
 }
 
-/// <summary>The untie a storage's record states (SPEC 15.6.4, 5.2.1 condition 3; design A3's Φ_E; PLAN G415): whether the storage may
+/// <summary>The untie a storage's record states (SPEC 15.6.4, 5.2.1 condition 3; design A3's Φ_E; DECISIONS BU-2xx): whether the storage may
 /// receive a pointer tied to no input, and with which authority. Ordered so that the join of two records' unties is the greater.</summary>
 internal enum RetentionUntie : byte
 {
     /// <summary>Every pointer the storage may receive is tied to an input.</summary>
     None,
 
-    /// <summary>It may receive one tied to no input that it reached only through a shared layer, through which no write has authority
-    /// (SPEC 5.2.1 condition 3).</summary>
+    /// <summary>It may receive one tied to no input that it reached only through a shared layer (an rc or arc handle's payload included),
+    /// through which no write has authority (SPEC 5.2.1 condition 3).</summary>
     ReadOnly,
 
     /// <summary>It may receive one tied to no input that may carry write authority.</summary>
@@ -134,8 +134,8 @@ internal enum RetentionUntie : byte
 /// <summary>What a call may retain in one storage (DECISIONS R4-M154): per input its kinds (<see cref="Kinds"/>, by the input slots
 /// <see cref="TyCtxt.Signature"/> numbers, the receiver at its written slot, a Callable signature's input positions, or a destruction's
 /// input 0), whether it may receive a pointer tied to no input and with which authority (<see cref="Untie"/>, <see cref="Untied"/> where
-/// it is not None: a raw layer stepping Unstated or Static that the call may write there, or for the result an atom reached from no
-/// input, design A3's Φ_E), and the conditions under which an input not
+/// it is not None: a raw layer stepping Unstated or Static that the call may write there, or for the result a position stating a
+/// non-static Origin reached from no input, outside a `during self` storage, design A3's Φ_E), and the conditions under which an input not
 /// Value in <see cref="Kinds"/> is Value (<see cref="Pairs"/>: conjunctions, each of an input and the pairs of two Origins of the call's
 /// Type arguments, Self or declaring Type whose relations `Longer outlives Shorter` the fit needs and the premises do not prove, one per
 /// layer of a source's path the position's closure misses, the call's solved Origins' to judge; a pair `Joined` continues the previous

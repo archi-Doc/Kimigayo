@@ -1025,8 +1025,10 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147; the owner's Q2 (a) and 「進める (推奨)」): a stored raw layer is read by its step on the
     // instance holding it. `during self` admits the instance's Type arguments by their actual Types, so a bag erasing its element to
-    // raw/u8 writes past itself as its typed twin does (erased, typed), and the write fact where the instance has an Origin argument (P1:
-    // keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too); an Origin-less layer takes the write fact unless the
+    // raw/u8 writes past itself as its typed twin does (erased, typed; what `put` stores is b's own `during self` content under the owner's
+    // O-529 (a), which ends with b before w1 and y, so only the write and the read while b lives conflict, not their ends), and the write
+    // fact where the instance has an Origin argument (P1: keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too);
+    // an Origin-less layer takes the write fact unless the
     // parameter's Type expression writes it (SPEC 5.7 Calls' per-parameter rule, P2: rawBufDead, whose store reaches E, which may be used
     // after every point). Dev held erased and accepted the P1 and P2 records. A layer written in a Type argument of the declaration's own
     // Field or Case payload is the declaration's, which its kept part states (nestedDead, optionalDead; DECISIONS BU-46, R4-M151).
@@ -1109,9 +1111,8 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "erased: z = 5", "erased: inspect(w1)", "erased: var w1: ref/i32 = x@ref", "erased: var y = 2", "typed: z = 5", "typed: inspect(w1)",
-                "typed: var w1: ref/i32 = x@ref", "typed: var y = 2", "keepPhantom: y = 5", "keepPhantom: inspect(w)", "rawBufDead: z = 5",
-                "nestedDead: z = 5", "optionalDead: z = 5",
+                "erased: z = 5", "erased: inspect(w1)", "typed: z = 5", "typed: inspect(w1)", "keepPhantom: y = 5", "keepPhantom: inspect(w)",
+                "rawBufDead: z = 5", "nestedDead: z = 5", "optionalDead: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1286,7 +1287,7 @@ public sealed partial class MirBorrowsTest
     // Item>` is `BaseI<raw/u8>`, completed before the mark) and a store into the Field such a base clause holds (derf, as its twin derg,
     // each a moved parameter), a holder whose declaration writes the subject's argument (hh2, also through a condition, hhc), a nested
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
-    // verdict is its written twin ER's (eh, er: `z = 5` errs, PLAN G841's rule 4 (4), the owner's O-373 (a): through A's payload layer,
+    // verdict is its written twin ER's (eh, er: `z = 5` errs, DECISIONS R4-M241's rule 4, the owner's O-373 (a): through A's payload layer,
     // which the declaration states, `put` may store what a raw layer it writes retains, 5.7 Calls). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
     // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
