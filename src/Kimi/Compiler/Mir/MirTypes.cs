@@ -95,7 +95,8 @@ internal static partial class MirTypes
     /// another step.</summary>
     /// <param name="type">The Type of the Place the step applies to.</param>
     /// <param name="step">The step's kind.</param>
-    /// <param name="admitted">For a PairLayer, its binder's admitted Semantics, whose cases MirCases views; else ignored.</param>
+    /// <param name="admitted">For a PairLayer, the cases its binder's layer is read in under the case assignment (<c>PairCase.Cases</c>);
+    /// else ignored.</param>
     /// <returns>Whether the step passes a shared layer.</returns>
     internal static bool IsSharedLayer(BoundType? type, MirProjectionKind step, SemanticsMask admitted)
     {
