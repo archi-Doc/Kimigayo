@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 // and E5's seeds (Stored); a borrow's R2 parents (Parented); an observing destruction's value (Observed); an activation holder's seed
 // (Seeded); then each operand's value in operand order, so a Loan keeps the first operand that reaches it, and each operand's root in
 // reverse, so it keeps the last. A read has its read key's tier, and each entry it scans its own (MirBorrows.Candidates' TierAt:
-// Limit where the entry rests, DECISIONS R4-M2xx). The closure keeps it (PLAN G775), as the dataflow keeps an entry's tier through
+// Limit where the entry rests, DECISIONS R4-M252). The closure keeps it (PLAN G775), as the dataflow keeps an entry's tier through
 // Content and Chain: a holder a rested entry or a read at Limit reaches has its own read key (slot + holderCount), under which its state and, in the Stored pass, its stores are read at that
 // tier, and a reach at the pass's tier reads the holder again. Every memo of a gather read is keyed by its read key or tier: a pass
 // scans a holder's state once per read key (its Shared set until two vias read it at that tier, MirBorrows.States' Scanned), reads its

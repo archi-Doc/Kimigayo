@@ -34,7 +34,7 @@ internal sealed partial class MirBorrows
 
     // Whether a reader reads a part's id at a form of its mark for the first time, marking it: a level, the reads' steppedBy at Step's
     // level plus 0 (as it is) or 1 (its indirect form, which covers 0), W's walkedBy at 2 · walk plus 0 (Named) or 1 (Through, which
-    // covers Named), at a tier. Each mark has two fields (DECISIONS R4-M2xx), and a form is the mark it sets: (level, level) decided,
+    // covers Named), at a tier. Each mark has two fields (DECISIONS R4-M252), and a form is the mark it sets: (level, level) decided,
     // (0, level) rested (Form); a form is covered where the mark is at or above it in both fields, so a decided level covers a request at
     // or below it at either tier and a rested one only a rested request: a part takes at most 4 successful Steps per base (two forms ×
     // two tiers).

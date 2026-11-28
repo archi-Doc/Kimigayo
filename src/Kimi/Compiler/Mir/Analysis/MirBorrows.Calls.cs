@@ -151,7 +151,7 @@ internal sealed partial class MirBorrows
     }
 
     // The store through one output: W from its argument's value (at a referent store, its first step alone; R4-M143), each holder taking its
-    // storage's record (Received) at the tier of its receipt (Deliver; DECISIONS R4-M2xx). With covering inputs (Cover), W from theirs too; an argument whose value is the empty set then has no
+    // storage's record (Received) at the tier of its receipt (Deliver; DECISIONS R4-M252). With covering inputs (Cover), W from theirs too; an argument whose value is the empty set then has no
     // first step of its own (PLAN G338): it is null on every path (PLAN G598, A5's must-null fact), since every pointer A5 sees formed
     // names a Loan, an address or E, and Φ_N marks the bytes of an exposed holder and every call result, the only values a pointer A5
     // does not see formed can reach (MirBorrows.Flow). A Drop's drops store through the same path (MirBorrows.Destructions). `plan` is
@@ -191,7 +191,7 @@ internal sealed partial class MirBorrows
     // through it at the next layer, in storage the body does not own. A walk begun at the result's key (InputKey at the result slot), E its
     // one target, by rule 4 there (OwnPointer, folded under the output's Handed list; the layer's record, ResultWrites' entry), delivered
     // by the one loop (Deliver) at the result's Type, through no argument's value: none reaches the result's storage but by the records.
-    // The walk has no node, so OwnPointer takes its decided tier, an entry-less route of a Type fact (DECISIONS R4-M2xx).
+    // The walk has no node, so OwnPointer takes its decided tier, an entry-less route of a Type fact (DECISIONS R4-M252).
     private void KeepResult(ulong[] state, in MirTerminator call, OutputRetention written)
     {
         var result = cases.TypeOf(call.Place);
@@ -203,7 +203,7 @@ internal sealed partial class MirBorrows
 
     // The one delivery of a store's walk (Keep's): into each target W reached, what the output's store puts there (Received), arriving at
     // the receiving Type through the value `through` (Arrive), Φ_N besides into a holder, each at the target's reach (rested where no
-    // decided entry reached it: W's ViaDecided; DECISIONS R4-M2xx); into a target's write slot the values the output sources (Sourcing).
+    // decided entry reached it: W's ViaDecided; DECISIONS R4-M252); into a target's write slot the values the output sources (Sourcing).
     private void Deliver(ulong[] state, in MirTerminator call, OutputRetention written, BoundType? receiving, int through)
     {
         var sourced = this.writeCount > 0 ? this.Sourcing(written) : 0;

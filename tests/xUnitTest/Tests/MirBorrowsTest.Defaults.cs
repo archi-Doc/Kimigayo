@@ -316,7 +316,7 @@ public sealed partial class MirBorrowsTest
     // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE), whose
     // record is at the store (SPEC 7.2.3 as clarified by O-254 Q2 A). keepN is invalid by O-254 Q1 D (the let capture's pointee layer is
     // the Closure's own), which A5's rule W reads from U3c (the store through `other`, a raw layer without an Origin the call writes, reaches
-    // storage the body does not own; SPEC 15.6.4's composition): its record is at the call `c(rz@follow@raw)`, placed as keepECall's below. The tier is an entry's (DECISIONS R4-M2xx): a decided
+    // storage the body does not own; SPEC 15.6.4's composition): its record is at the call `c(rz@follow@raw)`, placed as keepECall's below. The tier is an entry's (DECISIONS R4-M252): a decided
     // store of rz beside `other`, which rests on the u16 write, places its record at the store, so restBeside (invalid twice, SPEC 7.2.3
     // with 23.1.2: the store and the result) has both records, and restStoreOnly (invalid at the store) the store's alone.
     [Fact]

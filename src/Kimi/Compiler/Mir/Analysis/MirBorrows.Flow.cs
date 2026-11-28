@@ -22,7 +22,7 @@ internal sealed partial class MirBorrows
     private int entryCount;
 
     // E's stores by location (SPEC 7.2.3's stores into storage the body does not own; DIAGNOSTICS' `Store`): the union of what its
-    // entries put into E, each element at its tier (DECISIONS R4-M2xx), from its last plan, gathered where every entry is added
+    // entries put into E, each element at its tier (DECISIONS R4-M252), from its last plan, gathered where every entry is added
     // (AddSlot), so a plan pays only its entries at E. A location's last plan in the forward solve is on its
     // converged state, as the replay's is, so from the solve's end every reached location holds the replay's sets. The transfer is
     // monotone in what a location stores into E (W's targets and received values grow with the state; Keep's covered-only stores are a

@@ -1498,7 +1498,7 @@ public sealed partial class MirBorrowsTest
             kk = 2
         """;
 
-    // The per-entry tier's forms (ADecidedEntryBesideRestedOnesKeepsItsVerdict; DECISIONS R4-M2xx): the declarations, then the forms.
+    // The per-entry tier's forms (ADecidedEntryBesideRestedOnesKeepsItsVerdict; DECISIONS R4-M252): the declarations, then the forms.
     private const string TierForms = """
         func usep<T>(p: raw/T) => ()
         func stash(slot: raw/(raw/u8), value: raw/u8) => ()
@@ -3046,7 +3046,7 @@ public sealed partial class MirBorrowsTest
     // typed one (cLayoutFirstField*Typed); cLayoutField*LoanOk are accepted. A later Field's Type there is a pun: NodeD's u32 starts on
     // next's first byte (the chain's end is a raw pointer: invalid, the conflict and no limit, cLayoutSecondFieldBad); a Kimigayo-layout
     // Field's is not decided, but a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past
-    // the pun (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx): the conflict (kLayoutFieldRests). A first Field `Option<obj/OBoxP>` places
+    // the pun (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M252): the conflict (kLayoutFieldRests). A first Field `Option<obj/OBoxP>` places
     // its Some payload there too (IMPL 21.1.3, PLAN G808), so a store past it is typed (opt*Typed; undecided before G808), and the init's
     // own conflict stands (SPEC 15.6: the result's raw `next` is tied to no argument); a Kimigayo-layout or `Option<Option<R>>` Field's is
     // not decided, the conflict decided past the pun as above (kOpt*Rests, optOptCastRests).
@@ -3074,7 +3074,7 @@ public sealed partial class MirBorrowsTest
     // holder's provenance; absEnumNumRests and absEnumNumU16Rests: the Num Case at the store), and at a holder's length that is no
     // constant (limit (c): absLengthRests, absZeroExprRests, the last valid). After a destruction through tp (`_ = (*tp)@move`, or a
     // non-Copy store's drop of the old value) tp's own address is formed, so its Position is not seen formed (Φ_N) and the write rests;
-    // the undecided write's entries rest each by its own tier (DECISIONS R4-M2xx), and one whose only Φ_E is the write's rests
+    // the undecided write's entries rest each by its own tier (DECISIONS R4-M252), and one whose only Φ_E is the write's rests
     // (absOnTupleRests); `usep` over a Tuple holding a pointer and non-pointers is O-205 (a)'s undecided write, which adds Φ_E rested,
     // so the check rests where it follows the destruction or precedes the store, as absOnTupleCallRests (absDropThenCallRests,
     // absCallThenStoreRests: U kept, the allowed precision limit); a store from another source decides it, `(*bq)@move`'s decided entry
@@ -3086,7 +3086,7 @@ public sealed partial class MirBorrowsTest
     // live at kk = 2 then rests on the write, so the check is a located Unsupported_Kd (closureMixedRests; closurePtrBad, whose only
     // part every layout puts the write on, is limit (a)'s); where other is used later, the conflict holds in either layout
     // (closureMixedLiveBad) (PLAN G775), and so where the call reaches the written holder through a fresh Loan without Φ_M, a decided
-    // entry, at whose tier its own pointer's write lands (borrowedTupleRests; DECISIONS R4-M2xx). Without the write the call is invalid as well (closureMixedNoWriteOk,
+    // entry, at whose tier its own pointer's write lands (borrowedTupleRests; DECISIONS R4-M252). Without the write the call is invalid as well (closureMixedNoWriteOk,
     // selfStoreNoWriteOk; A5 value redesign U3c): the `let` capture q's layer is one the Closure states in its own Fields (SPEC 5.7 Calls,
     // the owner's O-254 Q1 D), so through it the call may store what a raw layer it writes retains; `other`, which it writes, is a raw
     // layer without an Origin, so the call may write its own pointer there and store spare, or keep other's address, in storage the body
@@ -3099,7 +3099,7 @@ public sealed partial class MirBorrowsTest
     // whether aa and bb are read at the Limit tier through a rested entry (via*) or by their own states' rested entries (ownRested*),
     // and whether cc is declared before them or after (15.6). A holder that holds r's Loan by its own Place, used after kk = 2, whose
     // stored set (shared with aa and bb) rests on the write, conflicts in every layout: its own Placed entry is decided beside the
-    // stored set's rested ones (DECISIONS R4-M2xx), so the record is the conflict, the same whichever via of that set it is read as
+    // stored set's rested ones (DECISIONS R4-M252), so the record is the conflict, the same whichever via of that set it is read as
     // (cutHolderFirstBad, cutHolderLastBad, cutTwoViasBad), as without the write (cutNoWriteBad). So too where other holds r's Loan and
     // its address is in storage the body does not own beside an unrelated rested store E also receives (escBesideRestedBad). A holder reached both through E's rested content and by a decided
     // route keeps its decided conflict, also where the location stores one value into it and into a holder reached only through E:
@@ -3121,7 +3121,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("closureMixedNoWriteOk", "closureMixedNoWriteOk: kk = 2")] // Invalid without the pun write (U3c; SPEC 5.7 Calls, the owner's O-254 Q1 D).
     [InlineData("closureMixedLiveBad", "closureMixedLiveBad: kk = 2")]
     [InlineData("closurePtrBad", "closurePtrBad: kk = 2 Unsupported_Kd")]
-    [InlineData("borrowedTupleRests", "borrowedTupleRests: kk = 2")] // Reached through `h@uniq`, a fresh Loan without Φ_M (DECISIONS R4-M2xx).
+    [InlineData("borrowedTupleRests", "borrowedTupleRests: kk = 2")] // Reached through `h@uniq`, a fresh Loan without Φ_M (DECISIONS R4-M252).
     [InlineData("selfStoreRests", "selfStoreRests: other = r@follow@raw@raw/u8 Unsupported_Kd")]
     [InlineData("selfStoreEscBad", "selfStoreEscBad: other = r@follow@raw@raw/u8")]
     [InlineData("selfStoreNoEscOk", "")]
@@ -3229,7 +3229,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
-    // DECISIONS R4-M2xx (PLAN G599 (b); SPEC 5.5, 15.6 Holders and Addresses, 15.6.2, 15.6.4, 23.1.2): the tier is an entry's, so a
+    // DECISIONS R4-M252 (PLAN G599 (b); SPEC 5.5, 15.6 Holders and Addresses, 15.6.2, 15.6.4, 23.1.2): the tier is an entry's, so a
     // decided entry beside rested ones keeps its verdict. r's exclusive Loan of kk is held decided where kk = 2 writes it, beside entries
     // that rest on a u16 write which may pun a Tuple's or a Closure's pointer (5.5; IMPL 21.1.2): the conflict holds in every layout, so
     // it is the conflict, whether the rested entries reach the holder by a read (eDecidedBesideRestedBad), a call's rested store into E
@@ -3300,7 +3300,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
-    // DECISIONS R4-M2xx's cost (design §4, N5): n holders, each reached rested through a read behind a u16 write that may pun g.1 and
+    // DECISIONS R4-M252's cost (design §4, N5): n holders, each reached rested through a read behind a u16 write that may pun g.1 and
     // then decided by name through y, with a call through the chain's head, so that W walks each holder rested, then decided, and reads
     // each holder and each part at most twice per walk; the work grows linearly, on a shape with no Loan problem.
     [Trait("Purpose", "Allocation")]
@@ -3385,7 +3385,7 @@ public sealed partial class MirBorrowsTest
     // keeps its source form's verdict, typed through `Option<obj/OBoxP>` at a C first Field (sharedOptTyped: undecided while the
     // Downcast kept no Position), undecided through an enum that is no nonnull Option, a Kimigayo-layout Field or `Option<Option<R>>`,
     // where a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past the pun, the conflict
-    // (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx).
+    // (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M252).
     [Theory]
     [InlineData("sharedOptTyped", "sharedOptTyped: kk = 2")]
     [InlineData("sharedOptCallTyped", "sharedOptCallTyped: kk = 2")]
@@ -3409,7 +3409,7 @@ public sealed partial class MirBorrowsTest
     // `(*(((*p) as case 0).0)).v = 7`, typed through `Option<obj/OBoxP>` cast at a C first Field `obj/OBoxP` (hOptMatch: undecided while the
     // Downcast kept no Position), undecided through an enum that is no nonnull Option (the write past the handle's own step is the
     // object's, SPEC 5.2), where a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past the
-    // pun, the conflict (hEnumMatch; SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx). The binding's Ref stays, a borrow no store goes
+    // pun, the conflict (hEnumMatch; SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M252). The binding's Ref stays, a borrow no store goes
     // through, so each verdict is the store's.
     [Theory]
     [InlineData("hOptMatch", "hOptMatch: kk = 2")]
@@ -3431,7 +3431,7 @@ public sealed partial class MirBorrowsTest
     // forms, the conflict before G667c, are rejected by the located Unsupported_Kd at the conflict's two subjects, until Layout's byte
     // positions decide them; a holder built by a call keeps E's decided Φ_E entry, so a store through a part of it is decided past the
     // pun, and so is its Loan's other end: both records of fieldPunBad's Cell.init, the conflict at kk = 2 and spare's (SPEC 15.6 Holders,
-    // 15.6.4; DECISIONS R4-M2xx).
+    // 15.6.4; DECISIONS R4-M252).
     [Theory]
     [InlineData("fieldPunBad", "fieldPunBad: kk = 2; fieldPunBad: var spare: raw/u8 = r@follow@raw")]
     [InlineData("tuplePunnedBad", "tuplePunnedBad: kk = 2 Unsupported_Kd; tuplePunnedBad: var spare: raw/u8 = r@follow@raw Unsupported_Kd")]
@@ -3548,13 +3548,13 @@ public sealed partial class MirBorrowsTest
     [InlineData("viaCarriedMixedQCopyBad", "viaCarriedMixedQCopyBad: kk = 2; viaCarriedMixedQCopyBad: var slot: raw/u8 = null")] // I, a Copy
     // I: UnknownWrite gives mx its pun, but take's u8 write through c.w, off mx's Position, is the judge's undecided one (CallWrite);
     // mx, built by a call, keeps E's decided Φ_E entry, so the store through a part of it is decided past the pun at kk = 2, and so is
-    // slot's Loan's other end, as in viaCarriedMixedBad (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M2xx).
+    // slot's Loan's other end, as in viaCarriedMixedBad (SPEC 15.6 Holders, 15.6.4; DECISIONS R4-M252).
     [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2; unknownMixedBad: var slot: raw/u8 = null")]
     // V, a u8 store at mx's first byte, the stated p (PlacedAt's partly stated arm: t's abstract part; T is PrimitiveInteger, so no
     // binding holds a reference, 8.7.4). Accepted without the store; a Language record at kk = 2 without the arm.
     [InlineData("placedStatedFirstNoneOk", "placedStatedFirstNoneOk: kk = 2 Unsupported_Kd")]
     // I (route M, 15.6 Holders), the store at the unstated q: the same arm; at kk = 2 and at slot, as unknownMixedBad, decided past the
-    // pun through E's decided Φ_E entry of the call-built mx (15.6.4; DECISIONS R4-M2xx).
+    // pun through E's decided Φ_E entry of the call-built mx (15.6.4; DECISIONS R4-M252).
     [InlineData("placedUnstatedFirstBad", "placedUnstatedFirstBad: kk = 2; placedUnstatedFirstBad: var slot: raw/u8 = null")]
     [InlineData("viaParamQBad", "viaParamQBad: kk = 2; viaParamQBad: var slot: raw/u8 = null")] // I, mx.q holds a parameter's pointer
     [InlineData("viaParamQPOk", "viaParamQPOk: kk = 2; viaParamQPOk: var slot: raw/u8 = null")] // I, mx.p carries it

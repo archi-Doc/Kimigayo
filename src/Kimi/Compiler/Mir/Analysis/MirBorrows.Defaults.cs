@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Mir;
 //   write's, a call's or a destruction's entries at E, the Loan's decided: DefaultStores; SPEC 7.2.3, "with the error at that operation")
 //   and at the Loan's site where the result's own value carries it decided at a Return (DefaultBorrows: "Its result cannot keep a new
 //   Borrow") or no such store places it, both when both hold (SPEC 23.1.2); else the located Unsupported_Kd at the site (a rested entry:
-//   R4-M198's undecided class, its tier the entry's, DECISIONS R4-M2xx) unless R26-access reports it; once per Loan, view and subject.
+//   R4-M198's undecided class, its tier the entry's, DECISIONS R4-M252) unless R26-access reports it; once per Loan, view and subject.
 // - R26-access: a write to a slot-rooted Place is DefaultArgumentAccess_Kd at the write, found where the location's accesses are listed
 //   (every destination, before the borrowed-root filter; MirBorrows.Accesses); after the replay, each exclusive slot-rooted Loan R26-borrow
 //   does not report at its site is DefaultArgumentAccess_Kd there, one code per failure. The replay reaches every Loan's issue: MirValidator
@@ -118,7 +118,7 @@ internal sealed partial class MirBorrows
     }
 
     // The slot-rooted Loans one set of the result's own value carries decided (DefaultBorrows); a rested entry decides none (DECISIONS
-    // R4-M2xx).
+    // R4-M252).
     private void DefaultKept(int set)
     {
         this.Work += this.sets.Count(set);
@@ -134,7 +134,7 @@ internal sealed partial class MirBorrows
     // R26-borrow's place (SPEC 7.2.3: a default that stores a value carrying an inspection Loan into storage the body does not own, "by
     // a write, or by a call or destruction that may store it there", is invalid "with the error at that operation"): in the checks
     // replay of a template view, the slot-rooted Loans a location's E stores hold decided (MirBorrows.Flow's eStores: a write's Store, a
-    // call's or a destruction's Keep), once per Loan; a rested entry places none (DECISIONS R4-M2xx), so keepS's resting store leaves the
+    // call's or a destruction's Keep), once per Loan; a rested entry places none (DECISIONS R4-M252), so keepS's resting store leaves the
     // Loan's record at its site; the verdict stays the Returns' (DefaultBorrows).
     private void DefaultStores(int location)
     {
