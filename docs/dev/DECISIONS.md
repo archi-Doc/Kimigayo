@@ -20189,6 +20189,54 @@ resumed by R4-M86 (2026-10-20).
   - Moves (Q13): class 1 acceptances: a root function or statement within 2 levels of L (rootfn-1019/1020, rootstmt-1021/1022), a Condition or an excluded part that passes L now has its one `NestingLimit_Kd` where dev accepted it (54 + 22 V rows); class 4: cuts in a root function or statement two levels deeper, the Condition family's added record on rejected programs, A3's I rows. No I row is accepted, no V row within L moves. The Middle consented to these moves under Q23 rule 2 (RP17, 11-28 06:11, `artifacts/units/g144/m-rp17-u2.md` and `m-rp17-u2-judge.md`: 131 rows, 92 moves, each expected by its label or a named family, 0 unexpected).
   - Rejected: a column published for the depth (the generated pair is held by identity); counting the pair and the marker (IMPL A.4 measures the distance from the root, and SPEC 19.4 gives excluded syntax the same location as selected syntax); a nested marker per directive (recursion with no depth growth: N8).
   - Not decided here: the effect of a Condition past L on selection and on the semantic checks (the excluded-syntax rule, IMPL 21.3.2); it waits for the owner's O-549 (PLAN G144/G348/G444, U3).
+- **BU-278 A result unties only where its own value states an Origin no input reaches, outside a `during self` storage, with the
+  walk's authority (RetentionUntie; PLAN G396 (11), G415-N3)** (Front, 2026-11-28; Binding; Q-856, D-1375; Major)
+  SPEC 15.6, 15.6.4, 5.2.1 condition 3, 5.7 Calls, 15.3.5, 15.4.3 rule 3; the owner's O-529 (a) and O-13 Q3 (a); the Middle's
+  ruling (a) on N3 phase 0 and its ruling on b2's stop (11-28); the Front's rulings N3-F1. Supersedes in part R4-M51, R4-M147,
+  R4-M154 and BU-30 (below), and R4-M249's mode for an rc or arc payload (ruling (a)).
+  - Cause: the result's untie read the result Type's atoms as its parts. A Type argument's occurrence is no part with an address
+    (15.3.5), a nominal's Origin argument names no part, and by O-529 (a) a `during self` storage the call makes is the holder's own,
+    so `PunCell<ref/i32>.init()` and its like were untied and A5 rejected valid programs past them (n3OArgSharedProbe; MirBorrowsTest's
+    layerRef and layerEnded). The untie also had no authority: one reached only past a shared layer was as writable as one past an
+    exclusive layer.
+  - Rule (R1): a result position unties the result where its own value states a non-static Origin that no input reaches (`Reaches`),
+    outside a `during self` storage: its own layer's Origin (a borrow, handle, Slice, raw or pair layer; a pair layer's slot), a
+    carrier's node, or an Origin occurrence of a callable or an abstract part (`OwnNodes`' States). An aggregate's occurrences and a
+    nominal's Origin arguments state nothing; its by-value parts are positions of their own. A `static` Origin is tied; an Unbound
+    one states nothing in both of its cases: a failed part's states no Origin (BU-36, a row under R4-M118), and a deferred
+    result-default slot's that Final proved (R7-M92) is completed to `static` by SPEC 15.4.3 rule 3, which unties nothing either. A
+    `static` layer unties by the hold walk's Static step as before.
+  - Rule (R2): the untie carries the walk's authority, through its one per-layer predicate `StepWrites` (SPEC 5.2.1 condition 3:
+    `step != Shared`), evaluated once per visit (`VisitStep`, read by Position, Reach and RawReach). The state is Writable from an
+    output's root, ReadOnly past a layer the walk does not write (`Past`, `UntieBelow`; only the result's walk passes one), and None
+    inside a `during self` storage (`Admitted`). A position's untie is the state lowered by its own layer's step. The hold walk
+    carries the same state (`Held`, with an entry's step by `EntryStep`: an rc or arc payload Shared) and marks a meeting of an
+    Unstated or Static layer in Writable (`Holding.Writable`); an output's untie is Writable where such a meeting is, else ReadOnly.
+  - Representation: `RetentionUntie { None, ReadOnly, Writable }` (TyCtxt.Retention.cs), ordered so that the join is the maximum:
+    the walk state (`StorageAt.Untie`, in the visit key, so a state is entered at most three times in an output's walk), the
+    position column (`storagePositions`' Untie, read only at ResultStorage) and the record field (`StorageRetention.Untie`; `Untied`
+    is the derived `Untie != None`, which A5 reads). `StorageAt.Targets` is the storage a visit names positions and
+    targets of. No closed vocabulary, so no owner approval.
+  - Removed: the atom clause's `retentionAtoms` loop (the atoms keep their other readers), `Hold`'s bool accumulator, the four forms
+    of the written test (`StepWrites`), and `LayerStep`'s name in the storage walk (`VisitStep`; PlaceKeys' `LayerStep` is another
+    contract).
+  - Superseded in part: R4-M51's "Untied: a non-static result atom or carrier no input reaches" (its reason, that the result Type's
+    atoms are its parts, does not hold, above); BU-30's "the whole-result `CallRetention.Untied` stays the conservative reading (B′
+    §2.3), a sound over-approximation" (sound, but it rejects programs O-529 (a) rules valid) and its rejection "`Untied` turned
+    into a per-output set (a change of A5's reader in this unit)", in part (its reason was a Binding-only unit's scope; this joint
+    unit changes A5's readers of the mode and publishes no per-output set); R4-M147's Own bullet and R4-M154's "Made precise"
+    sentence (Type arguments by Type: for the guard; the fit stays until U4).
+  - Remaining: the hold walk does not read Admitted's state, so inside a `during self` content it keeps dev's answer:
+    `SelfAdmitted`'s Type-argument entries can still untie a result through `Held`'s Unstated step (`PunCell<raw/i32>.init()`) until
+    G416 U4; it rejects nothing dev accepts. The hold walk also reads a raw layer's declared entry step (`EntryStep`; `HeldRun`
+    passes no signature), not RawStepAt's BU-113 cap that the storage walk applies, so a raw layer reached only past a shared
+    signature layer is `untied` where SPEC 15.6.4 and 5.2.1 condition 3 give `untied read-only` (RetentionTest's ViewRef store 1;
+    PLAN G1520).
+  - Exposure: RetentionTest (`untied read-only`; AResultUntiesOnlyWhereItsOwnValueStatesAnUnreachedOrigin with the rcPastWriteBad
+    pin, I by 5.2.1 condition 3, whose `untied read-only` A5 reads as dev's `untied`; UntiedResultsNameNoInput; the ViewRef rows),
+    MirBorrowsTest (layerRef and layerEnded V, accepted where dev rejected them: family-1 moves under O-529 (a); layerOutlived I,
+    dev's record kept), the probe column (n3OArgSharedProbe accepted; n3BufPushOk, I by 15.6.6 since Buffer declares `drop`, stays
+    rejected at `z = 5` as on dev; n3OriginArgBad keeps its two dev ends, 22:5 and 23:5).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
