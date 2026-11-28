@@ -18,8 +18,8 @@ namespace Kimi.Compiler;
 // - Invariants: a Borrow reached through safe borrow layers is named by the meet of their Origins, from its last dereference outward up
 //   to and including the first shared layer, every one when none is shared, and then also the containment of the root they are stored
 //   in, a Closure's receiver Origin ρ for an environment binding (SPEC 15.6.3, 15.8.2; EnvironmentContainment); a reference read in
-//   place is its referent; a binding's own Place is the atom of its binder and slot, one atom per Borrow of a local or parameter root
-//   (SPEC 15.6.5; PlaceAtom); a raw dereference ends the walk (raw Origins are Binding.RawOrigins').
+//   place is its referent; a binding's own Place is the atom of its binder and slot, one atom per Borrow of a local, parameter or
+//   capture root (SPEC 15.6.5; PlaceAtom); a raw dereference ends the walk (raw Origins are Binding.RawOrigins').
 // - Prohibitions: nothing here judges an Origin relation, selects an adaptation or reports a diagnostic; no other component meets the
 //   layers of a Borrow's path or a root's containment (a nested bare entry's Type reads EnvironmentContainment, Binding.Captures), and
 //   a Pattern position's layers (Binding.Patterns.Layers) meet through MeetLayer, this walk's step.

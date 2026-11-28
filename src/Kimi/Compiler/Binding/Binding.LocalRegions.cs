@@ -24,9 +24,10 @@ namespace Kimi.Compiler;
 // RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
 // one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
-// body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
-// proved it, and before as a reading with no answer yet (the deferral fact). A `let` region that merges a stored part met on several
-// of the local's paths is marked so (LocalRegion.Merged, LocalBorrowType), read by the name limit alone (PLAN G922 U1).
+// body's oracle, StaticOrigin through ValueIn). ValueIn reads RegionValue's result, completed in RegionValue's returns
+// (ResolveReceiver(CompletedOrigin(x))), and a deferred result slot's atom (R7-O2 O2-F) that Final has not proven as a reading with no
+// answer yet (the deferral fact). A `let` region that merges a stored part met on several of the local's paths is marked so
+// (LocalRegion.Merged, LocalBorrowType), read by the name limit alone (PLAN G922 U1).
 // FixDeclaredRegions (R7-O2 A4-L) reads a local's declaration once its last bound is recorded (its fit, its Type's well-formedness, its
 // clauses, which it records itself as region bounds) and publishes each of a `let` local's regions with no value with its own
 // candidate, or leaves it without one; a sibling region that reads back to it stays that variable (FixWaiting; the owner's O-544 (b)).
@@ -886,7 +887,6 @@ public sealed partial class Binding
             region.Parents.Clear();
             region.Values.Clear();
             region.Targets.Clear();
-            region.TargetValues.Clear();
             region.Sources.Clear();
             region.Row = OriginVariance.Unused;
             region.Version = -1;
@@ -975,7 +975,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.RecordRegionTarget(source, target, evidence);
+                this.RecordRegionTarget(source, target);
             }
         }
     }
@@ -998,7 +998,7 @@ public sealed partial class Binding
             this.regionVersion++;
         }
 
-        this.RecordRegionTarget(source, target, evidence);
+        this.RecordRegionTarget(source, target);
 
         // J2: a bound of a waited variable's own solution `(E and region)` bounds its region too (RecordOpening).
         if (region.Solved is { } solved && BoundsSolved(source, target, solved))
@@ -1009,13 +1009,12 @@ public sealed partial class Binding
 
     // SPEC 15.3.6: a region slot at the longer end of a recorded bound has its shorter end as a lower bound (LocalRegion.Targets), a fixed
     // Origin included, which no region row bounds; it moves the graph's version, as its value reads it.
-    private void RecordRegionTarget(BoundOrigin source, BoundOrigin target, Koto evidence)
+    private void RecordRegionTarget(BoundOrigin source, BoundOrigin target)
     {
         if (SlotRegion(source) && this.WrittenRegion(source) is var region && !region.Targets.Contains(target))
         {
             EnsureWritable(region);
             region.Targets.Add(target);
-            region.TargetValues.Add(evidence);
             this.regionVersion++;
         }
     }
@@ -1079,16 +1078,13 @@ public sealed partial class Binding
     }
 
     // A target Origin's row: the bounds recorded on it (Parents, each with its Values entry), for a local region the Origins it is
-    // recorded to outlive (Targets, each with its TargetValues entry) and its slot's variance (Row, LocalRegionSlot), the memo of its sources
-    // (Sources, current while Version is the graph's version) and, for a `let` region, its value and the body that reads it so
-    // (PublishRegionValue).
+    // recorded to outlive (Targets) and its slot's variance (Row, LocalRegionSlot), the memo of its sources (Sources, current while
+    // Version is the graph's version) and, for a `let` region, its value and the body that reads it so (PublishRegionValue).
     internal sealed class LocalRegion
     {
         internal List<BoundOrigin> Parents { get; } = new();
 
         internal List<BoundOrigin> Targets { get; } = new();
-
-        internal List<Koto> TargetValues { get; } = new();
 
         internal OriginVariance Row { get; set; }
 
