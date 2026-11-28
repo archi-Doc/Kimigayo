@@ -130,7 +130,11 @@ public sealed class GroupKoto : DeclarationContainerKoto
             var context = reader.TakeContext();
             var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, context, token.Span, codeContext: reader.CodeContext);
             reader.Document(groupKoto, reader.PreviousSyntaxEnd, context.AttributeKoto);
-            groupKoto.AddHeader(TokenKind.Group, context.ModifierKind, null, null, context.AttributeKoto);
+            if (groupKoto.AddHeader(TokenKind.Group, context.ModifierKind, null, null, context.AttributeKoto))
+            {
+                Parser.JudgeProtectedPlacement(ref reader, groupKoto, (DeclarationContainerKoto)groupKoto.Parent!);
+            }
+
             if (reader.CurrentTokenKind == TokenKind.StartBlock)
             {
                 groupKoto.Parse(ref reader);

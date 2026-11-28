@@ -116,6 +116,53 @@ public static partial class Parser
         }
     }
 
+    /// <summary>Judges a protected form (SPEC 9.4.1): protected, protected internal and private protected apply only to the members of a
+    /// struct, including Containers declared directly in it. The row reads the declaration's written access and the kind of the container
+    /// that declares it (<see cref="DeclarationContainerKoto.Declaring"/>), a source check (SPEC 19.4). The record names that container at
+    /// the function's signature, the binding's Name or the Container's word. The access word stays and nothing is recovered, so the
+    /// declaration and its uses are checked as written. Called once the declaration has taken its prefix.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="declaration">A Container, function, Property or binding, which takes an access word.</param>
+    /// <param name="host">The container whose items include the declaration.</param>
+    internal static void JudgeProtectedPlacement(ref TokenReader reader, DeclarationKoto declaration, DeclarationContainerKoto host)
+    {
+        var access = (declaration switch
+        {
+            DeclarationContainerKoto container => container.Modifier,
+            FunctionKoto function => function.Modifier,
+            VariableKoto variable => variable.Modifier,
+            _ => ModifierKind.NoModifier,
+        }).ExtractAccessibilityModifiers();
+
+        // Removed by SRCCHK c2 (PLAN G1511): excluded syntax receives the check.
+        if (reader.InExcludedSyntax || access is not (ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal))
+        {
+            return;
+        }
+
+        var declaring = host.Declaring switch
+        {
+            StructKoto => null,
+            { IsRoot: true } => "the source root",
+            GroupKoto group => $"group {group.Name}",
+            EnumKoto enumeration => $"enum {enumeration.Name}",
+            ContractKoto => throw new InvalidOperationException("A Contract item holds an access word the parser rejects (InternalInvariant; G689)."),
+            _ => "a Container other than a struct",
+        };
+        if (declaring is null)
+        {
+            return;
+        }
+
+        SourceSpan? span = declaration switch
+        {
+            FunctionKoto { SignatureSpan.Length: > 0 } function => function.SignatureSpan,
+            VariableKoto variable => variable.NameKoto.Span,
+            _ => null,
+        };
+        declaration.Report(DiagnosticRequirement.SyntaxOf(SyntaxForm.ProtectedPlacement), DiagnosticCode.ProtectedPlacement_Kd, declaring, span: span);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ModifierKind GetAccessibilityModifier(TokenKind tokenKind)
         => tokenKind switch

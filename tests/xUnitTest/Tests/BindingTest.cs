@@ -896,21 +896,6 @@ public class BindingTest
         Assert.DoesNotContain(other.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd));
     }
 
-    // R7-E2 E2-3a (D-850, Access.cs's ReportProtectedPlacement): a ProtectedPlacement problem at a frozen library declaration is published
-    // through Core's store decision, so it is the program's one record and another compilation over the same library holds none (as
-    // ALibraryNodesFactlessProblemIsTheProgramsRecord).
-    [Fact]
-    public void ALibraryDeclarationsPlacementProblemIsTheProgramsRecord()
-    {
-        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
-        Assert.False(c.Bind().IsComplete);
-        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().First(x => x.Parent is GroupKoto && x.StateOf(c) == BindingState.Resolved); // A group member: SPEC 9.4 rejects its protected forms.
-        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
-        record(node, BindingFailure.ProtectedPlacement, [], 0, false);
-        AssertTheProgramsOneRecord(c, node, DiagnosticCode.ProtectedPlacement_Kd);
-    }
-
     // R7-E2 E2-3a (D-850, Diagnostics.cs's ReportArity): an arity problem (its Related declaration and two Count facts) at a frozen
     // library Type reference is the program's one record, through Core's store decision.
     [Fact]

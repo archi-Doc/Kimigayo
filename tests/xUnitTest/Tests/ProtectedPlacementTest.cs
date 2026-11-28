@@ -11,9 +11,9 @@ namespace XunitTest;
 
 // SPEC 9.4: protected, protected internal and private protected apply only to members of a struct, including Containers
 // declared directly in it, and to their accessors; they are invalid on root and group declarations, group members and
-// Contract requirements. Binding reports each misplaced form once at the declaration's signature, naming what declares it;
-// a declaration that takes no access word at all (a Contract requirement; a root or local function, SPEC 6.1.1 and 9.3) is
-// reported by the parser alone, at the word.
+// Contract requirements. The parser judges each misplaced form once from the declaring Container's kind, a source check (SPEC
+// 19.4; Parser.JudgeProtectedPlacement), at the declaration's signature, naming what declares it; a declaration that takes no
+// access word at all (a Contract requirement; a root or local function, SPEC 6.1.1 and 9.3) is reported at the word instead.
 public sealed class ProtectedPlacementTest(ITestOutputHelper output)
 {
     [Fact]
@@ -75,6 +75,22 @@ public sealed class ProtectedPlacementTest(ITestOutputHelper output)
         var result = DiagnosticCorpus.Check(declarations + "public func main() => ()\n");
         Assert.Equal(expected, string.Join(' ', result.Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)));
     }
+
+    // SPEC 9.4.1, 19.4, 23.1.2 (SRCCHK, PLAN G1511): the placement reads the declaring Container's kind alone: a group nested in a struct
+    // declares its own members, and a conformance Block's member is its owner's. The access word stays and nothing is recovered, so the
+    // declaration's signature, body and uses are checked as written, each record independent of the placement's.
+    [Theory]
+    [InlineData("struct S\n    group G\n        protected func f() -> i32 => 0\n", "ProtectedPlacement_Kd 3:24 f() -> i32")]
+    [InlineData("contract Describe\n    func describe(self) -> string\n\nenum E<T>\n    A\n    Self is Describe when T is Describe\n        public func describe(self) -> string => \"e\"\n        protected func h() -> i32 => 0\n", "ProtectedPlacement_Kd 8:24 h() -> i32")]
+    [InlineData("struct S\n    group G\n        protected func h() => ()\n    protected group H\n        func k() => ()\n", "ProtectedPlacement_Kd 3:24 h()")]
+    [InlineData("group G\n    protected func h() -> i32\n        let s: string = 1\n        return 0\n", "ProtectedPlacement_Kd 2:20 h() -> i32 | TypeMismatch_Kd 3:25 1")]
+    [InlineData("group G\n    protected func h() -> i32 => 0\nfunc k() -> i32 => G.h()\n", "ProtectedPlacement_Kd 2:20 h() -> i32 | InaccessibleBinding_Kd 3:20 G.h, inaccessible declaration 'h'")]
+    [InlineData("group G\n    protected func h() -> ()\n        let a: string = \"x\"\n        let b = a@move\n        let c = a@move\n", "ProtectedPlacement_Kd 2:20 h() -> () | MovedPlace_Kd 5:17 a")]
+    [InlineData("group G\n    protected func f(x: Missing) -> i32 => 0\n", "ProtectedPlacement_Kd 2:20 f(x: Missing) -> i32 | UnresolvedBinding_Kd 2:25 Missing")]
+    [InlineData("group G\n    protected var x: i32 = 0\n    func g() -> i32\n        let s: string = x\n        return 0\n", "Unsupported_Kd 2:15 var x: i32 = 0 | ProtectedPlacement_Kd 2:19 x | TypeMismatch_Kd 4:25 x")]
+    [InlineData("group G\n    #Unknown\n    protected func f() => ()\n", "UnresolvedBinding_Kd 2:6 Unknown | ProtectedPlacement_Kd 3:20 f()")]
+    public void ThePlacementIsJudgedFromTheDeclaringContainerAlone(string declarations, string expected)
+        => Assert.Equal(expected, string.Join(" | ", DiagnosticCorpus.LocatedRecords(declarations + "public func main() => ()\n")));
 
     [Fact]
     public void CliAndLspCarryTheContainer()

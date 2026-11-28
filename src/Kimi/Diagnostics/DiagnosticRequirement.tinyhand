@@ -182,6 +182,10 @@
     Description="a specialization is declared at the source root or in a group, struct or enum body"
     Phrase="specialization declaration"
 
+  + Name="Syntax.ProtectedPlacement"
+    Description="a protected access form modifies a member of a struct"
+    Phrase="protected, protected internal and private protected"
+
   + Name="Syntax.CompileTimeDirective"
     Description="a compile-time directive selects whole items"
     Phrase="compile-time directive"
@@ -602,9 +606,6 @@
 
   + Name="Binding.GenericBitConversion"
     Description="the @bits operand and target Types are fixed"
-
-  + Name="Binding.ProtectedPlacement"
-    Description="a protected access form modifies a member of a struct"
 
   + Name="Binding.MissingSpecializationTarget"
     Description="a generic function matches the specialization"

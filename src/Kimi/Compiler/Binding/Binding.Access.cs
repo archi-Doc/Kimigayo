@@ -26,15 +26,6 @@ public sealed partial class Binding
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
-    // SPEC 9.4: the written access of a declaration that may carry a protected form.
-    private static ModifierKind WrittenAccess(Koto declaration) => (declaration switch
-    {
-        DeclarationContainerKoto container => container.Modifier,
-        FunctionKoto function => function.Modifier,
-        VariableKoto variable => variable.Modifier,
-        _ => ModifierKind.NoModifier,
-    }).ExtractAccessibilityModifiers();
-
     private static ModifierKind DeclarationAccess(BindingSymbol symbol)
         => (symbol.Declaration switch
         {
@@ -46,41 +37,6 @@ public sealed partial class Binding
         }).ExtractAccessibilityModifiers();
 
     private static bool IsOpenStruct(Koto owner) => owner is StructKoto { Modifier: var modifier } && (modifier & ModifierKind.Open) != 0;
-
-    // The Container or function body that declares a member; a conditional implementation block is part of its Container.
-    private static Koto? DeclaringContainer(Koto declaration)
-    {
-        for (var node = declaration.Parent; node is not null; node = node.Parent)
-        {
-            if (node is DeclarationContainerKoto or FunctionKoto)
-            {
-                return node;
-            }
-        }
-
-        return null;
-    }
-
-    // SPEC 9.4: protected forms apply only to struct members; the record names what declares this one instead.
-    private static void ReportProtectedPlacement(Koto declaration, DiagnosticCollection? store, DiagnosticRequirement requirement)
-    {
-        var container = DeclaringContainer(declaration) switch
-        {
-            DeclarationContainerKoto { IsRoot: true } => "the source root",
-            GroupKoto group => $"group {group.Name}",
-            EnumKoto enumeration => $"enum {enumeration.Name}",
-            FunctionKoto or ContractKoto => throw new InvalidOperationException("A declaration of a body or of a Contract holds an access word the parser rejects (InternalInvariant; G689)."),
-            _ => "a Container other than a struct",
-        };
-
-        SourceSpan? span = declaration switch
-        {
-            FunctionKoto { SignatureSpan.Length: > 0 } function => function.SignatureSpan,
-            VariableKoto variable => variable.NameKoto.Span,
-            _ => null,
-        };
-        declaration.ReportIn(store, requirement, DiagnosticCode.ProtectedPlacement_Kd, container, span: span);
-    }
 
     private static FunctionKoto? FunctionSignatureOwner(Koto use)
     {
@@ -485,16 +441,6 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            // SPEC 9.4: a protected form is invalid on root Containers and on group and enum members: every declaration that takes an
-            // access word and whose declaring Container is not a struct. A root function, a local function or binding and a Contract
-            // item take no access word at all, which the parser rejects and drops (Parser.RejectAccessWord; SPEC 6.1.1, 9.3, F.6.2).
-            if (this.nodes[i].BoundSymbol is { } declared && ReferenceEquals(declared.Declaration, this.nodes[i]) &&
-                WrittenAccess(this.nodes[i]) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal &&
-                DeclaringContainer(this.nodes[i]) is not StructKoto)
-            {
-                this.Record(this.nodes[i], BindingFailure.ProtectedPlacement, []);
-            }
-
             if (this.nodes[i] is FunctionKoto or PropertyKoto && this.nodes[i].BoundSymbol is { ConditionalDeclaration: { } conditional } member)
             {
                 var premises = (SyntaxFormKoto)conditional.Operands[1];

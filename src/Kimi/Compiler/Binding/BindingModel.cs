@@ -278,8 +278,6 @@ internal enum BindingFailure : byte
     InvalidBitConversion,
     GenericBitConversion,
 
-    // SPEC 9.4: the protected access forms apply only to members of a struct and their accessors.
-    ProtectedPlacement,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
     DuplicateDictionaryKey,

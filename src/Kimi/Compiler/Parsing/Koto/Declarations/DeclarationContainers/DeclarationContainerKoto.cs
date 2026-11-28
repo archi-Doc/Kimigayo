@@ -216,7 +216,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="genericArguments">The generic parameters, if declared.</param>
     /// <param name="origins">The origin names, if declared.</param>
     /// <param name="attributes">The selected fragment's Attribute chain.</param>
-    internal void AddHeader(TokenKind kind, ModifierKind modifier, List<TypeKoto>? genericArguments, List<string>? origins, AttributeKoto? attributes)
+    /// <returns><see langword="true"/> when this header declares the container's modifiers; a later header's must agree with them.</returns>
+    internal bool AddHeader(TokenKind kind, ModifierKind modifier, List<TypeKoto>? genericArguments, List<string>? origins, AttributeKoto? attributes)
     {
         this.fragmentOrdinal++;
         if (attributes is not null)
@@ -255,7 +256,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
 
             this.HasIncompatibleBindingHeader |= !same;
-            return;
+            return false;
         }
 
         this.hasBindingHeader = true;
@@ -290,6 +291,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 this.OriginList.AddRange(origins);
             }
         }
+
+        return true;
     }
 
     /// <inheritdoc/>
@@ -721,7 +724,11 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
         reader.Document(container, reader.PreviousSyntaxEnd, state.AttributeKoto);
         reader.Hover(container, nameSpan);
-        container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
+        if (container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto))
+        {
+            Parser.JudgeProtectedPlacement(ref reader, container, (DeclarationContainerKoto)container.Parent!);
+        }
+
         container.SetBases(declaration.Bases);
 
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -813,6 +820,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     }
                 }
 
+                Parser.JudgeProtectedPlacement(ref reader, propertyKoto, this);
                 this.AddLast(propertyKoto);
             }
 
@@ -859,6 +867,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         functionKoto.DeclaringContainer = this.Declaring;
+        Parser.JudgeProtectedPlacement(ref reader, functionKoto, this);
         if (form == Parser.FunctionForm.Requirement)
         {
             Parser.ParseRequirementBody(ref reader, functionKoto);

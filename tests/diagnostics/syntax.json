@@ -1117,5 +1117,7 @@
   { "Name": "static-without-initializer-before-trailing-token", "Source": "group G\n    public let s: i32 junk\npublic func main() => ()\n", "Intended": "a token after a static header without an initializer is still where the line should end",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "s: i32" }, { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "junk", "Found": "junk" } ] },
   { "Name": "static-without-initializer-before-arrow", "Source": "group G\n    public let s: i32 => 1\npublic func main() => ()\n", "Intended": "an expression body on a static stored Property is no initializer: the line should end at '=>'",
-    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "s: i32" }, { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "=> 1", "Length": 2, "Found": "=>" } ] }
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "s: i32" }, { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "=> 1", "Length": 2, "Found": "=>" } ] },
+  { "Name": "protected-placement-group-member", "Source": "group G\n    protected func h() => ()\npublic func main() => ()\n", "Intended": "a protected form on a group member is judged by the parser from the declaring Container's kind (SPEC 9.4.1, 19.4), at the signature",
+    "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "h()" } ] }
 ]

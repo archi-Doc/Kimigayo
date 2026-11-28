@@ -129,7 +129,6 @@ public sealed partial class Binding
             BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
             BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
             BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
-            BindingFailure.ProtectedPlacement => DiagnosticCode.ProtectedPlacement_Kd,
             BindingFailure.VirtualDeclaration => DiagnosticCode.InvalidVirtualDeclaration_Kd,
             BindingFailure.MissingOverrideTarget => DiagnosticCode.MissingOverrideTarget_Kd,
             BindingFailure.AmbiguousOverrideTarget => DiagnosticCode.AmbiguousOverrideTarget_Kd,
@@ -411,9 +410,6 @@ public sealed partial class Binding
                 break;
             case BindingFailure.ArithmeticConformance when this.FactOf(index, ProblemFactKind.Reason) is not null: // Role 0: the arithmetic Contract, with its Instance for a counterpart.
                 this.ReportArithmeticConformance(node, store, index, problem);
-                break;
-            case BindingFailure.ProtectedPlacement:
-                ReportProtectedPlacement(node, store, problem.Requirement);
                 break;
             case BindingFailure.InvalidAssignment or BindingFailure.SharedPathAccess or BindingFailure.SharedBindingAssignment or BindingFailure.ExclusiveBindingAssignment
                 when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 } target:
