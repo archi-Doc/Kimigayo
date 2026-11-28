@@ -200,6 +200,8 @@ internal static class MirDescriptors
         IntrinsicId.MonotonicClock => Intrinsic(MirEffect.Environment, 0), // A platform read, no Abort: Time.readCounter raises clockFailure.
         // Every row accesses processor state (IMPL 21.6; SPEC 8.11.2); the declaration gives the call's shape.
         IntrinsicId.Instruction => Intrinsic(MirEffect.Environment, -1),
+        // Returns a code address and runs nothing, as ReserveDispatch's; the declaration gives the call's shape.
+        IntrinsicId.InterruptEntry => Intrinsic(MirEffect.None, -1),
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
         _ => default,
     };

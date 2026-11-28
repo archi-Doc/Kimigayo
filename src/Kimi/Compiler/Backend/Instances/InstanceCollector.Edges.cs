@@ -93,7 +93,8 @@ internal sealed partial class InstanceCollector
 
     // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
     // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
-    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs); an Import's none. A kind without a row is a fault.
+    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs); an Import's none; an interrupt entry's the witness of
+    // its variant's Contract's `handle` on its handler (InterruptEntries; IMPL 21.6). A kind without a row is a fault.
     private void Expand(MirProgram program, int item)
     {
         var key = this.Set.Items[item].Key;
@@ -116,6 +117,9 @@ internal sealed partial class InstanceCollector
                 return;
             case MonoKind.Import:
                 return; // SPEC 22.6: a foreign function calls nothing the program generates.
+            case MonoKind.InterruptEntry:
+                this.Target(item, this.Runs(program, item, site, this.types.OwnRequirement(InterruptEntries.Row(key.Variant).Contract)!, type));
+                return;
             default:
                 throw new InvalidOperationException($"The mono item kind {key.Kind} has no target row.");
         }
@@ -171,7 +175,7 @@ internal sealed partial class InstanceCollector
 
             return row.Target == IntrinsicTarget.StaticInit
                 ? this.Static(program, item, body, subject, call)
-                : this.Intrinsic(program, item, subject, row, this.In(item, subject, callee.Subst!.Types[0]!));
+                : this.Intrinsic(program, item, subject, callee.Symbol!.Definition, this.In(item, subject, callee.Subst!.Types[0]!));
         }
 
         var (subst, cause) = callee.Subst is { } inner && this.Set.Items[item].Representative is { } representative
@@ -218,18 +222,20 @@ internal sealed partial class InstanceCollector
         return borrows ? this.GlueOf(item, this.Subject(item, body, call.Source), operand) : -1;
     }
 
-    // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
-    // substitution's Type argument in the item's instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its
-    // caller's, LaysOutArguments): a reserveDispatch's reserve witness on its Writer (SPEC 22.10.1), a creation's payload
-    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not formed, whose cause the caller
-    // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
-    private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
+    // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from its
+    // declaration's disposition (its row, IntrinsicRows, and a family's member) and the substitution's Type argument in the item's
+    // instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its caller's, LaysOutArguments): a
+    // reserveDispatch's reserve witness on its Writer (SPEC 22.10.1), a creation's payload descriptor (Descriptor), a DestroyValues'
+    // element glue, an interrupt entry's thunk of its handler (Entry). -1 for a row without a target or a Type not formed, whose cause the
+    // caller read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
+    private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicDisposition disposition, BoundType? argument)
     {
         if (argument is null)
         {
             return -1;
         }
 
+        var row = IntrinsicRows.Of(disposition.Id);
         return row.Target switch
         {
             IntrinsicTarget.None => -1,
@@ -237,8 +243,23 @@ internal sealed partial class InstanceCollector
             IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
             IntrinsicTarget.Descriptor => this.Descriptor(item, subject, argument),
             IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
+            IntrinsicTarget.Entry => this.Entry(item, subject, disposition.Member, argument),
             _ => throw new InvalidOperationException($"The intrinsic target {row.Target} has no Type argument row."),
         };
+    }
+
+    // IMPL 21.6 (design C-457 C4): an interrupt entry's target, the thunk of its handler Type in its member's variant (InterruptEntries),
+    // admitted as the descriptor is (Descriptor); a member without a row is a library defect, the located InternalInvariant_Kd at the call.
+    private int Entry(int item, SourceRef subject, string? member, BoundType handler)
+    {
+        var variant = InterruptEntries.Find(member);
+        if (variant < 0)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+            return -1;
+        }
+
+        return this.AdmitType(item, subject, new(MonoKind.InterruptEntry, default, null, null, (byte)variant, null), handler, null);
     }
 
     // K 4.5 row 8 (DECISIONS R5-M74, R5-M111): a creation's target, its payload's object descriptor, admitted with the payload's layout
