@@ -211,12 +211,14 @@ public sealed class Kernel32ImportsTest
     // result the error; a run below the unmapped bound or not 4,096-aligned is refused as null; the clock's result is returned as it is.
     // Only where SPEC 22.4.5 ¶3 ends the program (a write, a clock read, an Abort's end) does it first ask the idle test; the start runs
     // before any member, the pages routine only after the allocator's test, and a release is ordinary (O-545 (a)). No routine sets or
-    // clears the busy flag: every run of a member brackets itself (O-538 (a)).
+    // clears the busy flag: every run of a member brackets itself (O-538 (a)). The exit, which shutdown's end and every Abort's pass
+    // through, disables interrupts first (IMPL 21.6; OSF3b's row 14, T's ruling 193 (e)).
     [Fact]
     public void NoneRoutinesTestTheBusyFlagWhereTheProgramEndsThenCallTheirAdapter()
     {
         var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
         const string Idle = "  call void @__kimi_platform_idle()\n";
+        const string Cli = "  call void asm sideeffect \"cli\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n";
         var outcome = "  %succeeded = icmp eq i64 %result, 0\n  %unexplained = icmp eq i64 %result, -1\n  %failure = select i1 %unexplained, i64 " +
             RuntimeAbi.NoOsError.ToString(CultureInfo.InvariantCulture) + ", i64 %result\n  %error = select i1 %succeeded, i64 -1, i64 %failure\n" +
             "  ret i64 %error\n}\n";
@@ -230,7 +232,7 @@ public sealed class Kernel32ImportsTest
             (RuntimeAbi.ReleasePages, RuntimeAbi.PlatformMemberReleasePages, string.Empty, outcome),
             (RuntimeAbi.Write, RuntimeAbi.PlatformMemberWrite, Idle, outcome),
             (RuntimeAbi.Clock, RuntimeAbi.PlatformMemberClock, Idle, "  ret i64 %result\n}\n"),
-            (RuntimeAbi.Exit, RuntimeAbi.PlatformMemberTerminate, Idle, "  unreachable\n}\n"),
+            (RuntimeAbi.Exit, RuntimeAbi.PlatformMemberTerminate, Cli + Idle, "  unreachable\n}\n"),
         ];
         foreach (var (routine, adapter, head, mapping) in routines)
         {
@@ -271,7 +273,9 @@ public sealed class Kernel32ImportsTest
 
     // IMPL 21.6.3 (O-538 (a)): every run of a platform member is the none layer's bracket, which code generation calls in the member's
     // body: the enter returns the busy flag's value and sets it, and the leave restores that value, so a member's call of another member
-    // is an ordinary call. A hosted row has no platform member, so its runtime names neither.
+    // is an ordinary call. A hosted row has no platform member, so its runtime names neither. IMPL 21.6 (OSF3b's row 30, T's ruling 193
+    // (a), B's C1): the enter saves RFLAGS and disables interrupts before the flag's load, then a barrier after the set; the leave is a
+    // barrier, the flag's restore, then RFLAGS's restore from the word's low 32 bits alone (bit 32 the flag), never the whole word.
     [Theory]
     [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("x86_64-unknown-linux-musl")]
@@ -280,8 +284,9 @@ public sealed class Kernel32ImportsTest
     {
         var profile = TargetProfile.Find(row)!;
         var runtime = LlvmModuleText.Frame(profile).Runtime;
-        const string Enter = "define internal i8 @__kimi_platform_enter() #0 {\n";
-        const string Leave = "define internal void @__kimi_platform_leave(i8 %saved) #0 {\n";
+        const string Enter = "define internal i64 @__kimi_platform_enter() #0 {\n";
+        const string Leave = "define internal void @__kimi_platform_leave(i64 %saved) #0 {\n";
+        const string Clobbers = "~{memory},~{dirflag},~{fpsr},~{flags}\"";
         if (profile != TargetProfile.None)
         {
             Assert.DoesNotContain("@__kimi_platform_enter", runtime, StringComparison.Ordinal);
@@ -290,9 +295,16 @@ public sealed class Kernel32ImportsTest
         }
 
         Assert.Equal(
-            "entry:\n  %saved = load i8, ptr @__kimi_platform_busy, align 1\n  store i8 1, ptr @__kimi_platform_busy, align 1\n  ret i8 %saved\n}\n",
+            "entry:\n  %flags = call i64 asm sideeffect \"pushfq\\0Apopq $0\\0Acli\", \"=r," + Clobbers + "()\n" +
+            "  %busy = load i8, ptr @__kimi_platform_busy, align 1\n  store i8 1, ptr @__kimi_platform_busy, align 1\n" +
+            "  call void asm sideeffect \"\", \"~{memory}\"()\n  %low = and i64 %flags, 4294967295\n  %wide = zext i8 %busy to i64\n" +
+            "  %bit = shl i64 %wide, 32\n  %saved = or i64 %low, %bit\n  ret i64 %saved\n}\n",
             Definition(runtime, Enter));
-        Assert.Equal("entry:\n  store i8 %saved, ptr @__kimi_platform_busy, align 1\n  ret void\n}\n", Definition(runtime, Leave));
+        Assert.Equal(
+            "entry:\n  call void asm sideeffect \"\", \"~{memory}\"()\n  %high = lshr i64 %saved, 32\n  %busy = trunc i64 %high to i8\n" +
+            "  store i8 %busy, ptr @__kimi_platform_busy, align 1\n  %low = trunc i64 %saved to i32\n  %flags = zext i32 %low to i64\n" +
+            "  call void asm sideeffect \"pushq $0\\0Apopfq\", \"r," + Clobbers + "(i64 %flags)\n  ret void\n}\n",
+            Definition(runtime, Leave));
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,

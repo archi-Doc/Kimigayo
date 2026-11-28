@@ -147,11 +147,11 @@ public partial class EffectBoundImplementationTest
     // intrinsic, and of those Console output and the test temporary directory alone are environment effects (the Storage and Raw
     // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator), with, in the Linux row's
     // library, the platform layer's clock (Time.monotonicNanoseconds, the Tatara plan's B7b6; windows-x64's library, the selection of
-    // the one without a target, declares none), and on every x86-64 row Kimi.X86's pause and readTimestamp, machine instructions (IMPL
-    // 21.6; OSF1a, design C3); a library body is no bodyless category.
+    // the one without a target, declares none), and on every x86-64 row Kimi.X86's pause, readTimestamp and cpuid, machine instructions
+    // (IMPL 21.6; OSF1a, design C3; OSF1b); a library body is no bodyless category.
     [Theory]
-    [InlineData("", "WriteStdout,TestTempDirectory,Instruction,Instruction")]
-    [InlineData("x86_64-unknown-linux-musl", "WriteStdout,TestTempDirectory,MonotonicClock,Instruction,Instruction")]
+    [InlineData("", "WriteStdout,TestTempDirectory,Instruction,Instruction,Instruction")]
+    [InlineData("x86_64-unknown-linux-musl", "WriteStdout,TestTempDirectory,MonotonicClock,Instruction,Instruction,Instruction")]
     public void EveryCompilerFunctionHasOneEffectClass(string target, string intrinsics)
     {
         var compilation = Compilation.CreateForTest();
@@ -307,6 +307,20 @@ public partial class EffectBoundImplementationTest
         const string Probe = "contract Probe\n    func read(self: uniq/Self) -> u32\n        effect confined\n" +
             "struct Register\n    Self is Probe\n    internal let p: raw/u32\n    public init(p: raw/u32) => self.p = p\n    public func read(self: uniq/Self) -> u32\n        ";
         AssertBound(MinimalEmissionTest.Analyze(TargetProfile.Find(triple)!, Probe + body + "\n", "Hello.kimi", OutputKind.Library), false, "Self is Probe");
+    }
+
+    // SPEC 8.11.2, 15.6.4 (OSF3b's row 28; design C-457 C4): an interrupt entry's call returns a code address and runs nothing, since the
+    // processor runs the entry, so its handler's effects (a port write, an environment effect) enter no caller's summary and a `confined`
+    // implementation that takes the address keeps its bound; MIR validates.
+    [Fact]
+    public void AnInterruptEntryRunsNoHandlerEffect()
+    {
+        const string Probe = "contract Probe\n    func read(self: uniq/Self) -> usize\n        effect confined\n" +
+            "struct TimerTick\n    Self is X86.InterruptHandler\n\n    public func handle(frame: ref/X86.InterruptFrame)\n        unsafe => X86.writePort8(0x20, 0x20)\n" +
+            "struct Register\n    Self is Probe\n    public func read(self: uniq/Self) -> usize\n        unsafe => return X86.entry<TimerTick>()\n";
+        var c = MinimalEmissionTest.Analyze(TargetProfile.None, Probe, "Hello.kimi", OutputKind.Library);
+        AssertBound(c, true, "Self is Probe");
+        Assert.Empty(c.BuildMir().Findings);
     }
 
     // Warm rebinding of user-declared bounds and their witness summaries allocates nothing.

@@ -158,7 +158,7 @@ The Kimi Kotonoha this compiler provides ([§22.1](../spec/22-core-execution-and
 | Attribute | Identifies |
 | --- | --- |
 | `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1; a published operation ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects), [§22.10.1](../spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter)); an internal declaration the compiler calls, lays out or links; or an internal function whose calls the compiler writes as a form, never as a call (below). Each Name is declared once |
-| `#Intrinsic("Name")`, `#Intrinsic("Family", "Member")` | a function whose definition the compiler generates; the family form's second argument names its case: for `Fail`, the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) with which it Aborts; for `Instruction`, the instruction of a row of [§21.6.8](#2168-machine-instructions)'s table by its AT&T mnemonic (`rdtsc`, `inb`) |
+| `#Intrinsic("Name")`, `#Intrinsic("Family", "Member")` | a function whose definition the compiler generates; the family form's second argument names its case: for `Fail`, the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) with which it Aborts; for `Instruction`, the instruction of a row of [§21.6.8](#2168-machine-instructions)'s table by its AT&T mnemonic (`rdtsc`, `inb`), a control register's read or write by `rdcr` or `wrcr` and the register's number (`rdcr3`), and `sti` directly followed by `hlt` by `stihlt`; for `InterruptEntry`, the entry's variant, `plain` for `entry` or `code` for `errorCodeEntry` ([§21.6.9](#2169-interrupt-entries)) |
 | `#CallerLocation` | a function whose failures report the invoking user expression ([§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location)), which its private ABI carries |
 | `#Unsupported` | a declaration whose every use this implementation reports as Unsupported at the use ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) |
 
@@ -324,16 +324,55 @@ The runtime imports no function and the profile has no C library: the runtime's 
 
 ### 21.6.8. Machine instructions
 
-The group `Kimi.X86` declares x86-64 processor instructions as functions ([§22.1](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). It is declared where the Condition `arch == "x86_64"` holds ([§19.2.1](../spec/19-compile-time-directives.md#1921-built-in-conditions)): `pause` and `readTimestamp` wherever `X86` is declared, since they also run in user mode; the other members, privileged, only where `os == "none"` also holds, since each faults in user mode. Elsewhere `X86` declares no such member. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other member's call (a compiler barrier, not a processor fence).
+The group `Kimi.X86` declares x86-64 processor instructions as functions ([§22.1](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). It is declared where the Condition `arch == "x86_64"` holds ([§19.2.1](../spec/19-compile-time-directives.md#1921-built-in-conditions)): `pause`, `readTimestamp` and `cpuid`, with the struct `CpuidResult` that `cpuid` returns, wherever `X86` is declared, since those functions also run in user mode; the other functions, privileged, only where `os == "none"` also holds, since each faults in user mode. Elsewhere `X86` declares no such function. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other function's call (a compiler barrier, not a processor fence).
 
-| Member | Instruction | Safety |
+| Function | Instruction | Safety |
 | --- | --- | --- |
 | `pause()` | `pause`, the spin-wait hint | safe |
 | `readTimestamp() -> u64` | `rdtsc`, the time-stamp counter | safe |
+| `cpuid(leaf: u32, subleaf: u32) -> CpuidResult` | `cpuid`, the processor's identification and feature information for `leaf` and `subleaf`; `CpuidResult` is a `#Layout("C")` Copy struct of `eax`, `ebx`, `ecx` and `edx: u32` | safe |
 | `halt()` | `hlt` | safe |
 | `disableInterrupts()` | `cli` | safe |
 | `enableInterrupts()` | `sti` | safe |
 | `readPort8(port: u16) -> u8`, `readPort16(port: u16) -> u16`, `readPort32(port: u16) -> u32` | `in` of one, two or four bytes | `unsafe` |
 | `writePort8(port: u16, value: u8)`, `writePort16(port: u16, value: u16)`, `writePort32(port: u16, value: u32)` | `out` of one, two or four bytes | `unsafe` |
+| `enableInterruptsAndHalt()` | `sti` directly followed by `hlt` | safe |
+| `readCr0() -> u64`, `readCr2() -> u64`, `readCr3() -> u64`, `readCr4() -> u64` | `mov` from a control register | safe |
+| `writeCr0(value: u64)`, `writeCr3(value: u64)`, `writeCr4(value: u64)` | `mov` to a control register | `unsafe` |
+| `loadInterruptTable(descriptor: raw/u8)`, `loadDescriptorTable(descriptor: raw/u8)` | `lidt`, `lgdt` from the 10-byte limit and base at `descriptor` | `unsafe` |
+| `loadTaskRegister(selector: u16)` | `ltr` | `unsafe` |
+| `invalidatePage(address: raw/())` | `invlpg` of the page that holds `address` | `unsafe` |
+| `readMsr(index: u32) -> u64`, `writeMsr(index: u32, value: u64)` | `rdmsr`, `wrmsr` of the model-specific register `index` | `unsafe` |
 
-A member is `unsafe` exactly when it accesses a device or changes the processor's address translation, descriptor tables or model-specific state; the others change no storage. A port member's `- safety:` item is its caller's obligation: the device at `port` may change any storage it can reach, and the caller keeps that storage within the program's platform contract ([§21.6.6](#2166-integer-addresses)). Calling an `X86` member is an environment effect ([§8.11.2](../spec/08-generics-constraints-and-contracts.md#8112-confined)): it accesses processor state outside the program. A `confined` implementation calls none of them, `pause` and `readTimestamp` included.
+A function of the table is `unsafe` exactly when it accesses a device or changes the processor's address translation, descriptor tables or model-specific state; the others change no storage. `readMsr` is `unsafe` since a model-specific register's read may change the state it reports. `enableInterruptsAndHalt` is the idle wait: with interrupts disabled at the call, `sti` holds them off for one more instruction, so one pending at the call ends the `hlt` instead of running before it, which `enableInterrupts()` followed by `halt()` does not guarantee. `loadInterruptTable` and `loadDescriptorTable` read the storage their operand addresses and `invalidatePage` accesses none at its; none of them stores through its operand, and no other function has a raw operand. Each `- safety:` item of an `unsafe` function other than a port function is its caller's obligation: `loadInterruptTable`'s and `loadDescriptorTable`'s, that the 10 bytes at `descriptor` are live and the table they name stays live and unchanged while the processor may use it; `loadTaskRegister`'s, that `selector` names an available task-state segment descriptor and the segment stays live and unchanged while the processor may use it; `invalidatePage`'s, that the translation that follows keeps the program's storage within the program's platform contract; `writeCr3`'s, that the page tables at `value` stay live while the processor uses them and each translation they give, including after a later edit and its invalidation, keeps the program's storage within that contract; `writeCr0`'s and `writeCr4`'s, that the mode or extensions that follow keep the program's storage and execution within that contract; and `readMsr`'s and `writeMsr`'s, that `index` names a model-specific register the processor implements and, for `writeMsr`, that the state that follows keeps the program's storage and execution within that contract ([§21.6.6](#2166-integer-addresses)). A port function's `- safety:` item is its caller's obligation: the device at `port` may change any storage it can reach, and the caller keeps that storage within the program's platform contract ([§21.6.6](#2166-integer-addresses)). Calling a function of the table above is an environment effect ([§8.11.2](../spec/08-generics-constraints-and-contracts.md#8112-confined)): it accesses processor state outside the program. A `confined` implementation calls none of them, `pause`, `readTimestamp` and `cpuid` included. Calling `entry` or `errorCodeEntry` ([§21.6.9](#2169-interrupt-entries)) is no environment effect.
+
+### 21.6.9. Interrupt entries
+
+`Kimi.X86` declares, wherever it is declared ([§21.6.8](#2168-machine-instructions)), the frame the processor pushes on an interrupt in 64-bit mode and the two Contracts of interrupt handler Types. They execute nothing, so they are not under `os == "none"`.
+
+| Declaration | Meaning |
+| --- | --- |
+| `#Layout("C") public struct InterruptFrame`, `Self is Copy`, with `public let` `ip`, `cs`, `flags`, `sp`, `ss: u64` | The frame as it lies in memory from its lowest address: 40 bytes, alignment 8, the Fields at offsets 0, 8, 16, 24 and 32 ([§21.1.2](#2112-layout-modes)). The Fields hold the interrupted code's `rip`, `cs`, `rflags`, `rsp` and `ss`. It declares no constructor and has no implicit one ([§6.3.6](../spec/06-declarations-and-containers.md#636-implicit-constructor)), so a program never constructs one. |
+| `public contract InterruptHandler` with `func handle(frame: ref/InterruptFrame)` | The Contract of a handler for a vector without an error code. |
+| `public contract ErrorCodeHandler` with `func handle(frame: ref/InterruptFrame, code: u64)` | The Contract of a handler for a vector that pushes an error code, which `code` receives. |
+
+A handler Type conforms to them by the ordinary rules ([§8.6.3](../spec/08-generics-constraints-and-contracts.md#863-implementation-matching)).
+
+The processor enters an interrupt through a gate of the interrupt descriptor table, whose code address the program supplies. Where `os == "none"` also holds ([§21.6.8](#2168-machine-instructions)), `Kimi.X86` declares the two `unsafe` functions that return it:
+
+| Function | Handler Contract | Vectors |
+| --- | --- | --- |
+| `entry<H>() -> usize`, `H is InterruptHandler` | `InterruptHandler` | those that push no error code |
+| `errorCodeEntry<H>() -> usize`, `H is ErrorCodeHandler` | `ErrorCodeHandler` | those that push one: 8, 10 to 14, 17, 21, 29 and 30 |
+
+A call returns the code address of the interrupt entry of `H` for that function: a function the compiler generates, one for each handler Type and variant, which the program writes into a gate ([`loadInterruptTable`](#2168-machine-instructions)). The entry calls `H.handle` with the frame the processor pushed and, for `errorCodeEntry`, the error code, and returns to the interrupted code with `iretq`. It preserves the interrupted code's general-purpose registers, saves no XMM register (soft float, [§21.6.1](#2161-target)), and realigns the stack to 16 bytes before any call. `H.handle` may be a function body or a `#LibraryImport` function ([§22.6](../spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports)): the entry calls either, and the rules below bind an import's code as they bind a body.
+
+`H.handle` must:
+
+1. not allocate or release storage (a destruction that releases storage included), write to `Console`, Abort on purpose, or start or wait for a task;
+2. access only static storage whose slots were Initialized before interrupts were enabled (a handler's access of a slot the interrupted code is initializing Aborts with `KIMI_E_STATIC_CYCLE`, and one of a slot that shutdown has marked Finished with `KIMI_E_STATIC_SHUTDOWN`, [§22.4.3](../spec/22-core-execution-and-foreign-functions.md#2243-static-initialization-and-shutdown));
+3. share storage with the code it interrupts only through volatile accesses ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) on both sides, or while that code has interrupts disabled.
+
+These rules are the `- safety:` obligation of the `unsafe` call of `entry` or `errorCodeEntry`, not a checked rule. A call of either returns an address and runs nothing: `H.handle`'s effects enter no caller's summary ([§15.6.4](../spec/15-ownership-and-lifetime-analysis.md#1564-calls)), because the processor, not the program, calls the entry, and the call is not an environment effect ([§8.11.2](../spec/08-generics-constraints-and-contracts.md#8112-confined)), so a `confined` implementation may make it.
+
+The none runtime runs each platform member with interrupts disabled (RFLAGS saved before the member and restored after it). A handler runs during a member only after a processor exception raised inside it, a non-maskable interrupt, or a maskable interrupt the member enabled itself (`X86.enableInterrupts`, `X86.enableInterruptsAndHalt`), and [§21.6.3](#2163-the-platform)'s rules while a member runs then hold for it: its clock read or Abort halts the processor with interrupts disabled, without a report. Otherwise a handler's clock read is ordinary, and an Abort inside it (a failed check) is an ordinary Abort. The runtime's exit begins with `cli`, so shutdown and every Abort end with interrupts disabled.

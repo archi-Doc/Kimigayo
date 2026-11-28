@@ -40,7 +40,7 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(sourced.Order(), declared.Keys.Order());
         Assert.Equal(declared.Count, declared.Values.Distinct().Count());
-        Assert.Equal((123, 140), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's; Platform's (SPEC 22.4.5).
+        Assert.Equal((126, 143), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names; G1-3b-2: Weak's; Platform's (SPEC 22.4.5); X86's frame and handler Contracts (OSF3b).
     }
 
     // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the Definition the registration gives the declaration's symbol;
@@ -48,10 +48,11 @@ public partial class KimiLibraryShapeTest
     // `#Intrinsic("Instruction", "member")` a row of InstructionRows (OSF1a). An intrinsic other than a family is named once. The
     // intrinsics no declaration names are those the MIR builder emits without a library function, `$abort`'s among them, and on
     // windows-x64 (the library without a target is its selection) MonotonicClock: its library declares no Time.monotonicNanoseconds, so
-    // no Windows module reaches the platform layer's clock, which Windows' layer does not define (the Tatara plan's B7b6, N6).
+    // no Windows module reaches the platform layer's clock, which Windows' layer does not define (the Tatara plan's B7b6, N6); on both
+    // hosted rows InterruptEntry, whose declarations lie where `os == "none"` holds (OSF3b).
     [Theory]
-    [InlineData("", 20, "MonotonicClock")]
-    [InlineData("x86_64-unknown-linux-musl", 21, "")]
+    [InlineData("", 20, "MonotonicClock,InterruptEntry")]
+    [InlineData("x86_64-unknown-linux-musl", 21, "InterruptEntry")]
     public void EachIntrinsicAttributeNamesItsIntrinsic(string target, int count, string unnamed)
     {
         var c = LibraryOf(target);
@@ -68,8 +69,9 @@ public partial class KimiLibraryShapeTest
 
         var once = named.Where(static x => !IntrinsicDisposition.TakesMember(x)).ToArray();
         Assert.Equal(once.Distinct(), once);
-        // Fail six times (the Time unit's Storage.clockFailure is the sixth), Instruction twice (X86's pause and readTimestamp, OSF1a).
-        Assert.Equal((count, 8), (once.Length, named.Count - once.Length));
+        // Fail six times (the Time unit's Storage.clockFailure is the sixth), Instruction three times (X86's pause and readTimestamp, OSF1a;
+        // cpuid, OSF1b).
+        Assert.Equal((count, 9), (once.Length, named.Count - once.Length));
         Assert.Equal(
             [
                 IntrinsicId.None, IntrinsicId.Abort, IntrinsicId.TypeTest, IntrinsicId.TestObserve, IntrinsicId.TestMessage, IntrinsicId.TestRequireAbort,

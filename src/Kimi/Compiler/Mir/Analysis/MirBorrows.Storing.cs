@@ -9,6 +9,9 @@ namespace Kimi.Compiler.Mir;
 // Input: the body's own CallRetention (TyCtxt.Retains over its declaration), its records (Own, the Reached entry of a storage's erased
 // case Type, All), the exposed holders (MirBorrows.Loans' Exposed), the checks replay's chains (MirDataflow.Head) and the facts at a
 // store's destination key (MirBorrows.PunKeys' RawInline and AnyStated, folded from TyCtxt.OwnLayers, the fold the pun rule reads).
+// Every Type it reads, the gate's, a pointer test's, an operand's and a storage's, is the case Type of the Type as the body's identity
+// premises make it (MirCases' PremisedKnownType and PremisedTypeOf; PLAN G355's interim, removed at R7-Y5), as Binding's record is
+// premised (DECISIONS BU-276); PunKeys' destination fact stays over MIR Types until then.
 // The value fact, M(h): by holder slot, the elements its whole value certainly holds, a MirLoanSets set in a namespace of its own (never
 // joined with σ): Own(i, part), input i's own part, an address or borrow of the storage i's layer at `part` refers to (a parameter's own
 // pointer is the layer at the root, part 0; a by-value input's layer is the part a Place names before its first layer Deref), or of
@@ -22,8 +25,9 @@ namespace Kimi.Compiler.Mir;
 // which ends its storage, SPEC 5.2.1, an encoded part; deeper: past i's referent) only while no pointer layer it reads was
 // redirected: Redirects, one flow-insensitive pass per body view, takes the least depth at which the body may write a pointer layer of
 // i's region (a store into a Place of i's region whose Type may hold a pointer; a borrow or Reborrow of a Place of it, not shared, or a
-// Move of a pointer read from it, which may write at that depth later), and depth 1 for every input where a call or a drop takes a value
-// that may hold a pointer, a store or borrow goes through a raw Place, or an Opaque site rests on an error; a landing at depth d holds
+// Move of a pointer read from it, which may write at that depth later), and depth 1 for every input where a call, or a drop A2 keeps in
+// the view (MirDrops.Elides: an elided Drop destroys nothing), takes a value that may hold a pointer, a store or borrow goes through a
+// raw Place, or an Opaque site rests on an error; a landing at depth d holds
 // while that least depth is d or more. A local root lands only through its own one element and one Deref, past an own step where its
 // element is past one or an own step follows the Deref.
 // The rule (Storing, at Flow.Store in the checks replay): a store in safe code whose destination lands past input i (depth 2 or more),
@@ -47,7 +51,8 @@ namespace Kimi.Compiler.Mir;
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
 // and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
 // exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
-// and a body whose own contract is the Limit (no rows; O-62 (a)).
+// an owned value's Drop A2 keeps (its destruction may run code), and a body whose own contract is the Limit (no rows; O-62 (a)). A Drop
+// whose Type a case substitutes makes its body view-dependent (MirMoveData.ViewDependent), so the Drop row reads each view's verdict.
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
@@ -149,7 +154,7 @@ internal sealed partial class MirBorrows
 
         for (var i = 1; complete && i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
-            if (MirTypes.HoldsRaw(types, cases.KnownType(this.body.Locals[i].Type), this.seen))
+            if (MirTypes.HoldsRaw(types, cases.PremisedKnownType(this.body.Locals[i].Type), this.seen))
             {
                 return true;
             }
@@ -218,7 +223,7 @@ internal sealed partial class MirBorrows
                     all = this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: var argument } && this.PointerType(argument);
                 }
             }
-            else if (terminator.Kind == MirTerminatorKind.Drop)
+            else if (terminator.Kind == MirTerminatorKind.Drop && !this.program.Drops.Elides(this.body.Ordinal, block, this.view))
             {
                 all |= this.PointerType(terminator.Place);
             }
@@ -262,9 +267,9 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included); none of no Type, a whole
-    // write's destination (MirCases.KnownTypeOf, PLAN G1073).
-    private bool PointerType(MirPlace place) => this.Holds(cases.KnownTypeOf(place), out _);
+    // Whether a value of a Place's premised case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included); none of no Type, a
+    // whole write's destination (MirCases.PremisedKnownType, PLAN G1073).
+    private bool PointerType(MirPlace place) => this.Holds(cases.PremisedKnownType(this.body.TypeOf(place)), out _);
 
     // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0).
     private void EnterStoring()
@@ -321,7 +326,7 @@ internal sealed partial class MirBorrows
             return this.slots[place.Root] >= 0 ? this.must[this.slots[place.Root]] : 0;
         }
 
-        if (this.StoringInput(place.Root) && cases.TypeOf(this.body.Operands[index]) is var type &&
+        if (this.StoringInput(place.Root) && cases.PremisedTypeOf(place) is var type &&
             (MirTypes.IsReference(type) || type.IsPointer) && this.Depth(place) == 0)
         {
             return this.sets.Add(0, this.Own(place.Root, place.Projection));
@@ -368,7 +373,7 @@ internal sealed partial class MirBorrows
                 ? (place.Root, layers > 1 ? -1 : OwnStepPart(this.mustSteps[first].Prefix, owned), layers) : default;
         }
 
-        if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [var element])
+        if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [(var element, _)])
         {
             return default;
         }
@@ -398,7 +403,7 @@ internal sealed partial class MirBorrows
         var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)), 0)] is { RawInline: true, AnyStated: false };
         var at = stepped ? part : LayerPart(part);
         var own = false;
-        foreach (var element in this.sets.Elements(this.mustValue))
+        foreach (var (element, _) in this.sets.Elements(this.mustValue))
         {
             var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0);
             own |= key.Input == input && (at < 0 || (stepped ? key.Part : LayerPart(key.Part)) != at);
@@ -416,7 +421,7 @@ internal sealed partial class MirBorrows
         }
 
         var storage = last + 1 < count ? place with { Projection = this.mustSteps[last + 1].Prefix } : place;
-        var type = types.Erase(cases.TypeOf(storage));
+        var type = types.Erase(cases.PremisedTypeOf(storage));
         var slot = MirCallee.Slot(this.body.Key.Decl!, input - 1);
         foreach (var written in this.contract.Writes)
         {

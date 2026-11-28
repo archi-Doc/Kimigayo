@@ -1,6 +1,7 @@
 #if arch == "x86_64"
-    /// x86-64 processor instructions (IMPL 21.6). Each member executes its instruction once, in program order with every memory
-    /// access and every other member (a compiler barrier), and every member is an environment effect (SPEC 8.11.2).
+    /// x86-64 processor instructions (IMPL 21.6). Every function except `entry` and `errorCodeEntry` executes its instruction once,
+    /// in program order with every memory access and every other function (a compiler barrier), and is an environment effect
+    /// (SPEC 8.11.2).
     public group X86
         /// Hints to the processor that the caller spins in a wait loop (`pause`).
         #Intrinsic("Instruction", "pause")
@@ -9,6 +10,12 @@
         /// Reads the processor's time-stamp counter (`rdtsc`).
         #Intrinsic("Instruction", "rdtsc")
         public func readTimestamp() -> u64
+
+        /// Reads the processor's identification and feature information for `leaf` and `subleaf` (`cpuid`).
+        ///
+        /// - return: The four registers the instruction writes.
+        #Intrinsic("Instruction", "cpuid")
+        public func cpuid(leaf: u32, subleaf: u32) -> CpuidResult
 
         #if os == "none"
             /// Stops the processor until the next interrupt (`hlt`).
@@ -22,6 +29,13 @@
             /// Sets the interrupt flag (`sti`).
             #Intrinsic("Instruction", "sti")
             public func enableInterrupts()
+
+            /// Sets the interrupt flag and stops the processor until the next interrupt (`sti; hlt`).
+            ///
+            /// With interrupts disabled at the call, `sti` holds them off for one more instruction, so one pending at the call ends
+            /// the `hlt` instead of running before it: the idle wait without a lost wakeup.
+            #Intrinsic("Instruction", "stihlt")
+            public func enableInterruptsAndHalt()
 
             /// Reads one byte from an I/O port (`in al, dx`).
             ///
@@ -64,3 +78,142 @@
             ///   program's platform contract (IMPL 21.6).
             #Intrinsic("Instruction", "outl")
             public unsafe func writePort32(port: u16, value: u32)
+
+            /// Loads the interrupt descriptor table register from the 10-byte limit and base at `descriptor` (`lidt`).
+            ///
+            /// - safety: The 10 bytes at `descriptor` are live, and the table they name stays live and unchanged while
+            ///   the processor may use it.
+            #Intrinsic("Instruction", "lidt")
+            public unsafe func loadInterruptTable(descriptor: raw/u8)
+
+            /// Loads the global descriptor table register from the 10-byte limit and base at `descriptor` (`lgdt`).
+            ///
+            /// - safety: The 10 bytes at `descriptor` are live, and the table they name stays live and unchanged while
+            ///   the processor may use it.
+            #Intrinsic("Instruction", "lgdt")
+            public unsafe func loadDescriptorTable(descriptor: raw/u8)
+
+            /// Loads the task register with the task-state segment `selector` names in the global descriptor table (`ltr`).
+            ///
+            /// - safety: `selector` names an available task-state segment descriptor, and the segment stays live and unchanged
+            ///   while the processor may use it.
+            #Intrinsic("Instruction", "ltr")
+            public unsafe func loadTaskRegister(selector: u16)
+
+            /// Invalidates the processor's cached translation of the page that holds `address` (`invlpg`); it accesses no
+            /// storage at `address`.
+            ///
+            /// - safety: The translation that follows keeps the program's storage within its platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "invlpg")
+            public unsafe func invalidatePage(address: raw/())
+
+            /// Reads control register 0, the processor's operating mode (`mov r64, cr0`).
+            #Intrinsic("Instruction", "rdcr0")
+            public func readCr0() -> u64
+
+            /// Reads control register 2, the linear address of the latest page fault (`mov r64, cr2`).
+            #Intrinsic("Instruction", "rdcr2")
+            public func readCr2() -> u64
+
+            /// Reads control register 3, the physical address of the page tables' root (`mov r64, cr3`).
+            #Intrinsic("Instruction", "rdcr3")
+            public func readCr3() -> u64
+
+            /// Reads control register 4, the processor's extension flags (`mov r64, cr4`).
+            #Intrinsic("Instruction", "rdcr4")
+            public func readCr4() -> u64
+
+            /// Writes control register 0 (`mov cr0, r64`).
+            ///
+            /// - safety: The processor's mode that follows keeps the program's storage and execution within its platform
+            ///   contract (IMPL 21.6).
+            #Intrinsic("Instruction", "wrcr0")
+            public unsafe func writeCr0(value: u64)
+
+            /// Writes control register 3, switching the page tables to the root at `value` (`mov cr3, r64`).
+            ///
+            /// - safety: The page tables at `value` stay live while the processor uses them, and each translation they give,
+            ///   including after a later edit and its invalidation, keeps the program's storage within its platform contract
+            ///   (IMPL 21.6).
+            #Intrinsic("Instruction", "wrcr3")
+            public unsafe func writeCr3(value: u64)
+
+            /// Writes control register 4 (`mov cr4, r64`).
+            ///
+            /// - safety: The processor's extensions that follow keep the program's storage and execution within its platform
+            ///   contract (IMPL 21.6).
+            #Intrinsic("Instruction", "wrcr4")
+            public unsafe func writeCr4(value: u64)
+
+            /// Reads the model-specific register `index` (`rdmsr`).
+            ///
+            /// - safety: `index` names a model-specific register the processor implements; a read may change the state it
+            ///   reports.
+            #Intrinsic("Instruction", "rdmsr")
+            public unsafe func readMsr(index: u32) -> u64
+
+            /// Writes `value` to the model-specific register `index` (`wrmsr`).
+            ///
+            /// - safety: `index` names a model-specific register the processor implements, and the state that follows keeps
+            ///   the program's storage and execution within its platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "wrmsr")
+            public unsafe func writeMsr(index: u32, value: u64)
+
+            /// Returns the code address of `H`'s interrupt entry, for a gate of the interrupt descriptor table.
+            ///
+            /// - safety: Whenever the entry runs, `H.handle` meets IMPL 21.6's handler rules: it does not allocate or release
+            ///   storage, write to Console, Abort on purpose, or start or wait for a task; it accesses only static storage
+            ///   Initialized before interrupts were enabled; and it shares storage with the code it interrupts only through
+            ///   volatile accesses on both sides or while that code has interrupts disabled.
+            #Intrinsic("InterruptEntry", "plain")
+            public unsafe func entry<H>() -> usize
+                H is InterruptHandler
+
+            /// Returns the code address of `H`'s interrupt entry for a vector that pushes an error code (8, 10-14, 17, 21, 29,
+            /// 30), for a gate of the interrupt descriptor table.
+            ///
+            /// - safety: As for `entry`, `H.handle` meets IMPL 21.6's handler rules whenever the entry runs: no allocation or
+            ///   release, Console write, deliberate Abort or task; only static storage Initialized before interrupts were enabled;
+            ///   storage shared with the interrupted code only through volatile accesses on both sides or while that code has
+            ///   interrupts disabled.
+            #Intrinsic("InterruptEntry", "code")
+            public unsafe func errorCodeEntry<H>() -> usize
+                H is ErrorCodeHandler
+
+        /// What the processor pushes on an interrupt in 64-bit mode, as it lies in memory from its lowest address; each Field holds
+        /// the register its doc names.
+        #Layout("C")
+        #Lang("InterruptFrame")
+        public struct InterruptFrame
+            Self is Copy
+
+            /// The address at which the interrupted code resumes (`rip`).
+            public let ip: u64
+            /// The interrupted code's code segment selector (`cs`).
+            public let cs: u64
+            /// The interrupted code's flags (`rflags`).
+            public let flags: u64
+            /// The interrupted code's stack pointer (`rsp`).
+            public let sp: u64
+            /// The interrupted code's stack segment selector (`ss`).
+            public let ss: u64
+
+        /// The Contract of a handler for a vector without an error code.
+        #Lang("InterruptHandler")
+        public contract InterruptHandler
+            func handle(frame: ref/InterruptFrame)
+
+        /// The Contract of a handler for a vector that pushes an error code, which `code` receives.
+        #Lang("ErrorCodeHandler")
+        public contract ErrorCodeHandler
+            func handle(frame: ref/InterruptFrame, code: u64)
+
+        /// The four registers `cpuid` writes, in the order `eax`, `ebx`, `ecx`, `edx`.
+        #Layout("C")
+        public struct CpuidResult
+            Self is Copy
+
+            public let eax: u32
+            public let ebx: u32
+            public let ecx: u32
+            public let edx: u32

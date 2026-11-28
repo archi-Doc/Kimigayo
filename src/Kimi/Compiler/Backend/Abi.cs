@@ -17,8 +17,9 @@
 // string reference (IsSharedString) are this component's own Type rules, read by no other phase (R7-T2).
 // Outputs: Of, a FunctionAbi without a name (empty), which its definition names (FunctionAbi.Named: ModuleCodegen its items, an
 // import its external symbol); Matches, whether an existing FunctionAbi is that signature, so a caller reuses it without allocating;
-// HasResultSlot and ResultType, the internal convention's result rules over a record; Recorded, the flags a FunctionAbi keeps as given
-// (FunctionAbi.Flags), which Matches compares as one value.
+// HasResultSlot and ResultType, the internal convention's result rules over a record; Ret, the result slot's one parameter record (an
+// InstructionRows routine's first); Recorded, the flags a FunctionAbi keeps as given (FunctionAbi.Flags), which Matches compares as one
+// value.
 // Invariants: Of is a function of its inputs; Matches(Of(x), x) holds and allocates nothing.
 // Must not gate or map a Layout outcome other than Ok, flags under C or a C parameter without an argument representation (broken
 // contracts, which throw), read syntax, Origins, HIR or MIR, name a function, keep state or use LINQ.
@@ -79,7 +80,8 @@ internal static class Abi
         PlatformMember = 64,
     }
 
-    private static AbiParameter Ret => new("ptr", "ret", AbiParameterKind.ResultSlot);
+    /// <summary>Gets the result slot parameter, the one record of it: <see cref="Of"/>'s, and an InstructionRows routine's first.</summary>
+    internal static AbiParameter Ret => new("ptr", "ret", AbiParameterKind.ResultSlot);
 
     private static AbiParameter Context => new("ptr", "context", AbiParameterKind.Context);
 

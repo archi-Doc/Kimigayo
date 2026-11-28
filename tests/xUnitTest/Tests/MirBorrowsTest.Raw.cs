@@ -1635,10 +1635,9 @@ public sealed partial class MirBorrowsTest
                     inspect(slot@ref)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3; registered for X-2), narrowed by Z5-R1 and Z5-R2: a Copy read of a Tuple or fixed-array Place
-    // enclosing a `during self` layer inline (also inside a nested Tuple) is read element by element and carries its owner's own-step
-    // entry (enclosingCopy, enclosingOnly, arrayCopy, nestedCopy); a Borrow of a layer's Place or
-    // of an enclosing one issues its Loan, and a read through it is placed by its exact lent position (layerRef, enclosingRef; arrayRef
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3), narrowed by Z5-R1 and Z5-R2, removed by G1301 C (R7-M129): a Copy read of a Tuple or fixed-array
+    // Place enclosing a `during self` layer inline (also inside a nested Tuple) is read element by element and carries its owner's own-step
+    // entry (enclosingCopy, enclosingOnly, arrayCopy, nestedCopy); a Borrow of a layer's Place or of an enclosing one issues its Loan, and a read through it is placed by its exact lent position (layerRef, enclosingRef; arrayRef
     // reads none), carrying its parents whole (SPEC 15.6 Holders): layerRef's read carries y's Loan, which b holds, into the generic
     // call, so y's end conflicts as for the same read through no dereference or through the holder's borrow (the base's CLC on those
     // twins; the Middle's ruling on Z5-R1, 11-22 13:0x); a Borrow of the holder, a read of the layer through it, a read of an element and
@@ -1745,17 +1744,18 @@ public sealed partial class MirBorrowsTest
     // an own-step entry exposes its owner's storage, not its whole root, so a reference stored beside the owner in the same root keeps
     // its exact lender, whatever reads the owner's layer (an enclosing Copy, ex2; the layer's own read, q12, ex2p, q12w): q12's dependent
     // Warning and q12w's Warning on a valid program (5.2.1 (3), Z5-F's t4c) are recovered, ex2 and ex2p leave the Unplaced limit. A plain
-    // address exposes the whole root (rv1: `tt.1@raw` may address the reference's own position), which stays at the limit.
+    // address exposes the whole root (rv1: `tt.1@raw` may address the reference's own position), so rv1's read stays Unplaced and carries
+    // its parents rested (G1301 C): nothing conflicts while x is used, and the valid program is accepted.
     [Theory]
     [InlineData("q12", "let d = Packet.init()|let tt = (Packet.init(), d@ref)|let p = tt.0.pair.0|let x = tt.1@follow.pair.0|let m = d@move|usep(x)|usep(p)", "d|d OwnStepDeparture_Kd")]
     [InlineData("q12w", "let d = Packet.init()|let tt = (Packet.init(), d@raw)|let p = tt.0.pair.0|unsafe|    let x = (*tt.1).pair.0|    let c = d@move|    usep(x)|usep(p)", "d OwnStepDeparture_Kd")]
     [InlineData("ex2", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let t = tt.0.pair|let x = tt.1@follow.0|usep(x)|usep(t.0)", "")]
     [InlineData("ex2p", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let p = tt.0.pair.0|let x = tt.1@follow.0|usep(x)|usep(p)", "")]
-    [InlineData("rv1", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let p = tt.1@raw|let x = tt.1@follow.0|usep(x)", "tt.1@follow.0 Unsupported_Kd")]
+    [InlineData("rv1", "let d = Packet.init()|let tt = (Packet.init(), d.pair@ref)|let p = tt.1@raw|let x = tt.1@follow.0|usep(x)", "")]
     public void AnOwnStepEntryKeepsTheLenderOfAReferenceBesideIt(string id, string lines, string expected)
         => Assert.Equal(OwnStepExpected(id, expected), OwnStepProblems(id, lines));
 
-    // Z5-R1 (SPEC 15.6 Holders, 15.6 Addresses, 5.7 Reading a Field through a dereference, 5.2.1 (3); PQ-10 narrowed): a read of a
+    // Z5-R1 (SPEC 15.6 Holders, 15.6 Addresses, 5.7 Reading a Field through a dereference, 5.2.1 (3); G1301 C): a read of a
     // `during self` layer or an enclosing Place through a dereference carries its owner's own-step entry at its exact lent position
     // (MirBorrows.Lent) with every Loan its parents carry, so the owner's Move under it conflicts (and departs the owner's own step where the
     // position names the owner from its root); where the read's own steps name the owner past the dereference, the base's row (g1, g2, g5,
@@ -1764,15 +1764,18 @@ public sealed partial class MirBorrowsTest
     // handle's payload; oh3, oha: that payload's Deref past a whole-handle lender, oha's an address, which carries no Loan), else to its
     // Prefix row past the lender's Deref (Lent's LentPlace), so the read carries its parents whole through a raw lender (pr1, pr2, pr3:
     // two lender segments; pre: an enclosing Tuple; prw: a write; pru: a uniq lender) and a shared one (n2, n2v leave the limit). Where
-    // no exact position exists and the own steps name no owner, in a view whose borrow the base marked, the read's located
-    // Unsupported_Kd (tw3: a reference stored twice); elsewhere silent (G1301's open classes: prs, a pointer stored twice, and prc2, a
-    // call's result whose raw layer states its Origin, `during r`, invalid or undecided by the text and accepted; bn1, bn2, valid reads
-    // through a call's result, accepted; bn3 conflicts by 15.6.4). Where that layer states no Origin, as G1276 filed prc2 and prc2v, the
-    // call may store through its own pointer there a value keeping o@ref's Loan, used after every point (15.6.4, 5.7 Calls; the owner's
-    // O-524 (a)): MirBorrowsTest.CallResult's prc2Bad and prc2vBad (G841c). The Warning of a non-direct entry is PLAN G1277's (N10; pr1:
-    // not given); a plain address is a direct entry and gives it (pra). Labels from SPEC (Z5-R1 design section 5; G1276 design section 6
-    // and Revision 1c section 3, before any run; pra's Warning corrected after it, as the design's section 7 measured it; prc2's and
-    // prc2v's stated layer: G841c's probe, labelled before it ran).
+    // no exact position exists and the own steps name no owner, in a view whose borrow lends a layer's or enclosing Place (`tabling`), the
+    // read carries its parents whole, rested (G1301 C, DECISIONS R7-M129): an access that conflicts only through them is the located
+    // Unsupported_Kd at the access (mxe, rbc, rbc2, d14d, rv1d, ps1m, ps1b: by SPEC a conflict, with the Warning where an owner is
+    // moved), one a decided entry of another holder meets keeps its record (mxq), and with none the program is accepted (tw3: a
+    // reference stored twice; a04, d6arr, d7arr, d14, q1, q11, ps1, rbcv); elsewhere silent (G1301's open classes: prs, a pointer stored
+    // twice, and prc2, a call's result whose raw layer states its Origin, `during r`, invalid or undecided by the text and accepted; bn1,
+    // bn2, valid reads through a call's result, accepted; bn3 conflicts by 15.6.4). Where that layer states no Origin, as G1276 filed prc2
+    // and prc2v, the call may store through its own pointer there a value keeping o@ref's Loan, used after every point (15.6.4, 5.7 Calls;
+    // the owner's O-524 (a)): MirBorrowsTest.CallResult's prc2Bad and prc2vBad (G841c). The Warning of a non-direct entry is PLAN G1277's
+    // (N10; pr1: not given); a plain address is a direct entry and gives it (pra). Labels from SPEC (Z5-R1 design section 5; G1276 design
+    // section 6 and Revision 1c section 3, before any run; pra's Warning corrected after it, as the design's section 7 measured it; prc2's
+    // and prc2v's stated layer: G841c's probe, labelled before it ran; G1301 C's rows: its design section 6, before any run).
     [Theory]
     [InlineData("t5c", "let t = (b.pair@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
     [InlineData("mx", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
@@ -1818,9 +1821,25 @@ public sealed partial class MirBorrowsTest
     [InlineData("prc2v", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) during r => r@follow.inner.pair@raw\n", "")]
     [InlineData("prp", "gq(fresh@raw/(raw/u8, i32))", "func gq(p: raw/(raw/u8, i32))\n    unsafe\n        let x = (*p).0\n        usep(x)\n", "")]
     [InlineData("bn1", "var a = (1, 2)|let q = pickN(a@ref)|let t = q@follow|a = (3, 4)|usen(t.0)", "func usen(n: i32) => ()\nfunc pickN(r: ref/(i32, i32)) -> ref/(i32, i32) during r => r\n", "")]
-    [InlineData("bn2", "var a = (fresh, 1)|let q = pickR(a@ref)|let x = q@follow.0|a = (fresh, 2)|usep(x)", "func pickR(r: ref/(raw/u8, i32)) -> ref/(raw/u8, i32) during r => r\n", "")]
+    [InlineData("bn2", "var a = (fresh, 1)|let q = pickR(a@ref)|let x = q@follow.0|a = (fresh, 2)|usep(x)", PickR, "")]
     [InlineData("bn3", "var a = (1, 2)|let q = pickN(a@ref)|let t = q@follow|a = (3, 4)|usen(t.0)|usen(q@follow.0)", "func usen(n: i32) => ()\nfunc pickN(r: ref/(i32, i32)) -> ref/(i32, i32) during r => r\n", "a = (3, 4)")]
-    [InlineData("tw3", "var r = b.pair@ref|r = d.pair@ref|let x = r@follow.0|usep(x)", "", "r@follow.0 Unsupported_Kd")]
+    [InlineData("tw3", "var r = b.pair@ref|r = d.pair@ref|let x = r@follow.0|usep(x)", "", "")]
+    [InlineData("a04", "let s = b.arr.slice()|let x = s[0]|usep(x)", "", "")]
+    [InlineData("d6arr", "let a = [b.pair@ref, d.pair@ref]|let x = a[1]@follow.0|usep(x)", "", "")]
+    [InlineData("d7arr", "let a = [b.pair@ref, d.pair@ref]|var i: isize = 1|let x = a[i]@follow.0|usep(x)", "", "")]
+    [InlineData("d14", "var t = (b.pair@ref, d.pair@ref)|let u = t@uniq|let x = t.1@follow.0|usep(x)", "", "")]
+    [InlineData("d14d", "var t = (b.pair@ref, d.pair@ref)|let u = t@uniq|let x = t.1@follow.0|let m = d@move|usep(x)", "", "d Unsupported_Kd")]
+    [InlineData("rv1d", "let tt = (Packet.init(), d.pair@ref)|let p = tt.1@raw|let x = tt.1@follow.0|let m = d@move|usep(x)", "", "d Unsupported_Kd")]
+    [InlineData("q1", "var tt = (Packet.init(), b.pair@ref)|let p = tt@raw|tt.1 = d.pair@ref|let x = tt.1@follow.0|usep(x)", "", "")]
+    [InlineData("q11", "var tt = (Packet.init(), b.pair@ref)|let p = tt.0@raw|tt.1 = d.pair@ref|let x = tt.1@follow.0|usep(x)", "", "")]
+    [InlineData("ps1", "var t = (b.pair@ref, b.pair@ref)|t.1 = d.pair@ref|let x = t.1@follow.0|usep(x)", "", "")]
+    [InlineData("ps1m", "var t = (b.pair@ref, b.pair@ref)|t.1 = d.pair@ref|let x = t.1@follow.0|let m = d@move|usep(x)", "", "d Unsupported_Kd")]
+    [InlineData("ps1b", "var t = (b.pair@ref, b.pair@ref)|t.1 = d.pair@ref|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b Unsupported_Kd")]
+    [InlineData("mxe", "let q = pickR(b.pair@ref)|let x = q@follow.0|let m = b@move|usep(x)", PickR, "b Unsupported_Kd")]
+    [InlineData("rbc", "let r: ref/(raw/u8, i32) = b.pair@ref|let q = pickR(r@follow@ref)|let x = q@follow.0|let m = b@move|usep(x)", PickR, "b Unsupported_Kd")]
+    [InlineData("rbc2", "let q1 = pickR(b.pair@ref)|let q2 = pickR(q1@follow@ref)|let x = q2@follow.0|let m = b@move|usep(x)", PickR, "b Unsupported_Kd")]
+    [InlineData("rbcv", "let r: ref/(raw/u8, i32) = b.pair@ref|let q = pickR(r@follow@ref)|let x = q@follow.0|usep(x)|let m = b@move", PickR, "")]
+    [InlineData("mxq", "let q = pickR(b.pair@ref)|let x = q@follow.0|let m = b@move|usep(x)|let y = q@follow.1|usen(y)", PickR + "func usen(n: i32) => ()\n", "b")]
     public void ALayerReadThroughADereferenceCarriesItsOwnersEntryAndItsParents(string id, string lines, string declarations, string expected)
     {
         var c = MirBuildTest.Compile(LentShapes + declarations + $"func {id}(fresh: raw/u8)\n    let b = Packet.init()\n    let d = Packet.init()\n" +
@@ -1829,6 +1848,29 @@ public sealed partial class MirBorrowsTest
             expected.Length == 0 ? string.Empty : string.Join(" | ", expected.Split('|').Select(x => $"{id}: {x}").Order(StringComparer.Ordinal)),
             string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]).Order(StringComparer.Ordinal)));
     }
+
+    // G1301 C (SPEC 5.7 Reading a Field through a dereference, 15.6 Holders, 15.6 Addresses; DECISIONS R7-M129; the owner's O-547 (a)):
+    // a read with no exact lent position whose own steps name no owner may be any layer the storage it reads through holds, so in a view
+    // with a borrow of a layer's or enclosing Place (`tabling`) it carries its parents whole, rested: an access that conflicts only
+    // through them is the located Unsupported_Kd at the access, a conflict a decided entry gives keeps its record, an independent record
+    // stays, and a valid program is accepted. The rows whose signature or declarations the template above lacks (UnplacedReads), with
+    // their published records; labels from SPEC before any run (G1301 C's design section 6 and its review's twins).
+    [Theory]
+    [InlineData("cy1", "")] // V (U1's named limit, a store cycle)
+    [InlineData("lim1", "")] // V (U1's named limit, B1's)
+    [InlineData("epr", "Unsupported_Kd: b")] // I: CLC + W at `b@move`; b.pair's Loan is in q's merged value, rested in x
+    [InlineData("pxp", "Unsupported_Kd: r@follow = Packet.init()")] // I: CLC + W at the write of *r, which x keeps through q (15.6.2, 5.2.1 (3))
+    [InlineData("nbkt", "ComparisonLoanConflict_Kd: k = 2")] // I: CLC at `k = 2`, decided in x's layer beside s's rested Loan (the per-entry tier)
+    [InlineData("lpx", "Unsupported_Kd: d = Packet.init()")] // I: CLC + W at the write of d; x keeps d.pair's Loan round the back edge
+    [InlineData("nl", "")] // V: only shared reads through r; the view has no Loan (N8's twin)
+    [InlineData("rcall", "Unsupported_Kd: takeU(b@uniq)")] // I: CLC at the call's unique borrow of b while x keeps b.pair's Loan
+    [InlineData("lpr", "Unsupported_Kd: d = Packet.init()")] // I: CLC + W at the write of d; q is loop-carried
+    [InlineData("ist", "Unsupported_Kd: b")] // I: CLC + W at `b@move`; h holds x's value
+    [InlineData("vst", "")] // V: ist with h dead at `b@move`
+    [InlineData("rbc3v", "")] // V: a Reborrow chain, x dead at `b@move`
+    [InlineData("vws", "UnsatisfiedOriginRelation_Kd: b.data = fresh")] // I by the Origin relation (fresh states no `during`), an independent record
+    public void AnUnplacedReadInATablingViewCarriesItsParentsRested(string id, string records)
+        => Assert.Equal(records.Length == 0 ? [] : records.Split(" | "), RawPointerSyntaxTest.Records(LentShapes + PickR + UnplacedReads[id]));
 
     // V16 (SPEC 15.6 Addresses; DECISIONS R4-M116): the address pre-pass walks a view's uses only where a raw Ref was issued or a projection
     // row may be or enclose a `during self` layer, so a body with neither takes no step per location beyond its Loans' scan: 32 more
@@ -2712,4 +2754,145 @@ public sealed partial class MirBorrowsTest
 
         """ + "func p1St2(t: uniq/((uniq/(Array<uniq/(raw/(ref/i32 during o)) during q>) during b, uniq/((uniq/i32 during k, " + P1NestType +
         ")) during c)) during e) => ()\n";
+
+    // G1301 C's whole programs (AnUnplacedReadInATablingViewCarriesItsParentsRested), each after LentShapes and pickR: a read with no
+    // exact lent position whose own steps name no owner, in a view with a borrow of a layer's or enclosing Place.
+    private static readonly Dictionary<string, string> UnplacedReads = new()
+    {
+        ["cy1"] = """
+            func cy1(c: bool)
+                let b = Packet.init()
+                let d = Packet.init()
+                var r = b.pair@ref
+                var s = d.pair@ref
+                while c
+                    let t = r
+                    r = s
+                    s = t
+                let x = r@follow.0
+                usep(x)
+            """,
+        ["lim1"] = """
+            func lim1(c: bool)
+                let b = Packet.init()
+                let x0 = (b.pair@ref, 1)
+                var x1 = x0
+                if c
+                    x1 = x0
+                var x2 = x1
+                if c
+                    x2 = x1
+                let y = x2.0@follow.0
+                usep(y)
+            """,
+        ["epr"] = """
+            func epr(c: bool, r: ref/(raw/u8, i32))
+                let b = Packet.init()
+                var q = r@follow@ref
+                if c
+                    q = b.pair@ref
+                let x = q@follow.0
+                let m = b@move
+                usep(x)
+            """,
+        ["pxp"] = """
+            func pickP(r: ref/Packet) -> ref/(raw/u8 during r, i32) during r => r@follow.pair@ref
+            func pxp(r: uniq/Packet)
+                let b = Packet.init()
+                let z = b.pair@ref
+                let q = pickP(r@follow@ref)
+                let x = q@follow.0
+                r@follow = Packet.init()
+                usep(x)
+            """,
+        ["nbkt"] = """
+            struct PK<T>
+                internal var pair: (raw/u8 during self, i32)
+                internal var k: T
+                public init(k: T)
+                    self.pair = (null, 0)
+                    self.k = k@move
+            func pickPK<T>(r: ref/PK<T>) -> ref/(raw/u8 during r, i32) during r => r@follow.pair@ref
+            func nbkt()
+                var k: i32 = 1
+                let s = PK.init(k@ref)
+                let z = s.pair@ref
+                let q = pickPK(s@ref)
+                let x = q@follow.0
+                k = 2
+                usep(x)
+            """,
+        ["lpx"] = """
+            func lpx(c: bool)
+                var d = Packet.init()
+                var x: raw/u8 = null
+                while c
+                    usep(x)
+                    let q = pickR(d.pair@ref)
+                    x = q@follow.0
+                    d = Packet.init()
+            """,
+        ["nl"] = """
+            func nl(r: ref/Packet)
+                let z = r@follow.pair@ref
+                let q = pickR(r@follow.pair@ref)
+                let x = q@follow.0
+                usep(x)
+            """,
+        ["rcall"] = """
+            func takeU(p: uniq/Packet) => ()
+            func rcall(fresh: raw/u8)
+                var b = Packet.init()
+                let q = pickR(b.pair@ref)
+                let x = q@follow.0
+                takeU(b@uniq)
+                usep(x)
+            """,
+        ["lpr"] = """
+            func lpr(c: bool)
+                var d = Packet.init()
+                var q = pickR(d.pair@ref)
+                while c
+                    let x = q@follow.0
+                    d = Packet.init()
+                    usep(x)
+                    q = pickR(d.pair@ref)
+            """,
+        ["ist"] = """
+            func ist(fresh: raw/u8)
+                let b = Packet.init()
+                let q = pickR(b.pair@ref)
+                let x = q@follow.0
+                let h = (x, 1)
+                let m = b@move
+                usep(h.0)
+            """,
+        ["vst"] = """
+            func vst(fresh: raw/u8)
+                let b = Packet.init()
+                let q = pickR(b.pair@ref)
+                let x = q@follow.0
+                let h = (x, 1)
+                usep(h.0)
+                let m = b@move
+            """,
+        ["rbc3v"] = """
+            func rbc3v(fresh: raw/u8)
+                let b = Packet.init()
+                let r: ref/(raw/u8, i32) = b.pair@ref
+                let r2: ref/(raw/u8, i32) = r@follow@ref
+                let q = pickR(r2@follow@ref)
+                let x = q@follow.0
+                usep(x)
+                let m = b@move
+            """,
+        ["vws"] = """
+            func vws(fresh: raw/u8)
+                var b = Packet.init()
+                let q = pickR(b.pair@ref)
+                let x = q@follow.0
+                b.data = fresh
+                usep(x)
+            """,
+    };
 }

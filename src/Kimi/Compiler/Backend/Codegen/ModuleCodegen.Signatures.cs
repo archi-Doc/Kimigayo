@@ -10,14 +10,14 @@ namespace Kimi.Compiler.Backend;
 // The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1; DECISIONS R5-M65, R5-M89, R5-M102, R5-M106): a body item's from
 // its own body, the one its definition and every call write; a DropGlue item's; a Builtin item's, its requirement's in its instance
 // (DECISIONS R5-M126), and a PropertyWitness item's, its key's (InstanceCollector.StorageSignature; DECISIONS R5-M141); a StaticInit item's
-// slot's ensure function; the per-index cache they share with the called imports' C signatures
-// (ModuleCodegen.Imports.cs) and the common Function values' entries (ModuleCodegen.Erasures.cs); and the unnamed signatures of the
-// calls that reach their callee through a pointer (Unnamed: a Function Type's erased one, Erased; a virtual slot's, Slot), keyed by their
-// inputs and kept while a Write uses them: each computed once per Write, or kept, and the previous one reused while it still matches, so
-// a warm module allocates nothing. A request naming an item is for a Generated item (Requested: K11). A slot's and a Builtin
-// item's signature reads TyCtxt.Signature, code generation's input for a virtual slot (package C 3.2), under the call's substitution, an
-// Item's own (TyCtxt.SubstOfItem, a function of its Type) or none, each Type in the item's instance by InstanceCollector.TypeOf: no
-// substitution is composed here (DECISIONS R5-M114).
+// slot's ensure function; the per-index cache they share with the called imports' C signatures (ModuleCodegen.Imports.cs), the common
+// Function values' entries (ModuleCodegen.Erasures.cs) and the interrupt entries' thunks (ModuleCodegen.Entries.cs); and the unnamed
+// signatures of the calls that reach their callee through a pointer (Unnamed: a Function Type's erased one, Erased; a virtual slot's,
+// Slot), keyed by their inputs and kept while a Write uses them: each computed once per Write, or kept, and the previous one reused while
+// it still matches, so a warm module allocates nothing. A request naming an item is for a Generated item (Requested: K11). A slot's and a
+// Builtin item's signature reads TyCtxt.Signature, code generation's input for a virtual slot (package C 3.2), under the call's
+// substitution, an Item's own (TyCtxt.SubstOfItem, a function of its Type) or none, each Type in the item's instance by
+// InstanceCollector.TypeOf: no substitution is composed here (DECISIONS R5-M114).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The name of a body item's function before its index (<see cref="Signature"/>).</summary>
@@ -228,9 +228,9 @@ internal sealed partial class ModuleCodegen
         return result;
     }
 
-    // K11: a request naming an item (Signature, Glue, Ensure, Shim, Adapter, Factory, Row) is for a Generated item, the only
-    // items the module defines; another is a broken contract, recorded at the item's site. Release names the item
-    // being written, which the Write's loop chose by its mark.
+    // K11: a request naming an item (Signature, Glue, Ensure, Shim, Adapter, Thunk, Factory, Row) is for a Generated item, the only items
+    // the module defines; another is a broken contract, recorded at the item's site. Release names the item being written, which the
+    // Write's loop chose by its mark.
     private void Requested(int item)
     {
         if (!this.set.IsGenerated(item))
@@ -239,9 +239,9 @@ internal sealed partial class ModuleCodegen
         }
     }
 
-    // The head of the by-index caches of Signature, Adapter, ImportSignature and a descriptor's row (ModuleCodegen.Objects): the arrays
-    // grown to hold the index, and the entry stamped in this Write (null: the caller computes it, then stamps it: Define for an item's
-    // signature).
+    // The head of the by-index caches of Signature, Adapter, Thunk, ImportSignature and a descriptor's row (ModuleCodegen.Objects): the
+    // arrays grown to hold the index, and the entry stamped in this Write (null: the caller computes it, then stamps it: Define for an
+    // item's signature).
     private T? Stamped<T>(ref T?[] kept, ref int[] stamps, int index)
         where T : class
     {
