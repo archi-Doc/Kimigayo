@@ -3,7 +3,7 @@
 // Owns substitution interning (Subst): the substitutions of selected calls, closures, function items and the calls the compiler
 // synthesizes, and their application to a Type and composition (SPEC 8.1.3, 8.6.4, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's length substitution and
-// Origin forwarding; the Self-less substitution tests read (StorageSubst, until R7-P6).
+// Origin forwarding.
 // Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type in an instance by the substitution alone,
 // with its Formation (Apply); a substitution in an instance by the substitution alone, with its Formation (Compose); a Type in an
 // instance with its storage verdict (Instance: Apply, then Binding's one storage query, Binding.PrepareTypeStorage; DECISIONS BU-36,
@@ -134,15 +134,6 @@ internal sealed partial class TyCtxt
         return ReferenceEquals(erased, this.Erase(binding.SelfType(this.EnclosingDeclaration(closure)!))) ? null
             : this.Intern(closure, null, erased, [], [], [], []);
     }
-
-    // The Self-less substitution tests read (Instance(type, StorageSubst(call)); R7-P6 re-points them): a call's target's slots,
-    // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
-    // that SubstOf adds, as the old analyses have always instantiated a call's Types. A second substitution per call beside SubstOf, it
-    // goes when its readers apply SubstOf instead: the old analyses' went at R6-check H10b, the legacy comparison composition's with
-    // R7-P5a and Binding's requirement instantiation with R7-P5b, so only tests read it (DECISIONS R5-M36).
-    [Transitional("R7", Reason = "No src reader; R7-P6 re-points the test reads to SubstOf.")]
-    internal Subst StorageSubst(CallPlan call)
-        => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 7.3: a function item's substitution, the context its Item Type binds: its function's own Type arguments, the declaring Type its
     // last Component holds and its length arguments, without Origins (an Item keeps its per-call Origins in place); a function of the Type
