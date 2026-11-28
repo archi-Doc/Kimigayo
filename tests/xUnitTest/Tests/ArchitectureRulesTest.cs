@@ -347,6 +347,7 @@ public class ArchitectureRulesTest
         "Binding.OriginInheritance.cs:CompleteImplementationOrigins=2 formed",
         "Binding.OriginPremises.cs:Environment=2 key", // PLAN G1082: a premise session environment's key, a comparison's required signature and each enclosing one.
         "Binding.OriginRequirements.cs:PairOrdinal=1 key",
+        "Binding.Origins.Model.cs:Same=2 key", // DECISIONS BU-19 (RelationWalk.fittingParts): the Callable comparison a kept pair was related under, TypeMemo's further input.
         "Binding.OwnedConversions.cs:JudgeErasedOwned=2 key", // R7-O2 O2-N's N-B3a: an Owned obligation's Type against the use's published subject, which deferral is the use's last
         "Binding.PairCases.cs:CaseType=2 unchanged",
         "Binding.PairCases.cs:PairSlotCondition=1 key",
@@ -361,7 +362,7 @@ public class ArchitectureRulesTest
         "Binding.Properties.cs:AccessorTypeMismatch=1 declared",
         "Binding.Properties.cs:BindAccessorBody=1 kind",
         "Binding.Properties.cs:ValidateAccessor=1 declared",
-        "Binding.PropertyMatching.cs:MatchPropertyOperation=3 declared",
+        "Binding.PropertyMatching.cs:MatchPropertyOperation=2 declared",
         "Binding.Ranges.cs:BindFromEnd=1 kind",
         "Binding.Ranges.cs:BindPositionKey=1 kind",
         "Binding.Ranges.cs:BindRangeValue=2 kind",

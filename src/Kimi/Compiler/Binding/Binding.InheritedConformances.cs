@@ -214,12 +214,12 @@ public sealed partial class Binding
 
             if (proof != ConstraintProof.Proven)
             {
-                return proof;
+                return proof; // An early verdict (R7-C2e2 e2-5b R2.1): every later part copies or reads the sources' witnesses.
             }
 
             if (this.RefusedConformance(path))
             {
-                return ConstraintProof.Unknown; // No conformance scope: a refused declared Self (Binding.TypeHeight).
+                return ConstraintProof.Unknown; // No conformance scope (a refused declared Self, Binding.TypeHeight): every later part reads it.
             }
 
             var self = this.ConformanceSelf(path);
@@ -235,9 +235,9 @@ public sealed partial class Binding
 
             foreach (var associated in shape.AssociatedStorage)
             {
-                if (this.ResolveAssociated(path, associated, out _) is not { } binding)
+                if (this.ResolveAssociated(path, associated).Type is not { } binding)
                 {
-                    return ConstraintProof.Unknown;
+                    return ConstraintProof.Unknown; // An early Unknown: every later part reads the path's bindings.
                 }
 
                 path.AssociatedStorage[associated] = binding;
@@ -251,7 +251,9 @@ public sealed partial class Binding
             {
                 if (clause.BoundConstraint is not { } constraint)
                 {
-                    return ConstraintProof.Unknown;
+                    // SPEC 8.3.1, 23.1.2 (R7-C2e2 e2-5b R2.1): an unbound clause supplies no evidence and no later part reads it.
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                    continue;
                 }
 
                 proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self, path.Use), true);
@@ -292,7 +294,8 @@ public sealed partial class Binding
                     var selection = this.InheritedWitnessSelection(self, witness.Implementation);
                     if (selection.Pending)
                     {
-                        return ConstraintProof.Unknown;
+                        proof = CombineProof(proof, ConstraintProof.Unknown, true); // No later witness reads this one's selection.
+                        continue;
                     }
 
                     if (witness.Requirement.Property is { } property)
@@ -303,10 +306,17 @@ public sealed partial class Binding
 
                     if (witness.Requirement.Declaration is not FunctionKoto requirement || witness.Implementation.Declaration is not FunctionKoto implementation)
                     {
-                        return ConstraintProof.Unknown;
+                        proof = CombineProof(proof, ConstraintProof.Unknown, true); // No function to match: no evidence; the others are judged.
+                        continue;
                     }
 
-                    var matches = this.MatchesRequirement(requirement, implementation, self, scope, selection);
+                    var matches = this.MatchesRequirement(requirement, implementation, self, path, selection, out _);
+                    if (matches == ConstraintProof.Unknown)
+                    {
+                        proof = CombineProof(proof, ConstraintProof.Unknown, true); // Not identified (a held part's included): no compatibility.
+                        continue;
+                    }
+
                     if (matches != ConstraintProof.Proven)
                     {
                         // Object receiver projection is a separate implementation limit of the conformance, as OCC-X is
@@ -319,7 +329,7 @@ public sealed partial class Binding
                         }
 
                         path.RejectedSelfSignature = matches == ConstraintProof.Refuted ? witness.Implementation : null;
-                        return matches;
+                        return matches; // Refuted or Error: the path is decided.
                     }
 
                     var (compatible, _) = this.CompatibleRequirement(path, requirement, implementation, self, scope, selection);

@@ -137,7 +137,9 @@ public sealed partial class Binding
 
         if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && !batch.Published)
         {
-            return ConstraintProof.Unknown; // Type-value scheduling never certifies a collecting definition.
+            // Type-value scheduling never certifies a collecting definition. An early Unknown (R7-C2e2 e2-5b R2.1): every later part
+            // reads the definition's bindings, which the collection has not published.
+            return ConstraintProof.Unknown;
         }
 
         if (conformance.InheritedFrom is not null)
@@ -166,7 +168,7 @@ public sealed partial class Binding
         if (UnresolvedTypeDeclarationContext(conformance.Type.Declaration) || UnresolvedTypeDeclarationContext(conformance.Contract.Declaration))
         {
             conformance.IsVerified = false;
-            return ConstraintProof.Unknown;
+            return ConstraintProof.Unknown; // An early Unknown: every later part reads the unresolved declarations' context.
         }
 
         if (conformance.IsVerified)
@@ -177,7 +179,7 @@ public sealed partial class Binding
         // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path), keyed by the path in the one table.
         if (!this.BeginVerification(conformance, out var held))
         {
-            return ConstraintProof.Unknown;
+            return ConstraintProof.Unknown; // An early Unknown: every later part is the open verification's, which this re-entry reads none of.
         }
 
         this.conformanceChecks++;
@@ -334,7 +336,10 @@ public sealed partial class Binding
             {
                 if (shape.ClauseStorage[i].BoundConstraint is not { } constraint)
                 {
-                    return ConstraintProof.Unknown;
+                    // SPEC 8.3.1, 23.1.2 (R7-C2e2 e2-5b R2.1): an unbound clause supplies no evidence and no later part reads it, so every
+                    // other part is judged and a later Refuted is independent.
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                    continue;
                 }
 
                 var associated = this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol);
@@ -406,7 +411,8 @@ public sealed partial class Binding
 
                 if (requirement.Declaration is not FunctionKoto function)
                 {
-                    return ConstraintProof.Unknown;
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true); // No function to match: no evidence; the other requirements are judged.
+                    continue;
                 }
 
                 var match = this.IdentifyRequirement(conformance, identity);
@@ -415,9 +421,9 @@ public sealed partial class Binding
                     return Invalid(BindingFailure.Ambiguous, []);
                 }
 
-                if (match.State == RequirementMatchState.Pending)
+                if (match.State is RequirementMatchState.Pending or RequirementMatchState.Unknown)
                 {
-                    proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true); // No candidate decided (a held part's included): no compatibility.
                     continue;
                 }
 
@@ -524,7 +530,7 @@ public sealed partial class Binding
         }
         finally
         {
-            verdict = this.EndEvidence(mark, verdict);
+            verdict = this.EndEvidence(mark, verdict, out _);
         }
 
         return verdict;
@@ -548,66 +554,82 @@ public sealed partial class Binding
             };
     }
 
-    // SPEC 8.6.3, 8.5.5: whether `implementation` is `requirement`'s candidate (its identification): Refuted where the generic shape,
-    // a parameter's role or name, or a parameter's Type (SignatureRelation) differs; Unknown where a parameter's Type is not bound yet or
-    // reads a pending part; else Proven. The parameters are conjoined (CombineProof), and the first Refuted answers.
-    private ConstraintProof MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
+    // SPEC 8.6.3, 8.5.5, 8.3.3 Finality (R7-C2e2 e2-5b): whether `implementation` is `requirement`'s candidate at `path` (its
+    // identification), one evidence (BeginEvidence): Refuted where the generic shape, a parameter's role or name, or a parameter's Type
+    // (SignatureRelation: identity first, an undecided projection Unknown, so a mismatched sibling still refutes) differs; Unknown where a
+    // parameter's Type is not bound yet or reads an undecided part, with `held` when it depends on an obligation the evidence holds pending
+    // (EndEvidence: a held part); else Proven. The parameters are conjoined (CombineProof), and the first Refuted answers. Read in the
+    // conformance scope (path.Scope) at the conformance's use (path.Use, 8.5.5's site). Its caller binds the candidate's header first
+    // (BindHeader, a formation read).
+    private ConstraintProof MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BoundConformancePath path, MemberSelection selection, out bool held)
     {
-        var demanded = new FnSig(requirement);
-        var declared = new FnSig(implementation);
-        if (implementation.IsSpecialization || demanded.GenericCount != declared.GenericCount || !SameGenericShape(requirement, implementation) || demanded.InputCount != declared.InputCount)
+        var mark = this.BeginEvidence();
+        var verdict = ConstraintProof.Unknown;
+        try
         {
-            return ConstraintProof.Refuted;
+            verdict = Identify();
+        }
+        finally
+        {
+            verdict = this.EndEvidence(mark, verdict, out held);
         }
 
-        var proof = ConstraintProof.Proven;
-        for (var i = 0; i < demanded.InputCount; i++)
+        return verdict;
+
+        ConstraintProof Identify()
         {
-            var a = requirement.Parameters[i];
-            var b = implementation.Parameters[i];
-            if ((a.InternalName == "self") != (b.InternalName == "self") || a.ExternalName != b.ExternalName)
+            var demanded = new FnSig(requirement);
+            var declared = new FnSig(implementation);
+            if (implementation.IsSpecialization || demanded.GenericCount != declared.GenericCount || !SameGenericShape(requirement, implementation) || demanded.InputCount != declared.InputCount)
             {
                 return ConstraintProof.Refuted;
             }
 
-            if (demanded.Input(i) is not { } required || this.WrittenSignaturePart(declared, i) is not { } actual)
+            var scope = path.Scope;
+            var proof = ConstraintProof.Proven;
+            for (var i = 0; i < demanded.InputCount; i++)
             {
-                proof = CombineProof(proof, ConstraintProof.Unknown, true);
-                continue;
-            }
-
-            required = this.ContractType(required, scope, self);
-            if (i == demanded.ReceiverIndex && selection.Path is not null)
-            {
-                required = this.ProjectRequirementReceiver(required, self, selection.DeclaringType)!;
-                if (required is null)
+                var a = requirement.Parameters[i];
+                var b = implementation.Parameters[i];
+                if ((a.InternalName == "self") != (b.InternalName == "self") || a.ExternalName != b.ExternalName)
                 {
                     return ConstraintProof.Refuted;
                 }
+
+                // Both inputs as written, formed under the frozen premises (SPEC 8.5.5; design R3.3.2 B1, CC-62: reqfi's identification).
+                if (this.WrittenSignaturePart(demanded, i) is not { } required || this.WrittenSignaturePart(declared, i) is not { } actual)
+                {
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                    continue;
+                }
+
+                required = this.ContractType(required, scope, self);
+                if (i == demanded.ReceiverIndex && selection.Path is not null)
+                {
+                    required = this.ProjectRequirementReceiver(required, self, selection.DeclaringType)!;
+                    if (required is null)
+                    {
+                        return ConstraintProof.Refuted;
+                    }
+                }
+
+                actual = this.MemberType(actual, selection.DeclaringType)!;
+                if (actual is null)
+                {
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                    continue;
+                }
+
+                actual = this.ContractType(actual, scope);
+                proof = CombineProof(proof, this.SignatureRelation(required, actual, demanded.Binder, declared.Binder, scope, path.Use), true);
+                if (proof == ConstraintProof.Refuted)
+                {
+                    return proof;
+                }
             }
 
-            actual = this.MemberType(actual, selection.DeclaringType)!;
-            if (actual is null)
-            {
-                proof = CombineProof(proof, ConstraintProof.Unknown, true);
-                continue;
-            }
-
-            actual = this.ContractType(actual, scope);
-            if (this.PendingAssociatedType(required) || this.PendingAssociatedType(actual))
-            {
-                proof = CombineProof(proof, ConstraintProof.Unknown, true);
-                continue;
-            }
-
-            proof = CombineProof(proof, SignatureRelation(required, actual, demanded.Binder, declared.Binder), true);
-            if (proof == ConstraintProof.Refuted)
-            {
-                return proof;
-            }
+            return proof;
         }
-
-        return proof;
     }
 
     // SPEC 8.3.1: a requirement or an implementation whose declaration failed supplies no evidence, a function's or an accessor's alike.
@@ -629,30 +651,35 @@ public sealed partial class Binding
         premises.Reset();
         premises.Parent = scope;
         var environment = premises.Constraints ??= new();
-        for (var i = 0; i < requirement.TypeConstraints.Count; i++)
-        {
-            if (((IsKoto)requirement.TypeConstraints[i]).BoundConstraint is not { } constraint)
-            {
-                return (ConstraintProof.Unknown, null);
-            }
-
-            var instance = this.ContractConstraint(constraint, premises, self);
-            this.AddConstraintFact(environment, instance);
-            if (!ReferenceEquals(instance, constraint))
-            {
-                environment.AddStatement(instance, requirement, constraint); // at Self (SPEC 8.11.4); an unchanged one is in place
-            }
-        }
-
-        this.ExpandScopeContractPremises(premises);
-
         var arguments = this.typeScratch.Rent(requirement.GenericArguments.Count);
         var origins = this.originScratch.Rent(implementation.Origins.Count);
         var inputs = this.originScratch.Rent(InputOriginCount(implementation));
         Array.Clear(origins, 0, implementation.Origins.Count);
         Array.Clear(inputs, 0, InputOriginCount(implementation));
+        var mark = this.BeginEvidence();
+        var proof = ConstraintProof.Proven;
+        IsKoto? bound = null;
         try
         {
+            for (var i = 0; i < requirement.TypeConstraints.Count; i++)
+            {
+                if (((IsKoto)requirement.TypeConstraints[i]).BoundConstraint is not { } constraint)
+                {
+                    // SPEC 8.3.1, 23.1.2 (R7-C2e2 e2-5b R2.1): an unbound premise supplies no evidence; the obligations below are judged.
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                    continue;
+                }
+
+                var instance = this.ContractConstraint(constraint, premises, self);
+                this.AddConstraintFact(environment, instance);
+                if (!ReferenceEquals(instance, constraint))
+                {
+                    environment.AddStatement(instance, requirement, constraint); // at Self (SPEC 8.11.4); an unchanged one is in place
+                }
+            }
+
+            this.ExpandScopeContractPremises(premises);
+
             for (var i = 0; i < requirement.GenericArguments.Count; i++)
             {
                 arguments[i] = requirement.BoundSymbol!.Schema!.GenericSlots[i].Symbol.WholeType;
@@ -660,17 +687,15 @@ public sealed partial class Binding
 
             // SPEC 15.3.7: the implementation's Origins are solved first (CompareCallableContracts), and its clauses are read under the
             // one substitution its signature is (PLAN G700, G707).
-            var proof = CombineProof(
-                this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises, conformance.Use),
-                this.CompareCallableContracts(new(requirement), new(implementation), premises, conformance.Use, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
-                true);
+            proof = CombineProof(proof, this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises, conformance.Use), true);
+            proof = CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, conformance.Use, self, selection.DeclaringType, arguments, origins, inputs, selection.Path), true);
             var substitution = SubstitutionOf(implementation, selection.DeclaringType, arguments.AsSpan(0, requirement.GenericArguments.Count), default, origins, inputs);
-            IsKoto? bound = null;
             for (var i = 0; i < implementation.TypeConstraints.Count; i++)
             {
                 if (((IsKoto)implementation.TypeConstraints[i]).BoundConstraint is not { } constraint)
                 {
-                    return (ConstraintProof.Unknown, null);
+                    proof = CombineProof(proof, ConstraintProof.Unknown, true); // An unbound clause: no evidence; the others are judged.
+                    continue;
                 }
 
                 var substituted = this.SubstituteConstraint(constraint, substitution);
@@ -708,17 +733,21 @@ public sealed partial class Binding
             if (witness.ObjectCompatibility == ConstraintProof.Unknown)
             {
                 conformance.Unsupported = true; // SPEC 12.7: OCC-X (UnsupportedProof).
-                return (proof, bound);
             }
-
-            return (CombineProof(proof, witness.ObjectCompatibility, true), bound);
+            else
+            {
+                proof = CombineProof(proof, witness.ObjectCompatibility, true);
+            }
         }
         finally
         {
+            proof = this.EndEvidence(mark, proof, out _);
             this.typeScratch.Return(arguments, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
+
+        return (proof, bound);
     }
 
     private void MatchResultOrigins(BoundType pattern, BoundType expected, Koto binder, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)

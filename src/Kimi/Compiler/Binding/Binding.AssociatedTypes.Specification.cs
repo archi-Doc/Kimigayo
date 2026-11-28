@@ -76,9 +76,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            var binding = this.ResolveAssociated(path, selected, out var bindingPending);
+            var answer = this.ResolveAssociated(path, selected);
+            var binding = answer.Type;
             var instance = binding is null ? null : this.StoredType(this.SubstituteStoredOrigins(binding, associated.Declaration, (BoundOrigin[])projection.OriginArguments), member);
-            pending |= instance is null && (binding is not null || bindingPending); // StoredType's null (a refused instance) is pending, as ContractTypeCore's route
+            pending |= instance is null && (binding is not null || answer.Pending); // StoredType's null (a refused instance) is pending, as ContractTypeCore's route
             if (instance is null)
             {
                 continue;
@@ -117,8 +118,8 @@ public sealed partial class Binding
                 named = true;
                 if (this.AssociatedInPath(path, receiver, associated, qualifier, scope, site) is { } selected)
                 {
-                    var found = this.ResolveAssociated(path, selected, out pending);
-                    return found is null ? new(null, null, pending, null, default, Completion.Provisional) : new(found, receiver, false, path, selected, Completion.Provisional);
+                    var found = this.ResolveAssociated(path, selected);
+                    return found.Type is not { } type ? found : new(type, receiver, false, path, selected, Completion.Provisional);
                 }
             }
         }
@@ -134,6 +135,7 @@ public sealed partial class Binding
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? unproven = null;
         var conflicting = false;
         var heldRoute = false;
+        var undecided = false;
         for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
             var path = this.impls.PathsOf(identity)[i];
@@ -155,9 +157,11 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.ResolveAssociated(path, selected, out var bindingPending) is not { } binding)
+            var answer = this.ResolveAssociated(path, selected);
+            if (answer.Type is not { } binding)
             {
-                pending |= bindingPending;
+                pending |= answer.Pending;
+                undecided |= answer.Undecided;
                 continue;
             }
 
@@ -178,7 +182,7 @@ public sealed partial class Binding
         // Explicit header metadata may normalize a common binding before witnesses are ready.
         // The separately retained projection obligation must still prove conformance at finalization.
         return (available ?? (conflicting ? null : unproven)) is { } chosen ? new(chosen.Binding, receiver, false, chosen.Path, chosen.Identity, Completion.Provisional)
-            : new(null, null, pending, null, default, Completion.Provisional) { Held = heldRoute };
+            : new(null, null, pending, null, default, Completion.Provisional) { Held = heldRoute, Undecided = undecided };
     }
 
     // SPEC 8.2.3, 8.6.1, 8.6.3, 8.3.3 Finality (R7-C2e2 e2-5b, e2-3b Revision 4): a path's conditions at a receiver, and whether the
@@ -225,6 +229,27 @@ public sealed partial class Binding
         return outcome.Held;
     }
 
+    // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-5b, design R3.3.4 (H), CC-57 item 5): whether a comparison's pair of the implementation's
+    // `actual` and the requirement's `expected` holds, the one answer the judge's and CollectOriginInference's projection arms read. A
+    // pair that is one Type under the comparison's binders (SignatureEquals, its Origins excluded) is not held: its reader relates it
+    // structurally, Origins included. Else a held side (EvidenceProjection) holds the pair; where neither does, each side's image (null:
+    // none) is read in its place. Outside a comparison's scope nothing holds and no side has an image.
+    private bool HeldPair(BoundType actual, BoundType expected, in CallableInstance comparison, QuerySite site, out BoundType? actualImage, out BoundType? expectedImage)
+    {
+        actualImage = null;
+        expectedImage = null;
+
+        // A comparison without binders compares slots by identity (SignatureSlotEquals).
+        return comparison.Scope is { } scope && !SignatureEquals(actual, expected, comparison.ActualBinder!, comparison.ExpectedBinder!) &&
+            (this.EvidenceProjection(actual, scope, site, out actualImage) || this.EvidenceProjection(expected, scope, site, out expectedImage));
+    }
+
+    // SPEC 8.5.5, 8.6.3 (R7-C2e2 e2-5b, design R3.3.5, CC-57 item 3): whether `type` is a projection whose binding depends on a missing
+    // associated Type of the current definition (ProjectionOutcome.Undecided), the one fact an identification reads as Unknown at that
+    // node (SignatureRelation). No receiver test, no held mark (HeldPair's) and no pass-wide flag decide it.
+    private bool UndecidedProjection(BoundType type, BindingScope scope, QuerySite site)
+        => type.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(type, scope, site).Undecided;
+
     // SPEC 8.9.2 (DECISIONS BU-50, revised by bu55): two conformance paths of a receiver agree on an associated Type when their bindings are
     // one Type as written or as the receiver's Types. Each binding is in the subject declaration's terms, normalized under its own path's
     // conditions only: OwningIterator's direct `Self is LendingIterator` binds `I.(LendingIterator).LentItem(step)` and its refinement path
@@ -236,11 +261,18 @@ public sealed partial class Binding
 
     // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
     // complete Type), the conformance path it comes from (its Scope the binding's conformance scope) and the path's identity it binds (a
-    // binding's node, DECISIONS BU-65); else Pending (nothing decides it yet) or none; with its Completion (W5).
+    // binding's node, DECISIONS BU-65); else Pending (nothing decides it yet) or none; with its Completion (W5). A path's binding answer
+    // (ResolveAssociated(path)) is one too: its Type, Pending and Undecided, the route naming the Subject, Path and Identity.
     private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path, BoundRequirement Identity, Completion Completion)
     {
         // R7-C2e2 e2-5b: no Type because the requirement's evidence in progress holds a path the receiver meets pending (PathConditions'
         // `held`), so Pending too; set only by ResolveAssociated's held path, never in a formation read (EvidenceProjection reads it).
         internal bool Held { get; init; }
+
+        // R7-C2e2 e2-5b (design R3.3.5, CC-57 item 3, CC-63): no Type because a route the receiver meets has a binding nothing decides
+        // yet (a missing associated Type of the current definition, SPEC 8.5.5), published by ResolveAssociated(path) from its own arm,
+        // never from the pass-wide flag or a held path (UndecidedProjection reads it). Pending's contract (the pass's evidence in
+        // progress) is another: neither implies the other.
+        internal bool Undecided { get; init; }
     }
 }

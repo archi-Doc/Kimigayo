@@ -115,37 +115,6 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.6.3, 8.5.5 (R7-C2e2 e2-5b, design R1.1, R2.3 and R2.10 N2): the identification's relation of a requirement's Type `a` with
-    // an implementation's `b`, SignatureEquals' walk in three values. At each node a pair identical under the binders (SignatureEquals)
-    // is Proven and not descended; a pending projection on either side (PendingProjection: no Type decides it yet) is Unknown and binds
-    // nothing; a differing layer is Refuted; the parts are conjoined (CombineProof), so a mismatched sibling of a pending part refutes the
-    // pair. Read by MatchesRequirement only; SignatureEquals stays the identity its other readers ask.
-    private static ConstraintProof SignatureRelation(BoundType a, BoundType b, Koto aBinder, Koto bBinder)
-    {
-        if (SignatureEquals(a, b, aBinder, bBinder))
-        {
-            return ConstraintProof.Proven;
-        }
-
-        if (PendingProjection(a) || PendingProjection(b))
-        {
-            return ConstraintProof.Unknown;
-        }
-
-        if (!SameSignatureLayer(a, b, aBinder, bBinder))
-        {
-            return ConstraintProof.Refuted;
-        }
-
-        var proof = ConstraintProof.Proven;
-        for (var i = 0; SignaturePartsCompared(a.Kind) && i < a.Components.Count && proof != ConstraintProof.Refuted; i++)
-        {
-            proof = CombineProof(proof, SignatureRelation(a.Components[i], b.Components[i], aBinder, bBinder), true);
-        }
-
-        return proof;
-    }
-
     // What SignatureEquals compares at one node before its parts (SignatureLayer's fields, the lengths under the binders, and the symbol:
     // by slot number where SignatureSymbolBySlot, by identity elsewhere; a Type without compared parts is decided here).
     private static bool SameSignatureLayer(BoundType a, BoundType b, Koto aBinder, Koto bBinder)
@@ -174,6 +143,40 @@ public sealed partial class Binding
         }
 
         return SignatureSymbolBySlot(a.Kind) ? SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder) : a.Symbol == b.Symbol;
+    }
+
+    // SPEC 8.6.3, 8.5.5 (R7-C2e2 e2-5b, design R1.1, R2.3, R2.10 N2 and R3.3.5): the identification's relation of a requirement's Type
+    // `a` with an implementation's `b` in the conformance scope `scope` at the conformance's use `site`, SignatureEquals' walk in three
+    // values. At each node a pair identical under the binders (SignatureEquals) is Proven and not descended; a projection on either side
+    // that depends on a missing associated Type of the current definition (ProjectionOutcome.Undecided, its specification's own fact; no
+    // receiver test) or that the evidence in progress holds (EvidenceProjection's Held, the one held answer the relations ask) is Unknown
+    // and binds nothing; a differing layer is Refuted; the parts are conjoined (CombineProof), so a mismatched sibling of an undecided or
+    // held part refutes the pair. Read by MatchesRequirement only; SignatureEquals stays the identity its other readers ask.
+    private ConstraintProof SignatureRelation(BoundType a, BoundType b, Koto aBinder, Koto bBinder, BindingScope scope, QuerySite site)
+    {
+        if (SignatureEquals(a, b, aBinder, bBinder))
+        {
+            return ConstraintProof.Proven;
+        }
+
+        if (this.UndecidedProjection(a, scope, site) || this.UndecidedProjection(b, scope, site) ||
+            this.EvidenceProjection(a, scope, site, out _) || this.EvidenceProjection(b, scope, site, out _))
+        {
+            return ConstraintProof.Unknown;
+        }
+
+        if (!SameSignatureLayer(a, b, aBinder, bBinder))
+        {
+            return ConstraintProof.Refuted;
+        }
+
+        var proof = ConstraintProof.Proven;
+        for (var i = 0; SignaturePartsCompared(a.Kind) && i < a.Components.Count && proof != ConstraintProof.Refuted; i++)
+        {
+            proof = CombineProof(proof, this.SignatureRelation(a.Components[i], b.Components[i], aBinder, bBinder, scope, site), true);
+        }
+
+        return proof;
     }
 
     private void BindHeader(BindingSymbol symbol)

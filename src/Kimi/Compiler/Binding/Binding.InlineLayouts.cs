@@ -279,7 +279,7 @@ public sealed partial class Binding
     // source's on the base clause's instance (SPEC 8.6.2), the projection of InheritedBase, which the walk resolves to the source's node.
     // So the heir has a node of its own, on a cycle the heir's base arguments close, and its source is on every cycle it closes itself.
     private BoundType? InlineBinding(BoundConformancePath path, BoundRequirement identity)
-        => path.InheritedBase is { } inheritedBase ? this.InheritedProjection(inheritedBase, identity) : this.ResolveAssociated(path, identity, out _);
+        => path.InheritedBase is { } inheritedBase ? this.InheritedProjection(inheritedBase, identity) : this.ResolveAssociated(path, identity).Type;
 
     // The projection of `identity` on an inherited path's base clause instance.
     private BoundType InheritedProjection(BoundType inheritedBase, BoundRequirement identity)

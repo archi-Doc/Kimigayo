@@ -11,6 +11,12 @@ public sealed partial class Binding
 
     private readonly List<ProblemFact> inferenceFacts = []; // An inference hole's facts, kept across passes (InferenceFacts).
 
+    // InferredEvidence's tables (DECISIONS BU-19), one query per answer: the (requirement part, formed part) pairs it read and
+    // JoinEvidence's joins. An answer formed inside another (a ContractType of a source) only evicts the outer's entries, which the outer
+    // then reads again: a reread adds a part the image already joined, and a join is idempotent.
+    private readonly TypeMemo<(BoundType Required, BoundType Formed), byte> evidencePairs = new();
+    private readonly TypeMemo<(BoundType Left, BoundType Right), BoundType> evidenceJoins = new();
+
     // The pass's inference sources, each path whose consumer list (BoundConformancePath.InferenceConsumers) this pass filled, in the order
     // first filled: InvalidateAssociatedEvidence's order, and the lists ResetAssociatedInference empties.
     private readonly List<BoundConformancePath> inferenceSources = new();
@@ -32,7 +38,7 @@ public sealed partial class Binding
             return pending;
         }
 
-        pending = PendingProjection(type);
+        pending = type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
         for (var i = 0; !pending && i < type.Components.Count; i++)
         {
             pending = this.PendingAssociatedType(type.Components[i]);
@@ -41,11 +47,6 @@ public sealed partial class Binding
         this.pendingAssociatedTypes[type] = pending;
         return pending;
     }
-
-    // SPEC 8.5.5: whether `type` itself is a projection on a nominal receiver that no Type decides yet (its parts aside): the pending
-    // node PendingAssociatedType finds anywhere in a Type and SignatureRelation reads as Unknown at its position.
-    private static bool PendingProjection(BoundType type)
-        => type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
 
     private static bool InferenceBinderInScope(Koto binder, BindingSymbol owner)
     {
@@ -281,8 +282,8 @@ public sealed partial class Binding
     {
         var normal = binding.Inferred!;
         BoundType? image = null;
-        HashSet<(BoundType Required, BoundType Formed)>? read = null;
-        Dictionary<(BoundType Left, BoundType Right), BoundType>? joined = null;
+        var pairs = this.evidencePairs.Begin(this.storageVersion);
+        var joins = this.evidenceJoins.Begin(this.storageVersion);
         foreach (var source in binding.EvidenceSources)
         {
             Read(source.Path, source.Identity, source.Required, this.ContractType(source.Written, source.Path.Scope));
@@ -293,17 +294,18 @@ public sealed partial class Binding
 
         void Read(BoundConformancePath path, BoundRequirement identity, BoundType required, BoundType formed)
         {
-            if (!(read ??= new()).Add((required, formed)))
+            if (this.evidencePairs.TryGet((required, formed), pairs, out _))
             {
                 return;
             }
 
+            this.evidencePairs.Set((required, formed), pairs, 0);
             this.InferredEvidenceWork++;
             if (this.InferenceHoleOf(path, required) is { } hole)
             {
                 if (hole == identity)
                 {
-                    image = image is null ? formed : this.JoinEvidence(image, formed, normal, joined ??= new());
+                    image = image is null ? formed : this.JoinEvidence(image, formed, normal, joins);
                 }
 
                 return;
@@ -322,10 +324,10 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.5.5: two positions' images of one inferred binding (`normal`, the binding) together, once per pair in an answer (`joined`):
+    // SPEC 8.5.5: two positions' images of one inferred binding (`normal`, the binding) together, once per pair in an answer (`query`):
     // a part identical to the binding's is the binding's, from either side; only then a part not of the binding's shape (a projection left
     // in place) is pending as a whole, and two shaped parts join by components.
-    private BoundType JoinEvidence(BoundType left, BoundType right, BoundType normal, Dictionary<(BoundType Left, BoundType Right), BoundType> joined)
+    private BoundType JoinEvidence(BoundType left, BoundType right, BoundType normal, uint query)
     {
         if (ReferenceEquals(left, normal) || ReferenceEquals(right, normal) || ReferenceEquals(left, right))
         {
@@ -337,7 +339,7 @@ public sealed partial class Binding
             return Shaped(left) ? left : right;
         }
 
-        if (joined.TryGetValue((left, right), out var known))
+        if (this.evidenceJoins.TryGet((left, right), query, out var known))
         {
             return known;
         }
@@ -349,10 +351,12 @@ public sealed partial class Binding
         {
             for (var i = 0; i < count; i++)
             {
-                components[i] = this.JoinEvidence(left.Components[i], right.Components[i], normal.Components[i], joined);
+                components[i] = this.JoinEvidence(left.Components[i], right.Components[i], normal.Components[i], query);
             }
 
-            return joined[(left, right)] = this.types.Rebuild(left, components.AsSpan(0, count), left.Origin, (BoundOrigin[])left.OriginArguments);
+            var joined = this.types.Rebuild(left, components.AsSpan(0, count), left.Origin, (BoundOrigin[])left.OriginArguments);
+            this.evidenceJoins.Set((left, right), query, joined);
+            return joined;
         }
         finally
         {
@@ -578,7 +582,8 @@ public sealed partial class Binding
     // The pass's identification of a requirement in a path, kept on the path (BoundConformancePath.RequirementMatches) until the pass
     // ends; a pending one is identified again. R7-C4 (C4 ruling 19 P1): a request's runs read the kept one too, made before the request
     // (BindBeforeRequest) where a binding of the component reads pending, so a kept identification read no held answer and is a function
-    // of (path, requirement) for every state; one made inside a request may read a held answer (Provisional) and is never kept.
+    // of (path, requirement) for every state; one made inside a request may read a held answer (Provisional) and is never kept, nor is
+    // one whose key reads a held part (Unknown, R7-C2e2 e2-5b: it rests on the obligations open where it is made).
     private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity)
     {
         var identified = path.RequirementMatches ??= new();
@@ -593,6 +598,7 @@ public sealed partial class Binding
         BindingSymbol? selected = null;
         var matches = 0;
         var pending = selection.Pending;
+        var unknown = false;
         for (var candidate = selection.Member; candidate is not null; candidate = candidate.Next)
         {
             if (candidate.Declaration is not FunctionKoto implementation || !this.Accessible(candidate, path.Scope, receiverType: self))
@@ -601,13 +607,14 @@ public sealed partial class Binding
             }
 
             this.BindHeader(candidate);
-            var match = this.MatchesRequirement(requirement, implementation, self, path.Scope, selection);
+            var match = this.MatchesRequirement(requirement, implementation, self, path, selection, out var held);
             if (match == ConstraintProof.Unknown && IncompleteSignature(implementation) is { } incomplete)
             {
                 this.Consulted(incomplete); // SPEC 23.1.2: a pending match read the implementation's incomplete signature (IsDerived).
             }
 
-            pending |= match == ConstraintProof.Unknown;
+            pending |= match == ConstraintProof.Unknown && !held;
+            unknown |= held;
             if (match == ConstraintProof.Proven)
             {
                 matches++;
@@ -615,9 +622,10 @@ public sealed partial class Binding
             }
         }
 
-        var state = selection.Ambiguous || matches > 1 ? RequirementMatchState.Ambiguous : pending ? RequirementMatchState.Pending : selected is null ? RequirementMatchState.Missing : RequirementMatchState.Unique;
+        var state = selection.Ambiguous || matches > 1 ? RequirementMatchState.Ambiguous : pending ? RequirementMatchState.Pending
+            : unknown ? RequirementMatchState.Unknown : selected is null ? RequirementMatchState.Missing : RequirementMatchState.Unique;
         var result = new RequirementMatch(state, selected, selection);
-        if (this.inferenceRequest >= 0)
+        if (this.inferenceRequest >= 0 || state == RequirementMatchState.Unknown)
         {
             return result;
         }
@@ -647,12 +655,16 @@ public sealed partial class Binding
         }
     }
 
+    // An identification's state, by precedence Ambiguous > Pending > Unknown > Missing or Unique: Pending where a candidate's key is not
+    // decided yet (8.5.5: an associated Type not inferred yet), Unknown where it reads a held part (SPEC 8.6.3, 8.3.3 Finality; R7-C2e2
+    // e2-5b): no evidence, never kept, no inference problem, read as Pending by the conformance's check.
     internal enum RequirementMatchState : byte
     {
         Unique,
         Missing,
         Ambiguous,
         Pending,
+        Unknown,
     }
 
     internal enum InferenceProblem : byte

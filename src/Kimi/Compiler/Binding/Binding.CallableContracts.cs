@@ -82,7 +82,9 @@ public sealed partial class Binding
                 ? this.SolveCallOriginInference(inference, origins, inputs, [], declaringType)
                 : this.SolveOriginInference(inference, origins, inputs, [], declaringType)))
             {
-                return this.RestsOnHeld(held, ConstraintProof.Refuted); // SPEC 15.3.6: no candidate or a conflict may rest on a skipped held pair.
+                // SPEC 15.3.6: no candidate or a conflict may rest on a skipped held pair. An early verdict (R7-C2e2 e2-5b R2.1): every
+                // later part reads the solution (the Origins bound here).
+                return this.RestsOnHeld(held, ConstraintProof.Refuted);
             }
 
             for (int i = 0, j = 0; i < requirement.InputCount; i++)

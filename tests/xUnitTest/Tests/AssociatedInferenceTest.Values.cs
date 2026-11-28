@@ -61,10 +61,11 @@ public partial class AssociatedInferenceTest
     // invalid: the same, swapped.
     private const string C4K2E = "contract C\n    associate Item\n    func read(self: ref/Self) -> Self.Item\n    func take(self: ref/Self, x: Self.Item) -> ()\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\nstruct E\n    Self is EC\n    public func w(self: ref/Self) -> Option<S.(C).Item> => $abort(\"w\")\nstruct S\n    Self is C\n    public func read(self: ref/Self) -> i32 => 0\n    public func take(self: ref/Self, x: E.(EC).W) -> () => ()\n()\n";
 
-    // invalid: SPEC 8.5.5 Identification + 8.3.3 depends (reviewer): take's key i32 vs E.W, E.W inferred from S.Item: pending, so S.Other has no evidence.
+    // invalid: SPEC 8.5.5 Identification + 8.3.3 depends (reviewer): take's key i32 vs E.W, E.W inferred from S.Item: pending, so take has no
+    // identified implementation (8.6.3), so S.Other has no evidence: missing at S's `Self is C` (CC-84).
     private const string C4K3S = "contract C\n    associate Item\n    associate Other\n    func read(self: ref/Self) -> Self.Item\n    func take(self: ref/Self, x: i32) -> Self.Other\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\nstruct S\n    Self is C\n    public func read(self: ref/Self) -> i32 => 0\n    public func take(self: ref/Self, x: E.(EC).W) -> i64 => 0\nstruct E\n    Self is EC\n    public func w(self: ref/Self) -> S.(C).Item => 0\n()\n";
 
-    // invalid: the same, swapped.
+    // invalid: the same, swapped: take has no identified implementation (8.6.3), so S.Other has no evidence (CC-84).
     private const string C4K3E = "contract C\n    associate Item\n    associate Other\n    func read(self: ref/Self) -> Self.Item\n    func take(self: ref/Self, x: i32) -> Self.Other\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\nstruct E\n    Self is EC\n    public func w(self: ref/Self) -> S.(C).Item => 0\nstruct S\n    Self is C\n    public func read(self: ref/Self) -> i32 => 0\n    public func take(self: ref/Self, x: E.(EC).W) -> i64 => 0\n()\n";
 
     // valid: twin: S.Item explicit (a frozen premise): E.W = i32, take unique, S.Other = i64.
@@ -165,8 +166,8 @@ public partial class AssociatedInferenceTest
     [InlineData("guard", "k1-e", C4K1E, "")]
     [InlineData("guard", "k2-s", C4K2S, "MissingContractImplementation_Kd: Self is C | ...")]
     [InlineData("guard", "k2-e", C4K2E, "MissingContractImplementation_Kd: Self is C | ...")]
-    [InlineData("guard", "k3-s", C4K3S, "AssociatedTypeInferenceFailed_Kd: Self is C | ...")]
-    [InlineData("guard", "k3-e", C4K3E, "AssociatedTypeInferenceFailed_Kd: Self is C | ...")]
+    [InlineData("guard", "k3-s", C4K3S, "MissingContractImplementation_Kd: Self is C | ...")]
+    [InlineData("guard", "k3-e", C4K3E, "MissingContractImplementation_Kd: Self is C | ...")]
     [InlineData("guard", "k3-x", C4K3X, "")]
     [InlineData("guard", "dr-aef", C4DrAef, "")]
     [InlineData("C4", "dr-fea", C4DrFea, "")]

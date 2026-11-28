@@ -183,6 +183,13 @@ public sealed partial class Binding
     // premises and Origins, so its verdict, resting and facts are the first's (DECISIONS BU-19's table, one query per root walk; warm 0 B).
     private readonly TypeMemo<(BoundType Actual, BoundType Expected, bool Invariant), int> enteredParts = new();
 
+    // DECISIONS BU-19's table for the relation's walk (its pairwise walks; R7-C2e2 e2-5b 3b3): the composite pairs of two distinct
+    // Origin-free Types the current root walk found holding, by pair and invariance, with the Callable comparison it related them under
+    // (the visit's further input, TypeMemo's contract), one query per root walk (Intake). A repeat under the same comparison holds as the
+    // first did and adds nothing: without an Origin it fits no Origin and appends no fact, row or raw fit; a held pair's count already grew
+    // (heldPairs, read only against an earlier mark) and an open slot's mark is already set (MetOpenSlot); a failing pair is not kept.
+    private readonly TypeMemo<(BoundType Actual, BoundType Expected, bool Invariant), CallableInstance> fittingParts = new();
+
     // SPEC 8.6.3, 8.3.1, 15.3.6 (R7-C2e2 e2-5b, design R2.2 and R2.10 N1): the held sink, the count of pairs a comparison's relations held
     // because a side is a held projection (Relate's and CollectOriginInference's arms): such a pair neither holds nor fails, so a reader
     // marks the count before its judgments and reads a verdict that may rest on one (`heldPairs != mark`) as Unknown. Only grows.
@@ -210,6 +217,7 @@ public sealed partial class Binding
         private readonly List<FitPart>? parts;
         private readonly uint partQuery;
         private readonly int start;
+        private uint fitQuery; // the root walk's query of fittingParts (Intake)
         private OriginPart part;
         private ComparisonFailure failure;
         private bool ended;
@@ -282,7 +290,7 @@ public sealed partial class Binding
 
             if (this.parts is not { } parts || instance.Expected is not null || this.Discharged(actual, expected))
             {
-                return this.Relate(actual, expected, invariant, skipOrigin, instance);
+                return this.RelateOnce(actual, expected, invariant, skipOrigin, instance);
             }
 
             // A pair of composite parts entered before in this invariance answers as it did there (FitPart.Same); the comparison of a
@@ -316,6 +324,26 @@ public sealed partial class Binding
             return holds;
         }
 
+        // DECISIONS BU-19 (fittingParts): a composite pair of two distinct Origin-free Types this walk found holding under `instance`
+        // holds again without a visit; any other pair is related.
+        private bool RelateOnce(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance)
+        {
+            var key = (actual, expected, invariant);
+            var once = actual.Components.Count != 0 && !this.Discharged(actual, expected) && !actual.CarriesAnyOrigin && !expected.CarriesAnyOrigin;
+            if (once && this.owner.fittingParts.TryGet(key, this.fitQuery, out var under) && under.Same(instance))
+            {
+                return true;
+            }
+
+            var holds = this.Relate(actual, expected, invariant, skipOrigin, instance);
+            if (once && holds)
+            {
+                this.owner.fittingParts.Set(key, this.fitQuery, instance);
+            }
+
+            return holds;
+        }
+
         // The parts of the relation no Origin binding decides: Kind, Semantics, Symbol, Closure context, lengths and arity; an inferred
         // length (`[_ of T]`) admits any, and a length holding an atom (Binding.OpenSlots) holds against any length, which the walk publishes
         // (MetOpenSlot) when the rest of the shape holds.
@@ -340,6 +368,7 @@ public sealed partial class Binding
         private (BoundType Actual, BoundType Expected) Intake(BoundType actual, BoundType expected)
         {
             this.formed = true;
+            this.fitQuery = this.owner.fittingParts.Begin(this.owner.storageVersion);
             this.root = (actual, expected);
             if (this.binding is { } judge && this.use is { } at && (actual.HasAbstractPart || expected.HasAbstractPart))
             {
@@ -370,18 +399,15 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (instance.Scope is { } scope)
+            if (this.owner.HeldPair(actual, expected, instance, this.Site, out var actualImage, out var expectedImage))
             {
-                if (this.owner.EvidenceProjection(actual, scope, this.Site, out var actualImage) || this.owner.EvidenceProjection(expected, scope, this.Site, out var expectedImage))
-                {
-                    this.owner.heldPairs++; // A held part holds and binds nothing; the comparison's reader reads the held sink (heldPairs).
-                    return true;
-                }
+                this.owner.heldPairs++; // A held part holds and binds nothing; the comparison's reader reads the held sink (heldPairs).
+                return true;
+            }
 
-                if (actualImage is not null || expectedImage is not null)
-                {
-                    return this.Relate(actualImage ?? actual, expectedImage ?? expected, invariant, skipOrigin, instance); // A determined side is its image.
-                }
+            if (actualImage is not null || expectedImage is not null)
+            {
+                return this.Relate(actualImage ?? actual, expectedImage ?? expected, invariant, skipOrigin, instance); // A determined side is its image.
             }
 
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !this.SameShape(actual, expected))

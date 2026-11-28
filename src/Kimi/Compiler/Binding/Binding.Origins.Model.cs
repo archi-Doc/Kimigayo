@@ -433,6 +433,11 @@ internal readonly struct CallableInstance
 
     internal BoundType? Actual => this.actual;
 
+    // The binders of the two signatures' generic parameters (SignatureEquals' slots); null where the comparison has no such signature.
+    internal Koto? ActualBinder => this.actualBinder;
+
+    internal Koto? ExpectedBinder => this.expectedBinder;
+
     // The required signature whose own well-formedness the comparison's proofs assume; null outside a comparison.
     internal BoundType? Expected => this.expected;
 
@@ -452,6 +457,12 @@ internal readonly struct CallableInstance
     // The comparison with its sides exchanged, nested in the same comparisons and judged in the same scope: the second half of an
     // invariant position's two-way relation (SPEC 3.8, 15.3.5; RelationWalk.Fits).
     internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope, Rows = this.Rows };
+
+    // Whether `other` is this comparison: the same signatures, binders, enclosing comparisons, scope and row sink (without a boxing Equals).
+    internal bool Same(in CallableInstance other)
+        => ReferenceEquals(this.actual, other.actual) && ReferenceEquals(this.actualBinder, other.actualBinder) && ReferenceEquals(this.expected, other.expected) &&
+            ReferenceEquals(this.expectedBinder, other.expectedBinder) && ReferenceEquals(this.outer, other.outer) && ReferenceEquals(this.Scope, other.Scope) &&
+            ReferenceEquals(this.Rows, other.Rows);
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)

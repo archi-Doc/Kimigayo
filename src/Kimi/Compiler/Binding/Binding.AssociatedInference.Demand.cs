@@ -114,7 +114,7 @@ public sealed partial class Binding
             var site = this.OpenQuerySite(path.Declaration);
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (this.ResolveAssociated(path, identity, out _) is { } result && !this.PendingAssociatedType(result))
+                if (this.ResolveAssociated(path, identity).Type is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[identity] = result;
                     if (this.AssociatedBindingOf(path.RootPath, identity) is { } binding)
@@ -490,18 +490,21 @@ public sealed partial class Binding
 
                 this.BindHeader(identity.Symbol);
                 var match = this.IdentifyRequirement(path, identity);
-                if (match.State != RequirementMatchState.Unique && run.Records && identity.Symbol.Type is { } waitingResult)
+                // An identification reading a held part (Unknown) supplies no evidence and refutes nothing (SPEC 8.3.3): no problem.
+                if (match.State is not (RequirementMatchState.Unique or RequirementMatchState.Unknown) && run.Records && identity.Symbol.Type is { } waitingResult)
                 {
                     run.Pairs.Clear();
                     Koto? input = null;
                     if (match.State == RequirementMatchState.Pending)
                     {
+                        // R7-C2e2 e2-5b (design R3.3.6 N4): the first input whose written part is not bound or holds an undecided projection
+                        // (UndecidedProjection, the fact the identification read), record selection only.
+                        var demanded = new FnSig(requirement);
                         for (var i = 0; i < requirement.Parameters.Count; i++)
                         {
-                            var syntax = requirement.Parameters[i].Type;
-                            if (syntax.BoundType is not { } parameter || this.PendingAssociatedType(this.ContractType(parameter, path.Scope, self)))
+                            if (this.WrittenSignaturePart(demanded, i) is not { } parameter || HoldsUndecided(this.ContractType(parameter, path.Scope, self)))
                             {
-                                input = syntax;
+                                input = requirement.Parameters[i].Type;
                                 break;
                             }
                         }
@@ -525,6 +528,17 @@ public sealed partial class Binding
                 run.Source = implementation;
                 run.Requirement = identity.Symbol;
                 this.ExtractAssociatedEvidence(run, path, required, actual, written, null);
+            }
+
+            bool HoldsUndecided(BoundType type)
+            {
+                var undecided = this.UndecidedProjection(type, path.Scope, path.Use);
+                for (var i = 0; !undecided && i < type.Components.Count; i++)
+                {
+                    undecided = HoldsUndecided(type.Components[i]);
+                }
+
+                return undecided;
             }
         }
 

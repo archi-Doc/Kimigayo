@@ -25,9 +25,10 @@ public sealed partial class Binding
     // reader asks at its boundary (BeginAnswer, EndAnswer).
     private int dependence = int.MaxValue;
 
-    // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): how many of the open obligations the innermost requirement's evidence holds
-    // pending: those open when it began (ProveRequirement); 0 in a formation read (a verification's body, the binding cache's formation,
-    // the inferred bindings' collection: what it forms is judged where written, after the conformance holds). A projection whose route's
+    // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4, e2-5b): how many of the open obligations the innermost evidence holds pending:
+    // those open when it began (BeginEvidence: a requirement's evidence, and an implementation's identification and compatibility, 8.6.3's
+    // table); 0 in a formation read (a verification's body, the binding cache's formation, the inferred bindings' collection outside
+    // identification: what it forms is judged where written, after the conformance holds). A projection whose route's
     // evidence depends on a held obligation names no Type in that evidence (EndHeldAnswer): its part stays the projection, so exactly the
     // judgments that read the part read the obligation pending; PathConditions publishes that part as the held mark (ProjectionOutcome.Held,
     // EvidenceProjection, R7-C2e2 e2-5b), which answers inside an evidence bracket only. Written only by this file's brackets (BeginEvidence,
@@ -477,8 +478,10 @@ public sealed partial class Binding
         return read && verdict == ConstraintProof.Unknown;
     }
 
-    // SPEC 8.6.3: the start of a requirement's evidence, an answer holding pending every obligation open when it began (heldObligations),
-    // and its query of contractParts (evidenceQuery, design R3.1.1), which every ContractType call inside it continues.
+    // SPEC 8.6.3: the start of an evidence, an answer holding pending every obligation open when it began (heldObligations): a requirement's
+    // (ProveRequirement), or an implementation's identification or compatibility with a requirement (R7-C2e2 e2-5b: MatchesRequirement,
+    // CompatibleRequirement, VerifyPropertyRequirement). Inside a formation read it raises that read's 0 to the open count; its end restores it.
+    // It begins its query of contractParts (evidenceQuery, design R3.1.1), which every ContractType call inside it continues.
     private (int Depth, int Enclosing, int Held, uint Evidence) BeginEvidence()
     {
         var mark = this.BeginAnswer();
@@ -488,11 +491,12 @@ public sealed partial class Binding
         return (mark.Depth, mark.Enclosing, held, evidence);
     }
 
-    // The evidence's verdict: Unknown when it depends on an obligation it held pending (EndAnswer), since it then supplies none.
-    private ConstraintProof EndEvidence((int Depth, int Enclosing, int Held, uint Evidence) mark, ConstraintProof verdict)
+    // The evidence's verdict: Unknown when it depends on an obligation it held pending (EndAnswer; `held`), since it then supplies none.
+    private ConstraintProof EndEvidence((int Depth, int Enclosing, int Held, uint Evidence) mark, ConstraintProof verdict, out bool held)
     {
         (this.heldObligations, this.evidenceQuery) = (mark.Held, mark.Evidence);
-        return this.EndAnswer((mark.Depth, mark.Enclosing), verdict) ? ConstraintProof.Unknown : verdict;
+        held = this.EndAnswer((mark.Depth, mark.Enclosing), verdict);
+        return held ? ConstraintProof.Unknown : verdict;
     }
 
     // Whether the evidence in progress holds pending the obligation at `depth` (int.MaxValue: none).
@@ -547,10 +551,11 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.3.3 Recursion, 8.6.3 (R7-C2e2 e2-3b Revision 4): opens a declaration path's verification (VerifyConformance,
-    // VerifyInheritedConformance); false when it is open already. Its body is a formation read (a specification's identity atom,
-    // signatures, normalization: judged where written, after the conformance holds), so it holds no obligation pending (`held`, the
-    // enclosing count, which EndVerification restores); only its requirements' evidence does (BeginEvidence).
+    // SPEC 8.3.3 Recursion, 8.6.3 (R7-C2e2 e2-3b Revision 4, e2-5b): opens a declaration path's verification (VerifyConformance,
+    // VerifyInheritedConformance); false when it is open already. Its body is a formation read (a specification's identity atom, the
+    // signatures' formation: judged where written, after the conformance holds), so it holds no obligation pending (`held`, the enclosing
+    // count, which EndVerification restores); its requirements' evidence and each implementation's identification and compatibility do
+    // (BeginEvidence).
     private bool BeginVerification(BoundConformancePath path, out (int Held, uint Evidence) held)
     {
         var opened = this.OpenObligation(new(null, null, path));
@@ -565,8 +570,8 @@ public sealed partial class Binding
     }
 
     // SPEC 8.6.3: a formation read inside whatever answer reads it (a verification's body, the binding cache's formation, the inferred
-    // bindings' collection): what it forms is judged where written, so it holds no obligation pending and reads no evidence query
-    // (evidenceQuery: each ContractType call its own, as outside every evidence); EndFormation restores both.
+    // bindings' collection outside identification): what it forms is judged where written, so it holds no obligation pending and reads
+    // no evidence query (evidenceQuery: each ContractType call its own, as outside every evidence); EndFormation restores both.
     private (int Held, uint Evidence) BeginFormation()
     {
         var held = (this.heldObligations, this.evidenceQuery);

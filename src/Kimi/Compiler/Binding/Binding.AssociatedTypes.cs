@@ -621,7 +621,7 @@ public sealed partial class Binding
                 var associated = shape.AssociatedTypes[j];
                 // The conformance is the site of a Type its associated binding would form past the height limit (Binding.TypeHeight.cs).
                 var frame = this.BeginConsultation(path.Declaration);
-                var resolved = this.ResolveAssociated(path, associated, out _);
+                var resolved = this.ResolveAssociated(path, associated).Type;
                 this.EndConsultation(path.Declaration, frame);
                 if (resolved is { } result && !this.PendingAssociatedType(result))
                 {
@@ -660,16 +660,18 @@ public sealed partial class Binding
         }
     }
 
-    // A conformance path's binding of `associated`, or null: `pending` while its evidence is incomplete (AssociatedEvidencePending, or the
-    // binding revisited while it is being resolved), else none, final (DECISIONS BU-50): nothing specifies the binding, Binding rejected
-    // it (state 3), or an inherited path's base gives none, its base clause substitutes none or its sources disagree.
-    private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated, out bool pending)
+    // A conformance path's binding of `associated`, the outcome's Type (its route names the Subject, Path and Identity), or none: Pending
+    // while its evidence is incomplete (AssociatedEvidencePending, or the binding revisited while it is being resolved), else none, final
+    // (DECISIONS BU-50): nothing specifies the binding, Binding rejected it (state 3), or an inherited path's base gives none, its base
+    // clause substitutes none or its sources disagree. Undecided (R7-C2e2 e2-5b, design R3.3.5, CC-63; SPEC 8.5.5): no Type because the
+    // binding itself is not decided yet, each arm's own fact, never the pass-wide flag or a hold: an inference hole before the pass's
+    // inference is ready or whose batch is not published, a revisit, or an inferred binding's evidence with no image yet.
+    private ProjectionOutcome ResolveAssociated(BoundConformancePath path, BoundRequirement associated)
     {
-        pending = this.AssociatedEvidencePending;
+        var pending = this.AssociatedEvidencePending;
         if (this.RefusedConformance(path))
         {
-            pending = false;
-            return null;
+            return Answer(null, false, false);
         }
 
         if (path.InheritedFrom is not null)
@@ -685,18 +687,18 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.ResolveAssociated(source, original, out pending) is not { } inherited ||
-                        this.StoredType(inherited, path.InheritedBase!) is not { } current ||
+                    var answer = this.ResolveAssociated(source, original);
+                    if (answer.Type is not { } inherited || this.StoredType(inherited, path.InheritedBase!) is not { } current ||
                         (inheritedResult is not null && !this.SameCompleteType(inheritedResult, current)))
                     {
-                        return null;
+                        return answer with { Type = null };
                     }
 
                     inheritedResult = current;
                 }
             }
 
-            return inheritedResult;
+            return Answer(inheritedResult, pending, false);
         }
 
         // Refinement paths have exactly the root declaration's D + P environment.
@@ -704,7 +706,7 @@ public sealed partial class Binding
         path = path.RootPath;
         if (this.AssociatedBindingOf(path, associated) is not { } binding)
         {
-            return null;
+            return Answer(null, pending, false);
         }
 
         if (binding.Candidates.Count == 0)
@@ -720,18 +722,20 @@ public sealed partial class Binding
                 if (this.inferenceRequest >= 0 && batch.Component == this.inferenceRequest && this.inferenceBindingIndex.TryGetValue(binding, out var heldIndex))
                 {
                     // R7-C4 (SPEC 8.5.5, 8.3.3): a binding of the component under request is its answer under the reading run's hold, a
-                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending).
-                    return this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null;
+                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending). Undecided
+                    // never reads the hold (CC-57 item 3, CC-64: Held is HeldPair's).
+                    return Answer(this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null, pending, false);
                 }
 
+                // An inference hole whose batch is not published yet is undecided; a conflict, an inline cycle or no inferred Type is none.
                 if (!batch.Published || binding.InferenceConflict || binding.InlineCycle || binding.Inferred is null)
                 {
-                    return null;
+                    return Answer(null, pending, !batch.Published);
                 }
 
                 if (this.FormationRead)
                 {
-                    return binding.Inferred;
+                    return Answer(binding.Inferred, pending, false);
                 }
 
                 // R7-C2e2 e2-5b 3b3a-2 (CC-77 P1, CC-78; PLAN G1497): the answer is kept for every evidence where its computation raised neither
@@ -747,28 +751,31 @@ public sealed partial class Binding
                         this.evidenceReads++; // A value kept for one evidence is that evidence's read.
                     }
 
-                    pending = kept.Image is null;
-                    return kept.Image;
+                    return Answer(kept.Image, kept.Image is null, kept.Image is null); // The computed answer's outcome (no image: undecided).
                 }
 
                 var (unkeyed, scoped) = (this.unkeyedReads, this.evidenceReads);
-                var image = this.InferredEvidence(binding, batch, out pending);
+                var evidence = this.InferredEvidence(binding, batch, out var noImage);
                 if (unkeyed == this.unkeyedReads)
                 {
-                    binding.Evidence = (image, scoped == this.evidenceReads ? 0 : this.evidenceQuery, this.capabilityEpoch);
+                    binding.Evidence = (evidence, scoped == this.evidenceReads ? 0 : this.evidenceQuery, this.capabilityEpoch);
                 }
 
-                return image;
+                return Answer(evidence, noImage, noImage);
             }
 
-            return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
+            // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it. Before the
+            // pass's inference is ready no batch is read, so a hole (InferenceHole, the binding's own fact) is undecided (CC-64).
+            return Answer(null, pending, !this.associatedInferenceReady && this.InferenceHole(path, associated));
         }
 
         var formed = binding.State == 0;
+        var revisited = false;
         if (!formed)
         {
             binding.State = binding.State == 1 ? (byte)4 : binding.State; // Revisited while it is being resolved.
-            pending |= binding.State == 4;
+            revisited = binding.State == 4;
+            pending |= revisited;
         }
         else
         {
@@ -795,7 +802,10 @@ public sealed partial class Binding
             binding.Result = null;
         }
 
-        return read;
+        return Answer(read, pending, revisited);
+
+        static ProjectionOutcome Answer(BoundType? type, bool incomplete, bool undecided)
+            => new(type, null, incomplete, null, default, Completion.Provisional) { Undecided = undecided };
     }
 
     // The binding's formation from its candidates (ResolveAssociated): one Type, or none.

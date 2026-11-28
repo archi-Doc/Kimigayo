@@ -32,13 +32,15 @@ public sealed partial class Binding
         return (entry.Inputs, entry.Origins);
     }
 
+    // SPEC 11.9.1, 8.6.3 (R7-C2e2 e2-5b): a property requirement's implementation: its selection and headers are formation reads, its
+    // conditions and operations one evidence (BeginEvidence) conjoined to the end, which supplies none where it read a held part.
     private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope, MemberSelection? retained = null)
     {
         this.BindHeader(requirement.Symbol);
         var selection = retained ?? this.LookupMember(self, requirement.Symbol.Name, scope, LookupRole.Value, self);
         if (selection.Pending)
         {
-            return ConstraintProof.Unknown;
+            return ConstraintProof.Unknown; // An early Unknown (R2.1): every later part reads the selection.
         }
 
         if (selection.Ambiguous || selection.Member?.Property is not { } implementation)
@@ -47,16 +49,23 @@ public sealed partial class Binding
         }
 
         this.BindHeader(implementation.Symbol);
-        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope, conformance.Use);
-        if (proof != ConstraintProof.Proven)
+        var mark = this.BeginEvidence();
+        var proof = ConstraintProof.Unknown;
+        try
         {
-            return proof;
+            proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope, conformance.Use);
+            if (proof is not (ConstraintProof.Refuted or ConstraintProof.Error))
+            {
+                proof = CombineProof(proof, this.MatchPropertyOperation(conformance, requirement.Getter, implementation.Getter, self, scope, selection), true);
+                if (requirement.Setter.IsPresent)
+                {
+                    proof = CombineProof(proof, this.MatchPropertyOperation(conformance, requirement.Setter, implementation.Setter, self, scope, selection), true);
+                }
+            }
         }
-
-        proof = this.MatchPropertyOperation(conformance, requirement.Getter, implementation.Getter, self, scope, selection);
-        if (requirement.Setter.IsPresent)
+        finally
         {
-            proof = CombineProof(proof, this.MatchPropertyOperation(conformance, requirement.Setter, implementation.Setter, self, scope, selection), true);
+            proof = this.EndEvidence(mark, proof, out _);
         }
 
         if (proof is ConstraintProof.Proven or ConstraintProof.Unknown)
@@ -83,7 +92,7 @@ public sealed partial class Binding
 
         if (requirement.Receiver is not { } receiver || requirement.Result is not { } result)
         {
-            return ConstraintProof.Unknown;
+            return ConstraintProof.Unknown; // An early Unknown (R2.1): every later part reads the receiver and the result.
         }
 
         // R7-C2e2 e2-5b (design R3.3.6): the requirement's parts as written, formed in the comparison, as the implementation's are.
@@ -109,7 +118,7 @@ public sealed partial class Binding
             if (selection.DeclaringType is null || this.WrittenSignaturePart(signature, signature.InputCount + 1) is not { } storageType || // the Field, as written
                 this.PartTypeIn(storageType, selection.DeclaringType, scope) is not { } field)
             {
-                return ConstraintProof.Unknown;
+                return ConstraintProof.Unknown; // An early Unknown (R2.1): every later part reads the Field's Type.
             }
 
             var getter = requirement.Kind == PropertyAccessorKind.Get;
@@ -134,10 +143,12 @@ public sealed partial class Binding
                     ? CombineProof(this.RestsOnHeld(held, ConstraintProof.Proven), this.ProveCopy(field, scope, conformance.Use), true)
                     : ConstraintProof.Refuted;
             }
-            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && ReferenceEquals(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
+            else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {
+                // SPEC 11.9.1, 10.7, 3.8 (R7-C2e2 e2-5b, design R3.3): a borrowed Field fits a `ref` result whose target it is a subtype of,
+                // the judge's relation (the two may differ in Origin bindings); a fit that read a held pair supplies no evidence (RestsOnHeld).
                 kind = PropertyWitnessKind.StorageBorrow;
-                proof = ConstraintProof.Proven;
+                proof = this.IsSubtypeAt(field, result.Components[0], requirement.Binder, Bridge()) ? this.RestsOnHeld(held, ConstraintProof.Proven) : ConstraintProof.Refuted;
             }
             else
             {
