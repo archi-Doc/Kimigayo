@@ -1,0 +1,5 @@
+// With NoPagesBoard the Array's allocation fails: KIMI_E_ALLOC at the literal (SPEC 22.5.1), reported through write.
+Console.writeLine("Hello")
+let values: Array<i32> = [1, 2, 3]
+if values[0] == 1
+    Console.writeLine("allocated")
