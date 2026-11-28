@@ -152,7 +152,7 @@ public sealed partial class Binding
         }
 
         var layer = -1;
-        foreach (var node in this.OwnNodes(environment, type))
+        foreach (var (node, _) in this.OwnNodes(environment, type))
         {
             var start = this.retentionPaths.Count;
             this.retentionPaths.AddRange(this.retentionPath);

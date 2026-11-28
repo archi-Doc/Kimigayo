@@ -1512,6 +1512,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 125 (2026-11-28, plan §14; the Middle's D-1363, the owner's O-554 (a)): §5.1's Z13 row's "no spec variant" reads
   SPEC 14.10.3's second block, the case `14.10.3-abandoned-comparison`. SPEC 14.10.3 gains an example block (D-1363); no rule
   text changes. Nothing frozen.
+- Revision 126 (2026-11-28, plan §14; the Back's D-1373, R7-P8's census on dev ea330577d, the Front's rulings F 14:05 (2) and P8-F1 (c), R7-P8a's
+  landing in W-398): §5.1's P8 row drops G396 (9) (closed on dev by 5ab3f441e and 8d743e1ce8), takes G356 (P8b) and G343
+  (P8a) without E, and marks P8a landed (Q-855, DECISIONS R7-M135); I3, §4.1, §4.3 and the absorbed-issue table drop G356
+  from I3 (the table moves it to P2–P11 and drops G396 (9)), and the table drops G343's adapter from E; §5.6's N3 and E2–E4
+  row drops P8. No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
@@ -1905,3 +1910,25 @@ with only its status sentence replaced. Every item now has a disposition:
 - Links: the frozen `Changes/2026-10-07 G65 Fixed Origin Loan Retention Implementation Plan.md` and `Changes/2026-10-16 Complete
   Polonius A5 Plan.md` name the plan as before; this file's earlier entries keep their `Proposals/` path, read at the commit before
   this move. No SPEC or IMPL text changes.
+
+## 2026-11-28 — Tatara implementation plan closed
+
+The owner's instruction (K's dialog, 2026-11-28), verbatim: 「Tataraは完了しました。」 and 「Tatara関連のProposalsをChangesに移動して下さい。
+B8 は O-479 で保留のままで結構です。」 `Changes/2026-11-19 Tatara Implementation Plan.md`: 取り込み済み (closed 2026-11-28), moved from
+`Proposals/` with only its status sentence replaced. It is the only Tatara proposal. Every item now has a disposition:
+
+- §5, stage A (A1–A4): implemented (DECISIONS T-M3–T-M6); every native build runs through Tatara.
+- §7, stage B: B5, B6, B7, B9 and B10 implemented, each after its owner question (DECISIONS T-M7–T-M65; PLAN's Tatara item states
+  each stage's evidence). B8 (the Linux host) is not implemented and stays deferred under the owner's O-479 (2026-11-21), as PLAN's
+  Tatara item states; its preparation stays in `artifacts\handoff\tatara\units\B8\`.
+- §6 (updating LLVM): its rules have held since stage A (DECISIONS T-M3); a version update stays one unit of its own.
+- §8, later candidates: 1 closed by its measurement (no unit); 2 no unit (O-381 (b) stands); 3 S1 and D1 adopted (DECISIONS T-M35,
+  T-M39), the rest stopped; 4 (each external declaration naming its supplier) is no Tatara unit and stays with PLAN T1; 5 (NV2) U1
+  adopted (DECISIONS T-M40), the rest closed by the owner on 2026-11-24.
+- §2 to §4 and §9 to §11: the decisions are recorded in DECISIONS T-M1, T-M2 and the stage entries; every question in §11 is
+  answered.
+- SPEC and IMPL took the plan's rules through each stage's own explicit revision, recorded under the 2026-11-19 entry. This closure
+  changes no SPEC or IMPL text.
+- Links: COMPILER_ARCHITECTURE (the sessions paragraph and the Tatara row of the stage ledger, which now reads Complete), DECISIONS
+  (the Tatara entries' preface) and PLAN's Tatara item point at `draft/Changes/`. This file's earlier entries keep their
+  `Proposals/` path, read at the commit before this move.

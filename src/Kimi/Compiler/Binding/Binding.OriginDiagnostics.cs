@@ -25,9 +25,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // DECISIONS R4-M133 (R7-O1 F-H1-3): the supplier of a row's record's longer end `resolved`: of the row's longer end as formed,
-    // supplied at the record's site (SuppliedAtUse), the part whose resolution there holds `resolved`, a meet's first such operand; or
+    // supplied at the record's site (SuppliedAtUse), the part whose receiver resolution holds `resolved`, a meet's first such operand; or
     // `resolved` itself when no part does (the record's end is another row's, or a reversed `==` row's shorter end).
-    internal BoundOrigin RowSupplier(BoundOrigin formed, BoundOrigin resolved, Koto at) => this.SuppliedPart(this.SuppliedAtUse(formed, at), resolved, at) ?? resolved;
+    internal BoundOrigin RowSupplier(BoundOrigin formed, BoundOrigin resolved, Koto at) => this.SuppliedPart(this.SuppliedAtUse(formed, at), resolved) ?? resolved;
 
     // The Name of a struct or enum in its first declaration line, the related location of a Type without a header.
     private static SourceSpan TypeNameSpan(DeclarationContainerKoto type)
@@ -236,18 +236,19 @@ public sealed partial class Binding
         node.ReportIn(store, requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], condition: problem.Condition, relatedSpans: related);
     }
 
-    // The part of RowSupplier's `supplied` whose resolution at `at` holds `resolved`, or null.
-    private BoundOrigin? SuppliedPart(BoundOrigin supplied, BoundOrigin resolved, Koto at)
+    // The part of RowSupplier's `supplied` whose receiver resolution (ResolveReceiver, the step after SuppliedAtUse; DECISIONS R4-M133)
+    // holds `resolved`, or null.
+    private BoundOrigin? SuppliedPart(BoundOrigin supplied, BoundOrigin resolved)
     {
         for (var i = 0; i < supplied.Operands.Count; i++)
         {
-            if (this.SuppliedPart(supplied.Operands[i], resolved, at) is { } found)
+            if (this.SuppliedPart(supplied.Operands[i], resolved) is { } found)
             {
                 return found;
             }
         }
 
-        return OriginIncludes(this.ReceiverAtUse(supplied, at), resolved) ? supplied : null;
+        return OriginIncludes(this.ResolveReceiver(supplied), resolved) ? supplied : null;
     }
 
     // The Borrow that supplies a record's end, by the atom `supplier` the failing check recorded for it: the value itself, the Borrow

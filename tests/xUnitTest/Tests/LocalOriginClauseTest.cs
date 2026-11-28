@@ -69,17 +69,20 @@ public partial class LocalOriginClauseTest
         "func view(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n    return h.item@follow\n" +
         "let one = 1\nlet two = 2\nrequire pass(one@ref, two@ref) == 24 else => $abort(\"type clause\")\nvar four = 4\nrequire view(four@uniq) == 4 else => $abort(\"meet\")\nConsole.writeLine(\"ok\")";
 
-    // A Type argument's slots by the generic slot's variance (Holder, Box), a Case's clauses binding its payloads, a Field clause
-    // proven by its Type's premise and a Type's own clause, executed.
+    // A Field clause proven by its Type's premise and a Type's own clause.
+    private const string FieldPair = "struct Pair {a, b}\n    origin a outlives b\n    let item: V<i32>{v}\n        origin v.source == a\n        origin a outlives b\n    let other: ref/i32 during b\n    public init(item: V<i32> during a, other: ref/i32 during b)\n        self.item = item@move\n        self.other = other\n    public func sum(self: ref/Self) -> i32 => self.item.value@follow + self.other@follow\n\n";
+
+    // A Type argument's slots by the generic slot's variance (Holder, Box), a Case's clauses binding its payloads and FieldPair formed
+    // over an input Origin, executed; its former form over two Borrows of one local waits for PLAN G1459 (loc below).
     private const string Nested = Holder + Box + Payload +
         "func box<T>(value: T) -> B<T> => B<T>.init(value@move)\n\n" +
         "func covariant(a: ref/i32, b: ref/i32, b0: B<H{p}>) -> i32\n    origin p.s == a\n    origin a outlives b\n    let w: B<H{x}> = b0@move\n        origin x.s == b\n    return w.value.item@follow\n" +
-        "enum E {a, b}\n    Both(V<i32>{v}, V<i32>{w})\n        origin v.source == a\n        origin w.source == b\n    Neither\n\n" +
-        "struct Pair {a, b}\n    origin a outlives b\n    let item: V<i32>{v}\n        origin v.source == a\n        origin a outlives b\n    let other: ref/i32 during b\n    public init(item: V<i32> during a, other: ref/i32 during b)\n        self.item = item@move\n        self.other = other\n    public func sum(self: ref/Self) -> i32 => self.item.value@follow + self.other@follow\n\n" +
+        "enum E {a, b}\n    Both(V<i32>{v}, V<i32>{w})\n        origin v.source == a\n        origin w.source == b\n    Neither\n\n" + FieldPair +
         "func both(e: E) -> i32\n    match e\n        .Both(let v, let w) => return v.value@follow * 10 + w.value@follow\n        .Neither => return 0\n" +
+        "func field(p: ref/i32) -> i32 => Pair.init(V<i32>.init(p), p).sum()\n" +
         "let one = 1\nlet two = 2\nrequire covariant(one@ref, two@ref, box(H.init(one@ref))) == 1 else => $abort(\"covariant\")\n" +
         "require both(E.Both(V<i32>.init(one@ref), V<i32>.init(two@ref))) == 12 else => $abort(\"case\")\n" +
-        "require Pair.init(V<i32>.init(two@ref), two@ref).sum() == 4 else => $abort(\"field\")\nConsole.writeLine(\"ok\")";
+        "require field(two@ref) == 4 else => $abort(\"field\")\nConsole.writeLine(\"ok\")";
 
     private const string Executed = Holder +
         "func same(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s == a\n    return h.item\n" +
@@ -496,6 +499,18 @@ public partial class LocalOriginClauseTest
     [Fact]
     public void NestedAndTypeLevelClausesExecute()
         => ScalarEmissionTest.EmitFixture("LocalOriginClauseNested", Nested, "ok\n");
+
+    // SPEC 15.6.5, 15.3.3: two Borrows of one local are two finite Origins, so a Type's own clause relating them is a finite-finite chain,
+    // Proven, and these programs are valid. A Type clause over a body-formed Origin is still judged as a Constraint over fixed Origins
+    // with no region fact, so each formation is UnprovenConstraint_Kd until PLAN G1459 (Q13 class 2, named; O-548 (A), ruling G922-37):
+    // loc, NestedAndTypeLevelClausesExecute's former field line, at the call and at its receiver, and c3s, S's clause at the call.
+    [Theory]
+    [InlineData("loc", Payload + FieldPair + "let two = 2\nrequire Pair.init(V<i32>.init(two@ref), two@ref).sum() == 4 else => $abort(\"field\")\n", "Pair.init(V<i32>.init(two@ref), two@ref)", "Pair.init(V<i32>.init(two@ref), two@ref).sum()")]
+    [InlineData("c3s", Ordered + "func m() -> i32\n    let k = 1\n    let p = S.init(k@ref, k@ref)\n    return 0\n" + Main, "S.init(k@ref, k@ref)")]
+    public void TwoBorrowsOfOneLocalUnderATypeClauseWaitForG1459(string form, string source, params string[] at)
+        => Assert.Equal(
+            at.Select(x => $"{form}: {nameof(DiagnosticCode.UnprovenConstraint_Kd)} {x}"),
+            DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{form}: {x.Code} {Text(source, x.Span)}"));
 
     // Origin regions and outlives relations never keep a Loan live (SPEC 15.6): h carries only v's Loan, so `w = 5` is valid.
     [Fact]

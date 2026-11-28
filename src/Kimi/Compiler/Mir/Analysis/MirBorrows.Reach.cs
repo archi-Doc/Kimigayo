@@ -562,7 +562,7 @@ internal sealed partial class MirBorrows
 
     // W's first step read at the reading path's Type (SPEC 15.6 Holders: a holder is read at the Type of the path that reads it; 5.7 Calls,
     // 15.6.4: the pointee or referent of each layer of the input's key, a layer an argument holds by value as a Tuple element, an Option
-    // payload or a Type argument included, read at the input's key, InputKey; PLAN G841 (1)): at each raw layer without an Origin, each
+    // payload or a Type argument included, read at the input's key, InputKey; DECISIONS R4-M243): at each raw layer without an Origin, each
     // raw layer stating one and each exclusive borrow layer whose referent is punnable, each Place an entry of the argument names
     // (PunEntry) that the layer's Type does not designate at the value's Position (Designates, OffGrid) is read punned (SPEC 5.2) through
     // that Type's raw pointer raw Places (Reading): over a raw pointer's byte (PlaceBytes: a safe reference and a handle hold none, the owner's O-223 (B')) the punned pointer has the provenance
@@ -685,7 +685,7 @@ internal sealed partial class MirBorrows
         => this.Guard(this.targetRoots[target]) == MirWrites.Deep || this.PunGuard(this.targets[target], punned) == MirWrites.Deep ||
             (this.writingVia[this.targets[target]] & ViaDeep) != 0;
 
-    // The reading keys past the first step (SPEC 15.6 Holders, 5.7 Calls, 15.6.4; PLAN G841 (1), (2)): at each layer of the input's key
+    // The reading keys past the first step (SPEC 15.6 Holders, 5.7 Calls, 15.6.4; DECISIONS R4-M243): at each layer of the input's key
     // (InputKey: a parameter key marks what the callee's Type parameters hide) that the walked Type expression writes, a raw layer without
     // an Origin (PastLayer.Its) or an exclusive borrow, whatever else the key holds, a holder the argument's entry names at a Place the
     // layer's pointee or referent designates (Designates) is read on at that Type's key, the key past the layer, never by the declared
@@ -1100,7 +1100,7 @@ internal sealed partial class MirBorrows
     }
 
     // Storage the body does not own that the call's own pointer reaches (SPEC 15.6.4's composition, example twoLayers; 5.7 Calls; rule 4,
-    // PLAN G841): where storage a composing call writes, read at `key`, holds at its own address a raw layer without an Origin (PastLayer
+    // DECISIONS R4-M241): where storage a composing call writes, read at `key`, holds at its own address a raw layer without an Origin (PastLayer
     // Its or Any; never a layer stating an Origin, `static` included, nor a hidden one, which has no past entry), the call may write its own
     // pointer at that layer, also as a Tuple element or a declaration's or an environment's layer, which may address that storage, and
     // store through it at the next one; at the first step and past a holder alike, at a key read layer by layer and at one that keeps the

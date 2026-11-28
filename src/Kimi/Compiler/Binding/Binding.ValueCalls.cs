@@ -236,7 +236,8 @@ public sealed partial class Binding
 
     // SPEC 7.7.3, 15.8.2 (DECISIONS R4-M152): the Origin of a Closure call's receiver acquisition, which a result naming ρ takes: the
     // acquisition AcquireValueCallee publishes (a payload's borrow, FormPayloadReceiver; a reference callee's Reborrow through its layers);
-    // any owned callee's Borrow (PlaceOrigin), for the Closure literal itself its own temporary, which is ρ's atom in its evaluating body.
+    // any owned callee's Borrow (PlaceOrigin), for the Closure literal itself a Borrow of its own temporary (ClosureTemporarySlot's atom),
+    // by which the call substitutes ρ, as at a call through a named Closure.
     private BoundOrigin ReceiverImage(InvocationKoto call, in BoundArgumentOperation acquisition)
         => acquisition.AdaptedType?.Origin ?? this.PlaceOrigin(call.Method);
 
