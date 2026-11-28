@@ -3472,7 +3472,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one implementer and one reviewer below the guard (the pace above; kept as the fallback above it); two implementers and
     one reviewer (two designs and a review still cannot overlap); counting agents without a cap on heavy runs (the load, not the count,
     slows the machine).
-- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151, R4-M157, R4-M219's U6-U7 and R4-M235's PQ-10)
+- **R4-M120 G160-4's 4b: A5's raw addresses** (superseded in part by R4-M151, R4-M157, R4-M219's U6-U7, R4-M235's PQ-10, and R7-M129, which removes PQ-10's read limit)
   (2026-10-25; R4-M116's design B′ as amended,
   the rulings PQ-1 to PQ-13; its two departures are rulings amending B′: W keeps "E where the set carries Φ_E", and the untracked rule
   is narrowed to addresses and exclusive Loans, sound by SPEC 5.2.1 condition 3's first and second limits)
@@ -8019,6 +8019,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     kept the mark until Z5-R2 (removed by R4-M238).
   - Rejected: dropping a parent's Loan by its position (Revision 0's `Lending`: SPEC 15.6 Holders, R4-M191); the Type match (Z5-M1,
     B1-B3); the limit by the parents' Loans (E3); the limit on every "none" read (pa, tw). Z5-F's per-entry position is not published.
+  - Amended by R7-M129 (G1301 C): PQ-10's read limit is superseded. In a view with such a borrow, an Unplaced read carries its parents
+    whole, rested, so an access conflicting only through them is `Unsupported_Kd` at the access; elsewhere the read carries its layer.
 - **R4-M236 Z19 (G396 (4) 2g-5): R26-borrow takes rule W's derivation; a case-decided borrow layer makes a Ref's own atom
   inferred** (Middle, 2026-11-22; the owner's O-496, verbatim 「O-496 a」; stream Z's Z19, PLAN G396 (4); Q-679, D-1128; design
   `middle\notes\z19-design.md` Revision 1 + (A), the repeated review's ACCEPT WITH CONDITIONS)
@@ -8068,7 +8070,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M238 Z5-R2: a Copy or Move read of a Tuple or fixed-array Place enclosing a `during self` layer carries its owner's own-step
   entry, which exposes its owner's storage only** (Middle, 2026-11-23; the owner's O-482 (a); R7 plan Z5, PLAN G212, G396 (3); Q-694,
   D-1145; commit 013c24bf0; design `middle\notes\z5r2-design.md` with Revision 1; removes the Copy/Move clause of R4-M120's PQ-10
-  bullet as R4-M235 left it)
+  bullet as R4-M235 left it; its narrowing of PQ-10 is superseded by R7-M129)
   - A5's own-step row of a Place through no borrow or raw Deref is decided by one owner walk for every Type the table lists: a raw
     pointer whose owner's part is a layer stepping Own, and a Tuple or fixed array enclosing one inline within the same holding value
     (SPEC 5.7 Reading a Field: element by element). A Copy or Move read of the Place carries the row's entry with its layer, and the
@@ -8311,6 +8313,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     handle's payload past the reference's Deref and lost the Warning of oh1 and oh2 (g1276ir's B1). Dev's reach exactly, a second
     clause chaining only from a first step whose Prefix is the root's: a form-specific split beside the base case, and oh3's and
     oha's required Warning stays missing.
+  - Amended by R7-M129 (G1301 C): in a `tabling` view an Unplaced read no longer takes PQ-10's limit at the read; it carries its
+    parents whole, rested.
 - **R4-M245 Rule 4 at a call's result: the call's own pointer at a raw layer without an Origin of its result (PLAN G841, Revision 3's
   clause (3) H2)** (2026-11-24; the Middle; G841c, Q-755, D-1253; Major, an acceptance mover, class 1; the owner's O-365 (a), O-524
   (a) and O-528 (a); design `middle\notes\g841-design.md` Revision 3, Revision 3b (`middle\notes\g841c-rev3b.md`) and 3c
@@ -31332,6 +31336,44 @@ Closure row of `MirCases.Branch`).
     rows to AddTypeClauseObligations' walk (it would form FormNestedResult's layers twice or need a mode); a sole member lower bound
     as a candidate (the sentence has no exception); a member upper bound that reaches back read as an atom (the members' values
     would name each other).
+- **R7-M129 G1301 C: in a `tabling` view an Unplaced read carries its parents whole, rested; PQ-10's read limit goes** (2026-11-28;
+  Middle, A5; Major, an acceptance mover; the owner's O-547 (a); PLAN G1301; design `artifacts\units\g1301\design-c.md`; after PLAN
+  G599 (b)'s per-entry tier, R4-M252) SPEC 5.7, 15.6 Holders, 15.6 Addresses. Supersedes R4-M235's PQ-10 bullet (and with it R4-M120's
+  PQ-10 bullet and R4-M238's narrowing of it).
+  - Rule: a read whose own-step row is Unplaced (no exact lent position, and its own steps name no owner), in a view with a non-raw
+    Borrow of a layer's or enclosing Place (`tabling`, MirBorrows.Addresses), carries `layer ∪ Rest(Indirect(parents))`: its parents
+    whole, rested (Values' Layered). An access that conflicts only through those entries is the Limit tier's located
+    `Unsupported_Kd` at the access; a conflict decided elsewhere, or by a decided entry of the same set, keeps its record. Outside
+    such a view the read carries its layer alone (unchanged; G1301 D).
+  - Reason: such a read may be any layer the storage it reads through holds (SPEC 5.7), and that storage is what the reference's
+    Loans lend (15.6 Addresses), so its parents' Loans are a superset of what it keeps (15.6 Holders). Dev rejected every such read
+    (PQ-10), so no valid program dev accepts is rejected, and no invalid program is accepted.
+  - Temporary structure: `tabling` and `Owns` (`MirBorrows.Addresses`) gate the arm. Owner: the Middle. Reason: outside `tabling` dev
+    accepts Unplaced reads, valid ones among them (bn2, bn2ht, rcyn), which the arm would put at U without (N-H). Removal: G1301 D
+    ((N-H) on closed candidates), which deletes both. N8 (`producing |= tabling && unplaced > 0`) is deleted: a view with a Loan
+    produces by MirBorrows.Loans, and in one without a Loan nothing can conflict.
+  - Record moves (Q13): V programs U at the read -> accepted (rv1, tw3; a04, d6arr, d7arr, d14, q1, q11, ps1, cy1, lim1, rbcv, nl;
+    the review's vwd, vws2, rbc3v, vst); I programs U at the read -> U at the access (mxe, rbc, rbc2, d14d, rv1d, ps1m, ps1b, pxp, epr,
+    lpx; the review's rbc3, lpr, ist, and rcall at the call `takeU(b@uniq)`, the operation meeting the rested word) or -> dev's decided
+    CLC alone (mxq, nbkt); vws keeps its independent UnsatisfiedOriginRelation_Kd. An update of a layer through no dereference
+    (`unsafe => b.data += 1`), whose U stood at the update by PQ-10's read limit: the rested Loan of the update's borrow, stored back
+    into the layer, meets b's drop, so the U stands at `var b` beside the relation record (superseding R7-O1 H's "A5's own limit at
+    an update", the Middle's (iii), for this form). No decided record is lost.
+  - Cost: one `Rest` (memoized per set) and one Union per Unplaced read; warm 0 B (`UnplacedReadsScaleWithTheDenseTerm`, which bounds
+    the per-read count with a one-Loan `parents` per read: the arm adds exactly 21 work and 16 B per read, and the chain's n Loans give
+    the base's dense term, the dense rows' factor 5; `Rest` over a larger set costs O(|parents|) once per distinct set, the order of
+    `Indirect`'s `Marked` on the exact arm).
+  - Rejected: the arm without the gate before (N-H) (V programs newly U: R4-M244's reason, which still holds outside `tabling`);
+    Rev 2f's kind and call arm in C (`rescope-read.md` §2: the open family); the arm over R4-M198's set-level tier (nbkt's CLC becomes
+    U, Q13 regression 3).
+- **R7-M132 R7-P3: one call pipeline over `CallEvaluation`; each call form is a row of its table (`G:R7-pipeline`)** (2026-11-28;
+  R7-P3, a Front unit the Back runs under O-553 (b); plan §5.0 P3, §5.1 P3; Major; behavior-preserving except the counted rows id, ov
+  (a2-2) and vc (a3); a2-0 (its partial-completion window, the P-B1 family), a2-3 (I2 d1's rows), f, e2, g and j are decided by
+  the generated gate (G391's rows for j)) SPEC 7.4.4, 8.3.3, 8.5.1, 8.5.5, 10.1,
+  10.5.1, 10.8.1, 15.4.1, 23.1.2.
+  - **Parameter symbols after a partial Origin completion (a2-0).** When a header's result alone is pending and its Origin
+    contract is ready, `BindFunctionHeader` completes the Origin declaration and the parameter symbols take the completed Types,
+    in the completion's one path (SPEC 15.4.1), so a named function's parameter symbol and its node agree in every state.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
