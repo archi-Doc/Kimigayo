@@ -168,22 +168,25 @@ public static partial class Parser
 
             if (reader.TryConsume(TokenKind.CloseParenthesis))
             {
-                return malformed;
+                break;
             }
 
             if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
             {
                 var missing = reader.Expect(SyntaxForm.CloseParenthesis);
-                return malformed ?? missing;
+                malformed ??= missing;
+                break;
             }
 
             // Two slots without a comma between them; the next one is read, unless nothing of this one could be.
             malformed ??= reader.Expect(SyntaxForm.Comma);
             if (reader.Position == start)
             {
-                return malformed;
+                break;
             }
         }
+
+        return malformed;
     }
 
     // SPEC 14.6.1, F.10.2: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding. Returns the slot's Name, or

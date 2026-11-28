@@ -305,6 +305,9 @@ public static partial class Parser
     }
 
     private static Koto ParseFixedArrayType(ref TokenReader reader)
+        => ParseFixedArrayTypeCore(ref reader);
+
+    private static Koto ParseFixedArrayTypeCore(ref TokenReader reader)
     {
         var start = reader.Read().Span.Start;
         Koto length;
