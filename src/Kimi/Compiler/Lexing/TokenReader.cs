@@ -227,6 +227,10 @@ public ref partial struct TokenReader
     /// <summary>Gets a value indicating whether the current position lies inside excluded syntax.</summary>
     internal readonly bool InExcludedSyntax => this.ExclusionDepth > 0;
 
+    /// <summary>Gets a value indicating whether the current position is selected syntax: outside excluded syntax and outside the
+    /// pending item's exclusion (SPEC 19.4). A directive here selects, and its Hover entries are recorded.</summary>
+    internal readonly bool InSelectedSyntax => !this.InExcludedSyntax && !this.IsExcluded;
+
     /// <summary>Gets the current token's span, or the insertion point after the last written token at a line boundary or the end.</summary>
     internal readonly SourceSpan InsertionSpan
         => this.currentToken.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || !this.CanRead
@@ -290,7 +294,7 @@ public ref partial struct TokenReader
 
     internal readonly void Hover(Koto syntax, SourceSpan token)
     {
-        if (!this.InExcludedSyntax && !this.IsExcluded && this.CodeContext.SourceDocument is { } source)
+        if (this.InSelectedSyntax && this.CodeContext.SourceDocument is { } source)
         {
             this.compilation.RecordHover(syntax, source, token);
         }

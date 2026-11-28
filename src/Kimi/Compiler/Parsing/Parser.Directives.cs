@@ -324,7 +324,7 @@ public static partial class Parser
             return new(-1, scan.Diagnostic.LastError);
         }
 
-        if (selected < 0 && !reader.InExcludedSyntax && !reader.IsExcluded)
+        if (selected < 0 && reader.InSelectedSyntax)
         {
             // A valid #switch with no True arm and no catch-all, where selection actually happens (SPEC 19.3). The Case Group ends
             // at its last written token, before the blank and comment lines that precede the dedented line.
