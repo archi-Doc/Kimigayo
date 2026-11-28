@@ -31366,6 +31366,15 @@ Closure row of `MirCases.Branch`).
   - Rejected: the arm without the gate before (N-H) (V programs newly U: R4-M244's reason, which still holds outside `tabling`);
     Rev 2f's kind and call arm in C (`rescope-read.md` §2: the open family); the arm over R4-M198's set-level tier (nbkt's CLC becomes
     U, Q13 regression 3).
+- **R7-M130 One reading of a case assignment: `PairCase.Of` and `PairCase.Cases`** (2026-11-28, Middle; G668-R c1: PLAN G157
+  (39); Minor, behavior-preserving; the Front reviewed its Binding hunks; review by a reviewer who wrote none of it).
+  - **Rule.** SPEC 8.15.2's reading of a case assignment is Binding's published `PairCase` (BindingModel): `PairCase.Of`, the case
+    an assignment gives a binder (none where it assigns none), and `PairCase.Cases`, the cases the binder's pair layers are read in
+    (the assigned case, else the admitted set). Binding's readers and `MirValidator.SharedPaths` read them; Binding's `CaseOf` and
+    `CaseAdmitted` and the validator's `Cases` are gone. A reader whose admitted set is computed reads `Of` and computes the set only
+    where the assignment gives none (`Binding.SemanticsAdaptations`' `TargetCases`).
+  - **Rejected:** Mir reading its view by binder index (`cases[step.Arg]`): a second reading of the rule under Mir's view contract,
+    with the empty assignment still special.
 - **R7-M132 R7-P3: one call pipeline over `CallEvaluation`; each call form is a row of its table (`G:R7-pipeline`)** (2026-11-28;
   R7-P3, a Front unit the Back runs under O-553 (b); plan §5.0 P3, §5.1 P3; Major; behavior-preserving except the counted rows id, ov
   (a2-2) and vc (a3); a2-0 (its partial-completion window, the P-B1 family), a2-3 (I2 d1's rows), f, e2, g and j are decided by
