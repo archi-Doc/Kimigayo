@@ -37203,3 +37203,30 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Rejected:** a per-member NoStore row (a catalog id under a Condition); a `Supports*` gate for the slot; a second definition
     writer for slot rows; `enableInterrupts(); halt()` as the idle wait (two calls: never adjacent at O0, not guaranteed adjacent at O2); `usize` operands for
     `lidt`/`invlpg` (the operand addresses storage).
+- **T-M64 The freestanding row's boot evidence** (Tatara, 2026-11-28; the plan's unit B9h; Minor (a development step); design §3.9,
+  §6.2; decisions 34 and 42 (O-489 (g) (a)); O-543 (a); rulings w6 H1-H13, O1-O9; T's rulings 186, 188, 189, 190, 192).
+  - **Script and input:** `scripts/run-none-qemu.ps1` boots each row of `scripts/run-none-qemu/expectations.json`, the one input: the
+    programs (named by path under that folder, one file per program), the level, the expected serial text, the expected end, the label,
+    one 30 s timeout, and the tools' pins (QEMU's version, URL and installer SHA-512; Limine's release, URL and commit; the SHA-256 of
+    `qemu-system-x86_64.exe`, `share/edk2-x86_64-code.fd`, `share/edk2-i386-vars.fd` and `BOOTX64.EFI`). A missing or differing pinned
+    file throws before any build; no download, no fallback.
+  - **The image:** per row, `kimi build` of a written `Kernel.kimiproj` (the built `Kimi.dll` under `dotnet`), then an EFI system
+    partition folder with Limine's `BOOTX64.EFI`, `boot/limine/limine.conf` (`timeout: 0`, `protocol: limine`, `path:
+    boot():/Kernel.<level>`) and the kernel, on QEMU's `fat:` driver as a read-only virtio disk (`if=virtio,readonly=on`: QEMU 11.1.0
+    refuses `-drive format=raw,file=fat:esp` on q35, with or without `readonly=on` ('Block node is read-only'), and vvfat's write
+    mode writes back to the host folder); QEMU's edk2
+    code read-only and a per-row copy of its variables template; `-machine q35 -m 256M -no-reboot -display none -monitor none -nic
+    none -serial stdio` with isa-debug-exit at 0xF4.
+  - **The judge:** the serial bytes end with the row's text (the firmware's console text may precede it, nothing follows it); `exit s`
+    is QEMU's status 2·s+1 before the timeout; `halts` is QEMU still running at the timeout (`__kimi_halt`); status 0 is a reset;
+    anything else fails the row. The script refuses, before any build, a file without rows and a row whose text is empty or whose
+    end is neither form, so QEMU's own start failure (status 1, no serial byte) is never a guest `exit(0)`.
+  - **The programs:** the COM1 `Board` (B10 §4.1's members over `Kimi.X86`; the largest usable memory-map entry as its page run, IMPL
+    21.6.2), two field-less boards (`mapPages` null; one `write` reading past its text), and the rows' startup bodies; test-cli's
+    kernel row builds row 1's two files from this folder (the one committed Kernel program; `KernelSources.cs` stays the SPEC 22.4.5
+    example).
+  - **Downloads:** QEMU for Windows 11.1.0 (7-Zip unpack, no install) and Limine v11.2.1's binary release, under `artifacts/`, owner's
+    O-543 (a); their provenance is in the unit's commit.
+  - **Rejected:** a test or a CI job (QEMU and Limine are downloads per run); the VGA path and `pmemsave` (O-489 (g) (b)); a pattern or
+    prefix judge; a BIOS boot from an ISO (`xorriso`); `docs/examples` as the programs' folder; a download or fallback in the script;
+    a writable `fat:rw:` disk (ruling 190).
