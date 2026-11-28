@@ -135,6 +135,7 @@ public class ContractBindingTest
     // `os == "none"` block, so a handler Type conforms on every x86-64 row, the hosted ones included, as to any Contract; a missing
     // `handle`, or one whose frame's Semantics differ from the requirement's, is zero candidates, the conformance's missing implementation.
     // A member is private by default (SPEC 9.4.1), so each `handle` is public: a private one misses the conformance's domain (9.4.6).
+    // The frame and both Contracts are catalog rows (OSF3b, design 6.2; T's ruling 193 (b)), which each row's compilation registers.
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", "X86.InterruptHandler", "\n    public func handle(frame:ref/X86.InterruptFrame) => ()", "")]
     [InlineData("x86_64-unknown-linux-musl", "X86.InterruptHandler", "\n    public func handle(frame:ref/X86.InterruptFrame) => ()", "")]
@@ -148,6 +149,7 @@ public class ContractBindingTest
         var c = MinimalEmissionTest.Analyze(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Library);
         var actual = string.Join(" | ", CompilationTestHelper.PublishedErrors(c).Select(x => $"{x.Code}: {source.Substring(x.Span.Start, x.Span.Length)}").Order(StringComparer.Ordinal));
         Assert.True(records == actual, $"{triple}{handle}: {actual}");
+        Assert.All(new[] { "InterruptFrame", "InterruptHandler", "ErrorCodeHandler" }, x => Assert.Equal(x, c.Library.GetSymbol(KimiLibraryCatalog.LangItem(x)!.Value)?.Name));
     }
 
     [Theory]

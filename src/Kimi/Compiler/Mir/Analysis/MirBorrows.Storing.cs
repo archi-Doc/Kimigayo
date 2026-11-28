@@ -51,9 +51,8 @@ namespace Kimi.Compiler.Mir;
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
 // and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
 // exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
-// an owned value's Drop A2 keeps (its destruction may run code), and a view A5 does not run: a body no view decides is checked once, in
-// view 0 (MirBorrows.Run), so the Drop row reads view 0's verdict for every view (PLAN G1507), and a body whose own contract is the
-// Limit (no rows; O-62 (a)).
+// an owned value's Drop A2 keeps (its destruction may run code), and a body whose own contract is the Limit (no rows; O-62 (a)). A Drop
+// whose Type a case substitutes makes its body view-dependent (MirMoveData.ViewDependent), so the Drop row reads each view's verdict.
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
@@ -374,7 +373,7 @@ internal sealed partial class MirBorrows
                 ? (place.Root, layers > 1 ? -1 : OwnStepPart(this.mustSteps[first].Prefix, owned), layers) : default;
         }
 
-        if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [var element])
+        if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [(var element, _)])
         {
             return default;
         }
@@ -404,7 +403,7 @@ internal sealed partial class MirBorrows
         var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)), 0)] is { RawInline: true, AnyStated: false };
         var at = stepped ? part : LayerPart(part);
         var own = false;
-        foreach (var element in this.sets.Elements(this.mustValue))
+        foreach (var (element, _) in this.sets.Elements(this.mustValue))
         {
             var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0);
             own |= key.Input == input && (at < 0 || (stepped ? key.Part : LayerPart(key.Part)) != at);

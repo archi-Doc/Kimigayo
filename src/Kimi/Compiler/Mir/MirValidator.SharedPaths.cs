@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Parsing;
-
 namespace Kimi.Compiler.Mir;
 
 // The shared layers a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1; SPEC 3.3.2, 3.5.1, 4.8.1, 8.15.2,
@@ -13,8 +11,8 @@ namespace Kimi.Compiler.Mir;
 //   after its last raw Deref; else a SharedPath finding at the location.
 // - Inputs: each valid Place MirUses reports, with its access and borrow kind (MirValidator.Tables' Place), and each PairAcquire's and
 //   Adapt's Place that Views gives with its view's case assignment; the body's projections, locals, binders and scopes. Outputs: SharedPath findings.
-// - Invariants: a pair layer is read under a case assignment: an assigned binder's layers in its case, every other binder's at its
-//   admitted set, so shared where it admits a shared case (its weakest case); the empty assignment for a write, a destruction and a Ref,
+// - Invariants: a pair layer is read in the cases Binding's published reading of a case assignment gives its binder (PairCase.Cases;
+//   DECISIONS R7-M130), so shared where one is a shared case (its weakest case); the empty assignment for a write, a destruction and a Ref,
 //   and a PairAcquire's or an Adapt's view. The walk goes from the Place's last step to its root, and the first
 //   step that decides ends it: a shared layer is the finding, a raw pointer's Deref is none (a raw Place's authority is its pointer's,
 //   SPEC 5.2.1 (3)), and so is the Deref directly on a PreparedInput, the caller's slot itself (plan 5.6.2, A3 E17), whose writes and
@@ -26,20 +24,6 @@ internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
-        // The Semantics cases a binder's pair layers are read in under a case assignment: its assigned case, else its admitted set.
-        private static SemanticsMask Cases(in PairBinder binder, ReadOnlySpan<PairCase> cases)
-        {
-            foreach (var assigned in cases)
-            {
-                if (ReferenceEquals(assigned.Target, binder.Target))
-                {
-                    return assigned.Semantics.ToMask();
-                }
-            }
-
-            return binder.Admitted;
-        }
-
         // A projected Place written, destroyed in place or borrowed exclusively by a Ref, under the empty assignment: a SharedPath finding at
         // the location where it passes a shared layer (a PairAcquire's Place is Views', per view).
         private readonly void SharedPath(MirPlace place, MirAccess access, MirRefKind kind)
@@ -68,7 +52,7 @@ internal sealed partial class MirValidator
                 }
 
                 var admitted = step.Kind == MirProjectionKind.PairLayer && (uint)step.Arg < (uint)body.Binders.Count
-                    ? Cases(body.Binders[step.Arg], cases) : default;
+                    ? PairCase.Cases(cases, body.Binders[step.Arg].Target, body.Binders[step.Arg].Admitted) : default;
                 if (MirTypes.IsSharedLayer(type, step.Kind, admitted))
                 {
                     return body.Inlining(this.at.Scope) < 0;

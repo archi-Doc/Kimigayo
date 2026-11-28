@@ -262,7 +262,7 @@ public sealed partial class Binding
     // its outer Semantics. ResultSemantics, CanSelectIdentity and TransformFamily's owner case read it.
     private SemanticsMask TargetCases(BoundType type, BindingScope scope, ReadOnlySpan<PairCase> cases)
         => type is { Kind: BoundTypeKind.TargetProjection, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } whole } pair }
-            ? CaseOf(cases, pair)?.ToMask() ?? this.AdmittedSemantics(whole, scope) : SemanticsMask.All;
+            ? PairCase.Of(cases, pair)?.ToMask() ?? this.AdmittedSemantics(whole, scope) : SemanticsMask.All;
 
     // SPEC 8.1.2: whether a Type is formed under this binding, its split represented: a value Type, an owner-proven abstract Type, one
     // with a selector of its own, a family case by case. A selector-less abstract binding (a pair target alone or an unresolved

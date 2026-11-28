@@ -585,6 +585,44 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
+    // IMPL 21.6 (OSF3b's K4-style row; T's ruling 195 (1), B's C2): Kernel on the none row whose startup takes an interrupt entry's address,
+    // with the bracket's masking, optimized by Tatara at O2 and emitted at O0 and O2, is one object with no undefined symbol whose thunk
+    // realigns the stack and returns by iretq: at O0, where the handler is not inlined, `and $-0x10,%rsp` precedes the thunk's call; at O2
+    // the realignment is present (8 bytes for a leaf whose handler inlined, 16 where it calls) and any remaining call follows an
+    // `and $-0x10,%rsp`.
+    [Fact]
+    public async Task TheNoneRowsThunkRealignsTheStackBeforeItsCall()
+    {
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var source = KernelSources.Hello + "let gate = Interrupts.install()\nConsole.writeLine(Text.toString(gate))\n" + TimeLibraryTest.Tick +
+            TimeLibraryTest.Install + KernelSources.Board + KernelSources.BoardTerminate;
+        var text = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(TargetProfile.None, source, "Kernel.kimi", OutputKind.Application));
+        var thunk = Regex.Match(text, @"\ndefine internal x86_intrcc void @(__kimi_f\d+)\(").Groups[1].Value;
+        Assert.NotEmpty(thunk);
+        var module = Path.Combine(this.directory, "entry.ll");
+        File.WriteAllText(module, text);
+        foreach (var level in Levels)
+        {
+            var ir = level == "O2" ? Path.Combine(this.directory, "entry.O2.ll") : module;
+            if (level == "O2")
+            {
+                File.WriteAllText(ir, Tatara.Instance.Optimize(NoneContext, module));
+            }
+
+            var obj = Path.Combine(this.directory, $"entry.{level}.o");
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(NoneContext, ir, obj, level[1] - '0'));
+            Assert.Empty(Assert.Single(Tatara.Instance.Inspect(NoneContext, obj).Members).Undefined);
+            var (failure, disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", obj);
+            Assert.Equal(string.Empty, failure);
+            var body = Regex.Match(disassembly, $@"<{thunk}>:\r?\n((?:[^\r\n]+\r?\n)*)").Groups[1].Value;
+            Assert.Matches(@"\band[q]?\s+\$-0x(?:8|10),\s*%rsp", body);
+            Assert.Matches(@"\biretq\b", body);
+            var calls = Regex.Matches(body, @"\bcall[q]?\s");
+            Assert.True(level == "O2" || calls.Count > 0, body);
+            Assert.All(calls, x => Assert.Matches(@"\band[q]?\s+\$-0x10,\s*%rsp", body[..x.Index]));
+        }
+    }
+
     // IMPL 21.6.7 (the Tatara plan's decision 33; build-compiler-rt.ps1's checks over the committed archive, design §3.6, notes F6): the
     // none row's kimi_backend archive defines exactly the row's supply symbols, every undefined symbol of a member is defined in the
     // archive, and no member uses an xmm register, an x87 instruction or an address below rsp (-mno-red-zone). Fail-before (B9e): no

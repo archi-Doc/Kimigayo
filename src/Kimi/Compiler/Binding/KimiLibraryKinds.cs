@@ -100,6 +100,7 @@ internal enum IntrinsicId : byte
     VolatileWrite,
     MonotonicClock, // SPEC 22.8.2, IMPL 21.5.5 (the Tatara plan's decision 25): the platform layer's monotonic clock.
     Instruction, // A machine instruction, its member a row of the Backend's InstructionRows (IMPL 21.6).
+    InterruptEntry, // The code address of an interrupt entry, its member a row of the Backend's InterruptEntries (IMPL 21.6).
 }
 
 /// <summary>What a function without a MIR body is (SPEC 8.11.2, 22.1, 22.6; TyCtxt.Bodyless), Binding's one category of it, which A4
@@ -146,11 +147,12 @@ internal enum DispositionKind : byte
 /// <param name="Kind">How the call is served.</param>
 /// <param name="Id">The intrinsic of an Intrinsic disposition.</param>
 /// <param name="Member">A family's member, the case its second `#Intrinsic` argument names: <see cref="IntrinsicId.Fail"/>'s SPEC 22.5.2
-/// code, <see cref="IntrinsicId.Instruction"/>'s row of the Backend's InstructionRows.</param>
+/// code, <see cref="IntrinsicId.Instruction"/>'s row of the Backend's InstructionRows, <see cref="IntrinsicId.InterruptEntry"/>'s of its
+/// InterruptEntries.</param>
 internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Member = null)
 {
     // IMPL 21.3.4's family form `#Intrinsic("Family", "Member")`: whether an id is a family, whose declarations each name its member.
-    internal static bool TakesMember(IntrinsicId id) => id is IntrinsicId.Fail or IntrinsicId.Instruction;
+    internal static bool TakesMember(IntrinsicId id) => id is IntrinsicId.Fail or IntrinsicId.Instruction or IntrinsicId.InterruptEntry;
 
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether an intrinsic's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source

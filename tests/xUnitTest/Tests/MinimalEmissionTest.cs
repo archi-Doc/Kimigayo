@@ -230,7 +230,7 @@ public class MinimalEmissionTest
     public void AHostedProgramBracketsNoRun()
     {
         var ir = CompilationTestHelper.WriteIr(Analyze(KernelSources.Hello));
-        Assert.DoesNotContain("call i8 @__kimi_platform_enter(", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("call i64 @__kimi_platform_enter(", ir, StringComparison.Ordinal);
         Assert.DoesNotContain("call void @__kimi_platform_leave(", ir, StringComparison.Ordinal);
     }
 
@@ -597,9 +597,9 @@ public class MinimalEmissionTest
             var adapter = PlatformRows.Rows[i].Adapter;
             witnesses[i] = Regex.Match(ir, @"\ndefine internal [^\n]* @" + adapter.Name + @"\([^\n]*\n(?:(?!\})[^\n]*\n)*?[^\n]*call \w+ @(__kimi_f\d+)\(").Groups[1].Value;
             var body = Body(ir, witnesses[i]);
-            var enter = Regex.Match(body, @"\Aentry:\n(?:  [^\n]*\n)*?  %t(\d+) = call i8 @__kimi_platform_enter\(\)\n  br label %b0\n");
+            var enter = Regex.Match(body, @"\Aentry:\n(?:  [^\n]*\n)*?  %t(\d+) = call i64 @__kimi_platform_enter\(\)\n  br label %b0\n");
             Assert.True(enter.Success, adapter.Name);
-            var leave = "  call void @__kimi_platform_leave(i8 %t" + enter.Groups[1].Value + ")";
+            var leave = "  call void @__kimi_platform_leave(i64 %t" + enter.Groups[1].Value + ")";
             var lines = body.Split('\n');
             var returns = 0;
             for (var j = 1; j < lines.Length; j++)
@@ -615,7 +615,7 @@ public class MinimalEmissionTest
             Assert.True(adapter.NoReturn == (returns == 0), adapter.Name);
         }
 
-        Assert.Equal(witnesses.Length, Regex.Matches(ir, @"= call i8 @__kimi_platform_enter\(\)").Count);
+        Assert.Equal(witnesses.Length, Regex.Matches(ir, @"= call i64 @__kimi_platform_enter\(\)").Count);
         return witnesses;
     }
 }
