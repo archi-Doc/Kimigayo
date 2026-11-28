@@ -7,7 +7,8 @@ namespace XunitTest;
 
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
 /// have one id, 0 is the empty set, Add (of an element or a run), Union (of two or of any number, R4-M138), Remove and Range keep the set
-/// laws and repeat through their memos (a run's Add through its result), and the storage is pooled.</summary>
+/// laws and repeat through their memos (a run's Add through its result), and the storage is pooled; each element has a tier, the decided
+/// one winning where both meet, every operation matching by element, and Rest and At give a set's rested tier (R4-M252).</summary>
 public sealed class MirLoanSetsTest
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
@@ -20,11 +21,11 @@ public sealed class MirLoanSetsTest
         Assert.Equal(set, Of(sets, 9, 1, 5));
         Assert.Equal(set, sets.Union(Of(sets, 5), Of(sets, 9, 1)));
         Assert.Equal(set, sets.Remove(Of(sets, 1, 2, 5, 9), Of(sets, 2)));
-        Assert.Equal([1, 5, 9], sets.Elements(set).ToArray());
+        Assert.Equal([1, 5, 9], Ids(sets, set));
         Assert.Equal(0, Of(sets));
         Assert.Equal(0, sets.Remove(set, Of(sets, 9, 5, 1)));
         Assert.Equal(0, sets.Remove(Of(sets, 3), Of(sets, 3, 4)));
-        Assert.Equal((0, false, 0), (sets.Count(0), sets.Contains(0, 0), sets.Elements(0).Length));
+        Assert.Equal((0, false, 0), (sets.Count(0), sets.Contains(0, 0), Ids(sets, 0).Length));
     }
 
     // R4-M53: Union is idempotent, commutative and associative, with the empty set as its identity; Add is a Union with one element;
@@ -38,11 +39,11 @@ public sealed class MirLoanSetsTest
         Assert.Equal([a, a, a], new[] { sets.Union(a, a), sets.Union(a, 0), sets.Union(0, a) });
         Assert.Equal(sets.Union(a, b), sets.Union(b, a));
         Assert.Equal(sets.Union(sets.Union(a, b), c), sets.Union(a, sets.Union(b, c)));
-        Assert.Equal([0, 1, 2, 4, 7, 8, 9], sets.Elements(sets.Union(sets.Union(a, b), c)).ToArray());
+        Assert.Equal([0, 1, 2, 4, 7, 8, 9], Ids(sets, sets.Union(sets.Union(a, b), c)));
         Assert.Equal(sets.Union(a, Of(sets, 5)), sets.Add(a, 5));
         Assert.Equal(sets.Add(a, 5), sets.Add(sets.Add(a, 5), 5));
         Assert.Equal(a, sets.Add(a, 4));
-        Assert.Equal([1, 7], sets.Elements(sets.Remove(a, b)).ToArray());
+        Assert.Equal([1, 7], Ids(sets, sets.Remove(a, b)));
         Assert.Equal(sets.Remove(a, b), sets.Remove(sets.Union(a, b), b));
         Assert.Equal([a, a, 0], new[] { sets.Remove(a, Of(sets, 3, 5, 100)), sets.Remove(a, 0), sets.Remove(0, a) });
         Assert.Equal((3, true, false), (sets.Count(a), sets.Contains(a, 7), sets.Contains(a, 5)));
@@ -55,12 +56,12 @@ public sealed class MirLoanSetsTest
     {
         var sets = new MirLoanSets();
         var (run, absent, pair, four) = (sets.Range(3, 4), Of(sets, 1, 9), Of(sets, 1, 4), Of(sets, 4));
-        Assert.Equal([3, 4, 5, 6], sets.Elements(run).ToArray());
+        Assert.Equal([3, 4, 5, 6], Ids(sets, run));
         Assert.Equal([run, run, 0], new[] { Of(sets, 6, 5, 4, 3), sets.Range(3, 4), sets.Range(9, 0) });
         var bytes = sets.Bytes;
         Assert.Equal([run, Of(sets, 1), 0], new[] { sets.Remove(run, absent), sets.Remove(pair, run), sets.Remove(four, run) });
         Assert.Equal(bytes, sets.Bytes);
-        Assert.Equal([3, 5, 6], sets.Elements(sets.Remove(run, four)).ToArray());
+        Assert.Equal([3, 5, 6], Ids(sets, sets.Remove(run, four)));
     }
 
     // DECISIONS R4-M132 (the design review's A-B1), G263: a set with an ascending run added is interned in one pass, the set its elements
@@ -70,16 +71,16 @@ public sealed class MirLoanSetsTest
     public void AddingARunMakesOneNodeInOnePass()
     {
         var sets = new MirLoanSets();
-        var set = sets.Add(0, [2, 5, 8, 13]);
+        var set = sets.Add(0, Decided(2, 5, 8, 13));
         Assert.Equal([set, 0, set], new[] { Of(sets, 13, 8, 5, 2), sets.Add(0, []), sets.Add(set, []) });
-        Assert.Equal([2, 5, 8, 13], sets.Elements(set).ToArray());
+        Assert.Equal([2, 5, 8, 13], Ids(sets, set));
         var (bytes, scanned) = (sets.Bytes, sets.Scanned);
-        Assert.Equal(set, sets.Add(0, [2, 5, 8, 13]));
+        Assert.Equal(set, sets.Add(0, Decided(2, 5, 8, 13)));
         Assert.Equal((bytes, scanned + 4), (sets.Bytes, sets.Scanned));
-        var added = sets.Add(set, [1, 5, 20]);
-        Assert.Equal([1, 2, 5, 8, 13, 20], sets.Elements(added).ToArray());
+        var added = sets.Add(set, Decided(1, 5, 20));
+        Assert.Equal([1, 2, 5, 8, 13, 20], Ids(sets, added));
         Assert.Equal((bytes + (6 * sizeof(int)), scanned + 4 + 7), (sets.Bytes, sets.Scanned));
-        Assert.Equal(added, sets.Add(added, [2, 13]));
+        Assert.Equal(added, sets.Add(added, Decided(2, 13)));
         Assert.Equal(bytes + (6 * sizeof(int)), sets.Bytes);
     }
 
@@ -113,7 +114,7 @@ public sealed class MirLoanSetsTest
         var ends = sets.Add(sets.Add(0, 0), 7);
         Assert.Equal(ends, sets.Remove(ends, three));
         Assert.Equal(25, sets.Scanned);
-        Assert.Equal([0, 1, 2, 3], sets.Elements(sets.Remove(union, three)).ToArray());
+        Assert.Equal([0, 1, 2, 3], Ids(sets, sets.Remove(union, three)));
         Assert.Equal(35, sets.Scanned);
     }
 
@@ -129,8 +130,8 @@ public sealed class MirLoanSetsTest
             [high, low, low, adjacent],
             new[] { sets.Remove(high, low), sets.Remove(low, high), sets.Remove(low, adjacent), sets.Remove(adjacent, low) });
         Assert.Equal(scanned, sets.Scanned);
-        Assert.Equal([0, 1, 2, 3, 4], sets.Elements(sets.Remove(low, shared)).ToArray());
-        Assert.Equal([9], sets.Elements(sets.Remove(shared, low)).ToArray());
+        Assert.Equal([0, 1, 2, 3, 4], Ids(sets, sets.Remove(low, shared)));
+        Assert.Equal([9], Ids(sets, sets.Remove(shared, low)));
         Assert.True(sets.Scanned > scanned);
     }
 
@@ -145,8 +146,8 @@ public sealed class MirLoanSetsTest
         var (a, b, high) = (Of(sets, 1, 4, 70), Of(sets, 4, 130), Of(sets, 0, 100_000));
         Assert.Equal([0, 0, a, a], new[] { sets.Union([]), sets.Union([0, 0]), sets.Union([a]), sets.Union([0, a, a, 0]) });
         Assert.Equal(sets.Union(a, b), sets.Union([a, b, a, b]));
-        Assert.Equal([0, 1, 4, 70, 130, 100_000], sets.Elements(sets.Union([a, high, b])).ToArray());
-        Assert.Equal([0, 7], sets.Elements(sets.Union([Of(sets, 7), Of(sets, 0)])).ToArray());
+        Assert.Equal([0, 1, 4, 70, 130, 100_000], Ids(sets, sets.Union([a, high, b])));
+        Assert.Equal([0, 7], Ids(sets, sets.Union([Of(sets, 7), Of(sets, 0)])));
         var random = new Random(264);
         foreach (var universe in new[] { 64, 65, 200, 1_000, 5_000 })
         {
@@ -191,8 +192,8 @@ public sealed class MirLoanSetsTest
         Assert.Equal(0, sets.Bytes);
         (seven, var five) = (sets.Add(0, 7), sets.Add(0, 5));
         Assert.Equal((1, 2), (seven, five));
-        Assert.Equal([5, 7], sets.Elements(sets.Union(seven, five)).ToArray());
-        Assert.Equal([3], sets.Elements(sets.Add(0, 3)).ToArray());
+        Assert.Equal([5, 7], Ids(sets, sets.Union(seven, five)));
+        Assert.Equal([3], Ids(sets, sets.Add(0, 3)));
         Assert.Equal(5 * sizeof(int), sets.Bytes);
     }
 
@@ -218,7 +219,7 @@ public sealed class MirLoanSetsTest
             var a = sets.Add(0, first);
             var b = sets.Add(a, 2);
             var c = sets.Union(a, sets.Range(2, 2));
-            return [.. new[] { a, b, c, sets.Remove(c, b) }.Select(x => $"{x}: {string.Join(", ", sets.Elements(x).ToArray())}")];
+            return [.. new[] { a, b, c, sets.Remove(c, b) }.Select(x => $"{x}: {string.Join(", ", Ids(sets, x))}")];
         }
     }
 
@@ -245,7 +246,7 @@ public sealed class MirLoanSetsTest
             }
         }
 
-        Assert.Equal(expected.Order(), sets.Elements(result).ToArray());
+        Assert.Equal(expected.Order(), Ids(sets, result));
     }
 
     // V16, R4-M138: a warm union of any number of sets allocates nothing: its marker and its list of words keep their storage.
@@ -266,11 +267,100 @@ public sealed class MirLoanSetsTest
 
         Run();
         Assert.Equal(0, AllocationMeasurement.Measure(Run));
-        Assert.Equal([0, 3, 64, 70, 5_000], sets.Elements(result).ToArray());
+        Assert.Equal([0, 3, 64, 70, 5_000], Ids(sets, result));
+    }
+
+    // DECISIONS R4-M252: where both tiers of an element meet, the decided one wins: Add of an element or of a run, and Union of two or of
+    // any number; a rested element added to a decided one stays decided.
+    [Fact]
+    public void TheDecidedTierWins()
+    {
+        var sets = new MirLoanSets();
+        var rested = sets.Rest(Of(sets, 1, 5));
+        Assert.Equal([(1, true), (5, true)], Tiered(sets, rested));
+        Assert.Equal([(1, true), (5, false)], Tiered(sets, sets.Add(rested, 5)));
+        Assert.Equal(rested, sets.Add(rested, new TieredElement(5, true)));
+        Assert.Equal(Of(sets, 5), sets.Add(Of(sets, 5), new TieredElement(5, true)));
+        var decided = Of(sets, 5, 9);
+        Assert.Equal([(1, true), (5, false), (9, false)], Tiered(sets, sets.Union(rested, decided)));
+        Assert.Equal(sets.Union(rested, decided), sets.Union(decided, rested));
+        Assert.Equal(sets.Union(rested, decided), sets.Union([rested, 0, decided, rested]));
+        Assert.Equal([(1, true), (5, false), (8, false)], Tiered(sets, sets.Add(rested, Decided(5, 8))));
+    }
+
+    // DECISIONS R4-M252: every set operation matches by element, so a removed element removes both tiers: Contains reads either tier, and
+    // Remove (through Without, or Apart for sets that share no element) and a Range's removal take an element at whichever tier it has.
+    [Fact]
+    public void RemovalMatchesByElement()
+    {
+        var sets = new MirLoanSets();
+        var mixed = sets.Union(sets.Rest(Of(sets, 1, 4)), Of(sets, 7));
+        Assert.Equal((true, true, false), (sets.Contains(mixed, 4), sets.Contains(mixed, 7), sets.Contains(mixed, 5)));
+        Assert.Equal([(1, true), (7, false)], Tiered(sets, sets.Remove(mixed, Of(sets, 4))));
+        Assert.Equal([(1, true), (4, true)], Tiered(sets, sets.Remove(mixed, sets.Rest(Of(sets, 7)))));
+        Assert.Equal([1, 7], Ids(sets, sets.Remove(Of(sets, 1, 4, 7), sets.Rest(Of(sets, 4)))));
+        Assert.Equal(mixed, sets.Remove(mixed, sets.Rest(Of(sets, 9))));
+        Assert.Equal([(5, true)], Tiered(sets, sets.Remove(sets.Rest(Of(sets, 3, 4, 5)), sets.Range(3, 2))));
+    }
+
+    // DECISIONS R4-M252: Rest gives every element rested, memoized by the set (the rested set its own Rest), and At gives a set at the
+    // tier of the entry it is reached by.
+    [Fact]
+    public void RestAndAtTakeTheEntrysTier()
+    {
+        var sets = new MirLoanSets();
+        var set = Of(sets, 2, 6);
+        var rest = sets.Rest(set);
+        Assert.Equal([(2, true), (6, true)], Tiered(sets, rest));
+        var scanned = sets.Scanned;
+        Assert.Equal([rest, rest, 0], new[] { sets.Rest(set), sets.Rest(rest), sets.Rest(0) });
+        Assert.Equal(scanned, sets.Scanned);
+        Assert.Equal([(2, true), (6, true), (8, true)], Tiered(sets, sets.Rest(sets.Union(rest, Of(sets, 8)))));
+        Assert.Equal([set, rest], new[] { sets.At(set, new TieredElement(9, false)), sets.At(set, new TieredElement(9, true)) });
+        Assert.Equal(rest, sets.At(rest, new TieredElement(0, false)));
+    }
+
+    // DECISIONS R4-M252: a tiered element is one word, 2·element + rested, so an element must be below 2^30; one that is not is an
+    // internal invariant, never a set.
+    [Fact]
+    public void AnElementAt2To30IsAnInternalInvariant()
+    {
+        var last = new TieredElement((1 << 30) - 1, true);
+        Assert.Equal(((1 << 30) - 1, true), (last.Element, last.Rested));
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => new TieredElement(1 << 30, false)).Message);
+        Assert.Throws<InvalidOperationException>(() => new TieredElement(-1, false));
+    }
+
+    // R4-M252 with V16: a warm Rest and At allocate nothing: the Rest memo keeps its storage across Clear.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRestAllocatesNothing()
+    {
+        var sets = new MirLoanSets();
+        var result = 0;
+        void Run()
+        {
+            sets.Clear();
+            var set = sets.Add(sets.Add(sets.Add(0, 0), 3), 64);
+            result = sets.Union(sets.At(set, new TieredElement(3, true)), sets.Add(0, 64));
+        }
+
+        Run();
+        Assert.Equal(0, AllocationMeasurement.Measure(Run));
+        Assert.Equal([(0, true), (3, true), (64, false)], Tiered(sets, result));
     }
 
     // A set of elements, added in their order.
     private static int Of(MirLoanSets sets, params int[] elements) => elements.Aggregate(0, sets.Add);
+
+    // A set's elements in ascending order, without their tiers.
+    private static int[] Ids(MirLoanSets sets, int set) => [.. sets.Elements(set).ToArray().Select(x => x.Element)];
+
+    // A set's elements in ascending order, each with its tier (rested or not).
+    private static (int Element, bool Rested)[] Tiered(MirLoanSets sets, int set) => [.. sets.Elements(set).ToArray().Select(x => (x.Element, x.Rested))];
+
+    // A run of decided elements.
+    private static TieredElement[] Decided(params int[] elements) => [.. elements.Select(x => new TieredElement(x, false))];
 
     // Adds, Unions and Removes over 64 elements, the second round repeating the first's operations.
     private static int Workload(MirLoanSets sets)

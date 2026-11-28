@@ -603,6 +603,16 @@ func absurd(x: Never)
     pass(x@move, x)    // Error: x was Moved; the read of x is checked on the assumed path.
 ```
 
+```kimi
+// fail: () -> Never; pick: (string, string) -> string; poke: (uniq/string) -> string
+func compareAbandoned() -> i32
+    var s = "s"
+    _ = s == pick((return 1), poke(s@uniq))   // Valid: return abandons the comparison, so its Loan on s ends first.
+    // _ = s == pick(fail(), poke(s@uniq))
+    // Error: fail() is a Never call, not a control transfer, so the comparison's Loan on s stays live.
+    return 0
+```
+
 ## 14.11. `require`
 
 `require Expression else Body` evaluates its `bool` condition once ([§14.2.3](#1423-conditions)), continues when it is true and runs its failure body when it is false. The `else` is on the condition's last line or the next line, aligned with `require`. `require` has no result, label, target or barrier; it is not an `if`.
