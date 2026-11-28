@@ -490,27 +490,6 @@ public sealed partial class Binding
         return true;
     }
 
-    // G1406-66 (SPEC 10.8, 8.3.3): whether the Limited reading `classes` (ReadingOf's table; S's, in the callee's scope, G1406-68) is
-    // cut over a Constraint that needs one of `function`'s slots in `slots`: a Limited closure of its closure set (identityReadings'
-    // range) is keyed by a Type naming such a slot.
-    // A Constraint needing an unbound slot is not judged, so a cut over it answers no judgment of the call.
-    private bool CutNamesSlots(IdentityClasses classes, Koto function, SlotSet slots)
-    {
-        for (var k = 0; k < this.identityReadings.Count; k++)
-        {
-            var reading = this.identityReadings[k];
-            for (var c = reading.Start; ReferenceEquals(reading.Classes, classes) && c < reading.Start + reading.Count; c++)
-            {
-                if (this.identityClosures[this.identityReadingClosures[c]] is { Limited: true } closure && MentionsSlots(closure.Key, function, slots))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     // R7-C2c2 c2-2, e2-7 R3.4: a closure's round table, the declaration's classes with the identity rows its walks recorded (SPEC 8.2.3's
     // grounds include the Constraints `T is C` supplies at every depth): ClassesOver those rows. A round with rows builds one reused
     // request-local table, never memoized; its rows are Provisional (a derived availability), so nothing keyed by it is kept, and at

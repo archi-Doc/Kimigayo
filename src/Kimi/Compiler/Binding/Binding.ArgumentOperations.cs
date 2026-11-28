@@ -378,9 +378,11 @@ public sealed partial class Binding
                 return false; // An owning receiver cannot acquire a sliced base.
             }
 
-            // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source, out _, null) && this.ReadTypeReferent(actual, scope, source) is { } read &&
-                this.FitsTypeAt(read, pattern, source, out _, null))
+            // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read. The conjuncts are asked in
+            // that order: the reference's fit, its terminal (ReadTerminal), the terminal's fit, then whether it is a read Type (SPEC
+            // 3.5.3), so no read-Type question is asked of a terminal that does not fit (G1406-75).
+            if (!this.FitsTypeAt(actual, pattern, source, out _, null) && this.ReadTerminal(actual, scope) is { } read &&
+                this.FitsTypeAt(read, pattern, source, out _, null) && this.IsReadType(read, scope, source))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;

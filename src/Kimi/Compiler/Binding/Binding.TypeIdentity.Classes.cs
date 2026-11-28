@@ -269,6 +269,20 @@ public sealed partial class Binding
             return count;
         }
 
+        // G1406-74, G1406-76 (SPEC 8.2.3, 10.8): whether `a` and `b` are nodes of one connected part (Reach), so the table's identity
+        // premises link them, directly or through other Types; false where either is no node. FailUnboundSlots' link test over a Limited
+        // S reading (JudgedSignatureNames).
+        internal bool SamePart(BoundType a, BoundType b)
+        {
+            if (!this.node.TryGetValue(a, out var x) || !this.node.TryGetValue(b, out var y))
+            {
+                return false;
+            }
+
+            this.Reach();
+            return this.Part(x) == this.Part(y);
+        }
+
         // R7-C3 C3d (F's C2/C3 rulings 332, 333; SPEC 8.3.4, 23.1.2): the whole of a pair layer in the final error group `group` whose binder
         // admits no case in this view (PairHead's empty set, 8.3.4's Error: the failed input the group's meets read), else null. One scan
         // of the nodes, on an error group only.
@@ -1552,10 +1566,10 @@ public sealed partial class Binding
             return n;
         }
 
-        // TypesWith's connected parts of the nodes (G1406-27): a class's members are one part (a premise joins its sides) and so are a
-        // node and each component with an abstract part (each a node, Add; a closed Type, as a projection's Contract, is itself alone
-        // and connects nothing), built once per table after its last node or join (Union empties them), linear in the nodes and their
-        // components (union by size).
+        // The connected parts of the nodes (G1406-27), read by TypesWith (a closure's measure) and SamePart (G1406-74's link sets, the
+        // slots a premise links): a class's members are one part (a premise joins its sides) and so are a node and each component with
+        // an abstract part (each a node, Add; a closed Type, as a projection's Contract, is itself alone and connects nothing), built once
+        // per table after its last node or join (Union empties them), linear in the nodes and their components (union by size).
         private void Reach()
         {
             if (this.reach.Count == this.types.Count)

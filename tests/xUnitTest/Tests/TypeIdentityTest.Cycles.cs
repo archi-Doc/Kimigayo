@@ -374,6 +374,13 @@ public partial class TypeIdentityTest
     // Pq of stride 1 (Called's form).
     private const string PqStride1 = "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Up\n";
 
+    // Mk's path equation alone (the b-pfx rows, G1406-72).
+    private const string MkPfx = "contract Mk\n    associate Next is Mk\n    associate Up\n    Self.(Mk).Next.(Mk).Up is Self\n";
+
+    // The akp-nofk and ak-keep rows' program up to fkBad's body: a `uniq/T.(Mk).Next` of Mk's class (G1406-75).
+    private const string Fk = "public func main() => ()\ncontract Inner\n" + Mk + Pq + "func consume<X>(x: X)\n    return\nfunc needIn<X>(x: ref/X)\n    X is Inner\n    return\n" +
+        "func fk<T>(dst: uniq/T.(Mk).Next, src: ref/T) -> uniq/T.(Mk).Next during dst\n    T is Mk\n    return dst@move\nfunc fkBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n";
+
     private const string PqNeeds =
         "func needIO<X>(x: ref/X)\n    X is Inner or Other\n    return\nfunc needOI<X>(x: ref/X)\n    X is Other or Inner\n" +
         "    return\nfunc needB<X>(x: ref/X)\n    X is Other\n    X is Inner\n    return\n";
@@ -549,6 +556,24 @@ public partial class TypeIdentityTest
         // the bound, X = i32, accepted.
         { "t1", Called("func need<U, X, T>(u: ref/U, t: ref/T) -> i32\n    T is Pq\n    U is T.(Pq).Up\n" + Up(40, "Callable<() -> X>") + "    return 0\n", "x: ref/T.(Pq).Up, t: ref/T) -> i32", "    T.(Pq).Up is Callable<() -> i32>\n    return need(x, t)\n"), "AnalysisLimit_Kd" },
         { "t1b", Called("func need<U, X, T>(u: ref/U, t: ref/T) -> i32\n    T is Pq\n    U is T.(Pq).Up\n" + Up(1, "Callable<() -> X>") + "    return 0\n", "x: ref/T.(Pq).Up, t: ref/T) -> i32", "    T.(Pq).Up is Callable<() -> i32>\n    return need(x, t)\n"), string.Empty },
+        // G1406-72 (SPEC 10.5.2, 10.8, 8.3.3): a Limited S is the limit's record only where a judged Callable Constraint of the callee
+        // (its subject no unbound slot) names an unbound slot in its signature. U's class never closes (Mk's), but b-pfx and b-pfx-u
+        // have no Callable Constraint, and b-pfx-z's is Z's, unbound and not judged: X's Language record, as on dev (before, the limit's,
+        // a lost independent record). s-bound's is W's, bound by `o`, and whether W is in U's class (stride 2, an odd depth) is read over
+        // a class that never closes: the limit, as t1.
+        { "b-pfx", MkPfx + "func need<U, X>(u: ref/U) -> i32\n    X is Mk\n    U is X.(Mk).Next.(Mk).Up\n    return 0\nfunc f(v: ref/i32) -> i32\n    return need(v)\npublic func main() => ()\n", "UnboundTypeArgument_Kd" },
+        { "b-pfx-u", MkPfx + "func need<U, X>(u: ref/U) -> i32\n    U is Mk\n    X is U.(Mk).Next\n    return 0\nfunc f<T>(t: ref/T) -> i32\n    T is Mk\n    return need(t)\npublic func main() => ()\n", "UnboundTypeArgument_Kd" },
+        { "b-pfx-z", MkPfx + "func need<U, X, Z>(u: ref/U) -> i32\n    X is Mk\n    U is X.(Mk).Next.(Mk).Up\n    Z is Callable<() -> X>\n    return 0\nfunc f(v: ref/i32) -> i32\n    return need(v)\npublic func main() => ()\n", "UnboundTypeArgument_Kd" },
+        { "s-bound", Pq + "func need<U, W, X, T>(u: ref/U, t: ref/T, w: ref/Option<W>) -> i32\n    T is Pq\n    U is T.(Pq).Up\n    W is T" + Next(3) + ".(Pq).Up\n    W is Callable<() -> X>\n    return 0\nfunc f<T>(x: ref/T.(Pq).Up, t: ref/T, o: ref/Option<T" + Next(3) + ".(Pq).Up>) -> i32\n    T is Pq\n    T.(Pq).Up is Callable<() -> i32>\n    return need(x, t, o)\npublic func main() => ()\n", "AnalysisLimit_Kd" },
+        // G1406-74, G1406-75 (SPEC 10.2, 3.5.3, 10.8, 8.2.3, 8.3.3): consume's X fits neither `uniq/T.(Mk).Next` nor its terminal, so
+        // whether the terminal is a read Type (a proof over Mk's class, which never closes) is not asked: akp-nofk is accepted and
+        // ak-keep, its invalid counterpart, keeps its two independent records (before, each also the limit's at consume's call).
+        // b-pfx-zp's Callable Constraint is Z's, unbound and linked to no bound slot, so it is not judged: X's Language record (before,
+        // the limit's). t2's X is linked to U by `U is X.(Pq).Up`, so its Constraint is judged over the cut: the limit, as t1.
+        { "akp-nofk", Fk + "    let k = t@uniq\n    consume(k@move)\n", string.Empty },
+        { "ak-keep", Fk + "    let k = fk<T>(t@uniq, s)\n    consume(t@move)\n    consume(k@move)\n", "ComparisonLoanConflict_Kd OwnershipDepthLimit_Kd" },
+        { "b-pfx-zp", MkPfx + "func need<U, X, Z>(u: ref/U) -> i32\n    X is Mk\n    U is X.(Mk).Next.(Mk).Up\n    Z is Mk\n    Z.(Mk).Up is Callable<() -> X>\n    return 0\nfunc f(v: ref/i32) -> i32\n    return need(v)\npublic func main() => ()\n", "UnboundTypeArgument_Kd" },
+        { "t2", PqStride1 + "func need<U, X>(u: ref/U) -> i32\n    X is Pq\n    U is X.(Pq).Up\n    X" + Next(40) + ".(Pq).Up is Callable<() -> X>\n    return 0\nfunc f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is Callable<() -> T>\n    return need(x)\npublic func main() => ()\n", "AnalysisLimit_Kd" },
         // G1406-68 (SPEC 10.5.2, 10.8, 8.3.3): the callee's T is bound only through S = `() -> T` against x's known call signature,
         // T.(Pq).Up's, identical to T.Next^40.Up's only past the round bound, so "T unbound" rests on the cut: the limit at the call.
         // r2 calls f itself and r2c Box's constructor from Box's Type function (a constructor's slots are its structure's, 10.8.1), so

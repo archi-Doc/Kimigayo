@@ -30,16 +30,13 @@ public sealed partial class Binding
     /// <param name="site">The site of the judgment that needs the answer (QuerySite).</param>
     /// <returns>The terminal read Type, or null when <paramref name="type"/> is no such chain.</returns>
     private BoundType? ReadTypeReferent(BoundType? type, BindingScope scope, QuerySite site)
-    {
-        if (ScalarReferent(type) is { } scalar)
-        {
-            return scalar;
-        }
+        => this.ReadTerminal(type, scope) is { } terminal && this.IsReadType(terminal, scope, site) ? terminal : null;
 
-        // SPEC 3.4.3: the safe value-reference layers are ref, uniq and the qualifying pair layers, in any order (LayersTerminal).
-        return type is not null && this.LayersTerminal(type, scope) is var terminal && !ReferenceEquals(terminal, type) &&
-            this.IsReadType(terminal, scope, site) ? terminal : null;
-    }
+    // The terminal of `type`'s safe value-reference layers, or null for a Type with none: a Scalar terminal (ScalarReferent), else
+    // the walk below ref, uniq and the qualifying pair layers, in any order (SPEC 3.4.3, LayersTerminal). Whether it is a read Type is
+    // IsReadType's own judgment, which ReadTypeReferent composes and AdaptInput asks after the terminal's fit (SPEC 10.2, G1406-75).
+    private BoundType? ReadTerminal(BoundType? type, BindingScope scope)
+        => ScalarReferent(type) ?? (type is not null && this.LayersTerminal(type, scope) is var terminal && !ReferenceEquals(terminal, type) ? terminal : null);
 
     // SPEC 3.5.3: a read Type is a Scalar, a Type a proof decides (BoundType.IsProofDecided) proven PrimitiveInteger, or a Type
     // proven to satisfy one of the closed Contracts. Only Kimi declarations conform to them, so any other nominal Type is rejected

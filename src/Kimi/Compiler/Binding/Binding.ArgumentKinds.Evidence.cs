@@ -149,7 +149,7 @@ public sealed partial class Binding
         // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence alongside ordinary
         // inputs, before expected results and literal defaults. An anonymous waiting body is never evidence; its written header is
         // handled separately. The signature's own Origins become open regions. A call signature missed at a parameter over a Limited
-        // reading gives the call's unbound-slot record its limit (FailUnboundSlots; G1406-65 12a (ii), G1406-66), each side's first:
+        // reading gives the call's unbound-slot record its limit (FailUnboundSlots; G1406-65 12a (ii), G1406-72), each side's first:
         // `callableRead` the argument's known call signature, in the call's scope; `requiredRead` S, in the callee's (SPEC 10.5.2,
         // G1406-68).
         internal readonly bool InferCallableSignatures(Span<BoundArgumentOperation> operations, out IdentityClasses? callableRead, out IdentityClasses? requiredRead)

@@ -9,8 +9,8 @@ public sealed partial class Binding
 {
     // The callee's own Type slot a part of a Type names itself, -1 for none: directly, as the selector of an `s/U` application or
     // adaptation, or as the target projection of a pair slot (the one owner of the own-slot kinds). With MentionsSlots, its input is a
-    // Type of the callee's declaration (a parameter pattern, S, or a key of a reading in ConstraintScope(callee)), never a Type of the
-    // call's scope, whose caller may be the callee or share its Container's slots (G1406-68).
+    // Type of the callee's declaration (a parameter pattern, S, or a Callable Constraint's subject or required signature), never a Type
+    // of the call's scope, whose caller may be the callee or share its Container's slots (G1406-68).
     private static int OwnSlot(BoundType type, Koto function)
         => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection &&
             type.Symbol is { } symbol ? ContainerSlot(function, symbol) : -1;
@@ -64,6 +64,54 @@ public sealed partial class Binding
         }
 
         return slots;
+    }
+
+    // G1406-72, G1406-74 (SPEC 10.5.2, 10.8, 8.2.3, 8.3.3; it supersedes G1406-66's closure-key rule): whether the Limited S reading
+    // `read` can bind a slot of `boundary`, the slots the call leaves unbound. It can only where one of the candidate's Callable
+    // Constraints (CandidateClauses) is judged and its required signature names one of those slots (MentionsSlots). A Constraint needing
+    // an unbound slot is not judged (SPEC 10.8) unless an identity premise links the slot to a Type slot of the call outside `boundary`:
+    // then whether its subject is bound is the identity reading's answer. `unlinked` holds the other slots of `boundary`; the links are
+    // `read`'s connected parts (SamePart, G1406-76), its node key a slot's own Type, and a length slot is never a node. The cut adds
+    // identities within a linked set, never premises, so the link sets do not depend on it.
+    private bool JudgedSignatureNames(in SlotSolution solution, SlotSet boundary, IdentityClasses read)
+    {
+        var (owner, slots) = (solution.SlotOwner, CallOwnSlots(solution.Function));
+        var unlinked = this.RentSlotSet(slots.Count);
+        try
+        {
+            for (var g = 0; g < slots.Count; g++)
+            {
+                var linked = false;
+                for (var h = 0; !linked && boundary.Contains(g) && slots[g] is not LengthParameterKoto && h < slots.Count; h++)
+                {
+                    linked = !boundary.Contains(h) && slots[h] is not LengthParameterKoto && read.SamePart(slots[g].BoundSymbol!.Type!, slots[h].BoundSymbol!.Type!);
+                }
+
+                if (boundary.Contains(g) && !linked)
+                {
+                    unlinked.Add(g);
+                }
+            }
+
+            for (var list = 0; list < 2; list++)
+            {
+                var clauses = CandidateClauses(solution.Binder, owner, list);
+                for (var c = 0; clauses is not null && c < clauses.Count; c++)
+                {
+                    if (clauses[c] is IsKoto { BoundConstraint: { Kind: ConstraintKind.Callable, Subject: { } subject, RequiredType: { } required } } &&
+                        MentionsSlots(required, owner, boundary) && !MentionsSlots(subject, owner, unlinked))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            this.ReturnSlotSet(unlinked);
+        }
     }
 
     // SPEC 10.5, 10.8: an unbound slot's record (FailUnboundSlots at a call, FailUnfixedReference at a reference): the slot's Type parameter
@@ -214,8 +262,8 @@ public sealed partial class Binding
     // callable evidence missed a call signature over a Limited reading (its row's two, InferCallableSignatures), the slot that
     // signature could bind is the limit's instead (ReadIdentityLimit; SPEC 8.3.3, G1406-65 12a (ii)): the argument's known call
     // signature's (`callableRead`, the call's scope, which crosses only the caller's Constraints), else S's (`requiredRead`, the
-    // callee's scope) unless it is cut over a Constraint that needs a slot the call leaves unbound, which is not judged (CutNamesSlots;
-    // SPEC 10.8, G1406-66: p4-inferred, t1; G1406-68: r2, a recursive call, reads the first).
+    // callee's scope) only where S could bind a slot of `boundary` (JudgedSignatureNames; G1406-72: p4-inferred, b-pfx, t1; G1406-74:
+    // b-pfx-zp, t2; G1406-68: r2, a recursive call, reads the first).
     private BoundType? FailUnboundSlots(in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, IdentityClasses? callableRead, IdentityClasses? requiredRead)
     {
         var (call, selected, scope, self, declaringType) = (solution.Call, solution.Function, solution.Scope, solution.Self, solution.DeclaringType);
@@ -228,7 +276,7 @@ public sealed partial class Binding
         {
             this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref boundary);
             var limit = callableRead is { Limited: true } ? callableRead
-                : requiredRead is { Limited: true } && !this.CutNamesSlots(requiredRead, CallSlotOwner(selected), boundary) ? requiredRead : null;
+                : requiredRead is { Limited: true } && this.JudgedSignatureNames(solution, boundary, requiredRead) ? requiredRead : null;
             Koto? failed = null;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {

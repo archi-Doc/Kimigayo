@@ -376,7 +376,7 @@ public class ArchitectureRulesTest
         "Binding.RawOrigins.Borrows.cs:Join=1 key",
         "Binding.RawOrigins.Borrows.cs:Mode=1 key",
         "Binding.RawOrigins.cs:SameExceptRawOrigins=1 sufficient",
-        "Binding.ReadTypes.cs:ReadTypeReferent=1 unchanged",
+        "Binding.ReadTypes.cs:ReadTerminal=1 unchanged",
         "Binding.RecursiveContracts.cs:IsRecursive=2 declared",
         "Binding.RecursiveContracts.cs:OfSearchSelf=1 declared",
         "Binding.ResultPremises.cs:DefinitionContractFits=1 kind",
