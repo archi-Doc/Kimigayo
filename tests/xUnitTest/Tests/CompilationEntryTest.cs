@@ -301,21 +301,60 @@ public sealed class CompilationEntryTest
     [InlineData("example-I", "NestingLimit_Kd@1:1028")]
     [InlineData("y-and-false-I", "NestingLimit_Kd@1:6")]
     [InlineData("c3-ifs-1030-I", "NestingLimit_Kd@6:1038")]
+    // G144-37 N4, N5: a later #if's Condition is a source check and keeps its record (r1-src), as a target directive's does (r11).
+    [InlineData("r1-src-I", "NestingLimit_Kd@1:5 | UnknownCompileTimeName_Kd@4:5")]
+    [InlineData("r4-false-and-I", "NestingLimit_Kd@1:16")]
+    [InlineData("r11-stacked-missing-I", "NestingLimit_Kd@1:5 | UnknownCompileTimeName_Kd@2:5")]
+    // Pinned, not SPEC's record: SPEC 19.4 lists modifier placement among the source checks, so ProtectedPlacement_Kd@5:20 is owed.
+    // It is lost through a check owned outside the source phase (Binding), removed by the open issue G144-37 opens: "SPEC 19.4 source
+    // checks owned by Binding are skipped in excluded syntax (an invalid program accepted: r1-prot-excl) and in a resting Compilation
+    // (r1-prot)".
+    [InlineData("r1-prot-I", "NestingLimit_Kd@1:5")]
     public void ADirectiveThatCannotCompleteItsSelectionRestsTheCompilation(string row, string records)
         => Assert.Equal(records, CheckedSites(Resting(row)));
 
     // SPEC 19.4, IMPL A.4 (G144x U3): a directive inside excluded syntax selects nothing, so its cut Condition rests nothing, in a body
     // and a member list too (review-design-u3 B1); a Condition the parser reads within L completes its selection at the parser's
-    // count (c3-ifs-1023 to -1025, E: `true` at reader count 1,020). Each keeps dev's records.
+    // count (c3-ifs-1023 to -1025, E: `true` at reader count 1,020). An `#if` whose target is missing has another part in error (SPEC
+    // F.11: the target is the directive's), so its cut rests nothing (r12, G144-37 B2; fail-before: the rest dropped the
+    // UnresolvedBinding_Kd at `missing`). Each keeps dev's records.
     [Theory]
     [InlineData("y-rest-in-excl-I", "NestingLimit_Kd@2:9 | UnresolvedBinding_Kd@5:23")]
     [InlineData("y-rest-in-excl-body-I", "NestingLimit_Kd@3:13 | UnresolvedBinding_Kd@6:23")]
     [InlineData("y-rest-in-excl-member-I", "NestingLimit_Kd@3:13 | UnresolvedBinding_Kd@6:23")]
     [InlineData("c3-ifs-1023-I", "UnresolvedBinding_Kd@10:23")]
     [InlineData("c3-ifs-1024-I", "UnresolvedBinding_Kd@10:23")]
+    // The band open issue (G144-38; PLAN id pending): A.4's limit cuts this Condition, the parser's count does not, so the head
+    // selects and keeps the UnresolvedBinding_Kd where IMPL 21.3.2 rests on NestingLimit_Kd alone; a known limit, rejected either way.
     [InlineData("c3-ifs-1025-I", "NestingLimit_Kd@6:1038 | UnresolvedBinding_Kd@10:23")]
+    [InlineData("r12-no-target-eof-I", "UnresolvedBinding_Kd@1:23 | NestingLimit_Kd@2:5 | MissingSyntax_Kd@2:24001")]
+    [InlineData("r12-no-target-body-I", "NestingLimit_Kd@2:9 | MissingSyntax_Kd@2:24005 | UnresolvedBinding_Kd@3:23")]
     public void ADirectiveThatSelectsNothingOrCompletesItsSelectionRestsNothing(string row, string records)
         => Assert.Equal(records, CheckedSites(Resting(row)));
+
+    // IMPL 21.3.2 (G144-37 N4, r6): the rest is the Compilation's, not a document's, in either order of the module's documents: the
+    // other document's source check keeps its record (UnknownCompileTimeName_Kd), its semantic ones go (dev's TypeMismatch_Kd,
+    // MixedStartupBodies_Kd and UnresolvedBinding_Kd, class 4). Records are code@document:offset.
+    [Theory]
+    [InlineData("r6-later-doc-I", "NestingLimit_Kd@A.kimi:4 | UnknownCompileTimeName_Kd@B.kimi:4")]
+    [InlineData("r6-later-doc-rev-I", "UnknownCompileTimeName_Kd@A.kimi:4 | NestingLimit_Kd@B.kimi:4")]
+    public void ARestingCompilationRunsEveryDocumentsSourceChecks(string row, string records)
+    {
+        string[] documents = [$"#if {Ors(3000)}\n    func f() => ()\n", "#if missing\n    func g() => ()\n\nlet s: string = 1\npublic func main() => f()\n"];
+        if (row == "r6-later-doc-rev-I")
+        {
+            Array.Reverse(documents);
+        }
+
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.OutputKind = OutputKind.Application;
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        c.Kotonoha.AddSource(new SourceDocument("A.kimi", documents[0]));
+        c.Kotonoha.AddSource(new SourceDocument("B.kimi", documents[1]));
+        c.Check();
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(records, string.Join(" | ", errors.Select(static x => $"{x.Code}@{x.Path}:{x.Span.Start}")));
+    }
 
     // `#if` with `true or` written `terms` times (G144x U3's `<ors>`): a left-deep chain past L at 1,025 terms.
     internal static string Ors(int terms)
@@ -380,6 +419,12 @@ public sealed class CompilationEntryTest
             "c3-ifs-1023-I" => NestedIfDirective(1012),
             "c3-ifs-1024-I" => NestedIfDirective(1013),
             "c3-ifs-1025-I" => NestedIfDirective(1014),
+            "r12-no-target-eof-I" => $"public func main() => missing\n#if {ors}",
+            "r12-no-target-body-I" => $"func h() -> ()\n    #if {ors}\npublic func main() => missing\n",
+            "r1-src-I" => $"#if {ors}\n    func f() => ()\n\n#if missing\n    func g() => ()\n\npublic func main() => f()\n",
+            "r4-false-and-I" => $"#if false and ({ors})\n    func f() => ()\n\npublic func main() => f()\n",
+            "r11-stacked-missing-I" => $"#if {ors}\n#if missing\nfunc f() => ()\n\npublic func main() => f()\n",
+            "r1-prot-I" => $"#if {ors}\n    func f() => ()\n\ngroup G\n    protected func h() => ()\n\npublic func main() => ()\n",
             _ => NestedIfDirective(1019),
         };
     }

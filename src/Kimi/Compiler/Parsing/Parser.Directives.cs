@@ -323,17 +323,15 @@ public static partial class Parser
             return new(-1, scan.Diagnostic.LastError);
         }
 
-        if (invalid || fallback.Broken || (cut && !reader.InSelectedSyntax))
+        var partsPresent = !invalid && !fallback.Broken;
+        if (RestOnCutSelection(ref reader, marker, cut, partsPresent))
         {
-            return new(-1, scan.Diagnostic.LastError);
+            return new(-1, null); // The marker takes no recovery cause.
         }
 
-        if (cut)
+        if (!partsPresent || cut)
         {
-            // Selection happens here and cannot complete, and nothing else of the #switch is in error: the Compilation rests on it
-            // (IMPL 21.3.2), and the marker takes no recovery cause.
-            reader.CodeContext.Kotonoha.RecordRestingSelection(marker);
-            return new(-1, null);
+            return new(-1, scan.Diagnostic.LastError);
         }
 
         if (selected < 0 && reader.InSelectedSyntax)
@@ -345,6 +343,35 @@ public static partial class Parser
         }
 
         return new(selected, null);
+    }
+
+    /// <summary>Rests the Compilation on a directive whose selection cannot complete (IMPL 21.3.2): selection happens at it, outside
+    /// excluded syntax, a Condition is an Error only through parts the syntax depth limit cut, and every other part of the directive
+    /// (SPEC F.11: its header lines, each arm's body, an <c>#if</c>'s target) is present, nothing else of it in error.</summary>
+    /// <param name="reader">The token reader at the directive.</param>
+    /// <param name="marker">The directive's marker.</param>
+    /// <param name="cut">Whether a Condition is an Error only through cut parts (its cause an <see cref="ErrorKoto.IsSkip"/> mark).</param>
+    /// <param name="partsPresent">Whether every other part of the directive is present and in no error.</param>
+    /// <returns><see langword="true"/> when the Compilation rests on the directive.</returns>
+    private static bool RestOnCutSelection(ref TokenReader reader, CompileTimeSwitchKoto marker, bool cut, bool partsPresent)
+    {
+        if (!cut || !partsPresent || !reader.InSelectedSyntax)
+        {
+            return false;
+        }
+
+        reader.CodeContext.Kotonoha.RecordRestingSelection(marker);
+        return true;
+    }
+
+    /// <summary>Gets whether an <c>#if</c>'s target (SPEC F.11: <c>NEWLINE Item | IndentedList&lt;Item&gt;</c>) follows its header's
+    /// line: it is missing where the enclosing list or the source ends there.</summary>
+    /// <param name="next">A copy of the token reader at the header's end.</param>
+    /// <returns><see langword="true"/> when an item or an indented list follows.</returns>
+    private static bool HasCompileTimeIfTarget(TokenReader next)
+    {
+        next.SkipSeparators();
+        return next.CanRead && next.CurrentTokenKind != TokenKind.EndBlock;
     }
 
     /// <summary>Consumes a <c>#switch</c> header whose diagnostics <see cref="ScanCompileTimeSwitch"/> reported.</summary>
@@ -442,12 +469,8 @@ public static partial class Parser
             PlaceMarker(ref reader, marker);
         }
 
-        if (reader.InSelectedSyntax && !invalidHeader && cause is ErrorKoto { IsSkip: true })
-        {
-            // Selection happens here and cannot complete, and nothing else of the directive is in error (IMPL 21.3.2).
-            reader.CodeContext.Kotonoha.RecordRestingSelection(marker);
-        }
-
+        // The parts besides the Condition are the header's line and the target (SPEC F.11).
+        _ = RestOnCutSelection(ref reader, marker, cause is ErrorKoto { IsSkip: true }, !invalidHeader && HasCompileTimeIfTarget(reader));
         marker.AddSource(condition);
         if (invalidHeader || result != CompileTimeConditionResult.True)
         {
