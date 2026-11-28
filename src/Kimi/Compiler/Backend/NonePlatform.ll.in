@@ -8,8 +8,9 @@
 ; an Abort (its report or its end) and an allocation while a member runs halt the processor with interrupts disabled, without a
 ; report. A release is ordinary (IMPL 21.6.3). Every run of a member sets the flag on entry and restores it directly above each of its
 ; returns, after the result is computed, through the member's own body (__kimi_platform_enter and __kimi_platform_leave, which code
-; generation calls), so the program's own calls hold it too. No system call, no import and no adapter declaration; the template makes
-; no other call of the program.
+; generation calls), so the program's own calls hold it too; the same bracket disables interrupts across the run and restores RFLAGS
+; after it, so no interrupt handler runs while a member does, and the exit disables them for good. No system call, no import and no
+; adapter declaration; the template makes no other call of the program.
 
 @__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
 
@@ -83,9 +84,11 @@ entry:
   ret void
 }
 
-; The platform's terminate, which never returns (the member's body sets the flag and never leaves).
+; The platform's terminate, which never returns (the member's body sets the flag and never leaves). Shutdown's exit and every Abort's
+; pass through it, so it disables interrupts first: no handler runs after the program ends (IMPL 21.6).
 {{__kimi_exit}}
 entry:
+  call void asm sideeffect "cli", "~{memory},~{dirflag},~{fpsr},~{flags}"()
   call void @__kimi_platform_idle()
   call void @__kimi_platform_member_terminate(i32 %code)
   unreachable
@@ -155,17 +158,31 @@ idle:
 }
 
 ; A platform member's run (IMPL 21.6.3: every run of a member, the program's own calls included): code generation calls the enter at
-; the head of the member's body, which returns the flag's value and then sets it, and passes that value to the leave directly above each of
-; its returns, which restores it, not clears it, so a member's call of another member is an ordinary call.
+; the head of the member's body, which reads RFLAGS and disables interrupts before it reads the flag, then sets the flag, and returns
+; both in the bracket's word (RuntimeAbi.PlatformEnter), and passes that word to the leave directly above each of its returns, which
+; restores the flag, not clears it, then RFLAGS, so a member's call of another member is an ordinary call and no interrupt handler runs
+; while a member does. The empty asm statements keep the member's memory accesses between the flag's set and its restore.
 {{__kimi_platform_enter}}
 entry:
-  %saved = load i8, ptr @__kimi_platform_busy, align 1
+  %flags = call i64 asm sideeffect "pushfq\0Apopq $0\0Acli", "=r,~{memory},~{dirflag},~{fpsr},~{flags}"()
+  %busy = load i8, ptr @__kimi_platform_busy, align 1
   store i8 1, ptr @__kimi_platform_busy, align 1
-  ret i8 %saved
+  call void asm sideeffect "", "~{memory}"()
+  %low = and i64 %flags, 4294967295
+  %wide = zext i8 %busy to i64
+  %bit = shl i64 %wide, 32
+  %saved = or i64 %low, %bit
+  ret i64 %saved
 }
 
 {{__kimi_platform_leave}}
 entry:
-  store i8 %saved, ptr @__kimi_platform_busy, align 1
+  call void asm sideeffect "", "~{memory}"()
+  %high = lshr i64 %saved, 32
+  %busy = trunc i64 %high to i8
+  store i8 %busy, ptr @__kimi_platform_busy, align 1
+  %low = trunc i64 %saved to i32
+  %flags = zext i32 %low to i64
+  call void asm sideeffect "pushq $0\0Apopfq", "r,~{memory},~{dirflag},~{fpsr},~{flags}"(i64 %flags)
   ret void
 }

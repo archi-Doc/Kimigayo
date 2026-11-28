@@ -161,7 +161,34 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
 /// <summary>One Semantics case of a pair binder (SPEC 8.15): the Semantics its whole Type takes.</summary>
 /// <param name="Target">The pair's SemanticsTarget symbol.</param>
 /// <param name="Semantics">The admitted Semantics of this case.</param>
-internal readonly record struct PairCase(BindingSymbol Target, SemanticsKind Semantics);
+internal readonly record struct PairCase(BindingSymbol Target, SemanticsKind Semantics)
+{
+    /// <summary>Gets the Semantics a case assignment gives a binder (SPEC 8.15), or null where it assigns none.</summary>
+    /// <param name="assignment">The case assignment, at most one case per binder.</param>
+    /// <param name="target">The binder's SemanticsTarget symbol.</param>
+    /// <returns>The binder's assigned Semantics, or null.</returns>
+    internal static SemanticsKind? Of(ReadOnlySpan<PairCase> assignment, BindingSymbol target)
+    {
+        for (var i = 0; i < assignment.Length; i++)
+        {
+            if (ReferenceEquals(assignment[i].Target, target))
+            {
+                return assignment[i].Semantics;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Gets the Semantics cases a binder's pair layers are read in under a case assignment (SPEC 8.15.2): its assigned case,
+    /// else its admitted set; the one reading of an assignment, which Binding and MirValidator read.</summary>
+    /// <param name="assignment">The case assignment, at most one case per binder.</param>
+    /// <param name="target">The binder's SemanticsTarget symbol.</param>
+    /// <param name="admitted">The binder's admitted set, read where the assignment assigns it none.</param>
+    /// <returns>The assigned case's mask, else <paramref name="admitted"/>.</returns>
+    internal static SemanticsMask Cases(ReadOnlySpan<PairCase> assignment, BindingSymbol target, SemanticsMask admitted)
+        => Of(assignment, target) is { } assigned ? assigned.ToMask() : admitted;
+}
 
 internal enum BindingFailure : byte
 {

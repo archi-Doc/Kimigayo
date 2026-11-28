@@ -775,7 +775,7 @@ internal static partial class NativeToolchain
         Image,
     }
 
-    // One build's dependency closure (LinkAmbiguity, design §2 "The closure"; DECISIONS T-M<n>), order-free across libraries: the units
+    // One build's dependency closure (LinkAmbiguity, design §2 "The closure"; DECISIONS T-M45), order-free across libraries: the units
     // are the files the link loads whole (the module's object, a whole library input) and the members it may load. A referenced symbol
     // (a unit's strong undefined symbol, U; a weak one loads nothing; or a name it roots, I: /include:'s, /export:'s) that no whole file
     // defines joins each library's pick for it, one member per library, and two or more libraries picking it are an ambiguous
