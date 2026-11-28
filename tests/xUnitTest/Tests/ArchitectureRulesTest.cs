@@ -304,7 +304,6 @@ public class ArchitectureRulesTest
         "Binding.Imports.cs:AddImport=1 declared",
         "Binding.InPlaceReads.cs:ElementRead=1 unchanged",
         "Binding.InPlaceReads.cs:StringThroughLayers=2 kind",
-        "Binding.Indexers.cs:TryBindIndexer=1 unchanged",
         "Binding.InferCtxt.cs:BindsDistinctTypes=1 formed",
         "Binding.InlineLayouts.cs:AddInlinePart=1 key",
         "Binding.InlineLayouts.cs:WithComponent=1 unchanged",
