@@ -402,7 +402,7 @@ internal sealed partial class MirBorrows
     // Place its owner step applies to at its exact lent position, direct or past a dereference (G1276); else the base's past a
     // dereference; or none) with its parents whole. An Unplaced one (no exact position, no owner in its own steps: G1301's classes) may
     // be any layer the storage it reads through holds: in a view whose borrow lends a layer's or enclosing Place (`tabling`) it carries its
-    // layer and its parents whole, rested (DECISIONS R7-M<m>); elsewhere its layer alone (G1301 D removes the gate).
+    // layer and its parents whole, rested (DECISIONS R7-M129); elsewhere its layer alone (G1301 D removes the gate).
     private int Layered(int root, int projection, int layer, int parents)
     {
         var entry = this.OwnStepAt(root, projection);

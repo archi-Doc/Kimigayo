@@ -284,7 +284,7 @@ public class RawStorageTest
     // the whole Place, the layer's element included (SPEC 13.5.3, 15.1.2), so only a whole write restores it. Since the MIR
     // decides acceptance (R6-check H5), its records on these Binding-rejected programs are published beside Binding's (DECISIONS
     // R5-M184, until A6's 2g-1; H3b T51, class 4). R7-O1 H (B4: a relation problem leaves the access Resolved, so A5 reaches it; Q13
-    // rule 3): at an update, G1301 C removes PQ-10's read limit (DECISIONS R7-M<m>), and the rested Loan of the update's borrow, which
+    // rule 3): at an update, G1301 C removes PQ-10's read limit (DECISIONS R7-M129), and the rested Loan of the update's borrow, which
     // the update stores back into the layer, meets b's drop, so A5's located Unsupported_Kd stands at `var b` beside the relation
     // record; a Copy or Move of an enclosing Place carries its owner's own-step entry (Z5-R2) and a borrow of a layer's
     // Place or an enclosing one issues its Loan (Z5-R1's R-B), each with no mark, so the relation record of an exclusive borrow or of a

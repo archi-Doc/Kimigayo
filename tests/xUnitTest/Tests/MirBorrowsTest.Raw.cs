@@ -1635,7 +1635,7 @@ public sealed partial class MirBorrowsTest
                     inspect(slot@ref)
                 """));
 
-    // DECISIONS R4-M116 PQ-10 (B′ §4.3), narrowed by Z5-R1 and Z5-R2, removed by G1301 C (R7-M<m>): a Copy read of a Tuple or fixed-array
+    // DECISIONS R4-M116 PQ-10 (B′ §4.3), narrowed by Z5-R1 and Z5-R2, removed by G1301 C (R7-M129): a Copy read of a Tuple or fixed-array
     // Place enclosing a `during self` layer inline (also inside a nested Tuple) is read element by element and carries its owner's own-step
     // entry (enclosingCopy, enclosingOnly, arrayCopy, nestedCopy); a Borrow of a layer's Place or of an enclosing one issues its Loan, and a read through it is placed by its exact lent position (layerRef, enclosingRef; arrayRef
     // reads none), carrying its parents whole (SPEC 15.6 Holders): layerRef's read carries y's Loan, which b holds, into the generic
@@ -1765,7 +1765,7 @@ public sealed partial class MirBorrowsTest
     // Prefix row past the lender's Deref (Lent's LentPlace), so the read carries its parents whole through a raw lender (pr1, pr2, pr3:
     // two lender segments; pre: an enclosing Tuple; prw: a write; pru: a uniq lender) and a shared one (n2, n2v leave the limit). Where
     // no exact position exists and the own steps name no owner, in a view whose borrow lends a layer's or enclosing Place (`tabling`), the
-    // read carries its parents whole, rested (G1301 C, DECISIONS R7-M<m>): an access that conflicts only through them is the located
+    // read carries its parents whole, rested (G1301 C, DECISIONS R7-M129): an access that conflicts only through them is the located
     // Unsupported_Kd at the access (mxe, rbc, rbc2, d14d, rv1d, ps1m, ps1b: by SPEC a conflict, with the Warning where an owner is
     // moved), one a decided entry of another holder meets keeps its record (mxq), and with none the program is accepted (tw3: a
     // reference stored twice; a04, d6arr, d7arr, d14, q1, q11, ps1, rbcv); elsewhere silent (G1301's open classes: prs, a pointer stored
@@ -1849,7 +1849,7 @@ public sealed partial class MirBorrowsTest
             string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]).Order(StringComparer.Ordinal)));
     }
 
-    // G1301 C (SPEC 5.7 Reading a Field through a dereference, 15.6 Holders, 15.6 Addresses; DECISIONS R7-M<m>; the owner's O-547 (a)):
+    // G1301 C (SPEC 5.7 Reading a Field through a dereference, 15.6 Holders, 15.6 Addresses; DECISIONS R7-M129; the owner's O-547 (a)):
     // a read with no exact lent position whose own steps name no owner may be any layer the storage it reads through holds, so in a view
     // with a borrow of a layer's or enclosing Place (`tabling`) it carries its parents whole, rested: an access that conflicts only
     // through them is the located Unsupported_Kd at the access, a conflict a decided entry gives keeps its record, an independent record

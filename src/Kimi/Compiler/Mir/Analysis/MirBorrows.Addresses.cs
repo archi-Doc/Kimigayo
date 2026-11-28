@@ -17,7 +17,7 @@ namespace Kimi.Compiler.Mir;
 // steps (Place, R-C; Z5-R1; G1276), the row a read, Copy or Move carries with its parents whole (MirBorrows.Values' Layered). A non-raw
 // Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline issues its ordinary Loan and no mark: it sets the
 // view's `tabling` bit, the base's mark condition (Owns): in such a view a read whose row is Unplaced carries its parents whole, rested
-// (Values' Layered; DECISIONS R7-M<m>). An own-step entry makes its root borrowed, so the root's accesses are listed for its departures
+// (Values' Layered; DECISIONS R7-M129). An own-step entry makes its root borrowed, so the root's accesses are listed for its departures
 // (MirBorrows.OwnSteps), and the view a producer where an access may depart it (OwnSteps' MayDepart, D5, R4-M141); it exposes its
 // owner's storage in the root (OwnerExposed), a plain address the whole root (ExposedHolder). The pre-pass runs once per view, after the
 // Loans and before the holders. It walks the view's uses only where Loans saw a raw Ref or a projection row may be or enclose a layer (Layering's
