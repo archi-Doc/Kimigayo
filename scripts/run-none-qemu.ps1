@@ -7,6 +7,7 @@
 # Outputs: artifacts/verify/none-qemu/<yyyyMMdd-HHmmss>/ with tools.json, results.json and one folder per row (project, esp, vars.fd,
 # build.txt, serial.bin, qemu-stderr.txt, result.json), one console line per row, exit 1 when any row fails.
 # A pinned file that is missing or whose SHA-256 differs throws before any build; nothing is downloaded and nothing falls back.
+# A file without rows, an empty text or an end of neither form throws before any build too.
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
@@ -28,7 +29,7 @@ if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw "The compile
 $utf8 = [Text.UTF8Encoding]::new($false)
 
 # One child process (the CLI's build, QEMU): standard input empty, both output streams read asynchronously as bytes (test-cli's
-# CopyToAsync form), the process and its children killed at the timeout.
+# CopyToAsync form), the process and its children killed at the timeout or when the wait is interrupted.
 function Invoke-Child([string] $FileName, [string[]] $Arguments, [string] $Directory, [int] $TimeoutSeconds) {
     $start = [Diagnostics.ProcessStartInfo]::new($FileName)
     $start.UseShellExecute = $false
@@ -42,33 +43,47 @@ function Invoke-Child([string] $FileName, [string[]] $Arguments, [string] $Direc
     $stdout = [IO.MemoryStream]::new()
     $stderr = [IO.MemoryStream]::new()
     $copies = @($process.StandardOutput.BaseStream.CopyToAsync($stdout), $process.StandardError.BaseStream.CopyToAsync($stderr))
-    $exited = $process.WaitForExit($TimeoutSeconds * 1000)
-    $seconds = [Math]::Round($clock.Elapsed.TotalSeconds, 1)
-    if (-not $exited) { $process.Kill($true); $process.WaitForExit() }
+    try {
+        $exited = $process.WaitForExit($TimeoutSeconds * 1000)
+        $seconds = [Math]::Round($clock.Elapsed.TotalSeconds, 1)
+    }
+    finally { if (-not $process.HasExited) { $process.Kill($true); $process.WaitForExit() } }
     foreach ($copy in $copies) { $null = $copy.GetAwaiter().GetResult() }
     $result = @{ exited = $exited; status = $(if ($exited) { $process.ExitCode } else { $null }); stdout = $stdout.ToArray(); stderr = $stderr.ToArray(); seconds = $seconds }
     $process.Dispose()
     return $result
 }
 
-# 1. The pins: every file this script reads from the downloads, by its path under its root.
+# 0. The rows' form, before any build: rows exist; each text is non-empty (QEMU's own start failure exits with status 1 and no
+# serial byte, the status of a guest exit(0): ruling 190); each end is "halts" or { "exit": s } with an integer s in 0..255.
+if (-not $expected.rows) { throw "$Expectations has no rows" }
+foreach ($row in $expected.rows) {
+    $exit = if ((@($row.end.PSObject.Properties.Name) -join ',') -ceq 'exit') { $row.end.exit }
+    if (-not ($row.text -is [string] -and $row.text.Length -gt 0)) { throw "$($row.row): the text is empty" }
+    if ($row.end -cne 'halts' -and -not (($exit -is [int] -or $exit -is [long]) -and $exit -ge 0 -and $exit -le 255)) {
+        throw "$($row.row): the end is neither { `"exit`": s } nor `"halts`""
+    }
+}
+
+# 1. The pins: every file this script reads from the downloads, by its path under its root, with its SHA-256.
 $read = [ordered]@{}
 foreach ($file in @(('qemu', $QemuRoot, 'qemu-system-x86_64.exe'), ('qemu', $QemuRoot, 'share/edk2-x86_64-code.fd'),
         ('qemu', $QemuRoot, 'share/edk2-i386-vars.fd'), ('limine', $LimineRoot, 'BOOTX64.EFI'))) {
     $tool, $root, $name = $file
     $path = Join-Path $root $name
     $pin = $expected.tools.$tool.files.$name
-    $hash = if (Test-Path -LiteralPath $path -PathType Leaf) { Get-KimiSha256 $path } else { 'missing' }
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "$path is missing; $Expectations pins '$pin'" }
+    $hash = Get-KimiSha256 $path
     if ($hash -cne $pin) { throw "$path`: SHA-256 $hash; $Expectations pins '$pin'" }
-    $read[$name] = $path
+    $read[$name] = @{ path = $path; sha256 = $hash }
 }
-$qemu = $read['qemu-system-x86_64.exe']
+$qemu = $read['qemu-system-x86_64.exe'].path
 
 # 2. The run folder (verification evidence) and the tools' record.
 $run = Join-Path $repo ('artifacts/verify/none-qemu/' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $run | Out-Null
 $version = Invoke-Child $qemu @('--version') $run 30
-@{ files = @($read.GetEnumerator() | ForEach-Object { @{ path = $_.Value; sha256 = Get-KimiSha256 $_.Value } })
+@{ files = @($read.Values)
     qemuVersion = ($utf8.GetString($version.stdout) -split "`r?`n")[0] } | ConvertTo-Json -Depth 3 |
     Set-Content -LiteralPath (Join-Path $run 'tools.json') -Encoding utf8
 
@@ -89,15 +104,16 @@ $results = @(foreach ($row in $expected.rows) {
             $kernel = "Kernel.$($row.level)"
             $esp = Join-Path $folder 'esp'
             New-Item -ItemType Directory -Path (Join-Path $esp 'EFI/BOOT'), (Join-Path $esp 'boot/limine') | Out-Null
-            Copy-Item -LiteralPath $read['BOOTX64.EFI'] -Destination (Join-Path $esp 'EFI/BOOT/BOOTX64.EFI')
+            Copy-Item -LiteralPath $read['BOOTX64.EFI'].path -Destination (Join-Path $esp 'EFI/BOOT/BOOTX64.EFI')
             [IO.File]::WriteAllText((Join-Path $esp 'boot/limine/limine.conf'), "timeout: 0`n`n/Kernel`n    protocol: limine`n    path: boot():/$kernel`n", $utf8)
             Copy-Item -LiteralPath (Join-Path $project "bin/x86_64-unknown-none/$kernel") -Destination (Join-Path $esp $kernel)
             # The firmware writes its variables: each row boots on its own copy of the package's template.
-            Copy-Item -LiteralPath $read['share/edk2-i386-vars.fd'] -Destination (Join-Path $folder 'vars.fd')
-            # The esp folder is a read-only virtio disk: q35's default SATA disk needs a writable node, and nothing writes the image.
+            Copy-Item -LiteralPath $read['share/edk2-i386-vars.fd'].path -Destination (Join-Path $folder 'vars.fd')
+            # The esp folder is a read-only virtio disk, so nothing writes the image: QEMU 11.1.0 refuses -drive format=raw,file=fat:esp
+            # on q35, with or without readonly=on ('Block node is read-only'). An absolute file= path doubles its commas (QEMU's escape).
             $machine = Invoke-Child $qemu @('-machine', 'q35', '-m', '256M', '-no-reboot', '-display', 'none', '-monitor', 'none', '-nic', 'none',
                 '-serial', 'stdio', '-device', 'isa-debug-exit,iobase=0xf4,iosize=0x04',
-                '-drive', "if=pflash,format=raw,unit=0,readonly=on,file=$($read['share/edk2-x86_64-code.fd'])",
+                '-drive', "if=pflash,format=raw,unit=0,readonly=on,file=$($read['share/edk2-x86_64-code.fd'].path.Replace(',', ',,'))",
                 '-drive', 'if=pflash,format=raw,unit=1,file=vars.fd', '-drive', 'if=virtio,format=raw,file=fat:esp,readonly=on') $folder $expected.timeoutSeconds
             [IO.File]::WriteAllBytes((Join-Path $folder 'serial.bin'), $machine.stdout)
             [IO.File]::WriteAllBytes((Join-Path $folder 'qemu-stderr.txt'), $machine.stderr)
@@ -116,11 +132,10 @@ $results = @(foreach ($row in $expected.rows) {
             # The end: { "exit": s } is QEMU's status 2 * s + 1 through isa-debug-exit before the timeout; "halts" is QEMU still
             # running at the timeout (the runtime's __kimi_halt); status 0 is a reset (a triple fault under -no-reboot).
             if ($row.end -is [string]) {
-                if ($row.end -cne 'halts') { throw "$($row.row): the end '$($row.end)' is neither { `"exit`": s } nor `"halts`"" }
                 if ($machine.exited) { $failures += "exited with status $($machine.status) before the timeout, expected a halt" }
             }
             else {
-                $status = 2 * [int] $row.end.exit + 1
+                $status = 2 * $row.end.exit + 1
                 if (-not $machine.exited) { $failures += "running at the timeout, expected status $status" }
                 elseif ($machine.status -eq 0) { $failures += 'status 0 (a reset)' }
                 elseif ($machine.status -ne $status) { $failures += "status $($machine.status), expected $status" }
