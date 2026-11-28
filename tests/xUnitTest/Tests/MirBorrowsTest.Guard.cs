@@ -1025,8 +1025,10 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147; the owner's Q2 (a) and 「進める (推奨)」): a stored raw layer is read by its step on the
     // instance holding it. `during self` admits the instance's Type arguments by their actual Types, so a bag erasing its element to
-    // raw/u8 writes past itself as its typed twin does (erased, typed), and the write fact where the instance has an Origin argument (P1:
-    // keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too); an Origin-less layer takes the write fact unless the
+    // raw/u8 writes past itself as its typed twin does (erased, typed; what `put` stores is b's own `during self` content under the owner's
+    // O-529 (a), which ends with b before w1 and y, so only the write and the read while b lives conflict, not their ends), and the write
+    // fact where the instance has an Origin argument (P1: keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too);
+    // an Origin-less layer takes the write fact unless the
     // parameter's Type expression writes it (SPEC 5.7 Calls' per-parameter rule, P2: rawBufDead, whose store reaches E, which may be used
     // after every point). Dev held erased and accepted the P1 and P2 records. A layer written in a Type argument of the declaration's own
     // Field or Case payload is the declaration's, which its kept part states (nestedDead, optionalDead; DECISIONS BU-46, R4-M151).
@@ -1109,9 +1111,8 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "erased: z = 5", "erased: inspect(w1)", "erased: var w1: ref/i32 = x@ref", "erased: var y = 2", "typed: z = 5", "typed: inspect(w1)",
-                "typed: var w1: ref/i32 = x@ref", "typed: var y = 2", "keepPhantom: y = 5", "keepPhantom: inspect(w)", "rawBufDead: z = 5",
-                "nestedDead: z = 5", "optionalDead: z = 5",
+                "erased: z = 5", "erased: inspect(w1)", "typed: z = 5", "typed: inspect(w1)", "keepPhantom: y = 5", "keepPhantom: inspect(w)",
+                "rawBufDead: z = 5", "nestedDead: z = 5", "optionalDead: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1286,7 +1287,7 @@ public sealed partial class MirBorrowsTest
     // Item>` is `BaseI<raw/u8>`, completed before the mark) and a store into the Field such a base clause holds (derf, as its twin derg,
     // each a moved parameter), a holder whose declaration writes the subject's argument (hh2, also through a condition, hhc), a nested
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
-    // verdict is its written twin ER's (eh, er: `z = 5` errs, PLAN G841's rule 4 (4), the owner's O-373 (a): through A's payload layer,
+    // verdict is its written twin ER's (eh, er: `z = 5` errs, DECISIONS R4-M241's rule 4, the owner's O-373 (a): through A's payload layer,
     // which the declaration states, `put` may store what a raw layer it writes retains, 5.7 Calls). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
     // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
@@ -1508,9 +1509,10 @@ public sealed partial class MirBorrowsTest
     // `ref/i32 during a` admits no local borrow), methodShared, methodUniq, ctorShared, i32Referent, loopShared, twoShared, tuplePart and
     // fieldPart (a part's referent i32), slotPart and slotKept (a slot's keeper's referent i32), paramSlot and t11 (one root, two part
     // borrows); a constructor lending the holder (reachedByStep) stores z's borrow, but nothing holding it is used after `z = 5` (SPEC 15.4;
-    // Z6's O5-4). An address taken past the shared s whose atom also has an exclusive borrow keeps the located Unsupported_Kd (mixedAtom,
-    // t11s, valid: Z6's named limit R6.1, R6.8 (b2); removal: route (a)), as does duringShared (valid): `during s` names s's own region,
-    // which Binding states by another atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
+    // Z6's O5-4). An address taken past the shared s stores nothing, the other Borrows of its root being their own atoms (mixedAtom,
+    // t11s, valid: SPEC 15.6.5, 15.6.4 item 1; since PLAN G922 tms they no longer reach Z6's named limit R6.1, R6.8 (b2), a Q13 class 3
+    // move). duringShared (valid) keeps the located Unsupported_Kd: `during s` names s's own region, which Binding states by another
+    // atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
     // the whitelist's cost; removal: D-1116 (1)'s one atom). A claim states its atom; an address
     // carries no mode, so a claimed atom with an exclusive member stays the located Unsupported_Kd (claimUniq, invalid; removal: per-layer
     // address provenance in A5), and one whose borrows are all shared stores nothing (claimShared, claimMixed, claimRaw, claimRawMixed: a
@@ -1991,11 +1993,10 @@ public sealed partial class MirBorrowsTest
                 "flat: z = 5", "flat: inspect(w)", "nested: z = 5", "nested: inspect(w)", "optionNested: z = 5",
                 "optionNested: inspect(w)", "looped: k = 2", "looped: z = 5", "looped: inspect(w)",
                 "nestedPointee: z = 5", "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5",
-                "tupleTyped: inspect(w)", "mixedAtom: h.put(z@ref) Unsupported_Kd", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
+                "tupleTyped: inspect(w)", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
                 "duringUniq: inspect(w)", "duringNull: z = 5", "twoUniq: z = 5", "twoUniq: inspect(v)", "twoStatic: z = 5", "twoStatic: inspect(w)",
                 "twoStatic: var y: raw/u8 during static = null", "twoStatic: var w: ref/i32 = x@ref", "twoStatic: var x = 1", "reborrow: z = 5",
                 "reborrow: inspect(w)", "tuplePartD: z = 5", "tuplePartD: b", "fieldPartD: z = 5", "fieldPartD: b",
-                "t11s: h.put(z@ref) Unsupported_Kd",
                 "claimUniq: h.put(z@ref) Unsupported_Kd", "regionRaw: h.put(z@ref) Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));

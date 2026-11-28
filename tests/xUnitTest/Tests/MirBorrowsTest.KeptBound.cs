@@ -6,7 +6,7 @@ namespace XunitTest;
 
 /// <summary>The kept-Type record bounds an input's reads by the Type the call binds (SPEC 15.6.4's first sentence, "determined by the
 /// instantiated public contract", and its read sentences; SPEC 15.6's predicate; the owner's C-527 Q1 (a) and Q2 (b), O-353 (a), O-360 (a);
-/// PLAN G841 clause (3)): at the root of a binding of the called function's own abstract Type, a read or chain of reads through an
+/// DECISIONS R4-M245): at the root of a binding of the called function's own abstract Type, a read or chain of reads through an
 /// input is kept only where a value of the bound Type can carry a Loan or an address; the input's own value and a handed callable's fill
 /// stay in the callee's terms for every binding (F's G935 ruling 16 (2)). The rows are C-527's coverage table, each labelled from SPEC (I
 /// invalid, V valid) before any run, with the records the head gives (SPEC 23.1.2).</summary>

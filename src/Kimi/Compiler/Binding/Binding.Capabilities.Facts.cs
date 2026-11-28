@@ -63,7 +63,7 @@ public sealed partial class Binding
     {
         var held = this.readsUnboundedRegion;
         this.readsUnboundedRegion = false;
-        var read = origin is null ? null : this.ValueIn(origin, scope.Function);
+        var read = origin is null ? null : this.ValueIn(this.ResolveReceiver(this.CompletedOrigin(origin)), scope.Function);
         if (read is not null && (this.ProvesOriginOutlives(read, BoundOrigin.Static, JudgedAt(scope)) || this.SolvedStatic(read, scope.Function)))
         {
             this.readsUnboundedRegion = held;

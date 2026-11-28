@@ -765,7 +765,7 @@ public sealed partial class MirBorrowsTest
     // - Drop at `=`: localBad (also localDrop2Bad, reset and k2's resetSpecBad, the same source); localReachBad uses slot first and errs
     //   all the same by the whole-holder text (as Raw's viaOk); quietCtorBad errs at its construction, not at a drop (Quiet has none):
     //   Quiet.init may put its own pointer in p and store q through it in storage the body does not own (15.6.4 "a nominal Type's Fields
-    //   included", the owner's O-365 (a); PLAN G841 (3)); so does quietCtorU8Bad, whose p is a raw/u8: p is a layer QuietU8 states, and
+    //   included", the owner's O-365 (a); DECISIONS R4-M245); so does quietCtorU8Bad, whose p is a raw/u8: p is a layer QuietU8 states, and
     //   through such a layer the call may store what a raw layer it writes retains, whatever its pointee (SPEC 5.7 Calls and its example
     //   throughField; R4-M241); quietFieldOk is the valid twin for the destruction rule: the constructors receive only null, w's address
     //   enters x by a body write and the old x is replaced without a drop; nullQOk's drop stores null; statedBad and

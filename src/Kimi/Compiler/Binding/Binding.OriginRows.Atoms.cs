@@ -82,6 +82,7 @@ public sealed partial class Binding
         FunctionKoto when atom.Slot == CallResultSlot => ProjectionRole.CallResult,
         FunctionKoto when atom.Slot == ReceiverSlot => ProjectionRole.Receiver,
         FunctionKoto when atom.Slot == HelperSlot => ProjectionRole.Helper,
+        FunctionKoto when atom.Slot == ClosureTemporarySlot => ProjectionRole.Place, // A literal's own temporary.
         FunctionKoto when atom.Slot <= EnvironmentSlot(0) => ProjectionRole.Environment,
         FunctionKoto or PropertyAccessorKoto => ProjectionRole.Parameter,
         PropertyKoto => ProjectionRole.Storage,
@@ -90,9 +91,10 @@ public sealed partial class Binding
 
     // Whether an atom is a root of a body, by the body that formed it (a non-declaration binder) or by its slot's role (E5): parameter j
     // of f is a root of f's body and of each template (f, i) with j < i, and a receiver and a helper borrow of f's body alone (SPEC 7.2.3,
-    // ParameterInScope); an environment binding and a call result of their Closure's; a Closure literal's value of the body that
-    // evaluates it; an accessor's self and value of the accessor's; a Property's storage of each of its accessors' (one atom, whichever
-    // formed it first).
+    // ParameterInScope); an environment binding and a call result of their Closure's; a Closure's receiver Origin ρ, where it reaches the
+    // body that evaluates the literal through the Closure's Type (an erasure), of that body; an accessor's self and value of the
+    // accessor's; a Property's storage of each of its accessors' (one atom, whichever formed it first). A literal's own temporary is a
+    // Place of the body that formed it.
     private static bool RootOf(BoundOrigin atom, ProjectionRole role, ExecutableBody body) => role switch
     {
         ProjectionRole.None or ProjectionRole.Place => atom.Body == body,

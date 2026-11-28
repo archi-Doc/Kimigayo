@@ -1510,7 +1510,7 @@ public sealed partial class MirBorrowsTest
     // state file a5v-r3ref-state.md): a stepping row over a byte a punned write may not change (a reference's, a handle's, an enum's
     // or a struct Field's) reaches storage the body does not own, an array of no element, Unit and a Function Item have no byte of
     // either kind (the owner's O-356 (a)), and a layer
-    // hidden in the called function's Type parameter's binding adds no reach (SPEC 15.6.4). PLAN G841's clauses (1) and (2): the first
+    // hidden in the called function's Type parameter's binding adds no reach (SPEC 15.6.4). DECISIONS R4-M243's clauses (1) and (2): the first
     // step reads every layer of the input's key, one an argument holds by value (a Tuple element, an Option payload) and one beside a
     // layer stating an Origin included, so SPEC 15.6.4's composition (twoLayers, punnedRef) holds there too.
     [Theory]
@@ -1613,7 +1613,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("jHidWholeScalarOk", "")] // V, as jHidWholeRefOk over owner Scalar bytes
     [InlineData("jGenCalleeBad", "jGenCalleeBad: kk = 2; jGenCalleeBad: var y: i32 = 5")] // I, a generic callee whose stepping row is shown
     [InlineData("jShowPartScalarBad", "jShowPartScalarBad: kk = 2")] // I, the stepping layers shown above the hidden one (its dependent `var y` record went with the A5 landing: DECISIONS Q13)
-    [InlineData("twoTupleSlotBad", "twoTupleSlot: y@follow = 5")] // I, PLAN G841 (1): SPEC 15.6.4's twoLayers with the slot pointer held by value as a Tuple element (retained as a raw pointer argument is)
+    [InlineData("twoTupleSlotBad", "twoTupleSlot: y@follow = 5")] // I, DECISIONS R4-M243 clause (1): SPEC 15.6.4's twoLayers with the slot pointer held by value as a Tuple element (retained as a raw pointer argument is)
     [InlineData("twoTupleSlotOk", "")] // V, its oneLayer twin (the next layer u8)
     [InlineData("twoTupleTwoBad", "twoTupleTwo: y@follow = 5")] // I, two slot pointers in one Tuple, the second written through
     [InlineData("twoTuplePunBad", "twoTuplePun: y@follow = 5; twoTuplePun: let z: i32 = 0")] // I, punnedRef with the slot pointer as a Tuple element (its records as punnedRef's)
@@ -1624,7 +1624,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("h1TupSharedOk", "")] // V, a shared borrow: no write past it
     [InlineData("h1DispTupBad", "h1DispTup: y@follow = 5")] // I, the slot element displaced within cells (5.3; N4's row: the limit meets its label)
     [InlineData("h1DispTupOk", "")] // V
-    [InlineData("h1MixTupleBad", "mixTuple: y@follow = 5; mixTuple: var k: i32 = 0")] // I, PLAN G841 (2): the layer without an Origin beside one stating an Origin is read as at a key of one kind (5.7 Calls decides per layer); k's storage end too
+    [InlineData("h1MixTupleBad", "mixTuple: y@follow = 5; mixTuple: var k: i32 = 0")] // I, DECISIONS R4-M243 clause (2): the layer without an Origin beside one stating an Origin is read as at a key of one kind (5.7 Calls decides per layer); k's storage end too
     [InlineData("h1MixTupleOk", "")] // V
     [InlineData("h1MixStaticBad", "mixStatic: y@follow = 5")] // I, the second element states `static`
     [InlineData("h1Mix3Bad", "mix3: y@follow = 5")] // I, three kinds of part: an unstated raw layer, a `static` one, an exclusive borrow
