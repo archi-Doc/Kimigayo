@@ -1,0 +1,58 @@
+// The rows' interrupt setup (B10 §6.1, completed for a run under QEMU): an interrupt descriptor table and its descriptor in heap
+// storage from the board's pages, kept to the program's end; the 8259 PIC remapped, IRQ 0 at vector 32 and every other IRQ masked;
+// the 8254 PIT's channel 0 at 100 Hz.
+group Interrupts
+    /// Installs `TimerTick` at vector 32 and starts IRQ 0 there, through the 8259 with the local APIC disabled. It leaves the
+    /// interrupt flag as the loader left it (clear): each row enables interrupts where its waiting begins.
+    public func install()
+        unsafe
+            Interrupts.load(32, X86.entry<TimerTick>())
+            // Limine masks LVT LINT0 when its delivery mode is ExtINT (PROTOCOL.md, base revision 6), so no 8259 interrupt
+            // arrives. IA32_APIC_BASE bit 11 clear disables the local APIC globally, and LINT0 is then INTR (Intel SDM).
+            X86.writeMsr(0x1B, X86.readMsr(0x1B) & 0xFFFFFFFFFFFFF7FF)
+            // ICW1-ICW4 to the master (0x20, 0x21) and the slave (0xA0, 0xA1): vectors 32-39 and 40-47, the slave on IRQ 2.
+            X86.writePort8(0x20, 0x11)
+            X86.writePort8(0xA0, 0x11)
+            X86.writePort8(0x21, 0x20)
+            X86.writePort8(0xA1, 0x28)
+            X86.writePort8(0x21, 0x04)
+            X86.writePort8(0xA1, 0x02)
+            X86.writePort8(0x21, 0x01)
+            X86.writePort8(0xA1, 0x01)
+            X86.writePort8(0x21, 0xFE)
+            X86.writePort8(0xA1, 0xFF)
+            // Channel 0 as a rate generator, low byte then high byte: 1,193,182 Hz / 11,932 = 100 Hz.
+            X86.writePort8(0x43, 0x34)
+            X86.writePort8(0x40, 0x9C)
+            X86.writePort8(0x40, 0x2E)
+
+    /// Allocates a table of 256 gates, each absent but an interrupt gate at `vector` for `entry` through Limine's 64-bit code
+    /// selector, and loads it (`lidt`). The table and its descriptor are never released.
+    ///
+    /// - safety: `vector` is 0 to 255, and `entry` is `X86.entry<H>()` for a vector whose exception pushes no error code, or
+    ///   `X86.errorCodeEntry<H>()` for one whose exception pushes one.
+    public unsafe func load(vector: isize, entry: usize)
+        let table = Raw.allocate<u64>(512)
+        var i: isize = 0
+        while i < 512
+            unsafe => Raw.initialize(table + i, 0)
+            i += 1
+        let address = entry@u64
+        // Limine's 64-bit code selector, CS at entry (PROTOCOL.md at limine-protocol c5a7f597a).
+        let selector: u64 = 0x28
+        let kind: u64 = 0x8E00
+        unsafe
+            table[2 * vector] = (address & 0xFFFF) | (selector << 16) | (kind << 32) | ((address >> 16) << 48)
+            table[2 * vector + 1] = address >> 32
+        // The limit 4,095 and the base, byte by byte: a u64 at offset 2 would be misaligned.
+        let descriptor = Raw.allocate<u8>(10)
+        let tableAddress = table@usize
+        unsafe
+            Raw.initialize(descriptor, 0xFF)
+            Raw.initialize(descriptor + 1, 0x0F)
+        var k: isize = 0
+        while k < 8
+            let byte = ((tableAddress >> (8 * k)) & 0xFF)@u8
+            unsafe => Raw.initialize(descriptor + 2 + k, byte)
+            k += 1
+        unsafe => X86.loadInterruptTable(descriptor)
