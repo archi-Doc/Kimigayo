@@ -27,6 +27,18 @@ internal static class CompileTimeConditionEvaluator
         return EvaluatePart(compilation, condition, ref cause);
     }
 
+    // The cause rule (G144-23): a failing part with a record (this evaluator's, or the parser's at a recovery or an ErrorKoto) takes
+    // the cause from a skip mark; otherwise the first failing part, in source order, keeps it. A #switch's Conditions share it.
+    internal static bool Fail(Koto part, ref Koto? cause)
+    {
+        if (cause is null || (cause is ErrorKoto { IsSkip: true } && part is not ErrorKoto { IsSkip: true }))
+        {
+            cause = part;
+        }
+
+        return false;
+    }
+
     private static CompileTimeConditionResult EvaluatePart(Compilation compilation, Koto condition, ref Koto? cause)
     {
         if (!TryEvaluateValue(compilation, condition, out var value, ref cause))
@@ -125,18 +137,6 @@ internal static class CompileTimeConditionEvaluator
         }
 
         return Fail(node, ref cause);
-    }
-
-    // The cause rule (G144-23): a failing part with a record (this evaluator's, or the parser's at a recovery or an ErrorKoto) takes
-    // the cause from a skip mark; otherwise the first failing part, in source order, keeps it. A #switch's Conditions share it.
-    internal static bool Fail(Koto part, ref Koto? cause)
-    {
-        if (cause is null || (cause is ErrorKoto { IsSkip: true } && part is not ErrorKoto { IsSkip: true }))
-        {
-            cause = part;
-        }
-
-        return false;
     }
 
     private static bool TryGetInteger(Koto node, out BasicValue value)
