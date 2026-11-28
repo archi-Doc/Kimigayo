@@ -1521,6 +1521,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   (DECISIONS R7-M138, superseding R3-6's "until R7's declaration table"): `MirDefKey` stays keyed by `BindingSymbol`. §1.1's R7
   row marks the input retired; §3.1's Middle row, §4.1, §4.2's Middle chain and §4.3 drop V3, §5.6 its row and §6 its
   `MirDefKey(DeclId)`. No SPEC or IMPL text. Nothing frozen.
+- Revision 128 (2026-11-28, plan §14; the Back's D-1378, R7-P10's census on dev 6ad5db1203, B's runs on dev 5b04b1bec, the
+  Front's yes F 20:33 and its P10-A read F3): §5.1's P10 row is renamed "G267's Binding remainder" and keeps G267's A, B and F
+  (no P3 file); the Dictionary items are G980's and G858's; PLAN G267 drops the annotated arm and the `let` Closure's hidden
+  conflict (both reported on dev) and reads Capture's Type-source fact as BU-234's `TypeSource`. No SPEC or IMPL text. Nothing
+  frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
