@@ -37325,6 +37325,13 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     21.6.2), two field-less boards (`mapPages` null; one `write` reading past its text), and the rows' startup bodies; test-cli's
     kernel row builds row 1's two files from this folder (the one committed Kernel program; `KernelSources.cs` stays the SPEC 22.4.5
     example).
+  - **The interrupt rows** (OSF3c; T's rulings 194 and 199): the programs' interrupt gates use Limine's 64-bit code selector, 0x28
+    (PROTOCOL.md at limine-protocol c5a7f597a, base revision 6). Limine masks LVT LINT0 at entry, so `Interrupts.install` disables the
+    local APIC globally (`IA32_APIC_BASE` bits 11 and 10 cleared: "disabled" is reachable from xAPIC and from x2APIC mode, while
+    clearing bit 11 alone in x2APIC mode is the invalid state and raises #GP) and the 8259's INTR reaches the processor. Rejected: B10 §6.1's selector 0x08
+    (Limine's 16-bit code segment); LINT0 unmasked through the xAPIC's page (a page mapping) or x2APIC (a QEMU `-cpu` option).
+    A probe (OSF3c-2) entered an `X86.errorCodeEntry<H>()` thunk from a page fault at vector 14 (error code 0, CR2 the read's address)
+    and found `rsp` 16-aligned at the thunk's call (O0). It is no row: its read of a page no mapping covers is undefined by SPEC 5.2.1.
   - **Downloads:** QEMU for Windows 11.1.0 (7-Zip unpack, no install) and Limine v11.2.1's binary release, under `artifacts/`, owner's
     O-543 (a); their provenance is in the unit's commit.
   - **Rejected:** a test or a CI job (QEMU and Limine are downloads per run); the VGA path and `pmemsave` (O-489 (g) (b)); a pattern or
