@@ -244,7 +244,7 @@ public sealed partial class Binding
         }
 
         // A pending input leaves the Origin declaration open; a pending result alone completes it once its clauses are ready, and the
-        // parameter symbols then take the completed Types, as on the header's completion (DECISIONS R7-M<next>).
+        // parameter symbols then take the completed Types, as on the header's completion (DECISIONS R7-M132).
         var pendingResult = !pendingInputs && symbol.Type is { } resultType && this.HoldsPendingProjection(resultType);
         if (pendingInputs || (pendingResult && !this.PartialOriginContractReady(function)))
         {
