@@ -43,7 +43,7 @@ internal sealed partial class MirBorrows
         this.producing |= this.owning; // The storing rule reads an own part formed without a Loan (MirBorrows.Storing; PLAN G581).
         if (!this.producing)
         {
-            // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, PQ-10, an own-step entry an access may
+            // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, an own-step entry an access may
             // depart and the storing rule's own part formed without a Loan need no Loan, R4-M141).
             return;
         }
