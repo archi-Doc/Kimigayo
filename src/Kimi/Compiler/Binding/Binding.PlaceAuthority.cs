@@ -417,14 +417,6 @@ public sealed partial class Binding
             return this.WritableOwner(inline.Left, this.Owner(owner, inline.Left));
         }
 
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && this.AccessType(nested.Left)?.SafeReferent is not { Kind: BoundTypeKind.Tuple } &&
-            this.BorrowedPathRoot(nested) is { } root)
-        {
-            // An inline Tuple level below a borrowed base: the steps from the base to this node pass the base's own layers, then
-            // stored inline parts that add none (BorrowedPathRoot), so this prefix's access is the base's ReferentAuthority.
-            return this.ExclusiveAccessType(root, access)!.Semantics == SemanticsKind.Uniq;
-        }
-
         if (node is MemberAccessKoto tupleElement && this.AccessType(tupleElement.Left)?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
             var referent = this.ReferentAuthority(tupleElement.Left, this.Owner(owner, tupleElement.Left).Access);

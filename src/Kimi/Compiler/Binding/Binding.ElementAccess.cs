@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 // Element access (SPEC 3.4.3, 4.6-4.8, 13.4, 15.1.3, 15.6): what a selection is as an element or a Place read in place.
 // - Responsibility: the element-access predicates that Binding's Place classification and the HIR publisher read (a raw Place is
 //   Binding.PlaceAuthority.Raw's): shared and exclusive elements, borrowed receivers, built-in steps and user indexes, slicing, static
-//   selectors and constant indexes, the access Type of a Place read in place, and a path's owned, borrowed and writable roots.
+//   selectors and constant indexes, the access Type of a Place read in place, and a path's owned and writable roots.
 // - Inputs: a node, its published Type, symbol and plan (HirTables), and this Binding's facts: recorded adaptations, selected index
 //   and view-range calls, resolved slices, path and referent authority, object cases and pair-layer borrows (BorrowsInEveryCase), a
 //   node's constraint scope, an operand's terminal Type (OperandTerminal) and the Binding's TyCtxt (Types.Reference,
@@ -181,52 +181,10 @@ public sealed partial class Binding
             adaptation is { Kind: ExpectedAdaptationKind.SharedBorrow, Type.Components: [var read] } && HirTables.TypeOf(node) is { } type &&
             (ReferenceEquals(read, type) || ReferenceEquals(read, ComparisonReferent(type)));
 
-    // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
-    // Tuple reference; nested levels must be inline stored parts. Returns the
-    // reference-typed base, or null for other forms.
-    // The reference whose struct or Tuple referent `reference@follow` selects, or null.
-    private Koto? FollowedReference(Koto receiver)
-        => KotoHelper.UnwrapParentheses(receiver) is ConversionKoto followed && HirTables.PlanOf(followed).Conversion == ConversionBinding.Follow &&
-            this.AccessType(followed.Left)?.SafeReferent is { } referent && (AdtDef.IsStruct(referent) || referent.Kind == BoundTypeKind.Tuple) ? followed.Left : null;
-
     // SPEC 4.7.1: an owned fixed-array element selected at a runtime index, which has no static Move Path.
     private bool IsRuntimeFixedElement(Koto selection)
         => KotoHelper.UnwrapParentheses(selection) is IndexKoto element && this.IsSyntax(element) && !this.IsSlicing(element) && !IsGetterResult(element) &&
             HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.FixedArray && this.StaticSelector(element) < 0;
-
-    // SPEC 3.4.3: the borrowed base an inline Tuple level is selected from (Writes' borrowed-base rule). It takes one step: its one
-    // caller reaches it only where the inline-part rule did not answer, so TryType of the node is false, and a second iteration needs
-    // it true (the Front's D-932 read).
-    private Koto? BorrowedPathRoot(MemberAccessKoto field)
-    {
-        while (true)
-        {
-            if (IsGetterResult(field))
-            {
-                return null;
-            }
-
-            var receiver = this.AccessType(field.Left);
-            if (AdtDef.IsStruct(receiver?.SafeReferent) || receiver?.SafeReferent is { Kind: BoundTypeKind.Tuple } ||
-                (receiver is not null && this.ObjectCases(receiver, this.ConstraintScope(field.Left), out _) != SemanticsMask.None))
-            {
-                return field.Left;
-            }
-
-            // SPEC 13.5.5: an explicitly selected referent (`p@follow.x`) is reached through its reference, as `p.x` is.
-            if (this.FollowedReference(field.Left) is { } reference)
-            {
-                return reference;
-            }
-
-            if (field.Left is not MemberAccessKoto parent || !this.TryType(field, out _, out _))
-            {
-                return null;
-            }
-
-            field = parent;
-        }
-    }
 
     // SPEC 15.6: a direct inline field/Tuple/static-array path whose root is an owned local
     // or parameter Name. Returns that Name, or null for other forms.
