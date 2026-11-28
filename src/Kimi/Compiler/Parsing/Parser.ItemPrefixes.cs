@@ -13,7 +13,9 @@ namespace Kimi.Compiler;
 // What comes before an item: attributes (SPEC 6.7), declaration modifiers (Appendix F.3.3) and the compile-time directives before it.
 // Input: a reader at an item's start. Output: the pending prefix in the reader, which the item takes (TokenReader.TakeContext), and where
 // its written header starts (TokenReader.HeaderPosition); whether an unavailable declaration header was recognized, which its caller skips;
-// an attribute chain's nodes.
+// an attribute chain's nodes; and the protected-placement judgment (SPEC 9.4.1, 19.4): the Syntax-requirement record at the function's
+// SignatureSpan or the binding's Name (else at the declaration), written by JudgeProtectedPlacement at its four sites (a Container, a
+// Property, a function and the root group) once the declaration has taken its prefix.
 // Invariants: a modifier shares the line of the word that introduces its declaration, and modifiers that end their line are dropped with one
 // report; a static, and an open anywhere but before struct, is reported where it is read and kept only for recovery (Judged); the prefix's
 // attributes attach only to the declaration that takes the prefix, and a misplaced or rejected attribute attaches to nothing.
