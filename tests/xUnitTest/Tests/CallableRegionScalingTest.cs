@@ -61,6 +61,17 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void PlacedReadsAreLinearInACopyChain()
         => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.LentChain)], 2);
 
+    // G1301 C (its design section 7; the review's N3): A5's work and Loan-set bytes on n reads, each through a call's result made from a
+    // borrow of b.pair right before it, at n = 64, 128, 256: every read Unplaced in a `tabling` view, carrying its parents rested (one
+    // Rest, memoized per set, and one Union per read). Each read's parents are a one-Loan set, so the row bounds the per-read count; Rest
+    // over a larger set costs O(|parents|) once per distinct set, the order of Indirect's Marked on the exact arm. The chain's n Loans of
+    // b.pair give the work a dense term, so it keeps the factor 5 of the dense rows (measured: 18,319, 35,411, 70,363, a dense n²/32 term;
+    // with the arm's Union dropped, 16,975, 32,723, 64,987, the same excess, so the arm adds exactly 21 work and 16 B per read); the
+    // bytes are linear.
+    [Fact]
+    public void UnplacedReadsScaleWithTheDenseTerm()
+        => WorkScales(output, [.. new[] { 64, 128, 256 }.Select(MirBorrowsTest.UnplacedChain)], 5);
+
     // Z5-R2 (its design section 6): A5's work and Loan-set bytes on a chain of n Copies of a layer's enclosing Place through no
     // dereference, each used right after it is made, at n = 64, 128, 256, each Copy carrying its owner's one own-step entry
     // (MirBorrows.Addresses' Layer, one row per Place a location uses): the work has a dense term, so it keeps the factor 5 of the dense

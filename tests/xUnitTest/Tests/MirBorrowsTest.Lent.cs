@@ -44,6 +44,9 @@ public sealed partial class MirBorrowsTest
 
         """;
 
+    // A call whose result keeps its argument's Origin, so a read through the result has no exact lent position (G1301's class 1).
+    private const string PickR = "func pickR(r: ref/(raw/u8, i32)) -> ref/(raw/u8, i32) during r => r\n";
+
     // The read's Place, as the row writes it (the body's local names, `_n` for a temp), and the position A5 publishes for every Place of
     // that text the body's statements use ("none": -1), each body line indented under `func f(fresh: raw/u8)`, `|` separating lines.
     [Theory]
@@ -84,6 +87,19 @@ public sealed partial class MirBorrowsTest
         for (var i = 1; i <= n; i++)
         {
             text.Append($"    let r{i} = r{i - 1}\n    usep(r{i}@follow.0)\n");
+        }
+
+        return text.ToString();
+    }
+
+    // A program whose body reads b.pair's layer n times, each through a call's result made from a borrow of b.pair right before it: an
+    // Unplaced read in a `tabling` view (CallableRegionScalingTest.UnplacedReadsScaleWithTheDenseTerm).
+    internal static string UnplacedChain(int n)
+    {
+        var text = new StringBuilder(LentShapes).Append(PickR).Append("func f(fresh: raw/u8)\n    let b = Packet.init()\n");
+        for (var i = 1; i <= n; i++)
+        {
+            text.Append($"    let q{i} = pickR(b.pair@ref)\n    usep(q{i}@follow.0)\n");
         }
 
         return text.ToString();
