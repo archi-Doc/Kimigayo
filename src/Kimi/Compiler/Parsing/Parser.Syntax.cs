@@ -307,6 +307,7 @@ public static partial class Parser
     private static Koto ParseFixedArrayType(ref TokenReader reader)
     {
         var start = reader.Read().Span.Start;
+        var lengthStart = reader.Position;
         Koto length;
         if (reader.AllowArrayElementInference && reader.CurrentTokenKind == TokenKind.Underscore)
         {
@@ -331,7 +332,7 @@ public static partial class Parser
         {
             // The head supplied no length, so do not guess another interpretation of the remainder or report
             // 'of'/element failures caused by that guess. Recovery stays inside this bracket pair.
-            reader.SkipListItem();
+            reader.SkipListItem(lengthStart);
             element = new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = failed.Cause };
             reader.ExpectCloser(TokenKind.CloseBracket, out var end);
             return new FixedArrayTypeKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, end.End)), length, element);

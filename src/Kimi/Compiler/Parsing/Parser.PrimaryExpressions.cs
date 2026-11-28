@@ -335,6 +335,7 @@ public static partial class Parser
             return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(mark.Span.End, markClose.End)), [mark]);
         }
 
+        var start = reader.Position;
         var first = ParseLiteralElement(ref reader);
         reader.SkipSeparators();
         if (reader.IsCurrentIdentifier("of"))
@@ -350,12 +351,12 @@ public static partial class Parser
         }
 
         return reader.CurrentTokenKind == TokenKind.Colon
-            ? ParseDictionaryLiteral(ref reader, openRange, first)
-            : ParseArrayLiteral(ref reader, openRange, first);
+            ? ParseDictionaryLiteral(ref reader, openRange, first, start)
+            : ParseArrayLiteral(ref reader, openRange, first, start);
     }
 
-    // ArrayExpression's TrailingList<Expression> after its first element, to the "]" (F.9.1).
-    private static ArrayLiteralKoto ParseArrayLiteral(ref TokenReader reader, SourceSpan openRange, Koto first)
+    // ArrayExpression's TrailingList<Expression> after its first element, read from `start`, to the "]" (F.9.1).
+    private static ArrayLiteralKoto ParseArrayLiteral(ref TokenReader reader, SourceSpan openRange, Koto first, int start)
     {
         var elements = new List<Koto>(4) { first };
         while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseBracket)
@@ -363,7 +364,7 @@ public static partial class Parser
             if (reader.CurrentTokenKind != TokenKind.Comma)
             {
                 RecoverItem(ref reader, elements[^1], reader.Expect(SyntaxForm.Comma));
-                reader.SkipListItem();
+                reader.SkipListItem(start);
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
                     break;
@@ -377,6 +378,7 @@ public static partial class Parser
                 break;
             }
 
+            start = reader.Position;
             elements.Add(ParseLiteralElement(ref reader));
             reader.SkipSeparators();
         }
@@ -386,9 +388,9 @@ public static partial class Parser
         return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), elements);
     }
 
-    // DictionaryExpression's TrailingList<DictionaryEntry> from its first key's ":", to the "]"; DictionaryEntry := Expression ":" Expression
-    // (F.9.1). An entry without its ":" is reported and skipped.
-    private static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey)
+    // DictionaryExpression's TrailingList<DictionaryEntry> from its first key's ":", the key read from `start`, to the "]";
+    // DictionaryEntry := Expression ":" Expression (F.9.1). An entry without its ":" is reported and skipped.
+    private static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey, int start)
     {
         var entries = new List<DictionaryLiteralEntry>(4);
         var key = firstKey;
@@ -397,7 +399,7 @@ public static partial class Parser
             if (reader.CurrentTokenKind != TokenKind.Colon)
             {
                 reader.Expect(SyntaxForm.Colon);
-                reader.SkipListItem();
+                reader.SkipListItem(start);
             }
             else
             {
@@ -421,7 +423,7 @@ public static partial class Parser
                     RecoverItem(ref reader, entries[^1].Value, cause);
                 }
 
-                reader.SkipListItem();
+                reader.SkipListItem(start);
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
                     break;
@@ -435,6 +437,7 @@ public static partial class Parser
                 break;
             }
 
+            start = reader.Position;
             key = ParseLiteralElement(ref reader);
             reader.SkipSeparators();
         }

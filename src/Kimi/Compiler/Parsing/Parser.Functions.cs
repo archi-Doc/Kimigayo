@@ -360,6 +360,7 @@ public static partial class Parser
                 break;
             }
 
+            var parameterStart = reader.Position;
             if (TryParseParameter(ref reader, form, parameters, attribute, out var parameter))
             {
                 (parameters ??= new(4)).Add(parameter);
@@ -384,7 +385,7 @@ public static partial class Parser
                     RecoverItem(ref reader, parameter.DefaultValue ?? parameter.Type, cause);
                 }
 
-                SkipParameter(ref reader);
+                reader.SkipListItem(parameterStart);
                 reader.TryConsume(TokenKind.Comma);
             }
 
@@ -422,9 +423,10 @@ public static partial class Parser
         [NotNullWhen(true)] out FunctionParameterKoto? parameter)
     {
         parameter = null;
+        var start = reader.Position;
         if (!reader.TryReadName(out var externalName, out var externalNameSpan))
         {
-            SkipParameter(ref reader);
+            reader.SkipListItem(start);
             return false;
         }
 
@@ -450,7 +452,7 @@ public static partial class Parser
         var internalNameSpan = externalNameSpan;
         if (reader.TryConsume(TokenKind.EqualsGreaterThan) && !reader.TryReadName(out internalName, out internalNameSpan))
         {
-            SkipParameter(ref reader);
+            reader.SkipListItem(start);
             return false;
         }
 
@@ -469,7 +471,7 @@ public static partial class Parser
         {
             // The recovery Type stands for the missing annotation; the rest of the parameter is skipped (SPEC 23.1.2).
             parameterType = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.ParameterType) };
-            SkipParameter(ref reader);
+            reader.SkipListItem(start);
         }
 
         Koto? defaultValue = null;
@@ -494,9 +496,6 @@ public static partial class Parser
         };
         return true;
     }
-
-    private static void SkipParameter(ref TokenReader reader)
-        => reader.SkipListItem();
 
     /// <summary>Parses the result Type after a function header's arrow; a line that ends at the arrow leaves a recovery Type.</summary>
     private static Koto ParseFunctionReturnType(ref TokenReader reader, SourceSpan arrow)

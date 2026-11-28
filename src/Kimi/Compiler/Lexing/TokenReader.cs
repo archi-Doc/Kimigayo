@@ -66,6 +66,9 @@ public ref partial struct TokenReader
     // The last form reported missing and its insertion point: later non-closer forms expected there are its consequences.
     private (int At, DiagnosticKey Key)? lastMissing;
 
+    // The end of the synthesized closers noted: the item skip reads a recovered item again from its start (SkipListItem).
+    private int notedEnd;
+
     /// <summary>
     /// Gets the current token position.
     /// </summary>
@@ -862,17 +865,21 @@ public ref partial struct TokenReader
 
     /// <summary>
     /// Skips, without reporting, the rest of one item: the one item skip, which a blamed item's recovery and every read past
-    /// <see cref="SyntaxNesting.Limit"/> pass through. The item ends at its delimiter balance 0, at the comma that ends it (or a
-    /// parameter list's '!'), the end of the grouping's content (<see cref="ExpectCloser"/>), the '&gt;' that closes a Type argument
-    /// or parameter list, or an <c>else</c> that none of the item's own <c>if</c> and <c>require</c> takes, which is an enclosing
-    /// construct's (SPEC F: an <c>if</c> in a single-item body is grouped entirely). Groupings, bodies and recognized Type argument
-    /// lists inside the item are skipped whole, so their commas, closers and elses stay theirs. An <c>else</c> that begins the item
-    /// is its first token, so every skip makes progress.
+    /// <see cref="SyntaxNesting.Limit"/> pass through. The skip reads the item from its first token, also the part a recovery's
+    /// parser already read, so the item's own <c>if</c> and <c>require</c> are those from that token; reading that part again notes
+    /// no closer twice (<see cref="NoteMissingCloser"/>), and it ends nothing, a completed part of the item, so the skip never ends
+    /// before where it was called. The item ends at its delimiter balance 0, at the comma that ends it (or a parameter list's '!'),
+    /// the end of the grouping's content (<see cref="ExpectCloser"/>), the '&gt;' that closes a Type argument or parameter list, or
+    /// an <c>else</c> that none of the item's own <c>if</c> and <c>require</c> takes, which is an enclosing construct's (SPEC F: an
+    /// <c>if</c> in a single-item body is grouped entirely). Groupings, bodies and recognized Type argument lists inside the item are
+    /// skipped whole, so their commas, closers and elses stay theirs. An <c>else</c> that begins the item is its first token, so a
+    /// skip from the item's start makes progress.
     /// </summary>
+    /// <param name="start">The position of the item's first token: the current one, or an earlier one the parser read the item from.</param>
     /// <param name="typeArguments">Whether the list is a Type argument or parameter list, which a '&gt;' at its level closes.</param>
-    internal void SkipListItem(bool typeArguments = false)
+    internal void SkipListItem(int start, bool typeArguments = false)
     {
-        var start = this.Position;
+        this.MoveTo(start); // A move back passes no token.
         var angles = 0;
         var open = 0; // The item's ifs and requires that may still take an else.
         while (this.CanRead && !this.EndsGroupingContent())
@@ -936,7 +943,7 @@ public ref partial struct TokenReader
         var start = this.InsertionSpan.Start;
         do
         {
-            this.SkipListItem(typeArguments);
+            this.SkipListItem(this.Position, typeArguments);
         }
         while (this.TryConsume(TokenKind.Comma) || this.TryConsume(TokenKind.Exclamation));
 
@@ -952,7 +959,7 @@ public ref partial struct TokenReader
     internal ErrorKoto SkipExpressionPastLimit()
     {
         var start = this.InsertionSpan.Start;
-        this.SkipListItem();
+        this.SkipListItem(this.Position);
         return this.SkipMark(start);
     }
 

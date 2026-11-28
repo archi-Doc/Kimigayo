@@ -650,6 +650,7 @@ Nest:
         while (reader.CanRead &&
                tokenKind != TokenKind.CloseParenthesis)
         {
+            var start = reader.Position;
             if (tokenKind.IsIdentifierOrContextualKeyword() &&
                 reader.PeekKind(1) == TokenKind.Colon)
             {
@@ -711,7 +712,7 @@ Separator:
                     reader.CodeContext.RecordRecovery(last, cause);
                 }
 
-                reader.SkipListItem();
+                reader.SkipListItem(start);
                 if (reader.TryConsume(TokenKind.Comma))
                 {
                     tokenKind = reader.CurrentTokenKind;

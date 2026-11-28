@@ -158,7 +158,7 @@ public static partial class Parser
             {
                 // Not a slot, such as a nested list: the whole slot is skipped, so a following comma still continues the list.
                 malformed ??= reader.Expect(SyntaxForm.Name);
-                reader.SkipListItem();
+                reader.SkipListItem(start);
             }
 
             if (reader.TryConsume(TokenKind.Comma))
