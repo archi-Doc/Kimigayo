@@ -362,7 +362,6 @@ public static partial class Parser
         reader.Depth++; // The elements lie one level below their group (DECISIONS BU-112).
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Separator or TokenKind.EndBlock))
         {
-            var start = reader.Position;
             var element = reader.PastLimit ? reader.SkipPastLimit() : ParseType(ref reader, TypeContext.Element);
             firstElement ??= element;
             lastEnd = element.Span.End;
@@ -375,7 +374,7 @@ public static partial class Parser
             else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
             {
                 reader.Expect(SyntaxForm.Comma);
-                reader.SkipListItem(start);
+                reader.SkipListItem();
                 if (!reader.TryConsume(TokenKind.Comma))
                 {
                     break;
@@ -420,7 +419,7 @@ public static partial class Parser
             if (ParseGenericParameter(ref reader) is not { } parameter)
             {
                 // The failed parameter is skipped within the list, which continues after its comma.
-                reader.SkipListItem(itemStart, typeArguments: true);
+                reader.SkipListItem(typeArguments: true);
                 reader.TryConsume(TokenKind.Comma);
                 skipped = true;
             }
@@ -433,7 +432,7 @@ public static partial class Parser
                 }
 
                 (list ??= new(2)).Add(parameter);
-                ContinueGenericList(ref reader, itemStart);
+                ContinueGenericList(ref reader);
             }
 
             if (reader.Position == itemStart)
@@ -498,7 +497,7 @@ public static partial class Parser
 
             var argument = ParseType(ref reader, TypeContext.Argument);
             (list ??= new(2)).Add(argument as TypeKoto ?? new TypeSemanticsKoto(ref reader, argument.Span, argument));
-            ContinueGenericList(ref reader, itemStart);
+            ContinueGenericList(ref reader);
             if (reader.Position == itemStart)
             {
                 break; // A token that neither starts nor ends an argument, such as '!'.
@@ -546,10 +545,10 @@ public static partial class Parser
     }
 
     /// <summary>
-    /// Reads what follows an item of a declaration header's generic list, read from <paramref name="itemStart"/>: its comma, or
-    /// nothing before the closer; anything else is reported and skipped with the next comma.
+    /// Reads what follows an item of a declaration header's generic list: its comma, or nothing before the closer; anything else is
+    /// reported and skipped with the next comma.
     /// </summary>
-    private static void ContinueGenericList(ref TokenReader reader, int itemStart)
+    private static void ContinueGenericList(ref TokenReader reader)
     {
         if (reader.CurrentTokenKind == TokenKind.Comma)
         {
@@ -558,7 +557,7 @@ public static partial class Parser
         else if (!IsTypeClose(reader.CurrentTokenKind))
         {
             reader.Expect(SyntaxForm.Comma);
-            reader.SkipListItem(itemStart, typeArguments: true);
+            reader.SkipListItem(typeArguments: true);
             reader.TryConsume(TokenKind.Comma);
         }
     }

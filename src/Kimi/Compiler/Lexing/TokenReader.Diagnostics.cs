@@ -263,12 +263,10 @@ public ref partial struct TokenReader
     private void NoteMissingCloser(int index)
     {
         var token = this.tokens[index];
-        if (index < this.notedEnd || token.Kind is not (TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace))
+        if (token.Kind is not (TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace))
         {
-            return; // A closer is noted once, the first time the reader passes it.
+            return;
         }
-
-        this.notedEnd = index + 1;
 
         // The tokenizer reported the closer right after the last written token before it (Tokenizer.InsertionPoint).
         var at = token.Span.Start;

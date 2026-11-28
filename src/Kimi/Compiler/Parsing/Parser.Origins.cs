@@ -229,13 +229,12 @@ public static partial class Parser
         var reported = false;
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
         {
-            var start = reader.Position;
             var token = reader.CurrentToken;
             if (!token.Kind.IsIdentifierOrContextualKeyword() || token.Kind == TokenKind.Static)
             {
                 // Not a slot Name; the rest of the item is skipped, so a slot after the next comma is still read.
                 reader.Expect(SyntaxForm.OriginSlotName, token);
-                reader.SkipListItem(start);
+                reader.SkipListItem();
                 reported = true;
             }
             else
@@ -245,7 +244,7 @@ public static partial class Parser
                 if (reader.TryConsume(TokenKind.Colon, out var relationToken, false))
                 {
                     reader.Diagnostic.Add(relationToken, DiagnosticCode.OriginSchemaRelation_Kd);
-                    reader.SkipListItem(start);
+                    reader.SkipListItem();
                 }
             }
 

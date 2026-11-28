@@ -363,7 +363,6 @@ public static partial class Parser
                 break;
             }
 
-            var parameterStart = reader.Position;
             if (TryParseParameter(ref reader, form, parameters, attribute, out var parameter))
             {
                 (parameters ??= new(4)).Add(parameter);
@@ -388,7 +387,7 @@ public static partial class Parser
                     RecoverItem(ref reader, parameter.DefaultValue ?? parameter.Type, cause);
                 }
 
-                reader.SkipListItem(parameterStart);
+                reader.SkipListItem();
                 reader.TryConsume(TokenKind.Comma);
             }
 
@@ -428,10 +427,9 @@ public static partial class Parser
         [NotNullWhen(true)] out FunctionParameterKoto? parameter)
     {
         parameter = null;
-        var start = reader.Position;
         if (!reader.TryReadName(out var externalName, out var externalNameSpan))
         {
-            reader.SkipListItem(start);
+            reader.SkipListItem();
             return false;
         }
 
@@ -457,7 +455,7 @@ public static partial class Parser
         var internalNameSpan = externalNameSpan;
         if (reader.TryConsume(TokenKind.EqualsGreaterThan) && !reader.TryReadName(out internalName, out internalNameSpan))
         {
-            reader.SkipListItem(start);
+            reader.SkipListItem();
             return false;
         }
 
@@ -476,7 +474,7 @@ public static partial class Parser
         {
             // The recovery Type stands for the missing annotation; the rest of the parameter is skipped (SPEC 23.1.2).
             parameterType = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.ParameterType) };
-            reader.SkipListItem(start);
+            reader.SkipListItem();
         }
 
         Koto? defaultValue = null;
