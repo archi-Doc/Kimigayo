@@ -117,7 +117,7 @@ public static partial class Parser
             }
             else if (owner is IsKoto clause && IsEffectStart(ref reader, specification: true))
             {
-                clause.AddEffectBound(ParseEffectBound(ref reader));
+                clause.AddEffectBound(ParseEffectItem(ref reader, clause));
             }
             else
             {

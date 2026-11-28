@@ -575,7 +575,7 @@ public sealed partial class Binding
                     else if (container is EnumKoto && member is not (FunctionKoto { IsConstructor: false, IsDestructor: false } or IsKoto or EffectBoundKoto or
                         SyntaxFormKoto { Akind: KotoKind.ConditionalConformance or KotoKind.AssociatedType }))
                     {
-                        // An effect item is judged by its owner alone (Binding.Misplaced); it leaves the enum's formation valid.
+                        // An effect item's place is the parser's judgment (Parser.ParseEffectItem); it leaves the enum's formation valid.
                         this.Fail(member, BindingFailure.InvalidTypeFormation);
                     }
 

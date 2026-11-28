@@ -256,7 +256,7 @@ public static partial class Parser
 
             if (IsEffectStart(ref reader, specification: true))
             {
-                function.AddEffectBound(ParseEffectBound(ref reader));
+                function.AddEffectBound(ParseEffectItem(ref reader, function));
                 continue;
             }
 

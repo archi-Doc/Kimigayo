@@ -563,6 +563,10 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
     }
 
+    /// <summary>Gets a value indicating whether this container is detached (<see cref="CreateDetached"/>): a conditional conformance's
+    /// Block or an excluded item's host. Among list containers (<see cref="ExcludedOwner{TContainer}.Container"/>) it is the Block.</summary>
+    internal bool IsDetached => this.detachedFrom is not null;
+
     /// <summary>Moves the parts a detached container (<see cref="CreateDetached"/>) parsed to the marker of the directive whose excluded
     /// syntax they are (SPEC 19.4): its Origin relations, then its children in ChildSlots order. The shared generic parameters stay
     /// the list container's, and its lookup of nested containers stays, so later excluded members of the list merge as before.</summary>
@@ -1011,8 +1015,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         return container;
     }
 
+    // list: the container whose list holds the item (ExcludedOwner.Container), which is this container in selected syntax.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state)
+    private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state, DeclarationContainerKoto list)
     {
         // A Contract item takes no attributes (SPEC 6.7, F.6.2 ContractItem): the prefix's are reported and attach to nothing.
         if (this is ContractKoto)
@@ -1020,13 +1025,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             Parser.ReportPendingAttributes(ref reader);
         }
 
-        // SPEC 8.11.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject. Like the
-        // Constraints and relations below, it takes no attributes (SPEC 6.7).
+        // SPEC 8.11.1: an effect specification is a Contract item; elsewhere it declares no bound, judged from the list's container.
+        // Like the Constraints and relations below, it takes no attributes (SPEC 6.7).
         if (Parser.IsEffectStart(ref reader, specification: true))
         {
             Parser.ReportPendingAttributes(ref reader);
             Parser.RejectAccessWord(ref reader);
-            this.AddLast(Parser.ParseEffectBound(ref reader));
+            this.AddLast(Parser.ParseEffectItem(ref reader, list));
             return;
         }
 
@@ -1191,7 +1196,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         public void ParseItem(ref TokenReader reader)
         {
-            this.owner.Of(ref reader).ParseMemberItem(ref reader, ref this.state);
+            this.owner.Of(ref reader).ParseMemberItem(ref reader, ref this.state, this.owner.Container);
             this.owner.Release(ref reader);
         }
 

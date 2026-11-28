@@ -1131,5 +1131,7 @@
   { "Name": "protected-placement-excluded-in-enum-conformance", "Source": "contract Describe\n    func describe(self) -> string\n\nenum E<T>\n    A\n    Self is Describe when T is Describe\n        public func describe(self) -> string => \"e\"\n        #if false\n            protected func h() -> i32 => 0\npublic func main() => ()\n", "Intended": "an excluded member of a conditional conformance Block is declared by the Block's owner, an enum",
     "Records": [ { "Code": "ProtectedPlacement_Kd", "Form": "ProtectedPlacement", "At": "h() -> i32" } ] },
   { "Name": "protected-placement-excluded-in-struct", "Source": "struct S\n    #if false\n        protected func f() -> i32 => 0\npublic func main() => ()\n", "Intended": "an excluded member of a struct may be protected: the check reads the declaring struct, so the program is accepted",
-    "Records": [] }
+    "Records": [] },
+  { "Name": "effect-item-in-a-function", "Source": "func f() -> i32\n    effect confined\n    return 0\npublic func main() => ()\n", "Intended": "an effect item in an ordinary function's leading region declares no bound: the parser judges its place from the function (SPEC 8.11.1, 7.5)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect confined" } ] }
 ]

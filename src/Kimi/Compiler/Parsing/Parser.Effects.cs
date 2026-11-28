@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 
 public static partial class Parser
 {
-    // Retain lists even on non-Callable clauses: Binding owns the single InvalidEffectBound diagnostic.
+    // Retain lists even on non-Callable clauses: Binding judges a list's Callable form and position (SPEC 8.11.4).
     internal static void ParseCallableEffects(ref TokenReader reader, IsKoto constraint)
     {
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
@@ -27,7 +27,7 @@ public static partial class Parser
 
             if (IsEffectStart(ref reader, specification: true))
             {
-                var effect = ParseEffectBound(ref reader);
+                var effect = ParseEffectItem(ref reader, constraint);
                 constraint.AddEffectBound(effect);
                 constraint.Span = SourceSpan.FromBounds(constraint.Span.Start, effect.Span.End);
             }
@@ -63,12 +63,66 @@ public static partial class Parser
         return next.IsIdentifierOrContextualKeyword() || (specification && next is TokenKind.OpenParenthesis or TokenKind.ColonColon or TokenKind.OpenBracket);
     }
 
-    /// <summary>Parses an effect clause or an effect specification; the reader stands at <c>effect</c> (SPEC 8.11.1). The item
-    /// ends with its line in an indented list; in a single-item body it ends where the enclosing construct's own syntax, such as
-    /// a closer, <c>,</c> or <c>else</c>, continues the line (SPEC 14.2.1, F.4.4).</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <returns>The item. A missing or unknown bound reports the Error and leaves the item as its recovery.</returns>
-    internal static EffectBoundKoto ParseEffectBound(ref TokenReader reader)
+    /// <summary>Parses an effect item and judges its place from its holder (SPEC 8.11.1, 7.5, F.3); every reader of an effect item
+    /// calls it. An effect specification is a Contract item. An effect clause stands in a requirement's Constraint region, a Callable
+    /// Constraint's effect list or an original virtual function's leading region, whose own checks Binding makes. Any other item declares
+    /// no bound, and an item outside a leading region is misplaced syntax. The record's key is the item's
+    /// <see cref="EffectBoundKoto.Misplacement"/>; a recovery rests on its syntax Error alone.</summary>
+    /// <param name="reader">The token reader, at <c>effect</c>.</param>
+    /// <param name="holder">What holds the item: a Contract, a requirement, a Callable Constraint, a function whose leading region holds
+    /// it, or the container whose list holds it (<c>ExcludedOwner.Container</c>; a detached one is a conditional conformance's Block);
+    /// <see langword="null"/> outside a leading region.</param>
+    /// <returns>The item.</returns>
+    internal static EffectBoundKoto ParseEffectItem(ref TokenReader reader, Koto? holder)
+    {
+        var effect = ParseEffectBound(ref reader);
+        if (holder is null)
+        {
+            effect.Misplacement = effect.Unexpected(SyntaxForm.EffectItem);
+            return effect;
+        }
+
+        // Removed by SRCCHK c4 (PLAN G1511): excluded syntax receives the check.
+        if (reader.InExcludedSyntax)
+        {
+            return effect;
+        }
+
+        if (reader.CodeContext.RecoveryCause(effect) is not null)
+        {
+            return effect; // A recovery rests on its syntax Error alone.
+        }
+
+        const string Outside = "an effect item outside a Contract, original virtual function or Callable Constraint";
+        (string Cause, string Note)? misplaced = holder switch
+        {
+            DeclarationContainerKoto { IsDetached: true } => (Outside, NoBound("a conditional conformance")),
+            ContractKoto => effect.IsSpecification ? null : ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds"),
+            FunctionKoto { IsRequirement: true } or IsKoto or FunctionKoto { IsVirtual: true } => effect.IsSpecification
+                ? ("an effect specification outside a Contract's items", "An effect specification is a Contract item and bounds a requirement the Contract inherits")
+                : null,
+            FunctionKoto { IsAnonymous: true } => (Outside, NoBound("a function literal")),
+            FunctionKoto function => (Outside, NoBound($"the function {function.Name}")),
+            DeclarationContainerKoto container => (Outside, NoBound(container.Name)),
+            _ => throw new InvalidOperationException("An effect item's holder holds no effect items (InternalInvariant)."),
+        };
+        if (misplaced is { } rejection)
+        {
+            var requirement = DiagnosticRequirement.SyntaxOf(SyntaxForm.EffectPlacement);
+            effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd, note: rejection.Note, evidence: [rejection.Cause]);
+            effect.Misplacement = effect.KeyOf(requirement);
+        }
+
+        return effect;
+
+        static string NoBound(string owner)
+            => $"A Contract, original virtual function or Callable Constraint declares bounds; {owner} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound";
+    }
+
+    // SPEC 8.11.1: an effect clause or an effect specification; the reader stands at `effect`. The item ends with its line in an
+    // indented list; in a single-item body it ends where the enclosing construct's own syntax, such as a closer, `,` or `else`,
+    // continues the line (SPEC 14.2.1, F.4.4). A missing or unknown bound reports the Error and leaves the item as its recovery.
+    private static EffectBoundKoto ParseEffectBound(ref TokenReader reader)
     {
         var single = reader.SingleBodyRegion;
         var start = reader.Read().Span.Start;
@@ -126,8 +180,8 @@ public static partial class Parser
     }
 
     /// <summary>Parses an effect item that starts an item of an executable body (SPEC 8.11.1, 7.5, F.3), never read as an
-    /// expression: in a function's leading region it is kept for Binding to judge; anywhere else, including the top level, it is
-    /// misplaced and, as a misplaced <c>origin</c> clause, introduces nothing.</summary>
+    /// expression: in a function's leading region it is kept and judged from that function (<see cref="ParseEffectItem"/>); anywhere
+    /// else, including the top level, it is misplaced and, as a misplaced <c>origin</c> clause, introduces nothing.</summary>
     /// <param name="reader">The token reader, at <c>effect</c>.</param>
     /// <param name="leading">The function whose leading region holds the item, or <see langword="null"/>.</param>
     /// <returns>The key of the misplaced item's Error, or <see langword="null"/> when the item is kept or reports nowhere.</returns>
@@ -135,10 +189,10 @@ public static partial class Parser
     {
         ReportPendingAttributes(ref reader);
         RejectAccessWord(ref reader);
-        var effect = ParseEffectBound(ref reader);
+        var effect = ParseEffectItem(ref reader, leading);
         if (leading is null)
         {
-            return effect.Unexpected(SyntaxForm.EffectItem);
+            return effect.Misplacement;
         }
 
         if (reader.ExcludingMarker is { } marker)

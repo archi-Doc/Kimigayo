@@ -57,7 +57,7 @@ public sealed partial class Binding
                 FunctionKoto f => !f.IsConstructor && !f.IsDestructor && !f.IsSpecialization,
                 PropertyKoto p => owner is StructKoto && p.DeclarationKind == PropertyDeclarationKind.Computed,
                 IsKoto { IsAssociatedConstraint: true } => true,
-                EffectBoundKoto => true, // SPEC 8.11.1: judged by its owner alone (Binding.Misplaced); it leaves the block valid.
+                EffectBoundKoto => true, // SPEC 8.11.1: its place is the parser's judgment (Parser.ParseEffectItem); it leaves the block valid.
                 _ => false,
             };
             if (!allowed)

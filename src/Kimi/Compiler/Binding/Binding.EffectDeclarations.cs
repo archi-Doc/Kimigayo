@@ -9,10 +9,9 @@
 // - Outputs: BoundContract.EffectBounds, boundedRequirements, callableEffectClauses, virtualEffectBounds, one rejection per
 //   invalid item (EffectBoundRejection, which AppliesBound reads), and its problem at the item, with a misplaced item's selector's own
 //   as a second (RecordEffectRejection), published as InvalidEffectBound_Kd (ReportEffectRejection).
-// - Invariants: the position of an item in the tree is decided by Misplaced alone, before its position's own checks (the parser
-//   reports and drops an item that starts a body item outside a leading region, DECISIONS G223); an item AppliesBound
-//   rejects supplies no bound (SPEC 8.11.3); every table is rebuilt per pass in reused storage; a rejection records facts,
-//   its text is formed at publication.
+// - Invariants: the position of an item is the parser's judgment alone (Parser.ParseEffectItem, EffectBoundKoto.Misplacement),
+//   before its position's own checks; an item AppliesBound rejects supplies no bound (SPEC 8.11.3); every table is rebuilt per
+//   pass in reused storage; a rejection records facts, its text is formed at publication.
 // - Prohibitions: no bound is searched for in implementations; no other component decides an effect item in the tree.
 
 using System.Diagnostics;
@@ -46,9 +45,6 @@ public sealed partial class Binding
     // SPEC 8.11.1: why an effect item declares no bound.
     internal enum EffectRejection : byte
     {
-        SpecificationOutsideContract,
-        ClauseOutsideRequirement,
-        OutsideContract,
         NotContract,
         NotReference,
         OwnContract,
@@ -237,17 +233,6 @@ public sealed partial class Binding
 
         return null;
     }
-
-    // SPEC 8.11.1, F.6: the one rule for where an effect item in the tree stands. A specification is a Contract item; a clause stands in a
-    // requirement's Constraint region, a Callable Constraint's effect list or an original virtual function's leading region,
-    // whose own checks follow; any other item declares no bound.
-    private static EffectRejection? Misplaced(EffectBoundKoto effect) => effect.Parent switch
-    {
-        ContractKoto => effect.IsSpecification ? null : EffectRejection.ClauseOutsideRequirement,
-        FunctionKoto { IsRequirement: true, Parent: ContractKoto } or IsKoto or FunctionKoto { IsVirtual: true } =>
-            effect.IsSpecification ? EffectRejection.SpecificationOutsideContract : null,
-        _ => EffectRejection.OutsideContract,
-    };
 
     // SPEC 23.1.2: a selector Parsing rejected (F.6.2's ContractSelector, or the ContractReference in its group) is judged there; every
     // reader of the selector's reference (an applying item's target, a misplaced item's own judgment) rests on that record.
@@ -537,18 +522,19 @@ public sealed partial class Binding
     // SPEC 8.11.3: whether an effect item supplies its bound. A misplaced item, one a declaration check rejected and a recovery,
     // whose checks rest on its syntax Error, supply none; every reader of an item asks this first.
     private bool AppliesBound(EffectBoundKoto bound)
-        => Misplaced(bound) is null && !this.effectBoundRejections.ContainsKey(bound) && !IsRecovery(bound, out _);
+        => bound.Misplacement is null && !this.effectBoundRejections.ContainsKey(bound) && !IsRecovery(bound, out _);
 
     private BoundType? BindEffectBound(EffectBoundKoto effect)
     {
         var recovery = effect.CodeContext.RecoveryCause(effect) is not null;
         EffectBoundRejection? own = null;
-        if (!recovery && Misplaced(effect) is { } position)
+        var misplaced = effect.Misplacement is not null;
+        if (misplaced)
         {
-            // SPEC 23.1.2: the selector's reference reads no position, so a misplaced item's selector is judged on its own, its own problem.
-            // No verdict of the item reads that judgment, so it runs with no frame open (SuspendConsultation), as an applying item's and a
-            // Callable list's do: nothing it reads (a syntax Error among its Type arguments) becomes the item's prerequisite.
-            this.RejectEffectBound(effect, new(position));
+            // SPEC 23.1.2: the selector's reference reads no position, so a misplaced item's selector is judged on its own, its own problem
+            // beside the parser's record of the place. No verdict of the item reads that judgment, so it runs with no frame open
+            // (SuspendConsultation), as an applying item's and a Callable list's do: nothing it reads (a syntax Error among its Type
+            // arguments) becomes the item's prerequisite.
             if (effect.Selector is { } written && !SelectorRestsOnParsing(written))
             {
                 var frame = this.SuspendConsultation();
@@ -565,8 +551,14 @@ public sealed partial class Binding
             this.effectSyntax.Visit(effect.Name!);
         }
 
-        if (recovery)
+        if (recovery || misplaced)
         {
+            // DIAGNOSTICS 4.3 (several problems of one node): a misplaced item's selector's own is its second, after the place's record.
+            if (own is { } fault)
+            {
+                this.RecordEffectRejection(effect, fault, 1);
+            }
+
             return Complete(effect, null);
         }
 
@@ -575,13 +567,7 @@ public sealed partial class Binding
             return Complete(effect, BoundType.Unit);
         }
 
-        // DIAGNOSTICS 4.3 (several problems of one node): the item's rejection, and a misplaced item's selector's own as its second.
         this.RecordEffectRejection(effect, rejection, 0);
-        if (own is { } fault)
-        {
-            this.RecordEffectRejection(effect, fault, 1);
-        }
-
         return null;
     }
 
@@ -652,10 +638,6 @@ public sealed partial class Binding
         var spelling = Constants.ConfinedKeyword;
         var (cause, note) = kind switch
         {
-            EffectRejection.SpecificationOutsideContract => ("an effect specification outside a Contract's items",
-                "An effect specification is a Contract item and bounds a requirement the Contract inherits"),
-            EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds"),
-            EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound"),
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
             EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions"),
             EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector"),
@@ -702,15 +684,6 @@ public sealed partial class Binding
 
         // The kinds that name a Contract hold its declaration (RecordEffectRejection's role 2): a missing one is a broken contract.
         string Named() => (contract as DeclarationContainerKoto)?.Name ?? throw new InvalidOperationException("An effect rejection that names a Contract holds no Contract (InternalInvariant).");
-
-        static string EffectOwner(EffectBoundKoto effect)
-            => effect.Parent switch
-            {
-                FunctionKoto { IsAnonymous: true } => "a function literal",
-                FunctionKoto function => $"the function {function.Name}",
-                CodeBlockKoto { Parent: SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } } => "a conditional conformance",
-                _ => effect.Parent?.BoundSymbol?.Name ?? "this declaration",
-            };
     }
 
     // Completes the selector and Name syntax of an effect item, which Binding never evaluates.

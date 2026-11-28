@@ -33,6 +33,10 @@ public sealed class EffectBoundKoto : Koto
     /// <summary>Gets a value indicating whether this is an effect specification rather than an effect clause.</summary>
     public bool IsSpecification => this.Name is not null;
 
+    /// <summary>Gets the key of the record the parser gave this item's place (<see cref="Parser.ParseEffectItem"/>): an item that
+    /// declares no bound where it stands, or one outside a leading region; <see langword="null"/> where the item may declare a bound.</summary>
+    internal DiagnosticKey? Misplacement { get; set; }
+
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
