@@ -425,20 +425,21 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
 
     private static bool Any(ulong[] state, int lane, int first, int end) => MirDataflow.Any(state, MirInit.Lanes, lane, first, end);
 
-    // The state verdict of the subtree [path, end).
+    // The state verdict of the subtree [path, end): Elide where nothing of it is initialized on any path, else Open where a part below was
+    // taken out, else Flag where it may be uninitialized, else Keep.
     private static MirDropVerdict Verdict(ulong[] state, int path, int end)
     {
-        if (!Any(state, MirInit.Uninit, path, end))
-        {
-            return MirDropVerdict.Keep;
-        }
-
         if (!Any(state, MirInit.Init, path, end))
         {
             return MirDropVerdict.Elide;
         }
 
-        return Any(state, MirInit.Partial, path + 1, end) ? MirDropVerdict.Open : MirDropVerdict.Flag;
+        if (Any(state, MirInit.Partial, path + 1, end))
+        {
+            return MirDropVerdict.Open;
+        }
+
+        return Any(state, MirInit.Uninit, path, end) ? MirDropVerdict.Flag : MirDropVerdict.Keep;
     }
 
     // A path's state verdict, and under Open each direct child's: Keep where the subtree is initialized on every path, Elide where nothing of

@@ -145,6 +145,8 @@ internal sealed partial class MirBorrows
             }
         }
 
+        public readonly bool Edge(int block, int edge, Span<ulong> into) => false; // A backward problem.
+
         public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming)
         {
             owner.Work += target.Length;

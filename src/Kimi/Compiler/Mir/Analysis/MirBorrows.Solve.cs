@@ -185,6 +185,8 @@ internal sealed partial class MirBorrows
 
         public readonly void Block(int block) => owner.Carry(state, block, this.Checks);
 
+        public readonly bool Edge(int block, int edge, Span<ulong> into) => false;
+
         public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => owner.Join(target, incoming);
     }
 }

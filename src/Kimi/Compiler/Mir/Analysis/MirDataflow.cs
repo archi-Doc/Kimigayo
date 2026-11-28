@@ -1,9 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the bit-set dataflow of one MIR body, forward and backward (plan 5.6.3; DECISIONS R4-M20, R4-M15a, R4-M34, R4-M65, R4-M158).
-// Input: a validated body (Begin) and a transfer, a struct IMirFlow that interprets blocks on the scratch state and joins states. Output: the
-// blocks in reverse postorder, each block's phase, the converged state at each flow head, Replay and ReplayBackward, which give each
-// chain its state once, and the edges the last forward solve carried a state along (Predecessors, Carries).
+// Input: a validated body (Begin) and a transfer, a struct IMirFlow that interprets blocks on the scratch state, narrows a forward edge's
+// state (Edge) and joins states. Output: the blocks in reverse postorder, each block's phase, the converged state at each flow head, Replay
+// and ReplayBackward, which give each chain its state once, and the edges the last forward solve carried a state along (Predecessors,
+// Carries).
 // Blocks form chains: a block whose only edge is a runtime edge into a block that has no other predecessor and is not the entry continues
 // into it, so a chain shares one stored state, held only at its head. Begin decides each chain's phase: P1 where the runtime edges from the
 // entry reach it, else P2 (SPEC 14.10.3). One edge rule (Flows) serves both directions and Carries, which A5's Store witness reads: under
@@ -49,6 +50,14 @@ internal interface IMirFlow
     /// <param name="block">The block.</param>
     void Block(int block);
 
+    /// <summary>Narrows the state a forward solve carries along an edge of a chain's last block: writes the scratch's stored words, changed
+    /// for that edge alone, into a span and returns true; false where the edge carries the scratch as it is. Never called backward.</summary>
+    /// <param name="block">The edge's source block.</param>
+    /// <param name="edge">The edge's index from -1, the CheckTarget (<see cref="MirUses.Successor"/>'s), so two edges into one block differ.</param>
+    /// <param name="into">The edge's state, as many words as a head stores.</param>
+    /// <returns>Whether the edge's state was written.</returns>
+    bool Edge(int block, int edge, Span<ulong> into);
+
     /// <summary>Joins a state into another: a head's stored state, or the scratch.</summary>
     /// <param name="target">The state joined into.</param>
     /// <param name="incoming">The state joined.</param>
@@ -82,6 +91,7 @@ internal sealed class MirDataflow(MirReach reach, MirCases? cases)
     private ulong[] pending = []; // The worklist: a bit per pending head at its place in the solve's order (Next).
     private ulong[] arena = []; // The stored states of each head: the backward problem's words, then the forward problem's.
     private ulong[] scratch = [];
+    private ulong[] edge = []; // A forward edge's narrowed state (IMirFlow.Edge), the stored words.
     private MirBody body = null!;
     private int headCount;
     private int low; // The first word of the worklist that may hold a bit.
@@ -312,6 +322,7 @@ internal sealed class MirDataflow(MirReach reach, MirCases? cases)
         (this.backward, this.forward) = (backward, forward);
         Grow(ref this.arena, this.headCount * this.Row);
         Grow(ref this.scratch, width);
+        Grow(ref this.edge, forward);
         Grow(ref this.reached, this.headCount);
         Grow(ref this.pending, (this.headCount + 63) >> 6);
         return this.scratch;
@@ -443,12 +454,14 @@ internal sealed class MirDataflow(MirReach reach, MirCases? cases)
     }
 
     // The heads reached in a phase until their states stop growing, along the edges Flows admits into the phase's heads: P1 from the entry
-    // over runtime edges; P2 into P2 heads, a P1 head passing its frozen state once along its CheckTarget. The worklist takes heads in
-    // reverse postorder, so acyclic code converges in one sweep, and a head whose state grows is pending again (R4-M65).
+    // over runtime edges; P2 into P2 heads, a P1 head passing its frozen state once along its CheckTarget. Each edge carries the scratch, or
+    // the state the transfer narrowed for it (IMirFlow.Edge). The worklist takes heads in reverse postorder, so acyclic code converges in
+    // one sweep, and a head whose state grows is pending again (R4-M65).
     private void Solve<TFlow>(ref TFlow flow, byte phase)
         where TFlow : struct, IMirFlow
     {
         this.Seed();
+        var edge = this.edge.AsSpan(0, this.forward);
         for (var h = this.Next(); h >= 0; h = this.Next())
         {
             var frozen = this.phases[h] == 1 && phase == 2;
@@ -462,7 +475,8 @@ internal sealed class MirDataflow(MirReach reach, MirCases? cases)
             for (var i = -1; i < (frozen ? 0 : MirUses.Successors(terminator)); i++)
             {
                 var target = this.Flows(h, terminator, i);
-                if (target >= 0 && this.phases[target] == phase && this.Join(ref flow, target))
+                if (target >= 0 && this.phases[target] == phase &&
+                    this.Join(ref flow, target, flow.Edge(this.tails[h], i, edge) ? edge : this.scratch.AsSpan(0, this.forward)))
                 {
                     this.Queue(target);
                 }
@@ -512,19 +526,19 @@ internal sealed class MirDataflow(MirReach reach, MirCases? cases)
         }
     }
 
-    // Joins the scratch into a head's stored forward state, the first arrival copying it; returns whether the state grew.
-    private bool Join<TFlow>(ref TFlow flow, int target)
+    // Joins an edge's state into a head's stored forward state, the first arrival copying it; returns whether the state grew.
+    private bool Join<TFlow>(ref TFlow flow, int target, ReadOnlySpan<ulong> incoming)
         where TFlow : struct, IMirFlow
     {
         var state = this.arena.AsSpan((target * this.Row) + this.backward, this.forward);
         if (!this.reached[target])
         {
             this.reached[target] = true;
-            this.scratch.AsSpan(0, this.forward).CopyTo(state);
+            incoming.CopyTo(state);
             return true;
         }
 
-        return flow.Join(state, this.scratch.AsSpan(0, this.forward));
+        return flow.Join(state, incoming);
     }
 
     // Writes into the scratch a chain's backward state after its last block, the boundary state joined with the stored states of the

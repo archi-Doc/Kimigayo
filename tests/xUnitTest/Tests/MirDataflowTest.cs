@@ -171,6 +171,8 @@ public sealed class MirDataflowTest
             state.AsSpan(0, words).CopyTo(entries.AsSpan(block * words, words));
         }
 
+        public readonly bool Edge(int block, int edge, Span<ulong> into) => false; // A backward problem.
+
         public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);
 
         public readonly void Operand(in MirOperand operand)

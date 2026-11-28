@@ -182,6 +182,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             }
         }
 
+        public readonly bool Edge(int block, int edge, Span<ulong> into) => false;
+
         // The union join (R4-M34).
         public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);
 

@@ -89,6 +89,8 @@ internal sealed partial class MirBorrows
             owner.Work += to - from + owner.passWords;
         }
 
+        public bool Edge(int block, int edge, Span<ulong> into) => false;
+
         public bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);
     }
 }
