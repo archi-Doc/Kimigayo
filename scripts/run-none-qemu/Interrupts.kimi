@@ -7,9 +7,9 @@ group Interrupts
     public func install()
         unsafe
             Interrupts.load(32, X86.entry<TimerTick>())
-            // Limine masks LVT LINT0 when its delivery mode is ExtINT (PROTOCOL.md, base revision 6), so no 8259 interrupt
-            // arrives. IA32_APIC_BASE bit 11 clear disables the local APIC globally, and LINT0 is then INTR (Intel SDM).
-            X86.writeMsr(0x1B, X86.readMsr(0x1B) & 0xFFFFFFFFFFFFF7FF)
+            // Limine masks LVT LINT0 (PROTOCOL.md, base revision 6); with the local APIC disabled, LINT0 is INTR. Clearing EN (bit 11)
+            // and EXTD (bit 10) of IA32_APIC_BASE disables it from xAPIC or x2APIC mode; EN alone from x2APIC raises #GP (Intel SDM).
+            X86.writeMsr(0x1B, X86.readMsr(0x1B) & 0xFFFFFFFFFFFFF3FF)
             // ICW1-ICW4 to the master (0x20, 0x21) and the slave (0xA0, 0xA1): vectors 32-39 and 40-47, the slave on IRQ 2.
             X86.writePort8(0x20, 0x11)
             X86.writePort8(0xA0, 0x11)
@@ -21,7 +21,7 @@ group Interrupts
             X86.writePort8(0xA1, 0x01)
             X86.writePort8(0x21, 0xFE)
             X86.writePort8(0xA1, 0xFF)
-            // Channel 0 as a rate generator, low byte then high byte: 1,193,182 Hz / 11,932 = 100 Hz.
+            // Channel 0 as a rate generator, low byte then high byte: about 100 Hz (1,193,182 / 11,932 = 99.998 Hz).
             X86.writePort8(0x43, 0x34)
             X86.writePort8(0x40, 0x9C)
             X86.writePort8(0x40, 0x2E)
