@@ -31366,6 +31366,14 @@ Closure row of `MirCases.Branch`).
   - Rejected: the arm without the gate before (N-H) (V programs newly U: R4-M244's reason, which still holds outside `tabling`);
     Rev 2f's kind and call arm in C (`rescope-read.md` §2: the open family); the arm over R4-M198's set-level tier (nbkt's CLC becomes
     U, Q13 regression 3).
+- **R7-M132 R7-P3: one call pipeline over `CallEvaluation`; each call form is a row of its table (`G:R7-pipeline`)** (2026-11-28;
+  R7-P3, a Front unit the Back runs under O-553 (b); plan §5.0 P3, §5.1 P3; Major; behavior-preserving except the counted rows id, ov
+  (a2-2) and vc (a3); a2-0 (its partial-completion window, the P-B1 family), a2-3 (I2 d1's rows), f, e2, g and j are decided by
+  the generated gate (G391's rows for j)) SPEC 7.4.4, 8.3.3, 8.5.1, 8.5.5, 10.1,
+  10.5.1, 10.8.1, 15.4.1, 23.1.2.
+  - **Parameter symbols after a partial Origin completion (a2-0).** When a header's result alone is pending and its Origin
+    contract is ready, `BindFunctionHeader` completes the Origin declaration and the parameter symbols take the completed Types,
+    in the completion's one path (SPEC 15.4.1), so a named function's parameter symbol and its node agree in every state.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
