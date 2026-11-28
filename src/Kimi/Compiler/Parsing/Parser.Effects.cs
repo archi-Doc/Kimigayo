@@ -64,10 +64,10 @@ public static partial class Parser
     }
 
     /// <summary>Parses an effect item and judges its place from its holder (SPEC 8.11.1, 7.5, F.3); every reader of an effect item
-    /// calls it. An effect specification is a Contract item. An effect clause stands in a requirement's Constraint region, a Callable
-    /// Constraint's effect list or an original virtual function's leading region, whose own checks Binding makes. Any other item declares
-    /// no bound, and an item outside a leading region is misplaced syntax. The record's key is the item's
-    /// <see cref="EffectBoundKoto.Misplacement"/>; a recovery rests on its syntax Error alone.</summary>
+    /// calls it, in selected and excluded syntax alike (SPEC 19.4). An effect specification is a Contract item. An effect clause stands
+    /// in a requirement's Constraint region, a Callable Constraint's effect list or an original virtual function's leading region, whose
+    /// own checks Binding makes. Any other item declares no bound, and an item outside a leading region is misplaced syntax. The record's
+    /// key is the item's <see cref="EffectBoundKoto.Misplacement"/>; a recovery rests on its syntax Error alone.</summary>
     /// <param name="reader">The token reader, at <c>effect</c>.</param>
     /// <param name="holder">What holds the item: a Contract, a requirement, a Callable Constraint, a function whose leading region holds
     /// it, or the container whose list holds it (<c>ExcludedOwner.Container</c>; a detached one is a conditional conformance's Block);
@@ -79,12 +79,6 @@ public static partial class Parser
         if (holder is null)
         {
             effect.Misplacement = effect.Unexpected(SyntaxForm.EffectItem);
-            return effect;
-        }
-
-        // Removed by SRCCHK c4 (PLAN G1511): excluded syntax receives the check.
-        if (reader.InExcludedSyntax)
-        {
             return effect;
         }
 

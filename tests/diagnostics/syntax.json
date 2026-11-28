@@ -1133,5 +1133,21 @@
   { "Name": "protected-placement-excluded-in-struct", "Source": "struct S\n    #if false\n        protected func f() -> i32 => 0\npublic func main() => ()\n", "Intended": "an excluded member of a struct may be protected: the check reads the declaring struct, so the program is accepted",
     "Records": [] },
   { "Name": "effect-item-in-a-function", "Source": "func f() -> i32\n    effect confined\n    return 0\npublic func main() => ()\n", "Intended": "an effect item in an ordinary function's leading region declares no bound: the parser judges its place from the function (SPEC 8.11.1, 7.5)",
-    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect confined" } ] }
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect confined" } ] },
+  { "Name": "effect-item-excluded-in-a-function", "Source": "func f() -> i32\n    #if false\n        effect confined\n    return 0\npublic func main() => ()\n", "Intended": "excluded syntax receives the source check (SPEC 19.4): an excluded effect item in an ordinary function declares no bound, as its selected twin",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect confined" } ] },
+  { "Name": "effect-item-excluded-in-an-override", "Source": "open struct B\n    public virtual func f(self: objref/Self) -> i32 => 0\nstruct D : B\n    override func f(self: objref/Self) -> i32\n        #if false\n            effect confined\n        return 0\npublic func main() => ()\n", "Intended": "an override is not an original virtual function: its excluded effect clause declares no bound (SPEC 8.11.1, 19.4)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect confined" } ] },
+  { "Name": "effect-item-excluded-in-a-struct", "Source": "contract C\n    func r(self) -> ()\nstruct S\n    #if false\n        effect C.r confined\npublic func main() => ()\n", "Intended": "an excluded effect specification among a struct's members is judged from the struct, the container whose list holds it (SPEC 19.4)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect C.r confined" } ] },
+  { "Name": "effect-item-excluded-in-a-callable-constraint", "Source": "contract C\n    func r(self) -> ()\nfunc f<F>(g: F) -> ()\n    #if false\n        F is Callable<() -> ()>\n            effect C.r confined\n    return\npublic func main() => ()\n", "Intended": "an excluded Callable Constraint's effect list takes clauses only: an effect specification there is not a Contract item (SPEC 8.11.1, 19.4)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect C.r confined" } ] },
+  { "Name": "effect-item-excluded-in-a-requirement", "Source": "contract C\n    func r(self) -> ()\ncontract D\n    #if false\n        func q(self) -> ()\n            effect C.r confined\npublic func main() => ()\n", "Intended": "an excluded requirement's Constraint region takes clauses only: an effect specification there is not a Contract item (SPEC 8.11.1, 19.4)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect C.r confined" } ] },
+  { "Name": "effect-item-excluded-in-a-contract", "Source": "contract C\n    func r(self) -> ()\n    #if false\n        effect confined\npublic func main() => ()\n", "Intended": "an excluded effect clause among a Contract's items bounds no requirement (SPEC 8.11.1, 19.4)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect confined" } ] },
+  { "Name": "effect-item-in-an-excluded-function", "Source": "#if false\n    func f() -> ()\n        effect confined\n        return\n\npublic func main() => ()\n", "Intended": "an excluded function's effect item is judged as its selected twin's (SPEC 19.4)",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "Form": "EffectPlacement", "At": "effect confined" } ] },
+  { "Name": "effect-item-excluded-in-a-virtual-function", "Source": "open struct S\n    public virtual func f(self: objref/Self) -> i32\n        #if false\n            effect confined\n        return 0\npublic func main() => ()\n", "Intended": "an original virtual function's leading region takes an effect clause in excluded syntax too: the program is accepted (SPEC 8.11.1, 19.4)",
+    "Records": [] }
 ]
