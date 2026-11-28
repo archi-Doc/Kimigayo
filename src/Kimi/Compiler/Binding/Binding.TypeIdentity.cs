@@ -471,8 +471,8 @@ public sealed partial class Binding
     // (RecordTypeMismatch's form); in the proof channel the judge itself with no node, whose answer joins as L and settles as R7-M38 says.
     // Invariants: one refusal a declaration and limit, recorded once and only while the pass produces; a Proven answer read beside a
     // Limited reading stands. Prohibited: a reader or search step refusing (FirstRows, PremiseRows, TryCallable, RequirementMember,
-    // FindAssociated), except the retention verdict's one, HandedSignatures' in-pass refusal over a cut walk (G1406-65 11b:
-    // CallRetention.Limit carries no reading; its carrying the cut is the PLAN open issue); a choice between valid alternatives
+    // FindAssociated), except the retention verdict's one, HandedSignatures' in-pass refusal over a cut walk (G1406-65 11b; the
+    // contract carries the cut as a part past the bound, G1406-70); a choice between valid alternatives
     // refusing (its later verdict refuses); a Language record beside the refusal for the same answer. ArchitectureRulesTest's "Callers
     // of the identity limit" lists every caller.
     private bool ReadIdentityLimit(Koto? node, BindingScope scope, IdentityClasses? classes)

@@ -77,14 +77,16 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
     private readonly HashSet<(BoundType Type, RetentionAtom At)> retentionStored = new(); // StoredRawSources' visits, once per Type and position.
 
-    // G408B-16, G408B-17: the subjects of the findings a walk of the computation left undecided, from the signature's declaration
-    // (DeclareSignature) to its rows: where a walk met a state past its bound where it asks and never entered it within the bound (Enters,
-    // the walks' Past reads), the Type of the value the missing finding concerns: the argument for the input fold and HiddenKind,
-    // `position` for Writes, the declared Type for ViewedDeclared, and each part TyCtxt.HandedCallables left unentered past HandedBound.
+    // G408B-16, G408B-17: the subjects of the findings a walk of the computation left undecided, from its first walk (HandedSignatures
+    // for a callee's contract, RetainsErased for an erased signature, each beginning it empty) to its rows: where a walk met a state past
+    // its bound where it asks and never entered it within the bound (Enters, the walks' Past reads), the Type of the value the missing
+    // finding concerns: the argument for the input fold and HiddenKind, `position` for Writes, the declared Type for ViewedDeclared, each
+    // part TyCtxt.HandedCallables left unentered past HandedBound, and each Type whose premise rows HandedSignatures read cut at the round
+    // bound (SPEC 8.3.3, G1406-70).
     // The contract is Deep (its rows, CallRetention.IsDeep) only where a holder the rows name and one of these subjects can carry a Loan or
     // an address (HolderCarries, AnyCarries, after RetentionRows): a finding about a value that carries neither retains nothing, whatever
     // the walk would have found, and elsewhere no verdict reads it (G408B-6 (3)). Cleared when the computation ends (EndRetention), so it
-    // holds DeclareSignature's reading, which comes before BeginRetention.
+    // holds HandedSignatures' and DeclareSignature's readings, which come before BeginRetention.
     private readonly List<BoundType?> retentionPast = new();
     private List<BoundType> retentionScope = new();
     private int retentionInputs;
@@ -160,6 +162,7 @@ public sealed partial class Binding
     internal CallRetention RetainsErased(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, Koto? binder)
     {
         this.retentionDeclared.Clear();
+        this.retentionPast.Clear(); // No declaration and no premise walk (HandedSignatures): it begins with no subject.
         this.retentionViews = default;
         var environment = this.BeginRetention(use, inputs, result, null, 0);
         try
@@ -193,17 +196,21 @@ public sealed partial class Binding
     // whose projection chain repeats an associated declaration (Recurs: `associate Next is Mk`) is not walked, a subject just below an
     // own recursing Type included (an own `T.(Mk).Next.(Mk).Next` skips `T.(Mk).Next.(Mk).Next.(Mk).F`): its rows are those of its
     // first occurrence, Self one link deeper, so the walk is finite (probed for raw writers; an Origin writer at such a level is
-    // unprobed). Each (subject, Contract) once; whether each substitutes (false: CallRetention.Limit). e2-7 (G1406-16 C3, SPEC 8.3.3):
-    // "every row handed" is universal over the rows, so a completed walk (`true`) that read a Limited reading's rows (FirstRows: cut at
-    // the round bound) answers false in every state, refused once while the pass produces (ReadIdentityLimit at `use`, G1406-18 C2):
-    // the contract's one walk that refuses, since CallRetention.Limit carries no reading to the verdicts that read it (G1406-65 11b;
-    // carrying the cut is the PLAN open issue); a `false` from a found row stands.
+    // unprobed). Each (subject, Contract) once; whether each substitutes (false: CallRetention.Limit). e2-7 (SPEC 8.3.3, 15.6.4;
+    // G1406-70, BU-274, R7-M125): a reading cut at the round bound (FirstRows' Limited) keeps the rows it found, identities obtained
+    // before the limit, and lacks only rows past it, so the Type it read is a part past the bound (retentionPast), Deep where a holder
+    // can carry (RetentionRows). That subject carries exactly when a missing row can matter: such a row hands a callable, a Function,
+    // which MayCarry counts as carrying, and the Type names a parameter (a Type rooted in none has no row), which it counts too, so the
+    // holders decide. The walk refuses once while the pass produces (ReadIdentityLimit at `use`, G1406-18 C2): the contract's one walk
+    // that refuses. It begins the computation's subjects (retentionPast) empty, so a walk no computation followed (its `false`, or an
+    // instance that does not substitute) leaves none to the next.
     internal bool HandedSignatures(Koto use, ReadOnlySpan<BoundType> signature, List<ErasedSignature> handed)
     {
         handed.Clear();
         this.retentionContracts.Clear();
         this.retentionReached.Clear();
         this.retentionWalk.Clear();
+        this.retentionPast.Clear();
         foreach (var type in signature)
         {
             this.Reach(type);
@@ -211,7 +218,6 @@ public sealed partial class Binding
 
         var own = this.retentionWalk.Count;
         var scope = this.ConstraintScope(use);
-        IdentityClasses? cut = null; // a Limited reading the walk read
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { } constraints)
@@ -244,7 +250,8 @@ public sealed partial class Binding
             var start = this.premiseRows.Count;
             if (this.FirstRows(type, scope, this.premiseRows) is { Limited: true } limited)
             {
-                cut = limited;
+                this.retentionPast.Add(type);
+                this.ReadIdentityLimit(use, scope, limited);
             }
 
             var end = this.premiseRows.Count; // A nested request's range is above it and gone when the request returns.
@@ -270,8 +277,7 @@ public sealed partial class Binding
             }
         }
 
-        this.ReadIdentityLimit(use, scope, cut);
-        return cut is null;
+        return true;
     }
 
     // A fixed Origin of an erased signature (Revision 9): a carrier's hidden Origins (R4-M36), or an Origin neither `static` nor one of its
