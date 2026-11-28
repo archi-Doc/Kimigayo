@@ -219,13 +219,18 @@ public class QualificationRequiredTest
     // The programs are invalid. Fail-before: Binding accepted the access and `kimi check`'s MIR builder met a Type as a Field's
     // receiver: InternalInvariant_Kd at `T` (rb30i on Q-584's head too). R7-D1's p8 (the Middle's C-359 r3 N2, G812 ruling 170): `static`
     // is no modifier (SPEC 6.1: MisplacedSyntax_Kd at it), so `b` is an instance Field and `T.b` in a Field's initializer is the same
-    // static use (fail-before: InternalInvariant_Kd at `T.b` on dev a585b50a5 and the joint head).
+    // static use (fail-before: InternalInvariant_Kd at `T.b` on dev a585b50a5 and the joint head). PLAN G1156 (F's ruling G1156-3 P1): a
+    // Property requirement a Type parameter's path reaches is the same instance use (SPEC 11.9), beside a value `T` with no `size`
+    // (`T: ref/Plain`) or through two identities (`T is Reader`, `T is Sized`); fail-before: CheckFaulted_Kd on the first,
+    // UnresolvedBinding_Kd on the second (the sole path: PropertyWitnessEmissionTest.ARequirementPropertyIsNoTypeMember).
     [Theory]
     [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f() -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
     [InlineData("struct H\n    public init() => ()\nstruct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f(T: ref/H) -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
     [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc a() -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
     [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc b(T: ref/H) -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
     [InlineData("struct T\n    var a = T.b\n    static var b = 1\n", "MisplacedSyntax_Kd static; QualificationRequired_Kd T.b")]
+    [InlineData(ContainerNestingTest.ReaderPlain + "func f<T>(T: ref/Plain) -> i32\n    T is Reader\n    return T.size\n", "QualificationRequired_Kd T.size")]
+    [InlineData(ContainerNestingTest.ReaderPlain + "func f<T>() -> i32\n    T is Reader\n    T is Sized\n    return T.size\n", "QualificationRequired_Kd T.size")]
     public void AnInstanceMemberReachedByATypePathRequiresAReceiver(string source, string records)
     {
         var diagnostics = DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics;
@@ -255,6 +260,11 @@ public class QualificationRequiredTest
     [InlineData("struct H\n    public init() => ()\n    public func k(self) -> i32 => 2\nopen struct Base\n    public init() => ()\n    public struct T\n        public init() => ()\n        public func k() -> i32 => 1\nstruct D : Base\n    public init() : base() => ()\n    public func g(T: ref/H) -> i32 => T.zz()\n", "QualificationRequired_Kd T.zz")]
     [InlineData("struct B<T>\n    public func k() -> i32 => 1\nstruct S\n    public let B: i32\n    public init() => self.B = 1\n    public func g() -> i32 => B<i32>.m()\n", "QualificationRequired_Kd B<i32>.m")]
     [InlineData("struct T\n    public group G\n        public let n: i32 = 1\nstruct S\n    public let T: i32\n    public init() => self.T = 1\n    public func g() -> i32 => T.G.m\n", "QualificationRequired_Kd T.G.m")]
+    // PLAN G1156's t7 (F's ruling G1156-4; fail-before: CheckFaulted_Kd): the selected reading is the value path's 9.5 stop at Box's
+    // instance Field `T`, whose record is QualificationRequired_Kd at `T.size`. The row pins head's Unsupported_Kd, the open issue:
+    // MissingFailure (Binding.Diagnostics.cs) reads the requirementGroups row the Type reading's evaluation filled, which the
+    // selected reading did not gather. Its fix moves the row to QualificationRequired_Kd T.size, a counted class 4 move (Q13).
+    [InlineData(ContainerNestingTest.ReaderPlain + "struct Box\n    public let T: i32\n    public init() => self.T = 1\n    public func g<T>(self) -> i32\n        T is Reader\n        return T.size\n", "Unsupported_Kd T.size")]
     public void AFailedLeftKeepsItsOwnStagesRecord(string source, string records)
     {
         var c = CompilationTestHelper.Parse(source);

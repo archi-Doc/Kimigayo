@@ -236,23 +236,24 @@ public sealed partial class OriginRowsTest
         TheViewBuilds(c);
     }
 
-    // G215's boundary, A5's located limit (DECISIONS R4-M168; removal condition: a body of the layer's own): a layer whose struct has no
-    // constructor (its omitted base clause selects none) keeps its Field-initializer rows, which no body's slice includes; the view lists
-    // it among the layers with rows (OriginLayers), as it lists FieldInit's, whose constructors include it.
+    // G215 (DECISIONS R7-M115, superseding R4-M168's located limit): a layer whose struct has no Published constructor (its omitted base
+    // clause selects none) has a MIR body of its own, keyed by the struct, and that body's slice is the layer's Field-initializer rows as
+    // its own part, the one source of the slice; FieldInit's S, whose constructors' slices include its layer's rows, has no layer body.
     [Fact]
-    public void AConstructorlessLayersRowsLieInNoBodysSlice()
+    public void AConstructorlessLayersBodysSliceIsTheLayersRows()
     {
         var c = MirBuildTest.Compile(Util + "open struct Base\n    protected init(a: i32 = 1) => ()\n    protected init(b: string = \"x\") => ()\n" +
             "struct Leaf: Base\n    public var n: i32 = Util.pick(3@ref, 4@ref)\n" + Main);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var leaf = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Leaf").SymbolOf()!;
-        Assert.Equal(2, c.Types.OriginRows(new ExecutableBody(leaf)).Rows.Count);
         Assert.DoesNotContain(Bodies(c), x => AdtDef.IsConstructor(x.Key.Decl) && ReferenceEquals(x.Key.Decl!.Scope.Owner.SymbolOf(), leaf));
-        Assert.Contains(new ExecutableBody(leaf), c.Types.OriginLayers);
+        var layer = Assert.Single(Bodies(c), static x => x.Key.Kind == MirBodyKind.Layer);
+        Assert.Equal(new ExecutableBody(leaf), layer.Key.Body);
+        var slice = c.Types.OriginRows(layer.Key.Body);
+        Assert.Equal((2, 2), (slice.Rows.Count, slice.LayerStart));
 
         c = MirBuildTest.Compile(FieldInit + Main);
-        var s = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "S").SymbolOf()!;
-        Assert.Contains(new ExecutableBody(s), c.Types.OriginLayers);
+        Assert.DoesNotContain(Bodies(c), static x => x.Key.Kind == MirBodyKind.Layer);
     }
 
     // 2a0-D D2: a row's CaseMask numbers the body's pair binders (MirBody.Binders), renumbered from those in scope of its Use.
@@ -323,13 +324,28 @@ public sealed partial class OriginRowsTest
     }
 
     // 2a0-D D1 (PLAN G962): a Type's clause at a local annotation whose substituted relation is fixed-fixed and entailed by the premises
-    // at the annotation (`p outlives q`) is Binding's direct proof and forms no row, as a declaration row its premises entail.
+    // at the annotation (`p outlives q`) is Binding's direct proof and forms no row, as a declaration row its premises entail. Both of
+    // the clause's ends are fixed by equalities, so the relation is fixed-fixed when it is formed (R7-O2 A4-L under the owner's
+    // O-544 (b), design-a4l §1: an omitted slot is a region with no value then; AnOmittedSlotsTypeClauseIsAChainRow).
     [Fact]
     public void AFixedTypeClauseThePremisesEntailFormsNoRow()
     {
         var c = MirBuildTest.Compile(ClauseS + "func f(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let s: S{w} = S.init(p, q)\n" +
-            "        origin w.a == p\n    return keep(s@move)\n" + Main);
+            "        origin w.a == p\n        origin w.b == q\n    return keep(s@move)\n" + Main);
         Assert.DoesNotContain(Rows(c, false), static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto));
+    }
+
+    // SPEC 15.3.3, 15.3.6 (R7-O2 A4-L under the owner's O-544 (b), design-a4l §1): with w.b omitted, the Type's clause at the `let`
+    // (`w.a outlives w.b`) is formed while w.b's region has no value, so it is a body chain A5 judges with the value the declaration
+    // fixes (q, from the fit), not Binding's direct proof; the premise `p outlives q` proves it and the program is accepted.
+    [Fact]
+    public void AnOmittedSlotsTypeClauseIsAChainRow()
+    {
+        const string Program = ClauseS + "func f(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let s: S{w} = S.init(p, q)\n" +
+            "        origin w.a == p\n    return keep(s@move)\n" + Main;
+        Assert.Empty(DiagnosticCorpus.Check(Program).Diagnostics);
+        var row = Assert.Single(Rows(MirBuildTest.Compile(Program), false), static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto));
+        Assert.Equal(("S{w}", "origin a outlives b"), (First(row.Use), First(row.Clause!)));
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a

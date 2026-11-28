@@ -170,7 +170,7 @@ public sealed partial class Binding
                     // family's Origin arguments complete, no name resolves to it, and the binder rests on the rejected parameter.
                     parameters[i] = this.OriginAtom(node, OriginKind.Parameter, i);
                     this.AddPrerequisite(node, syntax);
-                    this.Fail(node, BindingFailure.InvalidOrigin);
+                    this.Record(node, BindingFailure.InvalidOrigin, []);
                     continue;
                 }
 
@@ -270,7 +270,7 @@ public sealed partial class Binding
                 definition = this.SubstituteStoredOrigins(definition, associated.Declaration, this.AssociatedParameters(node));
                 if (!this.CheckAssociatedFormation(definition, node))
                 {
-                    this.Fail(node, BindingFailure.InvalidOrigin);
+                    this.Record(node, BindingFailure.InvalidOrigin, []);
                     if (node is IsKoto { Right: { } specified })
                     {
                         this.partPrerequisites[node] = specified; // Derived when the specified occurrence's own formation fails (IsDerived).
@@ -297,7 +297,7 @@ public sealed partial class Binding
             if (this.CheckTypeOriginRelations(projection, use) != ConstraintProof.Proven ||
                 (formation is not null && !this.CheckAssociatedFormation(formation, use)))
             {
-                this.Fail(use, BindingFailure.InvalidOrigin);
+                this.Record(use, BindingFailure.InvalidOrigin, []);
             }
         }
     }

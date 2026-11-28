@@ -1,0 +1,8 @@
+group Native
+    #LibraryImport("c", "write")
+    public func write(fd: i32, bytes: ref/u64, count: u64) -> i64
+
+public group Out
+    public func ok()
+        let word: u64 = 0x0A6B6F
+        if Native.write(1, word@ref, 3) != 3 => $abort("write")

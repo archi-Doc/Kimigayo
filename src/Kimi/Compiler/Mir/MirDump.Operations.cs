@@ -99,6 +99,8 @@ internal static partial class MirDump
                 {
                     MirCalleeKind.Fn => callee.Arg > 0 ? $"{callee.Symbol?.Name}#{callee.Arg - 1}" : callee.Symbol?.Name,
                     MirCalleeKind.Virtual => $"virtual {callee.Symbol?.Name}",
+                    MirCalleeKind.Intrinsic when MirDescriptors.Of((IntrinsicId)callee.Arg).Arity < 0
+                        => $"intrinsic {(IntrinsicId)callee.Arg}.{callee.Symbol?.Definition.Member}", // A family's member (MirDescriptor).
                     MirCalleeKind.Intrinsic => $"intrinsic {(IntrinsicId)callee.Arg}",
                     MirCalleeKind.Requirement when callee.Contract is { } contract => $"requirement {callee.Symbol?.Name} of {contract.Name}",
                     MirCalleeKind.Requirement when callee.Arg != 0

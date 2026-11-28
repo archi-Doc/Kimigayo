@@ -105,11 +105,12 @@ public partial class KimiLibraryShapeTest
     // Bind as one composed list, so the library's imports (Windows.kimi's two kernel32 functions), which the Backend lays out through
     // TyCtxt.Imports, are listed after a first and a second Bind, and from the split after a program pass that declares none. The Tatara
     // plan's B7b6: they are declared where `windows` holds, so windows-x64's library and the one without a target (its selection, F1 (a))
-    // list them, and the Linux row's library has no import (every library import lies under `#if windows`, B3).
+    // list them, and the Linux row's and the none row's libraries have no import (every library import lies under `#if windows`, B3).
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", "queryPerformanceCounter,queryPerformanceFrequency")]
     [InlineData("", "queryPerformanceCounter,queryPerformanceFrequency")]
     [InlineData("x86_64-unknown-linux-musl", "")]
+    [InlineData("x86_64-unknown-none", "")]
     public void TheLibrarysImportsAreListedAfterEachBind(string target, string imports)
     {
         var c = Compilation.CreateForTest();

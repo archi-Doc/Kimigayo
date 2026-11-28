@@ -1257,12 +1257,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("keepShownBad", "twoLayersShown: y@follow = 5")] // I: both layers above T are the parameter's own (twoLayers)
     [InlineData("gHidOwnPtrOk", "")] // V, as keepHalfOk
     [InlineData("gShownOwnPtrBad", "gShownOwnPtrBad: kk = 2")] // I, as keepShownBad
-    [InlineData("keepTHopUsedOk", "twoLayersTHopUsed: y@follow = 5")] // V by the owner's O-353 (a); rejected: hop takes keepT<raw/(raw/u8)>'s instantiated Own record at the first step (Binding's, PLAN G841)
+    [InlineData("keepTHopUsedOk", "twoLayersTHopUsed: y@follow = 5")] // V by the owner's O-353 (a); rejected: hop takes keepT<raw/(raw/u8)>'s instantiated Own record at the first step (Binding's, DECISIONS R4-M241)
     [InlineData("twoLayersBad", "twoLayers: y@follow = 5")] // I, SPEC 15.6.4's example twoLayers with its error line
     [InlineData("zUniqPastEnumHOk", "")] // V: through a borrow layer a non-punnable referent designates nothing at h
     [InlineData("zUniqPastRefHOk", "")] // V, the same
     [InlineData("zUniqPastTupBad", "zUniqPastTupBad: kk = 2")] // I: a punnable referent is read punned over h.0's bytes
-    [InlineData("cloVarPtrU8Bad", "cloVarPtrU8Bad: kk = 2")] // I, PLAN G841 rule 4 (4): the Exclusive call may write its own pointer at var m, a raw layer without an Origin of its environment, and store spare through it in storage the body does not own (5.7 Calls, 15.6.4, 15.8.2; O-373 (a)); c is not used after kk = 2
+    [InlineData("cloVarPtrU8Bad", "cloVarPtrU8Bad: kk = 2")] // I, DECISIONS R4-M241's rule 4: the Exclusive call may write its own pointer at var m, a raw layer without an Origin of its environment, and store spare through it in storage the body does not own (5.7 Calls, 15.6.4, 15.8.2; O-373 (a)); c is not used after kk = 2
     [InlineData("cloVarPtrU8CellBad", "cloVarPtrU8CellBad: kk = 2")] // I, the same with m addressing a local
     [InlineData("cloVarPtrU8NullWriteBad", "cloVarPtrU8NullWriteBad: kk = 2")] // I, the same: the contract, not the body, decides (15.6.4)
     [InlineData("cloVarPtrU8OtherVarBad", "cloVarPtrU8OtherVarBad: kk = 2")] // I, the same through another var binding: the call may write var m (15.8.2)

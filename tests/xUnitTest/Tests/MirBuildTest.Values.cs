@@ -132,7 +132,8 @@ public sealed partial class MirBuildTest
     // selection whose index Type it rejected, PLAN G95) is an Error node whose value is the derived Opaque, never a form built from a Type
     // that does not exist, and a construct it left unresolved is held at the Type its position fixes (SPEC 14.9.2), so each body validates
     // without a record (fail-before: Type and Projection findings); a selection keeps no `if` index without a Type, also in parentheses
-    // (built at `()`, it would be a finding).
+    // (built at `()`, it would be a finding): an index join no source supplies a candidate to (G103 C: one with a candidate, as
+    // `if c => i else => missing`, is typed by it, so its selection resolves, as `if c => 1 else => missing` does).
     [Theory]
     [InlineData("'A' == 65\n", "'A' == 65")]
     [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x + 128\n", "x + 128")]
@@ -142,8 +143,8 @@ public sealed partial class MirBuildTest
     [InlineData("func f(x: i32) -> i32\n    return x + missing\n", "x + missing")]
     [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing")]
     [InlineData("func f(c: bool) -> i32\n    return if c => 1 else => missing\n", "missing")]
-    [InlineData("func f(c: bool, v: [3 of i32], i: isize) -> i32\n    return v[if c => i else => missing]\n", "v[if c => i\nelse => missing]")]
-    [InlineData("func f(c: bool, v: [3 of i32], i: isize) -> i32\n    return v[(if c => i else => missing)]\n", "v[(\n    if c => i\n    else => missing\n    )]")]
+    [InlineData("func f(c: bool, v: [3 of i32]) -> i32\n    return v[if c => missing else => missing2]\n", "v[if c => missing\nelse => missing2]")]
+    [InlineData("func f(c: bool, v: [3 of i32]) -> i32\n    return v[(if c => missing else => missing2)]\n", "v[(\n    if c => missing\n    else => missing2\n    )]")]
     public void OperationsBindingDidNotResolveAreDerived(string source, string opaque)
     {
         var c = Compile(source);
@@ -407,6 +408,20 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(init.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Drop && init.TypeOf(x.Terminator.Place)?.Symbol?.Name == "InlineStorage");
     }
 
+    // SPEC 8.2.3, 16.3 (PLAN G355's interim, G986): the drop rule reads a Type as the body's identity premises make it, so a parameter
+    // spelled T is dropped as its premise makes it: under `T is raw/u8` a raw/u8, which destroys nothing (no Drop of it is built), under
+    // `T is string` a string (its Drop is built).
+    [Theory]
+    [InlineData("raw/u8", false)]
+    [InlineData("string", true)]
+    public void APremisedParameterIsDroppedAsItsPremiseMakesIt(string premise, bool dropped)
+    {
+        var program = Compile($"func st<T>(s: T)\n    T is {premise}\n    return\npublic func main()\n    return\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "st" });
+        Assert.Equal(dropped, body.Blocks.ToArray().Any(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: 1, Projection: 0 } }));
+    }
+
     // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
     // them (a call's, an indexer's or a view selection's plan, a local's symbol, a closure's definition, a case adaptation's plan, a loop's
     // iterator symbol, a write of an interpolation, a tuple operator's conforming Type, R5-M75; since PLAN G396 (3) Z1 a plain call's
@@ -556,6 +571,23 @@ public sealed partial class MirBuildTest
             .Concat(body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(static x => x.Terminator.Place)).Where(Field).ToArray();
         var place = Assert.Single(written);
         Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
+    }
+
+    // SPEC 6.3.3, 6.3.6 (DECISIONS R7-M115): a constructorless layer's body has the Receiver _0 of its Self Type, places each Field
+    // initializer into its Field of _0 and returns, with no base step and no FakeRead of _0 (a constructor's completion request); a Field
+    // without an initializer (p) is not placed.
+    [Fact]
+    public void AConstructorlessLayersBodyPlacesItsInitializersIntoItsReceiver()
+    {
+        var program = Compile("struct Holder {a}\n    public let p: ref/i32 during a\n    public var n: i32 = 1\npublic func main() => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var body = Assert.Single(program.Bodies.ToArray(), static x => x.Key.Kind == MirBodyKind.Layer);
+        var dump = MirDumpTest.Unsited(program, body);
+        Assert.Contains("_0: Holder return (Receiver)", dump, StringComparison.Ordinal);
+        Assert.Contains("_0.1 = ", dump, StringComparison.Ordinal);
+        Assert.DoesNotContain("_0.0 = ", dump, StringComparison.Ordinal);
+        Assert.Equal(MirTerminatorKind.Return, body.Blocks[^1].Terminator.Kind);
+        Assert.DoesNotContain("FakeRead", dump, StringComparison.Ordinal);
     }
 
     // PLAN G1184 (DECISIONS R7-M88; IMPL A.4, R7-T1): the one projection rule (MirBody.SelectsPart) gives a Field step of no Type only for

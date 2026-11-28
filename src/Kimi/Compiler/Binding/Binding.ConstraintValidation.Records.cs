@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 //   combined verdict, E > R > L > U; ClauseFact): a Function Item reference's (RequireClauses), a selection's pending candidate's and an
 //   overloaded reference's (FailClauseRecord); its publication (ReportClauseConstraint), naming the declaration that states the clause
 //   where the member does not (ForeignClauseOwner); the consumer's read of the fact a judgment left (TakeClauseFact); the publication of a
-//   record holding only its caller's proposition (ReportProposition).
+//   record holding only its caller's proposition (ReportProposition); a record's rest on the cause its Error proof left (RestOnCause,
+//   for RequireClauses and FailOperator).
 // - Inputs: the clause fact the proof frame left (TakeClauseFact) or a candidate's trial kept (ClauseFailure); the U fact of the same
 //   clause.
 // - Outputs: the node's UnsatisfiedConstraint_Kd or UnprovenConstraint_Kd naming its clause, its subject and the declaration; for a
@@ -55,11 +56,7 @@ public sealed partial class Binding
             // failure's producer channel: an Error resting on another failed node (its declaration, an Invalid environment's use) makes
             // the use's record derived.
             var cause = proof == ConstraintProof.Error ? this.TakeFailedCause().Use : null;
-            if (cause is { BindingState: BindingState.Invalid } && !ReferenceEquals(cause, use))
-            {
-                this.AddPrerequisite(use, cause);
-            }
-
+            this.RestOnCause(use, cause);
             this.RequireConstraint(use, proof, mode, cause);
             return;
         }
@@ -72,6 +69,17 @@ public sealed partial class Binding
         }
 
         this.FailClauseRecord(use, clause, unresolved: false);
+    }
+
+    // SPEC 23.1.2 rule W (R7-C3 B1; PLAN G1356, B's ruling 7): a record resting on a reported failure is derived. The node's record rests
+    // on the cause its Error proof left (TakeFailedCause) when that cause is a failed node other than the node itself; the one copy of the
+    // rule, for RequireClauses and FailOperator.
+    private void RestOnCause(Koto node, Koto? cause)
+    {
+        if (cause is { BindingState: BindingState.Invalid } && !ReferenceEquals(cause, node))
+        {
+            this.AddPrerequisite(node, cause);
+        }
     }
 
     // The clause fact a judgment left for its consumer (G352-N1): read at depth 0 in the frame it was left in (design-r2 Amendment 5); a

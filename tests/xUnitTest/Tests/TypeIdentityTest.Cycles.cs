@@ -587,14 +587,14 @@ public partial class TypeIdentityTest
     // F's ruling 222 (SPEC 8.3.3 Limits, 23.1.2): a check that reads a declaration the premise-closure limit refused rests on the
     // limit's record and keeps none of its own: in ov3 the agreement of C's two paths (at `Self is C`) and the use check of `Self is D`
     // read D's conditional conformance, whose closure reached the bound (8d4e74206 gave each an InvalidConstraint_Kd beside the limit).
-    // ov3-own: C's specification names no associate of Inner, an independent failure whose records stay (23.1.2).
+    // ov3-own: C's specification names no associate of Inner, an independent failure whose record stays (23.1.2); `Self is C` rests on
+    // that specification and keeps no InvalidAssociatedType_Kd of its own (PLAN G1405 with G1386's unit; Q13 rule W: one dependent record).
     public static TheoryData<string, string, string> RefusedDeclarationReadRows => new()
     {
         { "ov3", Ov3, "AnalysisLimit_Kd: " + Ov3SelfD.Trim() },
         {
             "ov3-own", Ov3.Replace("(Inner).Z\n    Self is D", "(Inner).Zz\n    Self is D", StringComparison.Ordinal),
-            "InvalidAssociatedType_Kd: " + Ov3.Split('\n')[11].Trim() + " | AnalysisLimit_Kd: " + Ov3SelfD.Trim() +
-            " | UnresolvedBinding_Kd: associate C.Item is T.(Pq).Up.(Inner).Zz"
+            "AnalysisLimit_Kd: " + Ov3SelfD.Trim() + " | UnresolvedBinding_Kd: associate C.Item is T.(Pq).Up.(Inner).Zz"
         },
     };
 

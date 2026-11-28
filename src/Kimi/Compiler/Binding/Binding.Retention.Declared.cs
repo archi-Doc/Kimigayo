@@ -101,13 +101,24 @@ public sealed partial class Binding
     // inside a projection, whose class View reads whole. A valid premise set gives every Type a finite expansion (SPEC 8.3); the depth
     // bound stops an erroneous one. A Type that names no Type parameter is itself. Each (part, depth) once per call (viewedParts, DECISIONS
     // BU-64's per-query rule: the view's identity classes are fixed while it runs), so a premised DAG costs its distinct parts, at most
-    // StorageBound + 1 entries each, not its paths.
-    private BoundType? Viewed(BoundType? declared) => this.Viewed(declared, 0, this.viewedParts.Begin(this.storageVersion));
-
-    private BoundType? Viewed(BoundType? declared, int depth, uint query)
+    // StorageBound + 1 entries each, not its paths. `past`: a part naming a Type parameter lies past the bound, left unviewed, so a
+    // judgment resting on it depends on the limited analysis (SPEC 8.3.3 Limits; G408B-2 OP-1): its reader makes that the Limit.
+    private BoundType? Viewed(BoundType? declared, out bool past)
     {
-        if (declared is null || !declared.ContainsParameter || depth > StorageBound)
+        past = false;
+        return this.Viewed(declared, 0, this.viewedParts.Begin(this.storageVersion), ref past);
+    }
+
+    private BoundType? Viewed(BoundType? declared, int depth, uint query, ref bool past)
+    {
+        if (declared is null || !declared.ContainsParameter)
         {
+            return declared;
+        }
+
+        if (depth > StorageBound)
+        {
+            past = true;
             return declared;
         }
 
@@ -127,7 +138,7 @@ public sealed partial class Binding
                 var changed = false;
                 for (var i = 0; i < count; i++)
                 {
-                    components[i] = this.Viewed(shown.Components[i], depth + 1, query)!;
+                    components[i] = this.Viewed(shown.Components[i], depth + 1, query, ref past)!;
                     changed |= !ReferenceEquals(components[i], shown.Components[i]);
                 }
 

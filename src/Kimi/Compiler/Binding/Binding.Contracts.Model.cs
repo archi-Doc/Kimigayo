@@ -359,9 +359,6 @@ public sealed class BoundConformancePath : ICheckCause
     // Binding.PropertyMatching: a non-standard Property operation's input and Origin bindings (OperationOrigins).
     internal List<(BoundAccessor Requirement, BoundOrigin[] Inputs, BoundOrigin[] Origins)>? PropertyWitnessOrigins { get; set; }
 
-    // Binding.PropertyWitnesses: a standard Property operation's bridge accessor (PropertyWitnessFunction).
-    internal List<(BoundAccessor Requirement, BoundAccessor Bridge, PropertyWitnessKind Kind)>? PropertyBridges { get; set; }
-
     // Binding.ConditionalConformances: the overlap scope of this path, the pair's left, with each right path (VerifyConformanceAgreement).
     internal List<(BoundConformancePath Right, BindingScope Scope)>? OverlapScopes { get; set; }
 
@@ -455,7 +452,6 @@ public sealed class BoundConformancePath : ICheckCause
         this.FunctionWitnesses?.Clear();
         this.WitnessScopes?.Clear();
         this.PropertyWitnessOrigins?.Clear();
-        this.PropertyBridges?.Clear();
         this.OverlapScopes?.Clear();
         this.HopChains?.Clear();
         this.InferenceConsumers?.Clear();

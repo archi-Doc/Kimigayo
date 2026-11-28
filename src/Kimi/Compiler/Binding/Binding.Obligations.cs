@@ -9,8 +9,10 @@ namespace Kimi.Compiler;
 // distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length,
 // call and erasure rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at
 // the obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which
-// it leaves Resolved: RecordFurtherOriginRecord); each is stamped with the body Binding formed it in, but an Origin relation formed in a
-// body with an end foreign to it (ForeignEnd) is its nested signature's declaration row (R7-O3 U-O3); a Definition obligation still
+// it leaves Resolved: RecordResolvedOrigin); each is stamped with the body Binding formed it in, but an Origin relation formed in a
+// body with an end foreign to it (ForeignEnd) is its nested signature's declaration row (R7-O3 U-O3); a local's clause is also
+// recorded as a region bound at its declaration with no obligation, stamped as one (Stamped; FixDeclaredRegions), and judged as one
+// row after its body (JudgeLocalClause); a Definition obligation still
 // recorded at Final fails its use; an Owned obligation is judged at Final by its discharge: an erasure's Owned condition deferred while
 // a body is bound (Judgment), its failure the erasure's Language record at its use (JudgeErasedOwned), or a result slot's default
 // deferred at its last resolution (ResultDefault), its failure the slot's missing Origin (JudgeDeferredDefault); any other obligation
@@ -84,7 +86,7 @@ public sealed partial class Binding
         _ => true,
     };
 
-    // SPEC 15.6.1, 15.6.5 (R7-O1; DECISIONS draft "A body's Origin relations are judged by A5 alone"): the one rule for a relation formed
+    // SPEC 15.6.1, 15.6.5 (R7-O1; DECISIONS R7-M66): the one rule for a relation formed
     // in an executable body: Binding judges none; it is a row of the body's C1-F4 view, which A5 judges, unless it is a fixed-fixed
     // relation the fit's answer proves both ways. In order: (1) a meet at the longer end of a relation that is no body chain (every operand
     // fixed) and does not fit as a whole decomposes, each operand its own relation (SPEC 15.3.6); a body chain's meet stays one row, whose
@@ -102,7 +104,7 @@ public sealed partial class Binding
             return;
         }
 
-        var chain = BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), this.formingBody);
+        var chain = ConstrainsRegions(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), this.formingBody);
         if (!chain && !equality && longer.Kind == OriginKind.Intersection && !this.FitConjunct(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)
@@ -134,16 +136,13 @@ public sealed partial class Binding
                 // The record states the producer's kind: a declared clause, a well-formedness relation or a fit.
                 var fact = holds ? new OriginRelationFact(at, shorter, this.SuppliedAtUse(shorter, at), longer, Equality: true, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed)
                     : new(at, longer, this.SuppliedAtUse(longer, at), shorter, obligation.Equality, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed);
-                this.RecordFurtherOriginRecord(at, new(fact, null));
+                this.RecordResolvedOrigin(at, fact);
             }
 
             return;
         }
 
-        // The body Binding formed it in (DECISIONS R4-M101 E1), except a relation formed in a body with an end the view's row 1 classes
-        // foreign to it (a nested signature's per-call Origin): that signature's declaration row (SPEC 15.3.4; R7-O3 U-O3), stamped with
-        // the declaration judge's frame, where it bounds no local region (BoundableIn), for JudgeDeclarationRows to judge at its use.
-        obligation = obligation with { Body = this.formingBody.IsBody && this.ForeignEnd(obligation) ? ExecutableBody.Declarations : this.formingBody };
+        obligation = this.Stamped(obligation);
         if (this.obligationSet.Add(new(obligation)))
         {
             this.obligations.Add(obligation);
@@ -151,6 +150,13 @@ public sealed partial class Binding
             this.RecordLocalRegionBound(obligation);
         }
     }
+
+    // A row's body (AddObligation; FixDeclaredRegions' clause bounds): the body Binding formed it in (DECISIONS R4-M101 E1), except a
+    // relation formed in a body with an end the view's row 1 classes foreign to it (a nested signature's per-call Origin): that
+    // signature's declaration row (SPEC 15.3.4; R7-O3 U-O3), stamped with the declaration judge's frame, where it bounds no local region
+    // (BoundableIn), for JudgeDeclarationRows to judge at its use.
+    private BindingObligation Stamped(in BindingObligation obligation)
+        => obligation with { Body = this.formingBody.IsBody && this.ForeignEnd(obligation) ? ExecutableBody.Declarations : this.formingBody };
 
     // The obligation list's dedup key (R7-N5 B8, the Front's C-521 form (d); DECISIONS BU-220): the obligation with each node it names
     // as its SourceRef (B7's per-pass memo form), equal exactly when the obligations are, since every such node is numbered when its

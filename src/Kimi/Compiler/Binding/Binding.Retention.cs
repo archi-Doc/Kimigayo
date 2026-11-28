@@ -76,6 +76,16 @@ public sealed partial class Binding
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
     private readonly HashSet<(BoundType Type, RetentionAtom At)> retentionStored = new(); // StoredRawSources' visits, once per Type and position.
+
+    // G408B-16, G408B-17: the subjects of the findings a walk of the computation left undecided, from the signature's declaration
+    // (DeclareSignature) to its rows: where a walk met a state past its bound where it asks and never entered it within the bound (Enters,
+    // the walks' Past reads), the Type of the value the missing finding concerns: the argument for the input fold and HiddenKind,
+    // `position` for Writes, the declared Type for ViewedDeclared, and each part TyCtxt.HandedCallables left unentered past HandedBound.
+    // The contract is Deep (its rows, CallRetention.IsDeep) only where a holder the rows name and one of these subjects can carry a Loan or
+    // an address (HolderCarries, AnyCarries, after RetentionRows): a finding about a value that carries neither retains nothing, whatever
+    // the walk would have found, and elsewhere no verdict reads it (G408B-6 (3)). Cleared when the computation ends (EndRetention), so it
+    // holds DeclareSignature's reading, which comes before BeginRetention.
+    private readonly List<BoundType?> retentionPast = new();
     private List<BoundType> retentionScope = new();
     private int retentionInputs;
 
@@ -90,10 +100,9 @@ public sealed partial class Binding
 
     // The views Identical judges in (SPEC 8.2.3: identity in the body the comparison stands in), set once per computation: the callee's
     // constraint scope for its kept reading (its declared Types: Parametric, OutputRetention.Handed), and for the instantiated one the
-    // calling definition's premise scope TyCtxt read the instance under. An instance read under none names no abstract Type the call
-    // brings, only those of the callee's declaration environment (an enclosing function's Type parameters, a Closure's), which a calling
-    // definition reads through that environment as the callee does (TyCtxt keys no definition there), so it is read in the callee's view.
-    // None for an erased signature, which reads no declaration's premises.
+    // scope TyCtxt read the instance under, the one decision of whose premises the instance's Types are read under (TyCtxt.Retains:
+    // the calling definition's where the call brings an abstract part, else the callee's own; a Value callee's declaration's). None for
+    // an erased signature, which reads no declaration's premises.
     private (BindingScope? Kept, BindingScope? Instantiated) retentionViews;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
@@ -102,20 +111,19 @@ public sealed partial class Binding
     // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (HandedSignatures), instantiated as its
     // inputs, are erased callables its body may call. `types`: the call's Subst (null: a Value callee's declared signature), whose Type
     // arguments, Self and declaring Type bring the Origins a fit may relate under the call's solved Origins (Instantiation). `premises`:
-    // the scope TyCtxt read an instance with an abstract part under (null: none), which the transfer rule's Iterator key reads
-    // (Binding.Retention.Transfers.cs).
+    // the scope TyCtxt read the instance under (TyCtxt.Retains), the instantiated reading's view, which the transfer rule's Iterator key
+    // reads (Binding.Retention.Transfers.cs).
     internal CallRetention Retains(
         FunctionKoto callee,
         ReadOnlySpan<BoundType> inputs,
         BoundType result,
         Subst? types,
         ReadOnlySpan<ErasedSignature> bounds,
-        BindingScope? premises)
+        BindingScope premises)
     {
         var use = callee.OriginBinder;
         var declaring = types?.Declaring;
-        var own = this.ConstraintScope(callee);
-        this.retentionViews = (own, premises ?? own);
+        this.retentionViews = (this.ConstraintScope(callee), premises);
         this.DeclareSignature(types?.Target ?? (callee.ClosureDefinition is null ? callee.BoundSymbol : null), inputs, result);
         var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
         try
@@ -366,6 +374,8 @@ public sealed partial class Binding
         this.binderReadingMembers.Clear();
         this.retentionDeclared.Clear();
         this.retentionCarried.Clear(); // CanCarryLoan's walk holds no Type past its computation (KimiLibraryShapeTest).
+        this.retentionHolders.Clear();
+        this.retentionPast.Clear();
     }
 
     // The walked signature as its declaration writes it (retentionDeclared): its function's parameter Types and result without any
@@ -394,13 +404,32 @@ public sealed partial class Binding
                 return;
             }
 
-            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(input)! : input);
+            this.retentionDeclared.Add(this.ViewedDeclared(input));
         }
 
         if (declared is not null && count == inputs.Length)
         {
-            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(declared)! : declared);
+            this.retentionDeclared.Add(this.ViewedDeclared(declared));
         }
+    }
+
+    // A declared Type as its function's body sees it, where the reading views it (Viewed): a part left unviewed past the bound leaves the
+    // view undecided (SPEC 8.3.3; G408B-2 C1: Declared publishes it and reads no retentionLimit), with the declared Type as its subject
+    // (retentionPast): such a part matters only where it names an abstract Type, which MayCarry counts as carrying.
+    private BoundType ViewedDeclared(BoundType declared)
+    {
+        if (!this.retentionViewed)
+        {
+            return declared;
+        }
+
+        var viewed = this.Viewed(declared, out var past)!;
+        if (past)
+        {
+            this.retentionPast.Add(declared);
+        }
+
+        return viewed;
     }
 
     // The declared counterpart of input `index` and of the result (retentionDeclared), null for none.
@@ -498,7 +527,7 @@ public sealed partial class Binding
             this.retentionHanded.Add(bound.Signature);
             this.AddErasedSignature(environment, bound);
             this.Handed(bound.Signature, bound.Signature, this.retentionCallables);
-            var own = this.retentionViewed ? this.Viewed(bound.Declared ?? bound.Signature)! : bound.Declared ?? bound.Signature;
+            var own = this.ViewedDeclared(bound.Declared ?? bound.Signature);
             this.retentionOwnHanded.Add(own); // As the callee's declaration states it, in its view.
             this.Handed(own, own, this.retentionOwnCallables);
         }
@@ -511,10 +540,18 @@ public sealed partial class Binding
 
     // The callables a contract's Type hands its body (TyCtxt.HandedCallables) into a list of the computation's erased callables
     // (retentionCallables, or retentionOwnCallables for a declared Type), each once; a Callable bound (`self`), whose own relations
-    // RetentionPremises adds, only for the callables its signature names.
+    // RetentionPremises adds, only for the callables its signature names. The list may lack a callable in a part left unentered past
+    // HandedBound, each such part a subject (retentionPast): every callable it lists is a Function, which MayCarry counts as carrying, so
+    // a part that cannot carry holds none. Every entry runs this before its rows, so Filled's reads of the same Types add nothing.
     private void Handed(BoundType type, BoundType? self, List<BoundType> callables)
     {
-        foreach (var callable in this.types.HandedCallables(type))
+        var handed = this.types.HandedCallables(type, out var past);
+        foreach (var part in past)
+        {
+            this.retentionPast.Add(part);
+        }
+
+        foreach (var callable in handed)
         {
             if (!ReferenceEquals(callable, self) && !callables.Contains(callable))
             {

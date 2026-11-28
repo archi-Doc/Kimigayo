@@ -187,6 +187,8 @@ public sealed partial class Binding
             reference = alias.BoundType!;
             if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
             {
+                // Transitional, R7-E5 (E4c, B1): a null argument reads the alias's failed Origin clause (FailOriginClause's record at the
+                // clause), so it keeps `Fail` until R7-E5's per-problem inputs; with a clean declaration it is the alias's first failure.
                 this.Fail(alias, BindingFailure.InvalidOrigin);
                 return null;
             }

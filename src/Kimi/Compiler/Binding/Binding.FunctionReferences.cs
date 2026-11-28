@@ -215,8 +215,18 @@ public sealed partial class Binding
 
                 if (perCall is { } slot)
                 {
-                    // SPEC 10.6, 15.3.6: the one candidate's slot is left unsolved by a per-call Origin of S.
-                    return this.FailExplained(ref this.perCallSlots, use, BindingFailure.MissingOrigin, new PerCallSlotFact((FunctionKoto)only!.Declaration, slot.Slot, slot.Parameters, required));
+                    // SPEC 10.6, 15.3.6: the one candidate's slot is left unsolved by a per-call Origin of S: its declaration (role 0),
+                    // the Type parameter's ordinal, dev's parameter mask (a ulong, read by position) and S, the side required.
+                    var at = SourceRef.Of(use);
+                    return this.Record(
+                        use,
+                        BindingFailure.MissingOrigin,
+                        [
+                            new(ProblemFactKind.Related, this.FactSite(only!.Declaration!), 0),
+                            new(ProblemFactKind.Reason, at, slot.Slot),
+                            new(ProblemFactKind.Reason, at, (long)slot.Parameters),
+                            new(ProblemFactKind.Expected, at, this.report.Keep(required)),
+                        ]);
                 }
 
                 // SPEC 10.5.3, 10.7: the one candidate's record reads the signature its trial substituted, its Item over the arguments the
@@ -247,7 +257,7 @@ public sealed partial class Binding
                         var contract = ComparisonFailure.Shape;
                         var structure = bound && TyCtxt.StorageMatches(required, actual);
                         return structure && !this.DefinitionContractFits(candidateItem, required, use, null, out contract) && contract.IsCondition
-                            ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
+                            ? this.RecordOrigin(use, new(null, this.ContractFact(use, contract, use)))
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
                 }

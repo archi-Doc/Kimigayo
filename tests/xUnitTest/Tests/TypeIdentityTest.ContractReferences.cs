@@ -56,6 +56,10 @@ public partial class TypeIdentityTest
 
     private const string ShortItem = "contract P<T>\n    associate Item\ncontract R\n    associate X\n";
 
+    private const string Box = "struct Box<A>\n    Self is HasItem\n    associate HasItem.Item is A\n    public init() => ()\n";
+
+    private const string Opt = "contract Marker\nstruct Opt<A>\n    Self is HasItem when A is Marker\n        associate HasItem.Item is A\n    public init() => ()\n";
+
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
     // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
     // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
@@ -74,6 +78,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "s4n", Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is u8\n    T is Iter<U>\n    return use(x)\n", "UnprovenConstraint_Kd: return use(x)")]
     [InlineData("guard", "s5", HasItem + Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is SrcI\n    T is Iter<U.(HasItem).Item>\n    return use(x)\n", "")]
     [InlineData("guard", "s5n", HasItem + Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is SrcU\n    T is Iter<U.(HasItem).Item>\n    return use(x)\n", "UnprovenConstraint_Kd: return use(x)")]
+    [InlineData("guard", "s5s", HasItem + Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is SrcI\n    T is Seq<U.(HasItem).Item>\n    return use(x)\n", "")]
 
     // SPEC 8.5.2, 8.9, 8.9.2: an associated Type is identified by its declaration and normalized bindings, so equal paths count once and the short name
     // is unique; paths with different bindings stay distinct and the short name is ambiguous.
@@ -98,9 +103,10 @@ public partial class TypeIdentityTest
     [InlineData("guard", "rq2n", HasItem + PickAlone + "func f<T, U>(x: ref/T) -> i32\n    U is HasItem\n    T is Pick<i32>\n    T is Pick<U.(HasItem).Item>\n    return x.pick()\n", "AmbiguousBinding_Kd: return x.pick()")]
     [InlineData("guard", "ad1", HasItem + "contract Bump<T>\n    func bump(self: ref/Self, v: T) -> i32\nstruct Bumper\n    Self is Bump<i32>\n    public init() => ()\n    public func bump(self: ref/Self, v: i32) -> i32 => v\nfunc f<T, U>(x: ref/T, v: U.(HasItem).Item) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Bump<i32>\n    T is Bump<U.(HasItem).Item>\n    return x.bump(v)\nlet n = Bumper.init()\nrequire f<Bumper, SrcI>(n, 4) == 4 else => $abort(\"bump\")\n", "")]
 
-    // SPEC 8.2.3: an available completed binding is a ground of identity.
+    // SPEC 8.2.3: an available completed binding is a ground of identity, also through a refinement's ancestor (pr1s, s5s).
     [InlineData("guard", "pr1", HasItem + Iter + "func g<T>(x: ref/T) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    return use(x)\n", "")]
     [InlineData("guard", "pr1u", HasItem + Iter + "func g<T>(x: ref/T) -> i32\n    T is Iter<SrcU.(HasItem).Item>\n    return use(x)\n", "UnprovenConstraint_Kd: return use(x)")]
+    [InlineData("guard", "pr1s", HasItem + Iter + "func g<T>(x: ref/T) -> i32\n    T is Seq<SrcI.(HasItem).Item>\n    return use(x)\n", "")]
 
     // SPEC 8.2.3: premises are judged together, never in written order.
     [InlineData("guard", "o1", HasItem + Pick + "func f<T, U>(x: ref/T) -> i32\n    T is Pick<i32>\n    T is Pick<U.(HasItem).Item>\n    U.(HasItem).Item is i32\n    U is HasItem\n    return x.pick(1)\n", "")]
@@ -132,8 +138,31 @@ public partial class TypeIdentityTest
     [InlineData("guard", "k3", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Sub\n    return use(x)\n", "")]
     [InlineData("guard", "k3d", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Sub\n    return use(x)\n", "")]
     [InlineData("guard", "k4", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
-    [InlineData("C3", "k4c", HasItem + Tagged + Base + "func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return x.size()\n", "", Explicit = true)]
+    [InlineData("c2-5c", "k4c", HasItem + Tagged + Base + "func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
     [InlineData("guard", "k4d", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
+
+    // SPEC 8.2.3, 8.3.1, 8.3.2, 8.5.2, 8.8.2 (R7-C2c2 c2-5c): a fact's Contract argument is read by its completed binding wherever a
+    // proof reads it, whatever other premises the declaration has (k4c-w: an unrelated identity premise); without the binding (a
+    // distinct Type, a distinct parameter, a refinement in the wrong direction or an unavailable conditional binding) the requirement
+    // is Unknown.
+    [InlineData("guard", "k4c-w", HasItem + Tagged + Base + "func f<T, W>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    W is i32\n    return x.size()\n", "")]
+    [InlineData("guard", "k4cu", HasItem + Tagged + Base + "func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcU.(HasItem).Item>\n    T.(Iter<SrcU.(HasItem).Item>).Tag is Base\n    return x.size()\n", "UnprovenConstraint_Kd: func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32 | UnresolvedBinding_Kd: return x.size()")]
+    [InlineData("c2-5c", "kq1", HasItem + TagSeq + "func f<T>(x: ref/T, t: T.(Iter<i32>).Tag) -> ()\n    T is Seq<SrcI.(HasItem).Item>\n    ()\n", "")]
+    [InlineData("guard", "kq1n", HasItem + TagSeq + "func f<T>(x: ref/T, t: T.(Iter<i32>).Tag) -> ()\n    T is Seq<SrcU.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T>(x: ref/T, t: T.(Iter<i32>).Tag) -> ()")]
+    [InlineData("guard", "kq1r", HasItem + TagSeq + "func f<T>(x: ref/T, t: T.(Seq<i32>).Tag) -> ()\n    T is Iter<SrcI.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T>(x: ref/T, t: T.(Seq<i32>).Tag) -> ()")]
+    [InlineData("c2-5c", "kq2", HasItem + Box + Tagged + "func f<T, U>(x: ref/T, t: T.(Iter<U>).Tag) -> ()\n    T is Iter<Box<U>.(HasItem).Item>\n    ()\n", "")]
+    [InlineData("guard", "kq2n", HasItem + Box + Tagged + "func f<T, U>(x: ref/T, t: T.(Iter<U>).Tag) -> ()\n    T is Iter<Box<i64>.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T, U>(x: ref/T, t: T.(Iter<U>).Tag) -> ()")]
+    [InlineData("c2-5c", "kq3", HasItem + Opt + Tagged + "func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> ()\n    V is Marker\n    T is Iter<Opt<V>.(HasItem).Item>\n    ()\n", "")]
+    [InlineData("guard", "kq3n", HasItem + Opt + Tagged + "func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> ()\n    T is Iter<Opt<V>.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> () | UnprovenConstraint_Kd: T is Iter<Opt<V>.(HasItem).Item>")]
+
+    // SPEC 8.2.3, 8.5.2 (R7-C2c2 c2-5c): a qualifier's demand inside a premise clause is read by its completed binding too. SPEC 23.1.2
+    // (F's CC-33, CC-34): one unproven demand in a premise clause is one record at the clause; G-decl's rows (k4mu, k4ms, k4mc) stay
+    // Explicit while a second record of the same demand stands at the whole declaration (ValidateDeclarationProjectionInputs). kq3n above
+    // guards its labelled lines: the helper groups records by line, so its header line hides that second record.
+    [InlineData("c2-5c", "k4m", HasItem + Tagged + Base + "func f<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return 0\n", "")]
+    [InlineData("G-decl", "k4mu", HasItem + Tagged + Base + "func f<T>(x: ref/T) -> i32\n    T is Iter<u8>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return 0\n", "UnprovenConstraint_Kd: T.(Iter<SrcI.(HasItem).Item>).Tag is Base", Explicit = true)]
+    [InlineData("G-decl", "k4ms", HasItem + Tagged + Base + "func f<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    T.(Iter<SrcU.(HasItem).Item>).Tag is Base\n    return 0\n", "UnprovenConstraint_Kd: T.(Iter<SrcU.(HasItem).Item>).Tag is Base", Explicit = true)]
+    [InlineData("G-decl", "k4mc", HasItem + Opt + Tagged + Base + "func f<T, V>(x: ref/T) -> i32\n    T is Iter<V>\n    T.(Iter<Opt<V>.(HasItem).Item>).Tag is Base\n    return 0\n", "UnprovenConstraint_Kd: T.(Iter<Opt<V>.(HasItem).Item>).Tag is Base", Explicit = true)]
     // SPEC 8.2.3 (R7-C2c2 c2-5a; c2-5c's kq1x): `T is Seq<SrcI.(HasItem).Item>` supplies Iter<i32> through the completed binding, so
     // `T is not Iter<i32>` is contradictory evidence, the function's premise error.
     [InlineData("guard", "kq1x", HasItem + TagSeq + "func f<T>(x: ref/T) -> ()\n    T is Seq<SrcI.(HasItem).Item>\n    T is not Iter<i32>\n    ()\n", "InvalidConstraint_Kd: func f<T>(x: ref/T) -> ()")]
@@ -152,6 +181,28 @@ public partial class TypeIdentityTest
     [InlineData("guard", "ef2", HasItem + Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T>\n    T is Q<SrcI.(HasItem).Item>\n" + Run, "")]
     [InlineData("guard", "ef3", HasItem + Effect + "contract Q<A>: P<A.(HasItem).Item>\n    A is HasItem\n    effect (P<A.(HasItem).Item>).value confined\nstruct Wrapper<T>\n    T is Q<SrcI>\n" + Run, "")]
     [InlineData("guard", "ef3n", HasItem + Effect + "contract Q<A>: P<A.(HasItem).Item>\n    A is HasItem\nstruct Wrapper<T>\n    T is Q<SrcI>\n" + Run, "IncompatibleContractImplementation_Kd: Self is Safe")]
+
+    // SPEC 8.2.3, 8.6.1 (R7-C2c2 c2-5c, F's CC-35): a completed binding is a ground of identity with no premise, so a requirement reached
+    // through `P<SrcI.(HasItem).Item>` and `P<i32>` is one candidate, whatever other premises the declaration has (-w: an unrelated
+    // identity premise) and whether the references are written or inherited (sh1-p: P written; sh1-2: both written).
+    [InlineData("c2-5c", "ef2-w", HasItem + Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T, W>\n    T is Q<SrcI.(HasItem).Item>\n    W is i32\n" + Run, "")]
+    [InlineData("c2-5c", "sh1-w", HasItem + Shape + "func g<T, W>(x: ref/T) -> i32\n    T is Q<SrcI>\n    W is i32\n    return x.size(1)\n", "")]
+    [InlineData("guard", "sh1-p", HasItem + Shape + "func g<T>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "sh1-pw", HasItem + Shape + "func g<T, W>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    W is i32\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "sh1-2", HasItem + Shape + "func g<T>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    T is P<i32>\n    return x.size(1)\n", "")]
+
+    // SPEC 8.2.3, 8.6.1, 8.6.4 (R7-C2c2 c2-5c, F's CC-36 C2): the same ground through a deeper inherited chain (dA-1: R<SrcI>, Q<SrcI>,
+    // P<SrcI.(HasItem).Item>), a constructed subject (dA-3: Q<Box<i32>>, P<Box<i32>.(HasItem).Item>), a premise's class in either
+    // premise order (cB-1, cB-1r) and a premise beside a completed binding (cB-2: three spellings of P<i32>). P<u8> beside P<i32> stays
+    // two candidates the literal fits (-n).
+    [InlineData("c2-5c", "dA-1", HasItem + Shape + "contract R<B>: Q<B>\n    B is HasItem\nfunc g<T>(x: ref/T) -> i32\n    T is R<SrcI>\n    T is P<i32>\n    return x.size(1)\n", "")]
+    [InlineData("guard", "dA-n", HasItem + Shape + "contract R<B>: Q<B>\n    B is HasItem\nfunc g<T>(x: ref/T) -> i32\n    T is R<SrcU>\n    T is P<i32>\n    return x.size(1)\n", "AmbiguousBinding_Kd: return x.size(1)")]
+    [InlineData("c2-5c", "dA-3", HasItem + Shape + Box + "contract R2<B>: Q<Box<B>>\nfunc g<T>(x: ref/T) -> i32\n    T is R2<i32>\n    T is P<i32>\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "cB-1", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is SrcI\n    T is P<U.(HasItem).Item>\n    T is P<i32>\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "cB-1r", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is SrcI\n    T is P<i32>\n    T is P<U.(HasItem).Item>\n    return x.size(1)\n", "")]
+    [InlineData("guard", "cB-n", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is SrcU\n    T is P<U.(HasItem).Item>\n    T is P<i32>\n    return x.size(1)\n", "AmbiguousBinding_Kd: return x.size(1)")]
+    [InlineData("c2-5c", "cB-2", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is P<U.(HasItem).Item>\n    T is Q<SrcI>\n    return x.size(1)\n", "")]
+    [InlineData("guard", "cB-2n", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is HasItem\n    U.(HasItem).Item is u8\n    T is P<U.(HasItem).Item>\n    T is Q<SrcI>\n    return x.size(1)\n", "AmbiguousBinding_Kd: return x.size(1)")]
 
     // SPEC 8.5.1, 8.5.5, 8.6.1: a specification's qualifier is a direct conformance, normalized; a Tag left unspecified and uninferred fails at the
     // conformance on its own.
@@ -218,9 +269,13 @@ public partial class TypeIdentityTest
     [InlineData("guard", "mg5mv", HasItem + Tagged + "contract Marker\nstruct Tg\n    Self is Marker\ncontract Q2<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\nstruct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Tg\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "")]
     [InlineData("guard", "mg6", Tagged + "contract Marker\nstruct Tg\n    Self is Marker\ncontract Q3<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\nstruct B<T>\n    Self is Q3<T>\n    associate Iter<T>.Tag is Tg\n", "")]
     [InlineData("guard", "mg6m", Tagged + "contract Marker\ncontract Q3<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\nstruct B<T>\n    Self is Q3<T>\n    associate Iter<T>.Tag is bool\n", "UnsatisfiedConstraint_Kd: Self is Q3<T>")]
-    // The InvalidAssociatedType_Kd records rest on the unresolved name's record (PLAN G-new: a specification link settles only to an
-    // Invalid specified Type, SettleSpecificationLinks).
-    [InlineData("guard", "mg5u", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Undefined\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "InvalidAssociatedType_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | UnresolvedBinding_Kd: associate Iter<S.(HasItem).Item>.Tag is Undefined")]
+    // A Type-level obligation is each root path's, once per clause declaring a conformance it specifies (mg5b, as mg3d; PLAN G1384's c0m).
+    [InlineData("guard", "mg5b", HasItem + Tagged + Direct + "contract Marker\nstruct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool and Marker\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "UnsatisfiedConstraint_Kd: Self is Iter<S.(HasItem).Item> | UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+    // SPEC 23.1.2 (PLAN G1405): a conformance resting on a specification whose Type is an unknown name rests on the name's record, alone
+    // (mg5us) or with the block conformance it specifies (mg5u); a block conformance P does not identify keeps its own record (mg5uf).
+    [InlineData("guard", "mg5us", HasItem + Tagged + "struct B<S>\n    S is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Undefined\n", "UnresolvedBinding_Kd: associate Iter<S.(HasItem).Item>.Tag is Undefined")]
+    [InlineData("guard", "mg5u", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Undefined\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "UnresolvedBinding_Kd: associate Iter<S.(HasItem).Item>.Tag is Undefined")]
+    [InlineData("guard", "mg5uf", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Undefined\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy\n", "AssociatedTypeInferenceFailed_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy | UnresolvedBinding_Kd: associate Iter<S.(HasItem).Item>.Tag is Undefined")]
 
     // SPEC 8.5.2, 8.5.1, 8.4.3, 8.2.3 (PLAN G722): inside a Contract a short name means its own or an inherited associated Type, and paths to one
     // declaration whose bindings are one under the Contract's premises count once, in either parent order; distinct bindings stay two (a01i).

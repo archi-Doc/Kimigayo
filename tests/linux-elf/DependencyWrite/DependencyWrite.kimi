@@ -1,0 +1,4 @@
+alias Cw.Out
+
+public func main()
+    ok()

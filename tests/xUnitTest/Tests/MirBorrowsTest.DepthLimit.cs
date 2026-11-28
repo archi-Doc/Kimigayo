@@ -212,9 +212,11 @@ public sealed partial class MirBorrowsTest
     // whose guard is Deep, and the call records the depth limit exactly where that step would change what W writes. It would where it
     // reaches a holder W reaches only at its first step (first: the argument names g and the deep h, and h holds g.1@uniq), one W reaches
     // past a holder by another Place's Type (otherPlace: t holds r.0@uniq and the deep d, and d holds r.1@uniq, of Type i32), or E where W
-    // does not reach it (escaped: d holds a parameter). A step that changes nothing decides nothing: each holder it reaches is reached past
-    // at the same Place Type (samePlace: r.1 of Type ref/i32 as r.0), or E is reached by either way, past t (escapedReached: t holds a
-    // parameter too) or at the first step (escapedFirst: the argument holds it). otherPlace's and samePlace's d holds r.1's Loan innermost,
+    // does not reach it (escapedUniq: d holds an exclusive parameter, which reaches E writable). A step that changes nothing decides
+    // nothing: each holder it reaches is reached past at the same Place Type (samePlace: r.1 of Type ref/i32 as r.0), E is reached by
+    // either way, past t (escapedReached: t holds a parameter too) or at the first step (escapedFirst: the argument holds it), or the
+    // step would read E for reads only (escaped: d holds a `ref/` parameter, which reaches E through a shared layer only, SPEC 15.6.4
+    // item 1 and 5.2.1 condition 3; DECISIONS R4-M249, G415-N3 P1). otherPlace's and samePlace's d holds r.1's Loan innermost,
     // past the bound at 40, so d's guard is Deep for both Types (an exclusive reference to ref/i32 beside the nested part would give the
     // write fact) and the two differ only in the Place Type. A shared Loan names no holder the step writes (SPEC 15.6.4 item 1, DECISIONS
     // R4-M177): first, otherPlace and samePlace holding g.1@ref and r.1@ref (Ref) record no limit. The write after the call conflicts
@@ -244,8 +246,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("otherPlaceRaw", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("otherPlaceRaw", 10, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("samePlaceRaw", 40, "value = 99 ComparisonLoanConflict_Kd")]
-    [InlineData("escaped", 40, "st(t@uniq) OwnershipDepthLimit_Kd")]
+    [InlineData("escaped", 40, "")]
     [InlineData("escaped", 10, "")]
+    [InlineData("escapedUniq", 40, "st(t@uniq) OwnershipDepthLimit_Kd")]
+    [InlineData("escapedUniq", 10, "")]
     [InlineData("escapedReached", 40, "")]
     [InlineData("escapedFirst", 40, "")]
     public void ADeepHoldersStepRecordsTheLimitWhereItWouldChangeWhatWWrites(string form, int depth, string expected)
@@ -260,9 +264,10 @@ public sealed partial class MirBorrowsTest
                 $"    var h = (rx, g.1@{loan}, {Nested("0", depth)})\n    st((g.0@uniq, h.0@uniq), value@ref)\n" + Tail("g"),
             "otherPlace" => Placed("i32", "5", loan),
             "samePlace" => Placed("ref/i32 during a", "y@ref", loan),
-            "escaped" => Escaped(borrowed: true, "    var x = 1\n    var r = (x@ref, 5)\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq)\n"),
-            "escapedReached" => Escaped(borrowed: true, "    var t = (q, d@uniq)\n    st(t@uniq)\n"),
-            "escapedFirst" => Escaped(borrowed: false, "    st((q, d@uniq))\n"),
+            "escaped" => Escaped("ref", borrowed: true, EscapedBody),
+            "escapedUniq" => Escaped("uniq", borrowed: true, EscapedBody),
+            "escapedReached" => Escaped("ref", borrowed: true, "    var t = (q, d@uniq)\n    st(t@uniq)\n"),
+            "escapedFirst" => Escaped("ref", borrowed: false, "    st((q, d@uniq))\n"),
             _ => throw new ArgumentOutOfRangeException(nameof(form), form, null),
         };
         var c = CompileDepthForm(Prelude + source + "    return\n");
@@ -283,14 +288,18 @@ public sealed partial class MirBorrowsTest
                 "    st(t@uniq, value@ref)\n" + Tail("r");
         }
 
-        // A store through t (borrowed: an exclusive reference to the Tuple, else the Tuple of exclusive references itself).
-        string Escaped(bool borrowed, string body)
+        // A store through t (borrowed: an exclusive reference to the Tuple, else the Tuple of exclusive references itself), d holding p, a
+        // parameter of the slot's mode.
+        string Escaped(string slot, bool borrowed, string body)
         {
-            var tuple = $"(uniq/(ref/i32 during a) during b, uniq/((ref/i32 during g, {NestedType("i32", depth)})) during c)";
+            var tuple = $"(uniq/(ref/i32 during a) during b, uniq/(({slot}/i32 during g, {NestedType("i32", depth)})) during c)";
             return $"func st(t: {(borrowed ? $"uniq/({tuple}) during e" : tuple)}) => ()\n" +
-                $"func f(p: ref/i32 during a, q: uniq/(ref/i32 during a) during b) -> ()\n    var d = (p, {Nested("0", depth)})\n" + body;
+                $"func f(p: {slot}/i32 during a, q: uniq/(ref/i32 during a) during b) -> ()\n    var d = (p, {Nested("0", depth)})\n" + body;
         }
     }
+
+    // The escaped rows' store through t, which holds r.0's exclusive Loan beside d.
+    private const string EscapedBody = "    var x = 1\n    var r = (x@ref, 5)\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq)\n";
 
     /// <summary>Compiles a program of the depth-limit rows as the MIR tests do, after checking that it has no parse diagnostic.</summary>
     /// <param name="source">The program.</param>

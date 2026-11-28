@@ -126,10 +126,11 @@ public class RequirementTypeParsingTest
     }
 
     // SPEC F.5: a BoundContainerQualifier, `(S{k})` or `(S during w)` (SPEC 15.3.1's single-slot binding), takes a PathSuffix, so
-    // `(S{k}).Item` and `(S during w).Item` are an associated specification's Type, and a missing member is Binding's record.
+    // `(S{k}).Item` and `(S during w).Item` are an associated specification's Type, and a missing member is Binding's record, on which the
+    // conformance rests (SPEC 23.1.2, PLAN G1405).
     [Theory]
     [InlineData("(S{k}).Item\n        origin k.s == w", "")]
-    [InlineData("(S{k}).Nope\n        origin k.s == w", "InvalidAssociatedType_Kd UnresolvedBinding_Kd")]
+    [InlineData("(S{k}).Nope\n        origin k.s == w", "UnresolvedBinding_Kd")]
     [InlineData("(S during w).Item", "")]
     public void BoundQualifierProjectionsAreSpecificationTypes(string specification, string codes)
     {

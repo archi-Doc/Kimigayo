@@ -32,7 +32,8 @@ public class AssociatedTypeFormationBindingTest
     // SPEC 8.5.2 (PLAN G727): only the suffix `.(C).` names a projection's Contract; `T.C.X` and `T.P.C.X` are ordinary paths (9.6).
     // Each invalid row has its valid twin and was accepted by the old unparenthesized reading, except S.C.Item(source): its Origins
     // application was rejected by a rule of that reading, and is now rejected as an ordinary path. q01 and q02 were rejected by the
-    // reading, q01p faulted.
+    // reading, q01p faulted. A Type parameter prefix forms no Type of its own (PLAN G1156): `T.Item.make()` (Item unique under
+    // `T is Holder`) is a projection's static requirement, and `T.size.count` fails at `T.size`; both faulted on a member-access left.
     [Theory]
     [InlineData(ItemC + "func f<T>(x: T.C.Item) -> i32\n    T is C\n    return 0", "UnresolvedBinding_Kd")]
     [InlineData(ItemC + "func f<T>(x: T.(C).Item) -> i32\n    T is C\n    return 0", null)]
@@ -50,6 +51,8 @@ public class AssociatedTypeFormationBindingTest
     [InlineData(OuterK + "func f<T>(v: T.(K).Item) -> i32\n    T is Outer\n    T is K\n    T.(K).Item is i32\n    return v", null)]
     [InlineData(OriginC + "S.C.Item(source) => 42", "UnresolvedBinding_Kd")]
     [InlineData(OriginC + "S.(C).Item(source) => 42", null)]
+    [InlineData("contract Maker\n    func make() -> i32\ncontract Holder\n    associate Item is Maker\nfunc f<T>() -> i32\n    T is Holder\n    return T.Item.make()", null)]
+    [InlineData("contract Reader\n    property size: i32 has get\nfunc f<T>() -> i32\n    T is Reader\n    return T.size.count", "UnresolvedBinding_Kd")]
     public void OnlyTheParenthesizedSuffixNamesAProjectionsContract(string source, string? code)
     {
         var c = MinimalEmissionTest.Check(source, output: OutputKind.Library);

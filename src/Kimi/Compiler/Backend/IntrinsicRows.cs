@@ -4,9 +4,10 @@
 // collector and code generation read by IntrinsicId. Column Target: the item a call of the intrinsic names as its collector target, the
 // whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. Column Need: the call's layout need (LayoutNeeds;
 // TypeArguments: its Type argument's layout, a use the collector checks; K 4.8, DECISIONS R5-M44, R5-M149). Columns Writer and Routine:
-// how code generation writes a call (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls. Column Requests: the
-// module parts a Requested row's routine needs, which its call requests (DECISIONS R8-M18). Whether a row reads its call's Type argument
-// follows from Need and Target (ReadsTypeArgument), the one rule every reader of it applies (DECISIONS R5-M136).
+// how code generation writes a call (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls (an Instruction call's
+// is its member's, InstructionRows). Column Requests: the module parts a Requested row's routine needs, which its call requests
+// (DECISIONS R8-M18). Whether a row reads its call's Type argument follows from Need and Target (ReadsTypeArgument), the one rule every
+// reader of it applies (DECISIONS R5-M136).
 // Input: an IntrinsicId other than None. Output: its row.
 // Invariants: one row per IntrinsicId, in its order, checked once; an id without a row, None included, is a broken MIR contract.
 // Must not: resolve a target's item (the collector's), or restate the descriptor table's columns (MirDescriptors).
@@ -21,6 +22,7 @@ internal enum IntrinsicTarget : byte
     StaticInit, // The initializer body of the static (StaticEnsure, K7).
     Descriptor, // The object descriptor of the created payload (MakeObj, MakeRc, MakeArc; K8, DECISIONS R5-M74).
     Glue, // The drop glue of the element (DestroyValues, K7).
+    Entry, // The interrupt entry item of the call's Type argument and variant (InterruptEntry, InterruptEntries).
 }
 
 /// <summary>How code generation writes a call of an intrinsic (package C 3.2's writer column; DECISIONS R5-M92).</summary>
@@ -42,6 +44,8 @@ internal enum IntrinsicWriter : byte
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
     VolatileRead, // Raw.readVolatile: a volatile load of the result's Type at the storage (FunctionCodegen.Intrinsics).
     VolatileWrite, // Raw.writeVolatile: a volatile store of the value at the storage (FunctionCodegen.Intrinsics).
+    Instruction, // The member's InstructionRows routine, which the module defines on request: a routine writer (FunctionCodegen.Routine).
+    Entry, // X86.entry, X86.errorCodeEntry: the entry item's code address as a usize.
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -61,10 +65,11 @@ internal readonly record struct IntrinsicRow(
 {
     /// <summary>Gets a value indicating whether the row reads its call's Type argument, the one form its Type-driven columns take: a by-value use
     /// (<see cref="Need"/>) or the Type its target is of (an erased writer's destination, a creation's payload, a DestroyValues'
-    /// element); a staticEnsure's target is its operand's static. The function of another row may have no Type parameter, so its
-    /// substitution is never read (DECISIONS R5-M136).</summary>
+    /// element, an interrupt entry's handler); a staticEnsure's target is its operand's static. The function of another row may have no
+    /// Type parameter, so its substitution is never read (DECISIONS R5-M136).</summary>
     internal bool ReadsTypeArgument
-        => this.Need == LayoutNeed.TypeArguments || this.Target is IntrinsicTarget.Witness or IntrinsicTarget.Descriptor or IntrinsicTarget.Glue;
+        => this.Need == LayoutNeed.TypeArguments
+        || this.Target is IntrinsicTarget.Witness or IntrinsicTarget.Descriptor or IntrinsicTarget.Glue or IntrinsicTarget.Entry;
 }
 
 /// <summary>The intrinsic table of the Backend: one row per <see cref="IntrinsicId"/>.</summary>
@@ -126,6 +131,10 @@ internal static class IntrinsicRows
         new(IntrinsicId.VolatileWrite, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.VolatileWrite, null),
         // The platform layer's clock (the Tatara plan's decision 25): Time.monotonicNanoseconds, declared where `windows` does not hold.
         new(IntrinsicId.MonotonicClock, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.Clock),
+        // A machine instruction (IMPL 21.6): its member's routine (InstructionRows), which the module defines on request.
+        new(IntrinsicId.Instruction, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Instruction, null),
+        // An interrupt entry's code address (IMPL 21.6): its member's thunk of the handler Type (InterruptEntries).
+        new(IntrinsicId.InterruptEntry, IntrinsicTarget.Entry, LayoutNeed.None, IntrinsicWriter.Entry, null),
     ]);
 
     /// <summary>Gets the row of an intrinsic.</summary>

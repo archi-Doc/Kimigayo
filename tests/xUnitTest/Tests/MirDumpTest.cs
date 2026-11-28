@@ -108,6 +108,31 @@ public sealed class MirDumpTest
             Unsited(program, main));
     }
 
+    // IMPL 21.6 (Principle 4): an accepted call of a family's member dumps the family's id and the member its declaration names.
+    [Fact]
+    public void AnInstructionCallDumpsItsMember()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            TargetProfile.None, "public group Board\n    public func send()\n        unsafe => X86.writePort8(0x3F8, 65)\n", "Board.kimi", OutputKind.Library);
+        var records = TestDiagnostics.Of(c);
+        Assert.True(c.Accepts, string.Join(", ", records));
+        Assert.DoesNotContain(records, static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("intrinsic Instruction.outb", Dump(c), StringComparison.Ordinal);
+    }
+
+    // IMPL 21.6 (OSF3b; design C-457 C4): so does an interrupt entry's call, its member the entry's variant.
+    [Fact]
+    public void AnInterruptEntryCallDumpsItsMember()
+    {
+        const string Fault = "struct Fault\n    Self is X86.ErrorCodeHandler\n\n    public func handle(frame: ref/X86.InterruptFrame, code: u64) => ()\n" +
+            "public group Faults\n    public func install() -> usize\n        unsafe => return X86.errorCodeEntry<Fault>()\n";
+        var c = MinimalEmissionTest.Analyze(TargetProfile.None, TimeLibraryTest.Tick + TimeLibraryTest.Install + Fault, "Board.kimi", OutputKind.Library);
+        Assert.True(c.Accepts, string.Join(", ", TestDiagnostics.Of(c)));
+        var dump = Dump(c);
+        Assert.Contains("intrinsic InterruptEntry.plain", dump, StringComparison.Ordinal);
+        Assert.Contains("intrinsic InterruptEntry.code", dump, StringComparison.Ordinal);
+    }
+
     // A golden's program, including deliberate syntax recovery, compiled as a test build when it has a #Test.
     internal static Compilation Compile(string name)
     {

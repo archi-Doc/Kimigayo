@@ -85,8 +85,8 @@ public sealed class BindingReportTest
     }
 
     // A further problem at a subject (one rule, Condition; R7-E2 E2-3b): an equal problem keeps its condition and adds nothing; new facts take
-    // their check's condition, or the one after the subject's last when that is taken (an Origin record beyond the first comes at 1, its
-    // first being the slot's, as OriginCondition numbered it; a refining Contract's inherited conflicts from 0); a retried attempt starts over.
+    // their check's condition, or the one after the subject's last when that is taken (an Origin record and a refining Contract's inherited
+    // conflicts from 0); a retried attempt starts over.
     [Fact]
     public void AFurtherProblemIsNumberedAfterItsSubjectsLast()
     {
@@ -225,18 +225,22 @@ public sealed class BindingReportTest
     }
 
     // CheckBound runs the pass's checks again without its reset, so the records keep the facts the pass recorded: the syntax a mismatch
-    // shows and the part a located record names, with their text.
+    // shows and the part a located record names, with their text. A pair occurrence's formation cause (R7-E4 E4c, F14: FailTypeRole judged
+    // again at each check) keeps its one record and Reason through two rechecks, with no InternalInvariant_Kd.
     [Theory]
     [InlineData("func f() -> i32\n    let x: i32 = true\n    return x\n", "TypeMismatch_Kd")]
     [InlineData(Import, "Unsupported_Kd")]
+    [InlineData("struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during static\n", "InvalidOriginBinding_Kd")]
     public void CheckBoundKeepsAProblemsFacts(string source, string code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
         var first = Assert.Single(TestDiagnostics.Of(c), x => x.Code == code);
         Assert.False(c.Binding.CheckBound().IsComplete);
+        Assert.False(c.Binding.CheckBound().IsComplete);
         c.Binding.ReportDiagnostics();
         var second = Assert.Single(TestDiagnostics.Of(c), x => x.Code == code);
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.InternalInvariant_Kd));
         Assert.Equal((first.Span, first.Message, first.Text, first.Note), (second.Span, second.Message, second.Text, second.Note));
         Assert.True(Assert.Single(c.Binding.Issues, x => x.Code.ToString() == code).Problem >= 0);
     }

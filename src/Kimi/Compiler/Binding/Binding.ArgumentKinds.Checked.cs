@@ -51,7 +51,7 @@ public sealed partial class Binding
     // part at a closed and at an open position.
     private ArgumentAdaptation CheckedClass(BoundType expected, bool ownerResult)
         => ownerResult ? ExpectedTypeClass(ReferenceEquals(this.ExpectedTypeOf(expected), expected) ? null : expected)
-            : expected.Kind is BoundTypeKind.Semantics or BoundTypeKind.OpenSlot ? ArgumentAdaptation.ExpectedTypeFitting : ArgumentAdaptation.CrossSemanticsBorrow;
+            : expected.Kind == BoundTypeKind.Semantics || IsOpenAtom(expected) ? ArgumentAdaptation.ExpectedTypeFitting : ArgumentAdaptation.CrossSemanticsBorrow;
 
     // FitArgument's row for a part that awaits its call as a Call or Case: Inapplicable with the failed check as the trial's fact, else
     // Waiting with its class at the position.

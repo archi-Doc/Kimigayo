@@ -124,6 +124,18 @@ public class EnumBindingTest
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 
+    // SPEC 15.3.6, 15.2.3 (R7-E4 E4c, the solved construction's unsolved payload Origin): a group's static Property is no executable
+    // body, so `E.B`'s slot `a` has no local region, and static storage could not hold one: one MissingOriginBinding_Kd at the
+    // construction, a fact-less record.
+    [Fact]
+    public void AConstructionInAStaticPropertyLeavesItsPayloadOriginUnsolved()
+    {
+        const string Source = "enum E {a}\n    A(ref/i32 during a)\n    B\ngroup G\n    public let g = E.B\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.MissingOriginBinding_Kd), error.Code);
+        Assert.Equal(new SourceSpan(Source.IndexOf("E.B", StringComparison.Ordinal), 3), error.Span);
+    }
+
     // SPEC 6.5.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload.
     [Theory]
     [InlineData("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a, b@move)")]

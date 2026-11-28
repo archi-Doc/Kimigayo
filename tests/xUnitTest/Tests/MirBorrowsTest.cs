@@ -215,6 +215,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
+    // A Guard with a drop, and a layer over `a` with a Field without an initializer, so no constructor unless LayerInit declares one
+    // (PLAN G215's l_ and d_ twins; SPEC 6.3.6).
+    private const string LayerShapes = "struct LayerGuard {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
+        "    drop => ()\nstruct LayerHost {a}\n    public let p: ref/i32 during a\n";
+
+    private const string LayerInit = "    public init(p: ref/i32 during a) => self.p = p\n";
+
     /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's, and
     /// 15.6.4's destruction retention (PLAN G264 U1).</summary>
     public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases
@@ -2797,6 +2804,82 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     p@follow = D.init(r: p.r@follow@uniq)
                 """));
 
+    // SPEC 8.15.2, 16.3.3, 15.6.6, 15.6 Holders (PLAN G1507): a Drop whose Type a case substitutes is judged in each case, also where view
+    // 0's destroys nothing (ref). The obj case destroys the object and the rc case's release may be final, U's erased destruction that may
+    // observe a Loan: the old v's at `=` is an exclusive use of *v.1 while c is live, beside x's and y's storage ends, which it retains
+    // (reassignObjBad), and v's at its end uses the whole holder v, which carries x's Loan (liveObjOk, rcLiveBad, optionObjLiveBad's Case
+    // payload). Under ref and uniq no case's destruction observes (reassignUniqOk). Fail-before: the obj and rc views were never run.
+    [Fact]
+    public void ADestructionACaseDecidesIsCheckedInEachCase()
+        => Assert.Equal(
+            [
+                "reassignObjBad: v = (w2@move, y@uniq)", "reassignObjBad: var y = 2", "reassignObjBad: var x = 1", "liveObjOk: x = 2",
+                "rcLiveBad: x = 2", "optionObjLiveBad: x = 2",
+            ],
+            Problems("""
+                func reassignObjBad<s/U>(w: s/U, w2: s/U)
+                    s is ref or obj
+                    var x = 1
+                    var y = 2
+                    var v = (w@move, x@uniq)
+                    let c = v.1@follow@ref
+                    v = (w2@move, y@uniq)
+                    _ = c@follow
+                func reassignUniqOk<s/U>(w: s/U, w2: s/U)
+                    s is ref or uniq
+                    var x = 1
+                    var y = 2
+                    var v = (w@move, x@uniq)
+                    let c = v.1@follow@ref
+                    v = (w2@move, y@uniq)
+                    _ = c@follow
+                func liveObjOk<s/U>(w: s/U)
+                    s is ref or obj
+                    var x = 1
+                    let v = (w@move, x@ref)
+                    x = 2
+                func rcLiveBad<s/U>(w: s/U)
+                    s is ref or rc
+                    var x = 1
+                    let v = (w@move, x@ref)
+                    x = 2
+                func optionObjLiveBad<s/U>(w: Option<s/U>)
+                    s is ref or obj
+                    var x = 1
+                    let v = (w@move, x@ref)
+                    x = 2
+                """));
+
+    // SPEC 8.15.2, 8.15 (PLAN G1507): a Drop whose Type, as the body's identity premises make it, contains a pair layer makes its body
+    // view-dependent, since A2 judges per view what it destroys: a by-value `w: s/U` (own) and `x: T` under `T is s/string during a`
+    // (premised) do; `w: ref/(s/U)` has no Drop (borrowed). No body has a case-dependent access or a case branch.
+    [Fact]
+    public void ADropWhoseTypeACaseSubstitutesMakesTheBodyViewDependent()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+                func own<s/U>(w: s/U)
+                    s is owner or ref
+                    return
+                func borrowed<s/U>(w: ref/(s/U))
+                    s is owner or ref
+                    return
+                func premised<T, s/U>(r: ref/i32 during a, x: T, w: ref/(s/U))
+                    s is owner or ref
+                    T is s/string during a
+                    return
+                """);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(["own: True", "borrowed: False", "premised: True"], new[] { "own", "borrowed", "premised" }.Select(Dependent));
+
+        string Dependent(string name)
+        {
+            var stratum = new Stratum(c.Types);
+            stratum.Run(program, Body(program, name));
+            return $"{name}: {stratum.ViewDependent}";
+        }
+    }
+
     // SPEC 3.6, 15.6.6 (DECISIONS R4-M129): a call's result that borrows its argument's temporary and observes it in its destruction is
     // destroyed before that temporary, so the Loan its destruction observes is still valid (fail-before: the argument's storage ended first,
     // a conflict at each argument).
@@ -4054,6 +4137,33 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "func good2() -> bool\n    let s = \"a\"\n    let other = \"b\"\n    return s == other\n"));
     }
 
+    // SPEC 15.6.2, 15.6.5 (PLAN G215, G403; DECISIONS R7-M115): a Field initializer's Loans are judged in its constructor's body and in a
+    // constructorless layer's body alike: a write under a live shared Loan (l_; accepted before), and a Guard built from a block's local
+    // into the layer's Origin, Refuted in each branch (d_); the valid twins read the value before the write and drop the Guard in the block.
+    [Theory]
+    [InlineData("        var x = 1\n        let r = x@ref\n        let k = r@follow\n        x = 2\n        yield k\n", "")]
+    [InlineData("        var x = 1\n        let r = x@ref\n        x = 2\n        yield r@follow\n", "", ": x = 2")]
+    [InlineData("        var x = 1\n        let r = x@ref\n        x = 2\n        yield r@follow\n", LayerInit, ": x = 2")]
+    [InlineData("        let x = 1\n        do\n            let k = LayerGuard.init(x@ref)\n        yield 0\n", "")]
+    public void AFieldInitializersLoanIsJudgedInItsBody(string block, string constructor, params string[] expected)
+        => Assert.Equal(expected, Problems($"{LayerShapes}    public var n: i32 = if true\n{block}    else => 0\n{constructor}"));
+
+    // d_ (above): the Guard's Field initializer, with a constructor and without one alike: per branch the call Refuted (15.6.5) and
+    // the local's storage ending while the Guard holds its Loan (15.6.6), caused only by that branch's Refuted relation (15.6.5), still
+    // reported since A3 does not read it (AGENTS Diagnostics).
+    [Theory]
+    [InlineData("")]
+    [InlineData(LayerInit)]
+    public void AFieldInitializersGuardIntoTheLayersOriginIsRefutedInEachBranch(string constructor)
+    {
+        var c = MirBuildTest.Compile(Prelude + LayerShapes + "    public let g: LayerGuard during a = if true\n        let x = 1\n" +
+            "        yield LayerGuard.init(x@ref)\n    else\n        let y = 1\n        yield LayerGuard.init(y@ref)\n" + constructor);
+        Assert.Equal(
+            [": LayerGuard.init(y@ref) UnsatisfiedOriginRelation_Kd", ": LayerGuard.init(x@ref) UnsatisfiedOriginRelation_Kd", ": let x = 1",
+                ": let y = 1"],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.UnsatisfiedOriginRelation_Kd]));
+    }
+
     // Whether a measure over three sizes, each double the one before, grows over the second doubling at most a factor times as much as
     // over the first, with a constant's slack.
     internal static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
@@ -4198,7 +4308,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal int Walked => this.effects.Walked; // A4's excluded queries' nodes since its last run (V16).
 
-        internal bool ViewDependent => this.moves.ViewDependent; // False: MirBorrows' one run of the body covers every view.
+        internal bool ViewDependent => this.moves.ViewDependent; // False: MirBorrows' one run covers every view (no Drop a case decides).
 
         internal void Run(MirProgram program)
         {

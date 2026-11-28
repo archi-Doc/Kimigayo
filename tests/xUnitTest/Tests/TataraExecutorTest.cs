@@ -18,7 +18,7 @@ namespace XunitTest;
 
 // Tatara, the native build's LLVM and LLD (Tatara designs A2 §4.5, A4 §2.6 and B6b1 §2), on the compiler's Tatara (the tatara.dll the
 // build copies beside the test output's Kimi.dll) and the checkout's development toolchain's tools. A row that loads tatara.dll or runs a tool
-// skips off Windows; on Windows a missing tatara.dll fails it. KIMI_TATARA_CORPUS names a corpus directory whose fixtures/*.ll (bare
+// skips where the process runs no native build (Repository.NativeBuilds). KIMI_TATARA_CORPUS names a corpus directory whose fixtures/*.ll (bare
 // IR) replace the fixed rows of the tool control comparison, at O0 and O2; each row's decision and outcome is appended to
 // <corpus>/results.tsv (Run; tests/scripts/run-tatara-corpus.ps1 prepares the corpus, runs this class and lists the rows Run failed).
 // A fatal row leaves Tatara refusing every later call for the rest of its process, so each runs in a child test process of its own
@@ -33,14 +33,19 @@ public sealed class TataraExecutorTest : IDisposable
     internal static readonly TataraContext LinuxContext = new(
         (_, _) => { }, CancellationToken.None, TargetProfile.Linux.Target, TargetProfile.Linux.Cpu, TargetProfile.Linux.Features, TargetProfile.Linux.RelocationModel, TargetProfile.Linux.CodeModel);
 
-    private const string Windows = "Tatara and the LLVM tools run on Windows.";
-
     // The probe's metadata naming a dependent library, so its ELF object has a .deplibs section.
     private const string DependentLibrary = "!llvm.dependent-libraries = !{!0}\n!0 = !{!\"c\"}";
+
+    // The none row's target (IMPL 21.6): a freestanding x86-64 ELF object.
+    private static readonly TataraContext NoneContext = new(
+        (_, _) => { }, CancellationToken.None, TargetProfile.None.Target, TargetProfile.None.Cpu, TargetProfile.None.Features, TargetProfile.None.RelocationModel, TargetProfile.None.CodeModel);
 
     private static readonly string Triple = TargetProfile.Windows.Target;
 
     private static readonly string[] Levels = ["O0", "O2"];
+
+    // An llvm-objdump --no-show-raw-insn line using an XMM register or an x87 instruction (the none row's soft float, design §5 row 14).
+    private static readonly Regex FloatInstruction = new(@"^\s*[0-9a-f]+:\s+(f\w*|\S.*(xmm|%st))", RegexOptions.Multiline);
 
     private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
 
@@ -68,6 +73,21 @@ public sealed class TataraExecutorTest : IDisposable
 
     private delegate int ModuleFromAddress(uint flags, IntPtr address, out IntPtr module);
 
+    // TheLinuxRowsModulesLinkStatically's modules: Hello, Hello ending in an Abort and the allocator program from their committed
+    // sources (tests/linux-elf, B7b9), and B7b6's Stopwatch.
+    public static TheoryData<string, string> LinuxModules => new()
+    {
+        { "Hello", LinuxPair.Program("Hello", "Hello.kimi") },
+        { "Abort", LinuxPair.Program("HelloAbort", "HelloAbort.kimi") },
+        { "Heap", HeapRuntimeTest.AllocatorProgram },
+        { "Stopwatch", TimeLibraryTest.Measured },
+    };
+
+    // Design §5 row 10: Kernel writing a measured Stopwatch's seconds (TimeLibraryTest.Measured reads the platform's clock, so O2 folds
+    // neither the conversion nor the division); its object here, its ELF in NativeToolchainTest (Tatara B9f).
+    internal static string KernelSeconds =>
+        KernelSources.Hello + TimeLibraryTest.Measured + "\nConsole.writeLine(Text.toString(duration.seconds))\n" + KernelSources.Board + KernelSources.BoardTerminate;
+
     private static string Root => Path.Combine(Repository.Root, "toolchain");
 
     private static string? Corpus => Environment.GetEnvironmentVariable("KIMI_TATARA_CORPUS");
@@ -81,6 +101,48 @@ public sealed class TataraExecutorTest : IDisposable
 
     // Both, in ToolchainIdentity.Supplies' order: a link manifest's libraries when the program names none of its own.
     private static string[] CompilerLibraries => [Kernel32, Backend];
+
+    // Probe P0b's module (design §11): a Library group with every floating operation the generator writes, for f32 and f64: the
+    // arithmetic and comparison rows (FunctionCodegen.Arithmetic: fadd fsub fmul fdiv fneg; oeq une olt ole ogt oge), the floating
+    // conversions (fpext, and fptrunc with its range test's one predicates) and each integer Type's conversions to and from it (sitofp
+    // uitofp, and fptosi fptoui with their range tests; LlvmScalarText.Conversions), but i128's and u128's (Capability's gap).
+    private static string FloatOperations
+    {
+        get
+        {
+            var text = new StringBuilder("public group Floats\n");
+            foreach (var type in (string[])["f32", "f64"])
+            {
+                foreach (var (name, spelling) in ((string, string)[])[("add", "+"), ("sub", "-"), ("mul", "*"), ("div", "/")])
+                {
+                    text.Append($"    public func {name}{Title(type)}(a: {type}, b: {type}) -> {type} => a {spelling} b\n");
+                }
+
+                foreach (var (name, spelling) in ((string, string)[])[("eq", "=="), ("ne", "!="), ("lt", "<"), ("le", "<="), ("gt", ">"), ("ge", ">=")])
+                {
+                    text.Append($"    public func {name}{Title(type)}(a: {type}, b: {type}) -> bool => a {spelling} b\n");
+                }
+
+                text.Append($"    public func neg{Title(type)}(a: {type}) -> {type} => -a\n");
+                foreach (var target in (string[])["f32", "f64", "i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize"])
+                {
+                    if (target != type)
+                    {
+                        text.Append($"    public func {type}To{Title(target)}(a: {type}) -> {target} => a@{target}\n");
+                    }
+
+                    if (target[0] != 'f')
+                    {
+                        text.Append($"    public func {target}To{Title(type)}(a: {target}) -> {type} => a@{type}\n");
+                    }
+                }
+            }
+
+            return text.ToString();
+
+            static string Title(string type) => char.ToUpperInvariant(type[0]) + type[1..];
+        }
+    }
 
     public void Dispose() => TestFolder.Delete(this.directory);
 
@@ -121,7 +183,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task TataraEqualsTheTools()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var rows = Corpus is { } corpus
             ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => new Row(ir, level, CompilerLibraries))).ToArray()
             : (await this.FixedRows()).Select(row => Generated(Manifest(row))).Concat(Levels.Select(level => new Row(this.DebugIr(), level, CompilerLibraries))).ToArray();
@@ -133,7 +195,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task TataraEqualsTheToolsOnElf()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         string[] probes = [this.LinuxProbe("probe", string.Empty), this.LinuxProbe("deplibs", DependentLibrary)];
         await Run([.. probes.SelectMany(ir => Levels.Select(level => new Row(ir, level, [])))], row => this.CompareWithTools(row, Elf));
     }
@@ -144,7 +206,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task TataraInspectsAndLinksAnElf()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var tatara = Tatara.Instance;
         var probe = this.LinuxProbe("probe", string.Empty);
         foreach (var level in Levels)
@@ -163,7 +225,7 @@ public sealed class TataraExecutorTest : IDisposable
             Assert.Equal(string.Empty, failure);
             var headers = listing[listing.IndexOf("ProgramHeaders [", StringComparison.Ordinal)..];
             Assert.Equal(elf.Entry, Convert.ToUInt64(Regex.Match(listing, @"(?m)^\s*Entry: 0x([0-9A-F]+)\r?$").Groups[1].Value, 16));
-            Assert.Equal(elf.Segments, Regex.Matches(headers, @"(?m)^\s*Type: \S+ \(0x([0-9A-F]+)\)\r?$").Zip(
+            Assert.Equal(elf.Segments.Select(static x => (x.Type, x.Flags)), Regex.Matches(headers, @"(?m)^\s*Type: \S+ \(0x([0-9A-F]+)\)\r?$").Zip(
                 Regex.Matches(headers, @"(?m)^\s*Flags \[ \(0x([0-9A-F]+)\)\r?$"), (t, f) => (Convert.ToUInt32(t.Groups[1].Value, 16), Convert.ToUInt32(f.Groups[1].Value, 16))));
         }
 
@@ -213,7 +275,7 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData("emptyname")]
     public async Task TataraInspectsAnArchivesMembers(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         const string Directives = """
             #pragma comment(linker, "/include:f")
             #pragma comment(linker, "/alternatename:a=b")
@@ -283,13 +345,10 @@ public sealed class TataraExecutorTest : IDisposable
     // symbol, and linked by ld.lld at the row's entry into a static executable. Linux runs them under WSL (B7b2a's before its Ready, the
     // Stopwatch at B7b7), not here (N7).
     [Theory]
-    [InlineData("Hello", "::Kimi.Console.writeLine(\"Hello, world!\")")]
-    [InlineData("Abort", "::Kimi.Console.writeLine(\"Hello, world!\")\n$abort(\"x\")")]
-    [InlineData("Heap", HeapRuntimeTest.AllocatorProgram)]
-    [InlineData("Stopwatch", TimeLibraryTest.Measured)]
+    [MemberData(nameof(LinuxModules))]
     public void TheLinuxRowsModulesLinkStatically(string name, string source)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var ir = Path.Combine(this.directory, name + ".ll");
         File.WriteAllText(ir, CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(TargetProfile.Linux, source, "Hello.kimi", OutputKind.Application)));
         foreach (var level in Levels)
@@ -309,7 +368,7 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData(2)]
     public void ElfBuildsInTwoFoldersAreEqual(int level)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var probe = this.LinuxProbe("probe", string.Empty);
         var products = new string[2];
         for (var i = 0; i < products.Length; i++)
@@ -329,7 +388,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task DeepInputEqualsTheTools()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var deep = Path.Combine(this.directory, "deep.ll");
         File.WriteAllText(deep, "target triple = \"x86_64-pc-windows-msvc\"\n\n@g = global " + string.Concat(Enumerable.Repeat("[1 x ", 20000)) + "i32" + new string(']', 20000) + " zeroinitializer\n\ndefine void @" + TargetProfile.Windows.EntrySymbol + "() {\nentry:\n  ret void\n}\n");
         await Run([.. Levels.Select(level => new Row(deep, level, CompilerLibraries))], row => this.CompareWithTools(row, Coff));
@@ -339,7 +398,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task RepeatedBuildsAreEqual()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         string[] rows = [await this.Generate("hello", Hello, "O2"), await this.Generate("m1", Milestone(1), "O2")];
         var first = new string?[2];
         for (var i = 0; i < 20; i++)
@@ -359,7 +418,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task FailedRequestsLeaveTataraUsable()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var row = await this.Generate("hello", Hello, "O0");
         var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
@@ -391,7 +450,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task TheMemoryPartPassesTheHelperSuite()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var tests = Path.Combine(Repository.Root, "src", "backend", "windows-x64", "tests");
         var work = this.directory;
         string[] oracle = ["--target=" + Triple, "-O0", "-ffreestanding", "-fno-builtin", "-fno-stack-protector", "-fno-autolink", "-mno-avx", "-c"];
@@ -434,6 +493,161 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
+    // IMPL 21.6: the none row's layer, with its start form, a start body calling the platform's start and the exit, an adapter for each
+    // Platform requirement, the memory part and the footer, optimized by Tatara at O2 and emitted at O0 and O2 for the row's target, is
+    // one object with no undefined symbol that keeps each of Limine's requests in its section.
+    [Fact]
+    public async Task TheNoneLayerKeepsLimineRequestsInItsObject()
+    {
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var row = TargetProfile.None;
+        var (frame, layer) = (LlvmModuleText.Frame(row), RuntimeAbi.Layer(row));
+        var text = new StringBuilder(frame.Header).Append(frame.Runtime).Append(layer.StartAssembly).Append(layer.Start.GetDefinition(exported: false))
+            .Append("entry:\n  call void @").Append(RuntimeAbi.PlatformStart.Name).Append("()\n  call void @").Append(RuntimeAbi.Exit.Name)
+            .Append("(i32 0)\n  unreachable\n}\n");
+        foreach (var adapter in PlatformRows.Rows.Select(static x => x.Adapter))
+        {
+            text.Append(adapter.GetDefinition(exported: false)).Append("entry:\n  ")
+                .Append(adapter.NoReturn ? "unreachable" : adapter.Result == "void" ? "ret void" : "ret " + adapter.Result + " zeroinitializer").Append("\n}\n");
+        }
+
+        var module = Path.Combine(this.directory, "none.ll");
+        File.WriteAllText(module, text.Append(LlvmModuleText.MemoryRuntime).Append(frame.Footer).ToString());
+        (string Symbol, string Section)[] requests =
+            [("start", "_start"), ("base_revision", string.Empty), ("hhdm", string.Empty), ("memmap", string.Empty), ("end", "_end")];
+        foreach (var level in Levels)
+        {
+            var ir = level == "O2" ? Path.Combine(this.directory, "none.O2.ll") : module;
+            if (level == "O2")
+            {
+                File.WriteAllText(ir, Tatara.Instance.Optimize(NoneContext, module));
+            }
+
+            var obj = Path.Combine(this.directory, $"none.{level}.o");
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(NoneContext, ir, obj, level[1] - '0'));
+            Assert.Empty(Assert.Single(Tatara.Instance.Inspect(NoneContext, obj).Members).Undefined);
+            var (failure, listing) = await Launch("llvm-readobj", this.directory, "--sections", "--symbols", obj);
+            Assert.Equal(string.Empty, failure);
+            foreach (var (symbol, section) in requests)
+            {
+                Assert.Matches($@"Name: __kimi_limine_{symbol} \(\d+\)\r?\n(?:[^\r\n}}]*\r?\n)*?\s*Section: \.limine_requests{section} \(", listing);
+            }
+        }
+    }
+
+    // IMPL 21.6: Kernel's module on the none row, and a Library's, optimized at O2 and emitted at O0 and O2, use no XMM register, no x87
+    // instruction (FloatInstruction, the archive row's) and no address below rsp (the row's soft float and noredzone; design §5 row 14),
+    // and their float operations call the routines of the row's kimi_backend
+    // (IMPL 21.6.7, the Tatara plan's decision 33): Kernel writing a measured Stopwatch's seconds (design §5 row 10; Duration.seconds, a
+    // u64 converted to f64 and divided) leaves exactly __floatundidf and __divdf3 undefined at O0, and __floatdidf and __divdf3 at O2,
+    // which proves the u64 non-negative (probe P0b); the Library holds every floating operation the generator writes (FloatOperations,
+    // P0b), whose object needs only the supply's symbols and the platform's adapters it declares. The Library half is vacuous at O2,
+    // which deletes the internal functions, so its O0 object carries P0b's pin: beside the adapters, exactly P0b's 39 names, the supply
+    // less the five only its members call (comparedf2.c's __cmpdf2, comparesf2.c's __cmpsf2 and __unordsf2, fp_mode.c's two), so every
+    // member is reached. Fail-before (B9e): the row's supply was empty.
+    [Theory]
+    [InlineData(OutputKind.Application)]
+    [InlineData(OutputKind.Library)]
+    public async Task TheNoneRowsModulesUseNoFloatOrRedZone(OutputKind output)
+    {
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var row = TargetProfile.None;
+        var source = output == OutputKind.Application ? KernelSeconds : FloatOperations;
+        var module = Path.Combine(this.directory, "kernel.ll");
+        File.WriteAllText(module, CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(row, source, "Kernel.kimi", output)));
+        var adapters = PlatformRows.Rows.Select(static x => x.Adapter.Name).ToHashSet(StringComparer.Ordinal);
+        var backend = row.Supply("kimi_backend")?.Symbols ?? [];
+        foreach (var level in Levels)
+        {
+            var ir = level == "O2" ? Path.Combine(this.directory, "kernel.O2.ll") : module;
+            if (level == "O2")
+            {
+                File.WriteAllText(ir, Tatara.Instance.Optimize(NoneContext, module));
+            }
+
+            var obj = Path.Combine(this.directory, $"kernel.{level}.o");
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(NoneContext, ir, obj, level[1] - '0'));
+            var undefined = Assert.Single(Tatara.Instance.Inspect(NoneContext, obj).Members).Undefined.Select(static x => x.Name).ToArray();
+            Assert.All(undefined, x => Assert.True(backend.Contains(x) || (output == OutputKind.Library && adapters.Contains(x)), x));
+            if (output == OutputKind.Application)
+            {
+                Assert.Equal(["__divdf3", level == "O2" ? "__floatdidf" : "__floatundidf"], undefined.Order(StringComparer.Ordinal));
+            }
+            else if (level == "O0")
+            {
+                Assert.Equal(backend.Except(["__cmpdf2", "__cmpsf2", "__fe_getround", "__fe_raise_inexact", "__unordsf2"]), undefined.Where(x => !adapters.Contains(x)).Order(StringComparer.Ordinal));
+            }
+
+            var (failure, disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", obj);
+            Assert.Equal(string.Empty, failure);
+            Assert.DoesNotMatch(FloatInstruction, disassembly);
+            Assert.DoesNotMatch(@"-0x[0-9a-f]+\(%rsp\)", disassembly);
+        }
+    }
+
+    // IMPL 21.6 (OSF3b's K4-style row; T's ruling 195 (1), B's C2): Kernel on the none row whose startup takes an interrupt entry's address,
+    // with the bracket's masking, optimized by Tatara at O2 and emitted at O0 and O2, is one object with no undefined symbol whose thunk
+    // realigns the stack and returns by iretq: at O0, where the handler is not inlined, `and $-0x10,%rsp` precedes the thunk's call; at O2
+    // the realignment is present (8 bytes for a leaf whose handler inlined, 16 where it calls) and any remaining call follows an
+    // `and $-0x10,%rsp`.
+    [Fact]
+    public async Task TheNoneRowsThunkRealignsTheStackBeforeItsCall()
+    {
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var source = KernelSources.Hello + "let gate = Interrupts.install()\nConsole.writeLine(Text.toString(gate))\n" + TimeLibraryTest.Tick +
+            TimeLibraryTest.Install + KernelSources.Board + KernelSources.BoardTerminate;
+        var text = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(TargetProfile.None, source, "Kernel.kimi", OutputKind.Application));
+        var thunk = Regex.Match(text, @"\ndefine internal x86_intrcc void @(__kimi_f\d+)\(").Groups[1].Value;
+        Assert.NotEmpty(thunk);
+        var module = Path.Combine(this.directory, "entry.ll");
+        File.WriteAllText(module, text);
+        foreach (var level in Levels)
+        {
+            var ir = level == "O2" ? Path.Combine(this.directory, "entry.O2.ll") : module;
+            if (level == "O2")
+            {
+                File.WriteAllText(ir, Tatara.Instance.Optimize(NoneContext, module));
+            }
+
+            var obj = Path.Combine(this.directory, $"entry.{level}.o");
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(NoneContext, ir, obj, level[1] - '0'));
+            Assert.Empty(Assert.Single(Tatara.Instance.Inspect(NoneContext, obj).Members).Undefined);
+            var (failure, disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", obj);
+            Assert.Equal(string.Empty, failure);
+            var body = Regex.Match(disassembly, $@"<{thunk}>:\r?\n((?:[^\r\n]+\r?\n)*)").Groups[1].Value;
+            Assert.Matches(@"\band[q]?\s+\$-0x(?:8|10),\s*%rsp", body);
+            Assert.Matches(@"\biretq\b", body);
+            var calls = Regex.Matches(body, @"\bcall[q]?\s");
+            Assert.True(level == "O2" || calls.Count > 0, body);
+            Assert.All(calls, x => Assert.Matches(@"\band[q]?\s+\$-0x10,\s*%rsp", body[..x.Index]));
+        }
+    }
+
+    // IMPL 21.6.7 (the Tatara plan's decision 33; build-compiler-rt.ps1's checks over the committed archive, design §3.6, notes F6): the
+    // none row's kimi_backend archive defines exactly the row's supply symbols, every undefined symbol of a member is defined in the
+    // archive, and no member uses an xmm register, an x87 instruction or an address below rsp (-mno-red-zone). Fail-before (B9e): no
+    // archive.
+    [Fact]
+    public async Task TheNoneBackendArchiveIsItsRowsSupply()
+    {
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var archive = Path.Combine(Repository.Root, "src", "backend", "none-x64", "kimi_backend_none_x64_v1.a");
+        var (failure, defined) = await Launch("llvm-nm", this.directory, "--defined-only", "--extern-only", "-j", archive);
+        Assert.Equal(string.Empty, failure);
+        var symbols = Names(defined);
+        Assert.Equal(TargetProfile.None.Supply("kimi_backend")?.Symbols ?? [], symbols.Order(StringComparer.Ordinal));
+        (failure, var undefined) = await Launch("llvm-nm", this.directory, "--undefined-only", "-j", archive);
+        Assert.Equal(string.Empty, failure);
+        Assert.Subset(symbols.ToHashSet(StringComparer.Ordinal), Names(undefined).ToHashSet(StringComparer.Ordinal));
+        (failure, var disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", archive);
+        Assert.Equal(string.Empty, failure);
+        Assert.DoesNotMatch(FloatInstruction, disassembly);
+        Assert.DoesNotMatch(@"-0x[0-9a-f]+\(%rsp\)", disassembly);
+
+        // llvm-nm -j's symbol names, without its member headers ("<member>:") and blank lines.
+        static string[] Names(string listing) => [.. listing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(static x => !x.EndsWith(':'))];
+    }
+
     // Tatara takes no signal or exception-filter state (C-424 R1): after an optimize, an emit, a failed emit, an inspect and a link,
     // the process's unhandled-exception filter is still in the module that owned it before (the host's, never tatara.dll). LLVM's
     // Windows signal registration sets this filter and its console handler together, so an unchanged filter also means no console
@@ -441,7 +655,7 @@ public sealed class TataraExecutorTest : IDisposable
     [Fact]
     public async Task UnhandledExceptionFilterStaysTheHosts()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var row = await this.Generate("hello", Hello, "O0");
         var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
@@ -467,7 +681,7 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData(nameof(Fatal.FatalErrorRefusesEveryLaterCall))]
     public async Task AFatalErrorRefusesEveryLaterCallOfItsProcess(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         await FreshProcess.RunExplicit(typeof(Fatal), row, (Fatal.Folder, this.directory));
     }
 

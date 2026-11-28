@@ -280,6 +280,8 @@ public sealed partial class Binding
             condition: problem.Condition);
     }
 
+    // SPEC 8.2.3, 8.6.1: one requirement reached through two references that are one Type (SameConformanceType: J1's reading, then
+    // the judge). Its readers: the agreement checks (SameNormalizedMappings) and RequirementMember's candidate dedup (Identified).
     private bool SameNormalizedRequirement(BoundRequirement a, BoundRequirement b, BindingScope scope, QuerySite site)
         => ReferenceEquals(a.Symbol, b.Symbol) && (ReferenceEquals(a.Contract, b.Contract) || this.SameConformanceType(a.Contract.Type, b.Contract.Type, scope, site));
 

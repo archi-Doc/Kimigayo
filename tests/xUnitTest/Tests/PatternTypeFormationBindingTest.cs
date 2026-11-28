@@ -158,8 +158,14 @@ public class PatternTypeFormationBindingTest
     // written (3:18, 8.3) and by the bare non-Copy Place operand moved without `@move` (4:17, 17.3); gtryres's return target
     // `Result<i32, i32>` takes `.Err(error)`, error `i32` fitting `i32`, so it holds. The `try` and its synthesized nodes carry the
     // Subject Type and are not failed by it (PLAN G1278: G1321-C's restating 4:13 is gone, Q13), so the operand's 17.3 record is reported.
+    // PLAN G1356 (B's ruling 7): gtrymin's `try` as the operand of each other single-requirement operator decision (the integer row,
+    // Negatable's `-`, a shift count, a non-composite comparison) keeps 3:5 and builds, whether its operation's record rests or stays.
     [Theory]
     [InlineData("func drain<I>(iterator: uniq/I) -> Option<i64>\n    I is Iterator\n    I.Iterator.Item is i64\n    var total: i64 = 0\n    loop\n        total += try iterator.next()\n        if total > 10\n            exit\n    return .Some(total)", "UnresolvedBinding_Kd@3:5")]
+    [InlineData("func drain<I>(iterator: uniq/I) -> Option<i64>\n    I is Iterator\n    I.Iterator.Item is i64\n    _ = (try iterator.next()) % 2\n    return .None", "UnresolvedBinding_Kd@3:5")]
+    [InlineData("func drain<I>(iterator: uniq/I) -> Option<i64>\n    I is Iterator\n    I.Iterator.Item is i64\n    _ = -(try iterator.next())\n    return .None", "UnresolvedBinding_Kd@3:5")]
+    [InlineData("func drain<I>(iterator: uniq/I) -> Option<i64>\n    I is Iterator\n    I.Iterator.Item is i64\n    var total: i64 = 0\n    loop\n        total <<= try iterator.next()\n        if total > 10\n            exit\n    return .Some(total)", "UnresolvedBinding_Kd@3:5")]
+    [InlineData("func drain<I>(iterator: uniq/I) -> Option<i64>\n    I is Iterator\n    I.Iterator.Item is i64\n    _ = (try iterator.next()) < 1\n    return .None", "UnresolvedBinding_Kd@3:5")]
     [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Option<Box<string>>) -> Option<i32>\n    let b = try o\n    return .Some(1)", "UnsatisfiedConstraint_Kd@3:18 | TransferRequired_Kd@4:17")]
     [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Result<Box<string>, i32>) -> Result<i32, i32>\n    let b = try o\n    return .Ok(1)", "UnsatisfiedConstraint_Kd@3:18 | TransferRequired_Kd@4:17")]
     public void ATryOverAFailedOperandTypeRecordsOncePerSite(string function, string required)

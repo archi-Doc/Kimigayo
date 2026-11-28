@@ -103,6 +103,8 @@ public partial class LayoutTest
     [Theory]
     [InlineData("struct S\n    var a: u8\n    var b: i64\n    var c: u16", "S", "{ [0 x i64], [16 x i8] }", 16, 8, "10,0,8")]
     [InlineData("#Layout(\"C\")\nstruct S\n    var a: u8\n    var b: u64\n    var c: u8", "S", "{ i8, i64, i8 }", 24, 8, "0,8,16")]
+    // IMPL 21.6 (OSF3a): Kimi.X86's interrupt frame, the processor's push in 64-bit mode, whose storage OSF3b's entry takes byval.
+    [InlineData("", "X86.InterruptFrame", "{ i64, i64, i64, i64, i64 }", 40, 8, "0,8,16,24,32")]
     [InlineData("", "(u8, i32, bool)", "{ [0 x i32], [8 x i8] }", 8, 4, "4,0,5")]
     [InlineData("", "(i32, ())", "{ [0 x i32], [4 x i8] }", 4, 4, "0,4")]
     [InlineData("", "[3 of i16]", "{ [0 x i16], [6 x i8] }", 6, 2, "")]
@@ -555,6 +557,32 @@ public partial class LayoutTest
         var (layout, row) = (placed.Value!.Layout, Layout.Row(BoundType.String).Layout);
         Assert.Equal((row.Size, row.Alignment, row.Stride), (layout.Size, layout.Alignment, layout.Stride));
         Assert.Equal(row.FieldOffsets.ToArray(), layout.FieldOffsets.ToArray());
+    }
+
+    // IMPL 21.1.3, 21.6: the none row's boot fills a Kimi.Boot as the library's declaration is placed: the boot local takes its size and
+    // alignment, and directMapOffset, regions and regionCount are stored at their offsets.
+    [Fact]
+    public void BootIsPlacedAsTheNoneBootFillsIt()
+    {
+        var c = CompilationTestHelper.BindSuccess("()");
+        var boot = LibrarySource.Declaration(c.Library, "Boot").SymbolOf(c)!.Type!;
+        var placed = c.Layout.Of(boot);
+        Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
+        var layout = placed.Value!.Layout;
+        var offsets = layout.FieldOffsets.Span;
+        var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
+        Assert.Contains($"  %boot = alloca [{layout.Size} x i8], align {layout.Alignment}\n", runtime, StringComparison.Ordinal);
+        Assert.Equal(0, offsets[AdtDef.IndexOf(boot, "directMapOffset")]);
+        Assert.Contains("  store i64 %offset, ptr %boot, align 8\n", runtime, StringComparison.Ordinal);
+        Assert.Contains(
+            $"  %regions = getelementptr i8, ptr %boot, i64 {offsets[AdtDef.IndexOf(boot, "regions")]}\n  store ptr %entries, ptr %regions, align 8\n",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"  %region_count = getelementptr i8, ptr %boot, i64 {offsets[AdtDef.IndexOf(boot, "regionCount")]}\n" +
+            "  store i64 %count, ptr %region_count, align 8\n",
+            runtime,
+            StringComparison.Ordinal);
     }
 
     [Fact]

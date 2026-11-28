@@ -6,7 +6,10 @@
 managed solution with warnings as errors. Windows uses the ordinary Session verifier for all functional/allocation
 regressions and every regenerated native fixture at O0/O2, then runs the native-worker PowerShell regressions, CLI
 integration, and extension unit/integration tests with the managed compiler. The `kimi` job publishes `kimi.exe` (NativeAOT)
-with `scripts/build-kimi.ps1` and its product check, beside the other two jobs.
+with `scripts/build-kimi.ps1` and its product check. `linux-elf-build`
+builds the Linux programs (`tests/linux-elf`) and the natively verified milestones on Windows with `scripts/build-linux-elf.ps1`,
+and `linux-elf` runs them on `ubuntu-latest`, printing the kernel. These jobs run beside the others, so each failure is reported
+on its own.
 
 The Windows job downloads the adopted LLVM archive only on a toolchain-cache miss, checks its pinned SHA-256, extracts it
 and calls the backend setup script with `-LlvmRoot <the extracted archive>`, which also builds `tatara.dll`; the cache key
@@ -14,7 +17,7 @@ covers `profile.json`, `setup.ps1`, the backend's sources and builders (`src/bac
 `kernel32.ps1`) and `src/Tatara`, so a change to any of them reruns setup, which must reproduce the committed libraries.
 Explicit toolchain verification checks cached installations too.
 The archive fetch is one composite action, `.github/actions/llvm-archive`, which publishes the extracted root as its output:
-the Windows job runs it on a toolchain-cache miss, the `kimi` job on every run. A red `kimi` job is the Tatara session's to
+the Windows job runs it on a toolchain-cache miss, the `kimi` job on every run. A red `kimi` job is the Back's to
 answer; a break from a `src/Tatara`-only change is found at the next `main` push, not in its window. The job checks the
 runner's SDK (setup-dotnet 10.0.x), not a local one.
 Update the archive version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
@@ -43,7 +46,8 @@ The Code Rules Analyzer, its configuration/baseline and CompilerSizeBudgetTest w
 `2e341155`. DECISIONS CR-R1 retires their Report, SARIF-marker and commit-approval workflow.
 `verify.ps1` still builds nonincrementally with warnings as errors, validates every requested
 test selector against the new assembly, rejects zero executed tests and a requested selector
-that executed none, and checks source/NuGet input stability. `verify-commit.ps1` still
+that executed none, and checks source/NuGet input stability. An unconfigured semantic comparison appears as a skip in
+both the summary and result XML. Every other skip fails verification. `verify-commit.ps1` still
 requires a successful run and exact committed inputs.
 `ArchitectureRulesTest` retains its existing no-growth assertions and joins every Unit selection.
 
@@ -310,4 +314,6 @@ Sidecar expectation files never become compiler inputs; a pattern matching only 
 
 After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1 [-Configuration]` with the built compiler and the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, CPU observation, delayed execution, insufficient observation, expected-completion deadlines, lost executable launches, a forbidden dependency, an unattempted and a lost build, a non-ASCII output path under a non-UTF-8 input code page, a session ended by its build (the next round builds the rest), invalid UTF-8, evidence failure and empty selections. Native recovery uses one fixed 5-second grace separate from the execution deadline; unavailable launch/CPU/recovery/capture is incomplete, while captured invalid UTF-8 is a failure. Logs, including intentional failure cases, remain in `artifacts/verify/`.
 
-`scripts/run-linux-elf.ps1 -Directory <ELFs> [-Expectations tests/linux-elf/expectations.json] [-Distribution Ubuntu]` runs each expectation's ELF under WSL (redirects `none`, `closed-stdout`, `closed-pipe`), prints WSL's `uname -r`, writes `results.json` beside the files and exits 1 on any mismatch; it never installs, updates or reconfigures WSL.
+`scripts/build-linux-elf.ps1 [-Configuration Release] [-Output artifacts/linux-elf]` builds, with the built `Kimi.dll`, each `tests/linux-elf` project the expectations name (`<Project>-<O0|O2>`) and every milestone that has a `test-milestoneN.ps1` harness at O2 for Linux, from a work copy of the programs' sources (`*.kimi`, `*.kimiproj`, `native/*.c`). It also builds and runs each such milestone for Windows: that run must exit 0 with empty stderr, and its stdout is the Linux entry's expectation. It writes the ELFs, `expectations.json` and `builds.txt` to the output, refuses an existing output that holds no `builds.txt`, and exits 1 on any failed build or Windows run. `scripts/run-linux-elf.ps1 -Directory <ELFs> [-Expectations tests/linux-elf/expectations.json] [-Distribution Ubuntu]` runs each expectation's ELF on a Linux kernel (redirects `none`, `closed-stdout`, `closed-pipe`). On Linux it runs the file through `/bin/sh` after `chmod +x`; on Windows it runs it under WSL's distribution. It prints `uname -r` first. An entry marked `measure` runs once, under `/usr/bin/time` where present, and records its size, wall time and peak RSS (otherwise "not measured"); a measurement that fails fails the entry. The peak RSS has a floor: under WSL every measured program below about 264 KiB read 264 KiB, while one writing 4 MiB read 4096 KiB. It writes `results.json` beside the files and exits 1 on any mismatch. It never installs, updates or reconfigures WSL.
+
+`scripts/run-none-qemu.ps1 [-QemuRoot <dir>] [-LimineRoot <dir>] [-Configuration Release] [-Expectations <file>]` (defaults `artifacts/qemu` and `artifacts/downloads/limine`; relative paths against the repository root) builds each x86_64-unknown-none program of `scripts/run-none-qemu/expectations.json` with the built `Kimi.dll`, boots it under QEMU (q35, edk2) and Limine, both pinned by SHA-256 in that file, judges its serial output and its end (an exit status through QEMU's isa-debug-exit, or a halt reached by the 30-second timeout), and exits 1 when any row fails. It is a development step, never a test and no CI job: QEMU and Limine are downloads (design decision 34); its run folder under `artifacts/verify/none-qemu/` is the evidence. A pinned file that is missing or differs, or a malformed row, stops it before any build; it downloads nothing.

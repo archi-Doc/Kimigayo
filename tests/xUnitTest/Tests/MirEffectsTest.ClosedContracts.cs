@@ -22,7 +22,7 @@ public sealed partial class MirEffectsTest
     {
         var c = MirBuildTest.Compile("public func main() => ()\n");
         var (effects, _, program) = Analyzed(c);
-        var (implementations, targets) = (new List<BindingSymbol>(), new List<(BindingSymbol Target, Subst Instance)>());
+        var (implementations, targets) = (new List<BindingSymbol>(), new List<BindingSymbol>());
         foreach (var id in (KimiDeclarationId[])[KimiDeclarationId.Position, KimiDeclarationId.PositionRange])
         {
             var contract = c.Library.GetSymbol(id)!;
@@ -32,11 +32,16 @@ public sealed partial class MirEffectsTest
             {
                 // SPEC 8.7.5: the twelve integer Types satisfy Position and not PositionRange.
                 var call = c.Types.Synthesized(requirement, integer, contract.Type!);
-                Assert.Equal(id == KimiDeclarationId.Position, c.Types.Witnesses(requirement, contract, call, null, targets));
+                var runs = c.Types.Witness(requirement, contract, call, null);
+                Assert.Equal(id == KimiDeclarationId.Position, runs.Kind == RequirementTargetKind.Body);
+                if (runs.Kind == RequirementTargetKind.Body)
+                {
+                    targets.Add(runs.Target!);
+                }
             }
         }
 
-        foreach (var target in targets.Select(static x => x.Target).Distinct())
+        foreach (var target in targets.Distinct())
         {
             for (var i = 0; c.Types.Implementation(target, null, i) is { } implementation; i++)
             {

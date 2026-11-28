@@ -187,7 +187,7 @@ public sealed partial class MirBorrowsTest
     // (laterWriterBad: x addresses slot; chainBad: x → pp → slot), never a holder only a shared Loan names (count, TheGuardReadsEachPart),
     // and E only where E was reached through no shared layer (Φ_W): an untied result (laterWriterOk, clearRcOk and sharedRawGen err, the
     // owner's 「Yes, writable」; sharedRawGen's `T.make` result is tied to no argument, so x reaches E writable, item 5; a tied result read
-    // through a shared Deref of a `ref/` parameter is PLAN G419's false error), a raw pointer it derives from (allocBad, alloc2Bad,
+    // through a `ref/` parameter's Deref reaches E for reads only, tiedShRefOk), a raw pointer it derives from (allocBad, alloc2Bad,
     // allocOptBad, allocTupBad, allocViaUBad), and a parameter or a capture (ownParamBad, ownParamGen, directParamGen, exchGen, capGen,
     // nestGen). A generic Writer (writerBad) errs by its call's own raw-argument retention, an exclusive reference
     // (paramBad) past it by the write fact, and a live exclusive Loan (uniqBad) by the store. Every row errs on dev too, there through the
@@ -963,31 +963,35 @@ public sealed partial class MirBorrowsTest
     // by value through no shared layer, an Option payload and a Tuple element included, so r's setQ may store w's address where m points,
     // storage the body does not own, and `y = 5` and S's end err (as tiedRawBad does with a raw input; tiedOk, whose r holds only the
     // shared Loan on s, is valid). FAIL-FIRST: S1′ alone accepts tiedOptBad and tiedTupBad (Binding's retention keeps a raw-typed input
-    // only, BU-66 rule 3); BU's raw-sources Binding unit closes them, and S1′ lands with or after it.
+    // only, BU-66 rule 3); BU's raw-sources Binding unit closes them, and S1′ lands with or after it. A raw pointer read through a `ref/`
+    // parameter's Deref has no write authority (SPEC 5.2.1 condition 3, 15.6.4 item 1; DECISIONS R4-M249, G415-N3 P1): the parameter's
+    // slot reaches E for reads only, so tiedShRefOk is valid (PLAN G419's false error before P1), and its `uniq/` twin tiedUniqRefBad errs.
     [Theory]
     [InlineData("tiedOptBad", "r.absorb(.Some(m))")]
     [InlineData("tiedTupBad", "r.absorbT((m, 1))")]
     [InlineData("tiedRawBad", "r.absorbR(m)")]
     [InlineData("tiedOk", "")]
-    public void ATiedAbstractValueRetainsARawLayerAnInputHoldsByValue(string name, string absorb)
+    [InlineData("tiedShRefOk", "r.absorbR(rr@follow)", ", rr: ref/(raw/u8)")]
+    [InlineData("tiedUniqRefBad", "r.absorbR(rr@follow)", ", rr: uniq/(raw/u8)")]
+    public void ATiedAbstractValueRetainsARawLayerAnInputHoldsByValue(string name, string absorb, string parameters = "")
     {
-        var c = MirBuildTest.Compile(Prelude + """
-            contract Mk
-                associate R(source) is Abs for ref/Self during source
-                func opn(self: ref/Self during source) -> Self.R(source)
-            contract Abs
-                func absorb(self: uniq/Self, v: Option<raw/u8>)
-                func absorbR(self: uniq/Self, v: raw/u8)
-                func absorbT(self: uniq/Self, v: (raw/u8, i32))
-                func setQ(self: uniq/Self, q: raw/u8)
-            func consume<T>(x: T) => ()
-
-            """ + $"func {name}<S>(s: S)\n    S is Mk\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n" +
-            (absorb.Length > 0 ? $"    var m: raw/u8 = Raw.allocate<u8>(1)\n    var r = s.opn()\n    {absorb}\n" : "    var r = s.opn()\n") +
-            "    r.setQ(w@raw@raw/u8)\n    consume(r@move)\n    y = 5\n");
+        var c = MirBuildTest.Compile(Tied(name, absorb, parameters));
         Assert.Equal(
-            name == "tiedOk" ? [] : [$"{name}: y = 5", $"{name}: S"],
+            name.EndsWith("Ok", StringComparison.Ordinal) ? [] : [$"{name}: y = 5", $"{name}: S"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // A warm A5 run over a parameter that reaches E for reads only (tiedShRefOk's program; its slot's {Φ_E} is one more interned set per
+    // run) allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmReadOnlyParameterAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(Tied("tiedShRefOk", "r.absorbR(rr@follow)", ", rr: ref/(raw/u8)"));
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
+        Assert.Empty(Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // The same retention per raw source (DECISIONS BU-66, A2; the owner's 「A2 を Chain の案でGO」): a raw layer past an exclusive borrow
@@ -1021,8 +1025,10 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147; the owner's Q2 (a) and 「進める (推奨)」): a stored raw layer is read by its step on the
     // instance holding it. `during self` admits the instance's Type arguments by their actual Types, so a bag erasing its element to
-    // raw/u8 writes past itself as its typed twin does (erased, typed), and the write fact where the instance has an Origin argument (P1:
-    // keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too); an Origin-less layer takes the write fact unless the
+    // raw/u8 writes past itself as its typed twin does (erased, typed; what `put` stores is b's own `during self` content under the owner's
+    // O-529 (a), which ends with b before w1 and y, so only the write and the read while b lives conflict, not their ends), and the write
+    // fact where the instance has an Origin argument (P1: keepPhantom's `y = 5`, which no part names; its `inspect(w)` errs on dev too);
+    // an Origin-less layer takes the write fact unless the
     // parameter's Type expression writes it (SPEC 5.7 Calls' per-parameter rule, P2: rawBufDead, whose store reaches E, which may be used
     // after every point). Dev held erased and accepted the P1 and P2 records. A layer written in a Type argument of the declaration's own
     // Field or Case payload is the declaration's, which its kept part states (nestedDead, optionalDead; DECISIONS BU-46, R4-M151).
@@ -1105,9 +1111,8 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "erased: z = 5", "erased: inspect(w1)", "erased: var w1: ref/i32 = x@ref", "erased: var y = 2", "typed: z = 5", "typed: inspect(w1)",
-                "typed: var w1: ref/i32 = x@ref", "typed: var y = 2", "keepPhantom: y = 5", "keepPhantom: inspect(w)", "rawBufDead: z = 5",
-                "nestedDead: z = 5", "optionalDead: z = 5",
+                "erased: z = 5", "erased: inspect(w1)", "typed: z = 5", "typed: inspect(w1)", "keepPhantom: y = 5", "keepPhantom: inspect(w)",
+                "rawBufDead: z = 5", "nestedDead: z = 5", "optionalDead: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1282,7 +1287,7 @@ public sealed partial class MirBorrowsTest
     // Item>` is `BaseI<raw/u8>`, completed before the mark) and a store into the Field such a base clause holds (derf, as its twin derg,
     // each a moved parameter), a holder whose declaration writes the subject's argument (hh2, also through a condition, hhc), a nested
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
-    // verdict is its written twin ER's (eh, er: `z = 5` errs, PLAN G841's rule 4 (4), the owner's O-373 (a): through A's payload layer,
+    // verdict is its written twin ER's (eh, er: `z = 5` errs, DECISIONS R4-M241's rule 4, the owner's O-373 (a): through A's payload layer,
     // which the declaration states, `put` may store what a raw layer it writes retains, 5.7 Calls). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
     // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
@@ -1504,9 +1509,10 @@ public sealed partial class MirBorrowsTest
     // `ref/i32 during a` admits no local borrow), methodShared, methodUniq, ctorShared, i32Referent, loopShared, twoShared, tuplePart and
     // fieldPart (a part's referent i32), slotPart and slotKept (a slot's keeper's referent i32), paramSlot and t11 (one root, two part
     // borrows); a constructor lending the holder (reachedByStep) stores z's borrow, but nothing holding it is used after `z = 5` (SPEC 15.4;
-    // Z6's O5-4). An address taken past the shared s whose atom also has an exclusive borrow keeps the located Unsupported_Kd (mixedAtom,
-    // t11s, valid: Z6's named limit R6.1, R6.8 (b2); removal: route (a)), as does duringShared (valid): `during s` names s's own region,
-    // which Binding states by another atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
+    // Z6's O5-4). An address taken past the shared s stores nothing, the other Borrows of its root being their own atoms (mixedAtom,
+    // t11s, valid: SPEC 15.6.5, 15.6.4 item 1; since PLAN G922 tms they no longer reach Z6's named limit R6.1, R6.8 (b2), a Q13 class 3
+    // move). duringShared (valid) keeps the located Unsupported_Kd: `during s` names s's own region, which Binding states by another
+    // atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
     // the whitelist's cost; removal: D-1116 (1)'s one atom). A claim states its atom; an address
     // carries no mode, so a claimed atom with an exclusive member stays the located Unsupported_Kd (claimUniq, invalid; removal: per-layer
     // address provenance in A5), and one whose borrows are all shared stores nothing (claimShared, claimMixed, claimRaw, claimRawMixed: a
@@ -1987,11 +1993,10 @@ public sealed partial class MirBorrowsTest
                 "flat: z = 5", "flat: inspect(w)", "nested: z = 5", "nested: inspect(w)", "optionNested: z = 5",
                 "optionNested: inspect(w)", "looped: k = 2", "looped: z = 5", "looped: inspect(w)",
                 "nestedPointee: z = 5", "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5",
-                "tupleTyped: inspect(w)", "mixedAtom: h.put(z@ref) Unsupported_Kd", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
+                "tupleTyped: inspect(w)", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
                 "duringUniq: inspect(w)", "duringNull: z = 5", "twoUniq: z = 5", "twoUniq: inspect(v)", "twoStatic: z = 5", "twoStatic: inspect(w)",
                 "twoStatic: var y: raw/u8 during static = null", "twoStatic: var w: ref/i32 = x@ref", "twoStatic: var x = 1", "reborrow: z = 5",
                 "reborrow: inspect(w)", "tuplePartD: z = 5", "tuplePartD: b", "fieldPartD: z = 5", "fieldPartD: b",
-                "t11s: h.put(z@ref) Unsupported_Kd",
                 "claimUniq: h.put(z@ref) Unsupported_Kd", "regionRaw: h.put(z@ref) Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
@@ -2791,4 +2796,22 @@ public sealed partial class MirBorrowsTest
         }));
         Assert.Contains("limited: o.put(z@ref) Unsupported_Kd", Problems(c, program!, [DiagnosticCode.Unsupported_Kd]));
     }
+
+    // The tied rows' program: `name` over S is Mk (with `parameters` after s), r tied to s absorbing an input, then r's setQ storing w's
+    // address, r consumed and y written.
+    private static string Tied(string name, string absorb, string parameters)
+        => Prelude + """
+            contract Mk
+                associate R(source) is Abs for ref/Self during source
+                func opn(self: ref/Self during source) -> Self.R(source)
+            contract Abs
+                func absorb(self: uniq/Self, v: Option<raw/u8>)
+                func absorbR(self: uniq/Self, v: raw/u8)
+                func absorbT(self: uniq/Self, v: (raw/u8, i32))
+                func setQ(self: uniq/Self, q: raw/u8)
+            func consume<T>(x: T) => ()
+
+            """ + $"func {name}<S>(s: S{parameters})\n    S is Mk\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n" +
+            (absorb.Length > 0 ? $"    var m: raw/u8 = Raw.allocate<u8>(1)\n    var r = s.opn()\n    {absorb}\n" : "    var r = s.opn()\n") +
+            "    r.setQ(w@raw@raw/u8)\n    consume(r@move)\n    y = 5\n";
 }

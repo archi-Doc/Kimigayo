@@ -15,6 +15,15 @@ public partial class ResultPremiseTest
     private const string WrapH2 = "struct W {c}\n    public var h: H2 during c\n    public init(h: H2 during c) => self.h = h@move\n";
     private const string Getter = "struct G {a, b}\n    public let q: ref/i32 during a\n    public let p: ref/i32 during b\n    public init(q: ref/i32 during a, p: ref/i32 during b)\n        self.q = q\n        self.p = p\n    public computed v: Option<ref/i32 during a>\n";
 
+    [Theory]
+    [InlineData("q", "")]
+    [InlineData("p", "UnprovenOriginRelation_Kd mk(.Some(p)).r")]
+    public void ASelectionFitsAnAnnotatedBindingAtEachSource(string argument, string records)
+    {
+        var body = $"func g(c: bool, q: ref/i32, p: ref/i32) -> Option<ref/i32 during q>\n    let v: Option<ref/i32 during q> = if c => mk(.Some({argument})).r else => .None\n    return v\n";
+        OriginRelationDiagnosticTest.AssertRecords("annotated selection", H2Field + MakeH2 + body, records, null);
+    }
+
     // Each valid body has a twin whose payload does not outlive the declared result's Origin (Unknown between fixed Origins).
     [Theory]
     [InlineData("u1", "func f() -> Option<ref/i32 during static> => .None\n", "")]
@@ -31,6 +40,8 @@ public partial class ResultPremiseTest
     // use (each expression form Unsupported_Kd before), and an invalid twin keeps its relation's record in both forms.
     [Theory]
     [InlineData("field", MakeH2, "func g(q: ref/i32) -> Option<ref/i32 during q>", "mk(.Some(q)).r", "")]
+    [InlineData("field in selection", MakeH2, "func g(c: bool, q: ref/i32) -> Option<ref/i32 during q>", "if c => mk(.Some(q)).r else => .None", "")]
+    [InlineData("other field in selection", MakeH2, "func g(c: bool, q: ref/i32, p: ref/i32) -> Option<ref/i32 during q>", "if c => mk(.Some(p)).r else => .None", "UnprovenOriginRelation_Kd mk(.Some(p)).r")]
     [InlineData("init", "", "func g(q: ref/i32) -> Option<ref/i32 during q>", "H2.init(.Some(q)).r", "")]
     [InlineData("nested", MakeH2 + "struct O {a}\n    public let h: H2 during a\n    public init(h: H2 during a) => self.h = h@move\nfunc mo(o: Option<ref/i32 during s>) -> O during s => O.init(mk(o@move))\n", "func g(q: ref/i32) -> Option<ref/i32 during q>", "mo(.Some(q)).h.r", "")]
     [InlineData("method", "struct M\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public func mk(self, o: Option<ref/i32 during s>) -> H2 during s => H2.init(o@move)\n", "func g(m: ref/M, q: ref/i32) -> Option<ref/i32 during q>", "m.mk(.Some(q)).r", "")]

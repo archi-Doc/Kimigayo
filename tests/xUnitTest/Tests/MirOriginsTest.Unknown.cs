@@ -14,8 +14,8 @@ namespace XunitTest;
 // class's views share; a class's arena is admitted by MirDataflow.Within.
 public sealed partial class MirOriginsTest
 {
-    // audit-origins row 7 (r7-inv): an invariant `==` at a local's annotation whose one direction the clause proves, and the annotation's
-    // well-formedness against its omitted outer Origin's declaration-time candidate.
+    // audit-origins row 7 (r7-inv): an invariant `==` at a local's annotation whose one direction the clause proves. The annotation's
+    // well-formedness bounds its omitted outer Origin, whose candidate satisfies it (SPEC 15.3.6, 15.6.1; R7-O2 A4-L).
     private const string R7Inv = "func f(x: uniq/(ref/i32 during a), y: uniq/(ref/i32 during b)) -> ()\n    origin b outlives a\n" +
         "    let z: uniq/(ref/i32 during a) = y\n";
 
@@ -88,18 +88,18 @@ public sealed partial class MirOriginsTest
     private const string EnclosingFunctionType = "    var h: () -> Option<ref/(ref/i32 during q) during r> = func () => Option.None\n    let o = h()\n    return 0\n";
 
     // SPEC 15.6.5: a chain or edge between fixed Origins that the premises do not derive is Unknown at its last edge's site, Reason (fixed
-    // source, fixed target): both rows of r7-inv (one direction of its `==`), a chain through a local region (the j-f chain), a meet at the
+    // source, fixed target): r7-inv's fit (one direction of its `==`; R7-M113, R7-O2 A4-L's Q-B), a chain through a local region (the j-f chain), a meet at the
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
     // ways (one problem with Equality set), a local's callable store (cd1535825466, 597510880fb0, cab8c776076f), a Closure's parameter fit
     // (8e4cca7290b1; the inner Closure's store of its parameter into its `var` capture of the `let` local `start` holds: the body carries
     // start's region, a fixed Origin equal to its candidate x, R7-O2 A1 with SPEC 15.6.5's Closure sentence, O-443 (a)), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
     // since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
-    // its written Type is a local's (PLAN G215's twin); a nested result's relation among enclosing Origins, the containing declaration's,
+    // its written Type is a local's (PLAN G215's twin), with a constructor and in a constructorless layer's body (DECISIONS R7-M115); a nested result's relation among enclosing Origins, the containing declaration's,
     // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), p4's value call without its clause (SPEC 15.6.4), and an
     // unrelated Constraint set's slot, fixed in the body, reached from an input no premise relates to it (DECISIONS BU-100).
     [Theory]
-    [InlineData(R7Inv, "uniq/(ref/i32 during a): a > in1", "y: a > b")]
+    [InlineData(R7Inv, "y: a > b")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n", "r: in0 > in1")]
     [InlineData(Meet, "ref/(ref/i32 during (a and b)) during x: in0 > in2", "ref/(ref/i32 during (a and b)) during x: in1 > in2")]
     [InlineData(TwoRows, "pk(h, x, y, keep): in0 > s", "pk(h, x, y, keep): in1 > s")]
@@ -111,6 +111,7 @@ public sealed partial class MirOriginsTest
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", "q@follow@follow@uniq: b > a")]
     [InlineData(LayerCount, "ref/(ref/i32 during a) during b: a > b")]
     [InlineData("struct Pair {a, b}\n" + PairInit + InitP, "ref/(ref/i32 during b) during a: b > a")]
+    [InlineData("struct Pair {a, b}\n" + PairInit, "ref/(ref/i32 during b) during a: b > a")]
     [InlineData(EnclosingHead + EnclosingClosure, "ref/(ref/i32 during q) during r: in0 > in1")]
     [InlineData(EnclosingHead + EnclosingFunctionType, "ref/(ref/i32 during q) during r: in0 > in1")]
     [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n" + ValueCall, "s: b > in0")]

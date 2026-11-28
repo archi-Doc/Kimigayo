@@ -13,6 +13,10 @@ public class TimeLibraryTest
     // A Stopwatch reaching each clock read (start, stop and elapsed), which the Linux row's modules emit and link too (TataraExecutorTest).
     internal const string Measured = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nlet duration = watch.elapsed()";
 
+    // Design 6.2's handler (OSF3b) and a Library that takes its entry's address.
+    internal const string Tick = "struct Tick\n    Self is X86.InterruptHandler\n\n    public func handle(frame: ref/X86.InterruptFrame) => ()\n";
+    internal const string Install = "public group Interrupts\n    public func install() -> usize\n        unsafe => return X86.entry<Tick>()\n";
+
     private const string WindowsCounter = "var count: i64 = 0\nlet ok = Windows.queryPerformanceCounter(count@uniq)";
     private const string SelectedCounter = "#if windows\n    var count: i64 = 0\n    let ok = Windows.queryPerformanceCounter(count@uniq)\n" + Measured;
     private const string Started = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()";
@@ -55,17 +59,35 @@ public class TimeLibraryTest
     }
 
     // SPEC 22.1, 22.8.3 (the Tatara plan's B7b6, Q4b (a)): the group `Kimi.Windows` is declared where the Condition `windows` holds, so
-    // on linux-x64 `Windows` is an unknown name; selected by `#if windows`, the call and a Stopwatch are valid on both rows.
+    // on linux-x64 `Windows` is an unknown name; selected by `#if windows`, the call and a Stopwatch are valid on both rows. On the
+    // freestanding row the Application without a platform is also the located Unsupported_Kd at its startup form (SPEC 22.4.5, 23.1.2).
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", WindowsCounter, "")]
     [InlineData("x86_64-unknown-linux-musl", WindowsCounter, "UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
+    [InlineData("x86_64-unknown-none", WindowsCounter, "Unsupported_Kd var count: i64 = 0 | UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
     [InlineData("x86_64-pc-windows-msvc", SelectedCounter, "")]
     [InlineData("x86_64-unknown-linux-musl", SelectedCounter, "")]
     public void WindowsIsDeclaredWhereWindowsHolds(string triple, string source, string errors)
     {
         var c = MinimalEmissionTest.Check(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Application);
-        Assert.Equal(errors, string.Join(" | ", TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}")));
+        Assert.Equal(errors, Errors(c));
     }
+
+    // SPEC 19.2, IMPL 21.6 (OSF's row 4): Kimi.X86's halt, interrupt-flag and port members are declared where `os == "none"` holds, so on
+    // a hosted row `X86.halt` names no member, while pause and readTimestamp are declared on every x86-64 row; so are OSF1b's control
+    // register reads (where `os == "none"`) and cpuid (every x86-64 row); OSF3b's interrupt entries where `os == "none"` (design 6.2).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", Tick + Install, "UnresolvedBinding_Kd X86.entry")]
+    [InlineData("x86_64-unknown-none", Tick + Install, "")]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
+    [InlineData("x86_64-unknown-linux-musl", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
+    [InlineData("x86_64-unknown-none", "public group Board\n    public func stop() => X86.halt()\n", "")]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func spin() => X86.pause()\n", "")]
+    [InlineData("x86_64-unknown-linux-musl", "public group Board\n    public func spin() => X86.pause()\n", "")]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func root() -> u64 => X86.readCr3()\n", "UnresolvedBinding_Kd X86.readCr3")]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func leaf() -> u32 => X86.cpuid(0, 0).eax\n", "")]
+    public void X86IsDeclaredWhereItsConditionsHold(string triple, string source, string errors)
+        => Assert.Equal(errors, Errors(MinimalEmissionTest.Check(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Library)));
 
     // IMPL 21.5.5 (the Tatara plan's B7b6, C1): the Linux row's Stopwatch reads the platform layer's clock, a counter of nanoseconds: its
     // verified module calls __kimi_clock, which the row's layer defines (MinimalEmissionTest.HelloOnTheLinuxRowIsLibcFree), and names no
@@ -203,6 +225,10 @@ public class TimeLibraryTest
         c.Analyze();
         ScalarEmissionTest.WriteFixture("TimeLibraryConversion" + ticks + "_" + frequency, CompilationTestHelper.WriteIr(c), string.Empty);
     }
+
+    // A compilation's error records in result order, each its code and the text it names.
+    internal static string Errors(Compilation c)
+        => string.Join(" | ", TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}"));
 
     // A fake QueryPerformanceCounter: it returns the comma-separated values in order and fails once they run out.
     private static string Counter(string values)

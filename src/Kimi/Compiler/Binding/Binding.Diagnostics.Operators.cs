@@ -14,9 +14,11 @@ public sealed partial class Binding
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
 
     // The facts: the operand and its judged Type, and the proposition of a proof that is Unknown or Refuted. An Unknown proof is the
-    // UnprovenConstraint failure, so the code tells the two.
+    // UnprovenConstraint failure, so the code tells the two. An Error proof's record rests on the cause its decision took (Cause,
+    // RestOnCause; SPEC 23.1.2 rule W, PLAN G1356 ruling 7), so it is derived.
     private BoundType? FailOperator(Koto node, Koto at, OperatorApplicability decision)
     {
+        this.RestOnCause(node, decision.Cause);
         var site = this.FactSite(at);
         var judged = decision.Proof is ConstraintProof.Unknown or ConstraintProof.Refuted ? decision.Requirement : null;
         ReadOnlySpan<ProblemFact> facts =

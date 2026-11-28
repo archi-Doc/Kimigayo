@@ -277,7 +277,7 @@ public sealed partial class Binding
         var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), arguments);
         if (type is not null && own == 0)
         {
-            FormedTypeRows.Add(syntax);
+            FormedTypeRows.Add(syntax, this.formingBody);
         }
         else if (type is not null && supplied is null)
         {

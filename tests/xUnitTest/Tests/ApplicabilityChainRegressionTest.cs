@@ -254,6 +254,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("keep(if c => [\"k\": (x, stop())] else => [\"k\": (stop(), x)])", "Dictionary<string, (i64, i64)>")]
     [InlineData("takeDict(if c => [\"k\": (x, stop())] else => [\"k\": (stop(), x)])", "Dictionary<string, (i64, i64)>")]
     [InlineData("keep(if c => [\"k\": 5] else => [\"k\": stop()])", "Dictionary<string, i32>")]
+    [InlineData("first(if c => ([\"k\": 5], x) else => ([\"k\": stop()], x))", "(Dictionary<string, i32>, i64)")]
     public void AControlFlowArgumentsResultsAreClassifiedByPosition(string use, string type)
     {
         var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
@@ -315,7 +316,9 @@ public partial class ApplicabilityChainRegressionTest
 
     // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
     // Literal fits a candidate only when every source does. Its results classified by position (the owner, 2026-10-26), a join ranks as
-    // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole.
+    // the Tuple argument of those positions does, a position Never in every source giving no Type at a slot that takes the whole. At an
+    // open position a formed source that misfits a closed part (first's i64, a function at applyArg's Tuple) makes the one candidate
+    // inapplicable, so the call's NoApplicableOverload_Kd is the one record (SPEC 14.9.2 step 1, 10.5.1; PLAN G814-5, Q13 class 4).
     [Theory]
     [InlineData("choose(if c => 1 else => 2)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if c => 1 else => 2)")]
     [InlineData("h(if c => 100 else => stop())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "h(if c => 100 else => stop())")]
@@ -327,20 +330,20 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])")]
     [InlineData("applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))")]
     [InlineData("takeF(if c => func [] (v: bool) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeF(if c => func [] (v: bool) => v else => stop())")]
-    [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
+    [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
     [InlineData("applyArg(func [] (v) => v)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(func [] (v) => v)")]
     [InlineData("takeT(if c => (r, stop()) else => (true, stop()))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeT(if c => (r, stop()) else => (true, stop()))")]
     [InlineData("process(if c => [x, stop()] else => [stop(), x, x])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "process(if c => [x, stop()] else => [stop(), x, x])")]
     [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("applyArg(if c => (func [] (v) => v, x) else => (func [] (w) => w, x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v) => v, x) else => (func [] (w) => w, x)")]
-    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
-    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, r) else => (stop(), true))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, r) else => (stop(), true)")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "first(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true))")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, r) else => (stop(), true))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "first(if c => (func [] (v: i64) -> i64 => v, r) else => (stop(), true))")]
     [InlineData("applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, x) else => (stop(), x))")]
     [InlineData("keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
     [InlineData("keep((func [] (v: i64) -> i64 => v, x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep((func [] (v: i64) -> i64 => v, x))")]
     [InlineData("first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "first(if c => (if c => (5, x) else => (stop(), true)) else => (stop(), x))")]
-    [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)")]
-    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5)")]
+    [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), true)) else => (stop(), x))")]
+    [InlineData("first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "first(if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 2.5))")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, 5) else => (func [] (w: i64) -> i64 => w, 6)")]
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("applyArg(if c => (if c => (func [] (v) => v, x) else => (func [] (w) => w, x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v) => v, x) else => (func [] (w) => w, x)")]
@@ -373,12 +376,16 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 23.1.2 (DECISIONS BU-79, rule W; the owner, 2026-11-02): a failed part is a wildcard and no evidence, so beside the
     // closure's own record (`v`) the call reports F unbound, a dependent record SPEC 23.1.2 allows. The Dictionary held in the join's
     // Tuple no longer rests F on its failed part (U1.6h-3' fix (b), superseded).
-    [Fact]
-    public void AFailedPartIsAWildcardAndTheCallsOwnRecordIsReported()
+    // Its twin (PLAN G814-5): the Dictionary holding the failed part is held at the open F (the place rule), and 2.5 misfits the
+    // closed i64 independently, so the call's NoApplicableOverload_Kd is reported beside `v`'s record.
+    [Theory]
+    [InlineData("applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd))]
+    [InlineData("applyArg(if c => ([\"k\": func [] (v) => v], 2.5) else => (stop(), 2.5))", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    public void AFailedPartIsAWildcardAndTheCallsOwnRecordIsReported(string use, string call)
     {
-        var source = ControlFlowDeclarations + "applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))\n";
+        var source = ControlFlowDeclarations + use + "\n";
         var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();
-        Assert.Equal(["UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", "UnresolvedBinding_Kd v"], shown);
+        Assert.Equal([call + " " + use, "UnresolvedBinding_Kd v"], shown);
     }
 
     // SPEC 10.1, 10.5.4, 23.1.2 (F's ruling 90, which revises ruling 49 (a)): an unselected call's anonymous function stays unbound, so a
@@ -651,7 +658,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g = f\n", "AmbiguousBinding_Kd")]
     [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g: (bool) -> i32 = f\n", "NoApplicableOverload_Kd")]
     [InlineData("func f(a: i32, b: i32) -> i32 => a\npublic func main()\n    var y = f(1,, 2)\n", null)]
-    // R7-E3 E3b-1 (the Front's R4): a refuted clause over a retained implementation runs the conformance search at the failure (SPEC 8.6.2).
+    // R7-E3 E3b-1 (the Front's R4), PLAN G1386: a refuted clause over a retained implementation reads the conformance its proof selected (SPEC 8.6.2).
     [InlineData("contract C\n    func same(self: ref/Self, other: ref/Self) -> bool\nopen struct Base\n    Self is C\n    public init() => ()\n    public func same(self: ref/Self, other: ref/Self) -> bool => true\nstruct Derived: Base\n    public init() : base() => ()\nfunc use<T>(value: ref/T)\n    T is C\n    ()\nlet value = Derived.init()\nuse(value)", "NoApplicableOverload_Kd")]
     // PLAN G763 (R7-E3 E3b-1, D-1161): a rejected closure call with an omitted result (UnboundCallSlotTest's OmittedResult) records its
     // unbound slot as facts, no Note text formed at the check (G499 X1), so its warm rebind allocates nothing (SPEC 10.5, 10.8).

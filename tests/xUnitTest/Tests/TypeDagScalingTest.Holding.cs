@@ -81,7 +81,7 @@ public partial class TypeDagScalingTest
 
         var d = With(c, p["d"], doubled[40]);
         var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
-        _ = MirTypes.HoldsLoans(reference ? Uniq(c, d) : d, c.Types, seen, [], [], out _);
+        _ = MirTypes.HoldsLoans(reference ? Uniq(c, d) : d, c.Types, seen, [], []).Loan;
         var stored = seen.Where(static x => x.Key.Stored).ToArray();
         Assert.Equal(
             [.. Enumerable.Range(past, 41 - past).Select(k => new MirHoldingKey(doubled[k], true, null, null))],
@@ -200,7 +200,8 @@ public partial class TypeDagScalingTest
 
     // R4 (BU's B1 form): a closed associated projection's resolution writes H's part as a Tuple DAG of 2^n positions from O(n) text, so
     // the written Type is shared too: each level is one key with its written Type in H, in Own mode (a uniq reference to H decides at its
-    // `loan` Field first). The raw leaves reach Binding's raw-Origin walks of that chain, linear since PLAN G309.
+    // `loan` Field first). The raw leaves reach Binding's raw-Origin walks of that chain, linear since PLAN G309, and every leaf the
+    // declaration judge's clause walk at x's root (AddTypeClauseObligations), each distinct part once per root (DECISIONS BU-19).
     [Theory]
     [InlineData("i32", 12, "True None", 12)]
     [InlineData("i32", 40, "True Deep", 33)]
@@ -253,8 +254,9 @@ public partial class TypeDagScalingTest
             var f = p[$"f{20 * (i + 1)}"];
             var counter = new Meetings();
             var seen = new Dictionary<MirHoldingKey, MirModeDepths>(counter);
-            Assert.True(MirTypes.HoldsLoans(Tuple(c, With(c, p["d"], f), Uniq(c, f)), c.Types, seen, [], [], out var writes));
-            Assert.Equal(MirWrites.Through, writes);
+            var holding = MirTypes.HoldsLoans(Tuple(c, With(c, p["d"], f), Uniq(c, f)), c.Types, seen, [], []);
+            Assert.True(holding.Loan);
+            Assert.Equal(MirWrites.Through, holding.Writes);
             (meetings[i], keys[i]) = (counter.Count, seen.Count); // 402, 1229 and 1569 over 26, 46 and 66 keys on dev 5f5a3c67a.
             var modes = seen[new(f, false, null, null)];
             Assert.True(modes[0] != 0 && modes[1] != 0 && modes[2] != 0); // F_n entered in Own, Exclusive and LoanOnly mode.
@@ -295,7 +297,7 @@ public partial class TypeDagScalingTest
     private static string Holding(Compilation c, BoundType type, out Dictionary<MirHoldingKey, MirModeDepths> seen)
     {
         seen = new();
-        var holds = MirTypes.HoldsLoans(type, c.Types, seen, [], [], out var writes);
+        var (holds, writes, _, _) = MirTypes.HoldsLoans(type, c.Types, seen, [], []);
         return $"{holds} {writes}"; // HoldsLoans gives None where the value holds no Loan.
     }
 

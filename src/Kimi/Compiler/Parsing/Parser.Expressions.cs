@@ -33,18 +33,7 @@ public static partial class Parser
     /// <param name="minBindingPower">The minimum accepted binding power.</param>
     /// <returns>The parsed expression.</returns>
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
-    {
-        if (IsBlockStatementStart(ref reader, expressionPosition: true))
-        {
-            reader.AddDiagnostic(DiagnosticCode.BlockStatementInExpression_Kd);
-            return ParseBlockStatement(ref reader);
-        }
-
-        var left = IsLabelPrefix(ref reader)
-            ? ParseLabeledExpression(ref reader)
-            : ParsePrefixExpression(ref reader, minBindingPower);
-        return ContinueExpression(ref reader, left, minBindingPower);
-    }
+        => ParseExpressionHead(ref reader, minBindingPower, out var head) ? ContinueExpression(ref reader, head, minBindingPower) : head;
 
     /// <summary>Continues an expression from its parsed left operand: its postfix and infix operators down to the binding power, the one
     /// loop of <see cref="ParseExpression(ref TokenReader, int)"/>.</summary>
@@ -52,8 +41,46 @@ public static partial class Parser
     /// <param name="left">The parsed left operand.</param>
     /// <param name="minBindingPower">The minimum accepted binding power.</param>
     /// <returns>The parsed expression.</returns>
+    /// <remarks>A right-associative row (an assignment) takes the rest of its chain as its right operand. Each of its links waits in
+    /// <c>link</c> and <c>outer</c> while this loop reads the link's right operand at the row's binding power, and is built when that
+    /// operand ends, as a recursive read would build it, so a chain takes no recursion (PLAN G444 U2b).</remarks>
     private static Koto ContinueExpression(ref TokenReader reader, Koto left, int minBindingPower)
     {
+        (Koto Left, Token Token, int Power)? link = null;
+        Stack<(Koto Left, Token Token, int Power)>? outer = null;
+        while (true)
+        {
+            if (ContinueOperators(ref reader, ref left, minBindingPower, out var token))
+            {
+                if (link is { } enclosing)
+                {
+                    (outer ??= new()).Push(enclosing);
+                }
+
+                link = (left, token, minBindingPower);
+                minBindingPower = InfixRightBindingPower[(byte)token.Kind];
+                if (ParseExpressionHead(ref reader, minBindingPower, out left))
+                {
+                    continue;
+                }
+            }
+
+            if (link is not { } frame)
+            {
+                return left;
+            }
+
+            left = KotoHelper.NewBinaryKoto(ref reader, frame.Token, frame.Left, left);
+            minBindingPower = frame.Power;
+            link = outer is { Count: > 0 } ? outer.Pop() : null;
+        }
+    }
+
+    // ContinueExpression's operators at one binding power: false where an operator binds below it, true after the operator of a
+    // right-associative link, whose right operand ContinueExpression reads.
+    private static bool ContinueOperators(ref TokenReader reader, ref Koto left, int minBindingPower, out Token link)
+    {
+        link = default;
         while (true)
         {
             var tokenKind = reader.CurrentTokenKind;
@@ -75,7 +102,7 @@ public static partial class Parser
                 // -value@T -> (-value)@T, value * other@T -> value * (other@T).
                 if (minBindingPower > InfixLeftBindingPower[(byte)tokenKind])
                 {
-                    break;
+                    return false;
                 }
 
                 left = ParseAdaptation(ref reader, left);
@@ -86,7 +113,7 @@ public static partial class Parser
             {
                 if (minBindingPower > RangeLeftBindingPower)
                 {
-                    break;
+                    return false;
                 }
 
                 var rangeToken = reader.Read();
@@ -109,7 +136,7 @@ public static partial class Parser
             var leftBindingPower = InfixLeftBindingPower[(byte)tokenKind];
             if (leftBindingPower == 0 || leftBindingPower < minBindingPower)
             {
-                break;
+                return false;
             }
 
             var rightBindingPower = InfixRightBindingPower[(byte)tokenKind];
@@ -137,10 +164,16 @@ public static partial class Parser
             {
                 left = ParseRuntimeTypeTest(ref reader, token, left);
             }
-            else
+            else if (rightBindingPower > leftBindingPower)
             {
                 right = ParseExpression(ref reader, rightBindingPower);
                 left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
+            }
+            else
+            {
+                // A right-associative link; a comparison is never one, so no chained record waits with it.
+                link = token;
+                return true;
             }
 
             if (chained is { } cause)
@@ -148,8 +181,6 @@ public static partial class Parser
                 reader.CodeContext.RecordRecovery(left, cause);
             }
         }
-
-        return left;
     }
 
     private static bool IsNonAssociativeComparison(ref TokenReader reader, TokenKind tokenKind, Koto left)
@@ -157,7 +188,7 @@ public static partial class Parser
         // Directive conditions reject every is test separately; do not report it twice as a chain.
         var runtimeIs = !reader.IsParsingCompileTimeCondition;
         return (tokenKind != TokenKind.Is || runtimeIs) &&
-            ((left is BinaryKoto comparison && IsComparisonKind[(int)comparison.Akind]) || (runtimeIs && left is IsKoto));
+            ((left is BinaryKoto comparison && IsComparison(comparison.Akind)) || (runtimeIs && left is IsKoto));
     }
 
     /// <summary>Parses one adaptation of SPEC F.9.1 Adapted, <c>"@" (ClosedTarget | OpenTarget)</c> (F.9.4), over its parsed operand.
@@ -281,76 +312,147 @@ public static partial class Parser
         return new ErrorKoto(ref reader, SourceSpan.FromBounds(operation.Span.Start, question.Span.End)) { Cause = cause };
     }
 
-    private static Koto ParsePrefixExpression(ref TokenReader reader, int minBindingPower = 0)
+    /// <summary>Reads an expression's head, the part its operators continue: a chain of prefix operators and <c>try</c> over its
+    /// operand, a labeled expression or a primary expression; or a block statement in an expression's position, reported, which no
+    /// operator continues.</summary>
+    /// <param name="reader">The token reader at the expression.</param>
+    /// <param name="minBindingPower">The binding power of the expression, which a <c>try</c> link checks.</param>
+    /// <param name="head">The head's node.</param>
+    /// <returns>Whether ContinueExpression continues the head.</returns>
+    /// <remarks>A prefix operator takes the expression after it at its own binding power, so a chain nests to the right (SPEC F.9.1).
+    /// Its links are read in one loop and nested from the last, each operand continued as ParseExpression continues it, so a chain
+    /// takes no recursion (PLAN G444 U2b).</remarks>
+    private static bool ParseExpressionHead(ref TokenReader reader, int minBindingPower, out Koto head)
     {
-ProcessPrefix:
-        var tokenKind = reader.CurrentTokenKind;
-        if (reader.HeaderRegion && (IsLabelableConstruct[(byte)tokenKind] || tokenKind == TokenKind.Func))
+        Token? link = null;
+        Stack<Token>? outer = null;
+        var power = minBindingPower;
+        Koto operand;
+        while (true)
         {
-            // A body-bearing expression in a header expression (SPEC F.4.4): a LabelableConstruct or an anonymous function. A labeled
-            // one is ParseLabeledExpression's.
-            var cause = reader.Unexpected(SyntaxForm.HeaderBodyExpression);
-            if (reader.IndentedBodyFollows())
+            if (IsBlockStatementStart(ref reader, expressionPosition: true))
             {
-                // The indented body after the header is the statement's, so the expression is not read: the rest of the header's
-                // line rests on this Error, and the statement keeps its body (DIAGNOSTICS.md §4.4).
-                var start = reader.CurrentTokenRange.Start;
-                _ = reader.SkipHeaderLine();
-                return new ErrorKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd))) { Cause = cause };
+                reader.AddDiagnostic(DiagnosticCode.BlockStatementInExpression_Kd);
+                operand = ParseBlockStatement(ref reader);
+                if (link is null)
+                {
+                    head = operand;
+                    return false;
+                }
+
+                goto Nest;
             }
-        }
 
-        if (tokenKind == TokenKind.Sharp)
-        {
-            reader.ReportMisplacedAttributes();
-            goto ProcessPrefix;
-        }
+            if (IsLabelPrefix(ref reader))
+            {
+                operand = ParseLabeledExpression(ref reader);
+                break;
+            }
 
-        if ((tokenKind == TokenKind.Try || IsPrefixOperator[(byte)tokenKind]) && reader.CanRead)
-        {
+ProcessPrefix:
+            var tokenKind = reader.CurrentTokenKind;
+            if (reader.HeaderRegion && (IsLabelableConstruct[(byte)tokenKind] || tokenKind == TokenKind.Func))
+            {
+                // A body-bearing expression in a header expression (SPEC F.4.4): a LabelableConstruct or an anonymous function. A labeled
+                // one is ParseLabeledExpression's.
+                var cause = reader.Unexpected(SyntaxForm.HeaderBodyExpression);
+                if (reader.IndentedBodyFollows())
+                {
+                    // The indented body after the header is the statement's, so the expression is not read: the rest of the header's
+                    // line rests on this Error, and the statement keeps its body (DIAGNOSTICS.md §4.4).
+                    var start = reader.CurrentTokenRange.Start;
+                    _ = reader.SkipHeaderLine();
+                    operand = new ErrorKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd))) { Cause = cause };
+                    break;
+                }
+            }
+
+            if (tokenKind == TokenKind.Sharp)
+            {
+                reader.ReportMisplacedAttributes();
+                goto ProcessPrefix;
+            }
+
+            if ((tokenKind != TokenKind.Try && !IsPrefixOperator[(byte)tokenKind]) || !reader.CanRead)
+            {
+                operand = ParsePrimaryExpression(ref reader);
+                break;
+            }
+
             var token = reader.Read();
-            if (tokenKind == TokenKind.Try && minBindingPower > TryBindingPower)
+            if (tokenKind == TokenKind.Try && power > TryBindingPower)
             {
                 // A level-2 prefix operator cannot take a try expression directly: write -(try x) (SPEC §13.1).
                 reader.Unexpected(SyntaxForm.TryOperand, token.Span);
             }
 
-            Koto operand;
+            if (link is { } enclosing)
+            {
+                (outer ??= new()).Push(enclosing);
+            }
+
+            link = token;
+            power = PrefixOperandPower(tokenKind);
             if (IsExpressionBoundary(ref reader))
             {
                 reader.Expect(SyntaxForm.Expression);
                 operand = reader.NewErrorKoto();
+                goto Nest;
             }
-            else
-            {
-                operand = ParseExpression(ref reader, tokenKind == TokenKind.Try ? TryBindingPower : PrefixBindingPower);
-            }
-
-            // Formatting roots require literal syntax so their embedded evaluation can be deferred.
-            if (tokenKind == TokenKind.Dollar &&
-                (!((operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "abort" }, ArgumentNodes.Count: 1 } abort &&
-                   abort.GetArgumentLabel(0) is null) ||
-                   (operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "tryWrite" }, ArgumentNodes.Count: 2 } write &&
-                   write.GetArgumentLabel(0) is null && write.GetArgumentLabel(1) is null &&
-                   write.ArgumentNodes[1] is StringLiteralKoto or InterpolatedStringKoto)) ||
-                 (reader.PeekKind(-1) == TokenKind.CloseParenthesis && reader.PeekKind(-2) == TokenKind.Comma)))
-            {
-                // The prefix marks nothing Binding can select; the node rests on the Error and its operand is checked on its own.
-                var dollar = KotoHelper.NewUnaryKoto(ref reader, token, operand);
-                if (operand.Expected(SyntaxForm.DollarOperand) is { } cause)
-                {
-                    reader.CodeContext.RecordRecovery(dollar, cause);
-                }
-
-                return dollar;
-            }
-
-            return tokenKind == TokenKind.Try
-                ? new TryKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, operand.Span.End), operand)
-                : KotoHelper.NewUnaryKoto(ref reader, token, operand);
         }
 
-        return ParsePrimaryExpression(ref reader);
+        if (link is null)
+        {
+            head = operand;
+            return true;
+        }
+
+        operand = ContinueExpression(ref reader, operand, power);
+
+Nest:
+        while (true)
+        {
+            var node = NewPrefixKoto(ref reader, link!.Value, operand);
+            if (outer is not { Count: > 0 })
+            {
+                head = node;
+                return true;
+            }
+
+            link = outer.Pop();
+            operand = ContinueExpression(ref reader, node, PrefixOperandPower(link.Value.Kind));
+        }
+    }
+
+    // The binding power at which a prefix operator or `try` reads its operand.
+    private static int PrefixOperandPower(TokenKind kind)
+        => kind == TokenKind.Try ? TryBindingPower : PrefixBindingPower;
+
+    // One link of a prefix chain over its operand.
+    private static Koto NewPrefixKoto(ref TokenReader reader, Token token, Koto operand)
+    {
+        // Formatting roots require literal syntax so their embedded evaluation can be deferred.
+        if (token.Kind == TokenKind.Dollar &&
+            (!((operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "abort" }, ArgumentNodes.Count: 1 } abort &&
+               abort.GetArgumentLabel(0) is null) ||
+               (operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "tryWrite" }, ArgumentNodes.Count: 2 } write &&
+               write.GetArgumentLabel(0) is null && write.GetArgumentLabel(1) is null &&
+               write.ArgumentNodes[1] is StringLiteralKoto or InterpolatedStringKoto)) ||
+             (reader.PeekKind(-1) == TokenKind.CloseParenthesis && reader.PeekKind(-2) == TokenKind.Comma)))
+        {
+            // The prefix marks nothing Binding can select; the node rests on the Error and its operand is checked on its own.
+            var dollar = KotoHelper.NewUnaryKoto(ref reader, token, operand);
+            if (operand.Expected(SyntaxForm.DollarOperand) is { } cause)
+            {
+                reader.CodeContext.RecordRecovery(dollar, cause);
+            }
+
+            return dollar;
+        }
+
+        return token.Kind == TokenKind.Try
+            ? new TryKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, operand.Span.End), operand)
+            : KotoHelper.NewUnaryKoto(ref reader, token, operand);
     }
 
     /// <summary>

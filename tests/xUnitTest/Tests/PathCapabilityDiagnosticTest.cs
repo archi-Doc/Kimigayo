@@ -364,7 +364,7 @@ public class PathCapabilityDiagnosticTest
     // result's) are reported beside it (DECISIONS BU-25; fail-before: the callee's record alone).
     [Theory]
     [InlineData("        _ = f1(missing)", "f1", "missing", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("        _ = f1(1) + \"t\"", "f1", "\"t\"", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("        _ = f1(1) + \"t\"", "f1", "f1(1) + \"t\"", DiagnosticCode.NonNumericOperand_Kd)] // PLAN G1356, Q13: was TypeMismatch_Kd at "t"
     [InlineData("        let w: string = f1(2)", "f1", "f1(2)", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("        _ = f1(\"s\")", "f1", "f1(\"s\")", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("        _ = f1(1, 2)", "f1", "f1(1, 2)", DiagnosticCode.NoApplicableOverload_Kd)]

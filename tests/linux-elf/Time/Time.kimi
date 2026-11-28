@@ -1,0 +1,15 @@
+#if windows
+    var count: i64 = 0
+    let ok = Windows.queryPerformanceCounter(count@uniq)
+var watch = Kimi.Time.Stopwatch.init()
+watch.start()
+let first = watch.elapsed().rawMicroseconds
+var i = 0
+while i < 100000
+    i += 1
+let second = watch.elapsed().rawMicroseconds
+watch.stop()
+let third = watch.elapsed().rawMicroseconds
+if first > second => $abort("backward")
+if second > third => $abort("backward")
+Console.writeLine("time ok")

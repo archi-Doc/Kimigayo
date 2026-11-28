@@ -37,6 +37,11 @@ public sealed class TransferJudgmentTest
     // R7-E4 E4a-2 (the design review's C3, PLAN G421 (i)): a value call's arguments are acquired each at its own parameter, so each bare
     // Non-Copy argument is its own record (SPEC 15.1.5, 23.1.2).
     [InlineData("struct R\n    public init() => ()\nfunc k(f: (R, R) -> ()) -> ()\n    var a = R.init()\n    var b = R.init()\n    f(a, b)\npublic func main() => ()\n", "TransferRequired_Kd a repair; TransferRequired_Kd b repair")]
+
+    // R7-E4 E4b C4 (F ruling 32): each Non-Copy capture of an omitted list is its own record, whatever the Closure's slot holds (SPEC
+    // 7.7.2 "each must be Copy", 23.1.2): two Non-Copy parameters, and t beside x's interim limit (PLAN G170), which took the slot first.
+    [InlineData("func run(a: string, b: string) -> bool\n    let action = func () => a == b\n    return action()\npublic func main() => ()\n", "TransferRequired_Kd func () => a == b | The omitted capture list captures a only by Copy; it never infers a Move, a borrow or a Reborrow; TransferRequired_Kd func () => a == b | The omitted capture list captures b only by Copy; it never infers a Move, a borrow or a Reborrow")]
+    [InlineData("func inspect(text: ref/string) -> i32 => 3\nfunc f<s/T, r/U>(m: s/T, n: r/U, x: T, w: ref/i32 during a, t: string) -> i32\n    s is owner or ref\n    r is owner or ref\n    T is r/i32 during a\n    var g = func () -> i32 => x + inspect(t@ref)\n    return g()\npublic func main() => ()\n", "TransferRequired_Kd func () -> i32 => x + inspect(t@ref) | The omitted capture list captures t only by Copy; it never infers a Move, a borrow or a Reborrow")]
     public void ABareMoveIsBindingsRecord(string source, string expected) => Assert.Equal(expected, Records(source));
 
     // SPEC 4.7.2, 13.5.5 (PLAN G384, resolved by the H5 merge): an index expression denotes an element Place without copying it, and

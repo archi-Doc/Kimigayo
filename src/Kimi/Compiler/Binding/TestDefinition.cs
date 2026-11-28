@@ -31,6 +31,29 @@ internal static class TestDefinition
     internal static AttributeKoto? Marker(Koto node)
         => node.FindAttribute(AttributeKind.Test);
 
+    // The inverse of Marker: only the first Test in a function's own leading chain marks it. Parameter attributes
+    // can also have the function as their parent. Stop at the next Test so duplicate markers share no traversal.
+    internal static FunctionKoto? MarkedFunction(AttributeKoto marker)
+    {
+        var current = marker;
+        while (current.Parent is { } parent && ReferenceEquals(parent.AttributeChain, current))
+        {
+            if (parent is not AttributeKoto attribute)
+            {
+                return parent as FunctionKoto;
+            }
+
+            if (attribute.Kind == AttributeKind.Test)
+            {
+                break;
+            }
+
+            current = attribute;
+        }
+
+        return null;
+    }
+
     internal static bool IsValidSyntax(FunctionKoto function)
     {
         if (function.IsGenerated || function.IsAnonymous || (function.Modifier & ModifierKind.Unsafe) != 0 || function.Name.Length == 0 ||

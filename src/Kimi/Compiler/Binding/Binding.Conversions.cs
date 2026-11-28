@@ -17,6 +17,32 @@ public sealed partial class Binding
     internal static bool IsCopyOperation(ConversionKoto conversion)
         => ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation };
 
+    internal bool ResultNeverEvidence(Koto source)
+    {
+        if (source.BoundType is { } known)
+        {
+            return ReferenceEquals(known, BoundType.Never);
+        }
+
+        // Probe only ordinary name/signature evidence, without binding operands
+        // or reentering conversion inference during the structural traversal.
+        if (this.conversionEvidenceScope is not { } scope || source is not (InvocationKoto or IdentifierNameKoto))
+        {
+            return false;
+        }
+
+        for (var parent = source.Parent; parent is not null; parent = parent.Parent)
+        {
+            if (this.ScopeOf(parent) is { } enclosing)
+            {
+                scope = enclosing;
+                break;
+            }
+        }
+
+        return ReferenceEquals(this.ResultEvidence(source, scope), BoundType.Never);
+    }
+
     // A Kimi position or range Type other than an integer (SPEC 4.6.1, 4.6.2).
     private static bool IsPositionOrRangeType(BoundType type)
         => type.Symbol?.LibraryDeclaration is KimiDeclarationId.FromEnd or KimiDeclarationId.Start or KimiDeclarationId.End or KimiDeclarationId.Range or
@@ -146,32 +172,6 @@ public sealed partial class Binding
         }
     }
 
-    private bool ResultNeverEvidence(Koto source)
-    {
-        if (source.BoundType is { } known)
-        {
-            return ReferenceEquals(known, BoundType.Never);
-        }
-
-        // Probe only ordinary name/signature evidence, without binding operands
-        // or reentering conversion inference during the structural traversal.
-        if (this.conversionEvidenceScope is not { } scope || source is not (InvocationKoto or IdentifierNameKoto))
-        {
-            return false;
-        }
-
-        for (var parent = source.Parent; parent is not null; parent = parent.Parent)
-        {
-            if (this.ScopeOf(parent) is { } enclosing)
-            {
-                scope = enclosing;
-                break;
-            }
-        }
-
-        return ReferenceEquals(this.ResultEvidence(source, scope), BoundType.Never);
-    }
-
     // SPEC 8.2.3 with 13.5.1: a conversion's written target (a Type target, a typed borrow's, the U of @wrap<U> and @bits<U>) is the
     // one Type the identity premises of the conversion's scope make of it, as its operand's is ((ii), BindAndAdaptNode), so the
     // operation's comparisons meet identical Types as one Type (PLAN G1240).
@@ -277,9 +277,10 @@ public sealed partial class Binding
                 return this.BindObjectUpcast(conversion, scope, actual, pattern);
             }
 
-            // SPEC 13.5.6: a typed borrow names exactly the stored Type of the written slot; it selects no
-            // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
-            if (pattern.SafeReferent is { } referent && !ReferenceEquals(actual, referent))
+            // SPEC 13.5.6: a typed borrow names exactly the stored Type of the written slot, both read at the use, where a region of its
+            // own body with a value (a `let` region's, an equality-fixed slot's) is that value (RegionValuesAt; DECISIONS R8-M56); it
+            // selects no referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
+            if (pattern.SafeReferent is { } referent && !ReferenceEquals(this.RegionValuesAt(actual, conversion), this.RegionValuesAt(referent, conversion)))
             {
                 return this.RecordTypeMismatch(conversion, conversion, actual, referent);
             }
@@ -289,8 +290,7 @@ public sealed partial class Binding
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
 
-            if (pattern.SafeReferent is { } stored && pattern.Origin is null && ReferenceEquals(actual, stored) &&
-                this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
+            if (pattern.SafeReferent is not null && pattern.Origin is null && this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
                 var storage = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
                 Complete(conversion.Right, storage);

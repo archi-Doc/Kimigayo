@@ -765,7 +765,7 @@ public sealed partial class MirBorrowsTest
     // - Drop at `=`: localBad (also localDrop2Bad, reset and k2's resetSpecBad, the same source); localReachBad uses slot first and errs
     //   all the same by the whole-holder text (as Raw's viaOk); quietCtorBad errs at its construction, not at a drop (Quiet has none):
     //   Quiet.init may put its own pointer in p and store q through it in storage the body does not own (15.6.4 "a nominal Type's Fields
-    //   included", the owner's O-365 (a); PLAN G841 (3)); so does quietCtorU8Bad, whose p is a raw/u8: p is a layer QuietU8 states, and
+    //   included", the owner's O-365 (a); DECISIONS R4-M245); so does quietCtorU8Bad, whose p is a raw/u8: p is a layer QuietU8 states, and
     //   through such a layer the call may store what a raw layer it writes retains, whatever its pointee (SPEC 5.7 Calls and its example
     //   throughField; R4-M241); quietFieldOk is the valid twin for the destruction rule: the constructors receive only null, w's address
     //   enters x by a body write and the old x is replaced without a drop; nullQOk's drop stores null; statedBad and
@@ -934,6 +934,9 @@ public sealed partial class MirBorrowsTest
     // drop whose Binding retention passes the walk's depth bound (DQ40's Field, a Writer 40 levels down a Tuple, so the retention is
     // Limit) is the located resource limit where the destruction is composed, as its method twin `x.flush()` is on dev: at x's
     // reassignment and at its storage end, in the valid dq40Ok and beside dq40Bad's own `y@follow = 5` (w's Loan, which wr's slot keeps).
+    // Each DQ40.init call's own contract is Deep, recorded at the call (G408B-17; the Middle's G408-B A5 ruling C4): its input d stores a
+    // Writer past the bound, whose raw p can carry an address, so the finding left there may retain (a Q13 class 4 move from dev's two
+    // records).
     // The initializer moves its non-Copy `d` with `d@move` (SPEC 3.5 row 3; R6-check H1-tests (t), da41db914's form).
     [Theory]
     [InlineData("dq40Ok")]
@@ -941,12 +944,14 @@ public sealed partial class MirBorrowsTest
     public void ADeclaredDropPastTheDepthBoundIsTheDepthLimit(string form)
     {
         var type = new string('(', 40) + "Writer" + string.Concat(Enumerable.Repeat(", i32)", 40));
-        var (first, second) = ($"var x = DQ40.init(d: {Nested("wr@move", 40)})", $"x = DQ40.init(d: {Nested("Writer.init(q: null)", 40)})");
+        var (made, remade) = ($"DQ40.init(d: {Nested("wr@move", 40)})", $"DQ40.init(d: {Nested("Writer.init(q: null)", 40)})");
+        var (first, second) = ($"var x = {made}", $"x = {remade}");
         var q = form == "dq40Bad" ? "w@raw@raw/u8" : "null";
         var c = MirBuildTest.Compile(DropShapes + $"struct DQ40\n    public var d: {type}\n    public init(d: {type})\n        self.d = d@move\n" +
             $"    drop\n        return\nfunc {form}(y: uniq/i32)\n    let w = y@follow@ref\n    var slot: raw/u8 = null\n" +
             $"    var wr = Writer.init(q: {q})\n    wr.p = slot@raw\n    {first}\n    {second}\n    y@follow = 5\n    usep(slot)\n");
-        var expected = $"{first} {DepthLimit}|{second} {DepthLimit}" + (form == "dq40Bad" ? "|y@follow = 5 ComparisonLoanConflict_Kd" : string.Empty);
+        var expected = $"{first} {DepthLimit}|{second} {DepthLimit}|{made} {DepthLimit}|{remade} {DepthLimit}" +
+            (form == "dq40Bad" ? "|y@follow = 5 ComparisonLoanConflict_Kd" : string.Empty);
         Assert.Equal(Rows(expected), DepthRecords(c, Analyze(c), form).Select(static x => $"{x.Line} {x.Code}"));
     }
 

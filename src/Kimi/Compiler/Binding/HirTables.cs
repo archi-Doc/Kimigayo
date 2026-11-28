@@ -358,17 +358,13 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> FailingSteps; // Pass: the step a use's published Unresolved lookup failed at, where it is not the use (Binding.ResolvePath.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
     internal StampedColumn<(Binding.QualificationFact Value, Binding.QualificationFact Type), Binding.PassCounter> QualificationStops; // Work: a use's provisional qualification stop in each namespace, read by the resolver's miss, the running pass's working state, released at the freeze (Binding.Qualification.cs).
-    internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
-    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
-    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
     internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
-    internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
     internal StampedColumn<int, Binding.PassCounter> MemberSelections; // Work: a member access's published side and lookup selection, as its row's index in the pass's rows plus 1, the running pass's working state, released at the freeze (Binding.MemberLookup.cs).
@@ -392,7 +388,7 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> SynthesizedCalls; // Work: a call Binding synthesized in the pass, its consumer, the running pass's working state, released at the freeze (Binding.Check.cs).
     internal PagedColumn<List<BindingSymbol>?> GatheredGroups; // Kept: a use's function group gathered at the alias stage, emptied in place at each publication of its head (Binding.Imports.cs).
     internal PagedColumn<(bool Pattern, bool Guard)> IndexedPatterns; // Kept: whether the latest run of a node's pass indexed it as a pattern node or a guard scope, copied to the pass's previous-run lists and emptied at its reset (Binding.Patterns.cs).
-    internal PagedColumn<bool> FormedTypes; // Kept: whether a node forms its Type, written by BindType (a written occurrence, a rooted name's operand), EnumQualifierType, ConstructionTargetType, BindContractReference and the Dictionary literal's binder, emptied at its pass's reset (Binding.Types.cs, FormedTypeRows).
+    internal PagedColumn<FormationFrame> FormedTypes; // Kept: the frame the node formed its Type in, written by BindType (a written occurrence, a rooted name's operand), EnumQualifierType, ConstructionTargetType, BindContractReference and the Dictionary literal's binder, emptied at its pass's reset (Binding.Types.cs, FormedTypeRows).
 
     internal void Resize(int length)
     {
@@ -441,17 +437,13 @@ internal struct NodeColumns
         this.FailingSteps.Grow(length);
         this.QualificationFailures.Grow(length);
         this.QualificationStops.Grow(length);
-        this.PerCallOrigins.Grow(length);
         this.PairFollows.Grow(length);
         this.ImplicitPairFollows.Grow(length);
-        this.PhantomRawOrigins.Grow(length);
-        this.InvalidStaticOriginSlots.Grow(length);
         this.EffectBoundRejections.Grow(length);
         this.ReceiverOperations.Grow(length);
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
         this.ResultContexts.Grow(length);
-        this.CallableConstraints.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
         this.MemberSelections.Grow(length);
@@ -501,17 +493,13 @@ internal struct NodeColumns
         this.FailingSteps.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
         this.QualificationStops.Release();
-        this.PerCallOrigins.Freeze(binding);
         this.PairFollows.Freeze(binding);
         this.ImplicitPairFollows.Freeze(binding);
-        this.PhantomRawOrigins.Freeze(binding);
-        this.InvalidStaticOriginSlots.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
         this.ReceiverOperations.Release();
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
         this.ResultContexts.Release();
-        this.CallableConstraints.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
         this.MemberSelections.Release();
@@ -584,17 +572,13 @@ internal struct NodeColumns
             FailingSteps = this.FailingSteps.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
             QualificationStops = this.QualificationStops.Renumbered(length),
-            PerCallOrigins = this.PerCallOrigins.Renumbered(length),
             PairFollows = this.PairFollows.Renumbered(length),
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
-            PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
-            InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
             ReceiverOperations = this.ReceiverOperations.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
-            CallableConstraints = this.CallableConstraints.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),
             MemberSelections = this.MemberSelections.Renumbered(length),

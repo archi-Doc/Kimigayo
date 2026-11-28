@@ -47,13 +47,13 @@ fn order @44
   _6: i32 temp @58
   bb0:
       StorageLive(_3) @51
-    * _3 = equals(copy _1, copy _2) -> bb1 @51
+    * _3 = requirement equals of Equatable(copy _1, copy _2) -> bb1 @51
   bb1:
       switch copy _3 [0: bb2, otherwise: bb3] @51
   bb2:
       StorageLive(_4) @55
       StorageLive(_5) @55
-      _5 = equals(copy _1, copy _2) -> bb5 @55
+      _5 = requirement equals of Equatable(copy _1, copy _2) -> bb5 @55
   bb3:
       _0 = copy _3 @50
       goto bb4 @50
@@ -68,7 +68,7 @@ fn order @44
       switch copy _4 [0: bb7, otherwise: bb6] @55
   bb6:
       StorageLive(_6) @58
-      _6 = compare(copy _1, copy _2) -> bb9 @58
+      _6 = requirement compare of Comparable(copy _1, copy _2) -> bb9 @58
   bb7:
       _0 = copy _4 @54
       goto bb8 @54

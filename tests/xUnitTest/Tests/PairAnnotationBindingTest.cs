@@ -194,6 +194,19 @@ public partial class PairAnnotationBindingTest
         Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
     }
 
+    // SPEC 8.1.2 (R7-E4 E4c): a pair occurrence's formation cause shows the admitted cases FailTypeRole's Reason recorded, under a static
+    // outer Origin the exclusive ones and without an outer-Origin slot the borrow ones; no scope is read when it is shown.
+    [Theory]
+    [InlineData("struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during static\n", "InvalidOriginBinding_Kd", "s/T during static", "s admits uniq, which a static Origin never admits")]
+    [InlineData("struct Holder<s/T, U>\n    s is ref\n    let value: s/T\n    let other: s/U\n", "MissingOriginBinding_Kd", "s/U", "s admits ref, and a borrow needs an outer-Origin slot")]
+    public void AFormationCauseShowsTheAdmittedCasesItNames(string source, string code, string text, string label)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
+        c.Binding.ReportDiagnostics();
+        var record = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal((code, text, label), (record.Code, record.Text, record.Label));
+    }
+
     // SPEC 8.1.2, 23.1.2 (R7-N5 B3-2, C1's F8): nested static occurrences of one Field are two formation causes, the outer and the inner
     // one, each its own record; a read of the Field, a fit and an interpolated call, rests on the Field's formation and adds none.
     [Fact]

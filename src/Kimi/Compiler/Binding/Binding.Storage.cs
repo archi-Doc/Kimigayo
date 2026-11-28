@@ -13,6 +13,10 @@ public sealed partial class Binding
     private readonly List<BoundEnumCase?> storedCases = new();
     private readonly List<BoundType> enumPayloadTypes = new();
     private readonly TypeMemo<BoundType, BoundType?> completedParts = new(); // CompleteProjections' results.
+    private readonly TypeMemo<(BoundType Type, IntrinsicKind Kind), bool> headerParts = new(); // The Types one header walk met, each under a kind (DemandContainedHeaders).
+    private bool inferringHeader; // An inferred stored Property's header is the innermost one being computed (BindHeader).
+
+    internal int HeaderWalkWork { get; private set; } // The Types the header walks visited (TypeDagScalingTest).
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
@@ -554,17 +558,37 @@ public sealed partial class Binding
                 shape.Types.Add(syntax);
             }
 
-            for (var i = 0; i < container.Members.Count; i++)
+            var members = new StoredSyntax(container);
+            while (members.MoveNext())
             {
-                var member = container.Members[i];
-                if (member is PropertyKoto field && IsStoredVariable(field))
+                var member = members.Member;
+                if (members.Syntax is not { } syntax)
+                {
+                    if (member is FunctionKoto { IsDestructor: true } destructor)
+                    {
+                        shape.DestructorKoto ??= destructor;
+                        if (container is EnumKoto)
+                        {
+                            this.Fail(member, BindingFailure.InvalidTypeFormation);
+                        }
+                    }
+                    else if (container is EnumKoto && member is not (FunctionKoto { IsConstructor: false, IsDestructor: false } or IsKoto or EffectBoundKoto or
+                        SyntaxFormKoto { Akind: KotoKind.ConditionalConformance or KotoKind.AssociatedType }))
+                    {
+                        // An effect item is judged by its owner alone (Binding.Misplaced); it leaves the enum's formation valid.
+                        this.Fail(member, BindingFailure.InvalidTypeFormation);
+                    }
+
+                    continue;
+                }
+
+                if (member is PropertyKoto field)
                 {
                     if (container is EnumKoto)
                     {
                         this.Fail(member, BindingFailure.InvalidTypeFormation);
                     }
 
-                    var syntax = field.TypeKoto ?? field;
                     if (field.TypeKoto is not null)
                     {
                         this.BindType(syntax, scope);
@@ -574,36 +598,15 @@ public sealed partial class Binding
                         this.BindNode(field, scope);
                     }
 
-                    shape.Types.Add(syntax);
                     this.storedFields.Add(field);
                 }
-                else if (TryEnumPayload(member, out var payload))
+                else if (syntax.BoundType is { } type && this.InaccessibleType(type, container.BoundSymbol!, container.BoundSymbol!) is { } inaccessible)
                 {
-                    // The Case and its payload Types were prepared before the headers (PrepareCases).
-                    for (var j = 0; j < payload.Operands.Length; j++)
-                    {
-                        var syntax = payload.Operands[j];
-                        shape.Types.Add(syntax);
-                        if (syntax.BoundType is { } type && this.InaccessibleType(type, container.BoundSymbol!, container.BoundSymbol!) is { } inaccessible)
-                        {
-                            this.RecordAccess(member, inaccessible, syntax);
-                        }
-                    }
+                    // A Case payload operand: the Case and its payload Types were prepared before the headers (PrepareCases).
+                    this.RecordAccess(member, inaccessible, syntax);
                 }
-                else if (member is FunctionKoto { IsDestructor: true } destructor)
-                {
-                    shape.DestructorKoto ??= destructor;
-                    if (container is EnumKoto)
-                    {
-                        this.Fail(member, BindingFailure.InvalidTypeFormation);
-                    }
-                }
-                else if (container is EnumKoto && member is not (FunctionKoto { IsConstructor: false, IsDestructor: false } or IsKoto or EffectBoundKoto or
-                    SyntaxFormKoto { Akind: KotoKind.ConditionalConformance or KotoKind.AssociatedType }))
-                {
-                    // An effect item is judged by its owner alone (Binding.Misplaced); it leaves the enum's formation valid.
-                    this.Fail(member, BindingFailure.InvalidTypeFormation);
-                }
+
+                shape.Types.Add(syntax);
             }
 
             if (container is EnumKoto && shape.Cases.Length == 0)
@@ -617,6 +620,107 @@ public sealed partial class Binding
 
         this.storedFields.Clear(); // The step's scratch is empty at its end (PLAN G949 S1-e's rule).
         this.ValidateEnumProjections();
+    }
+
+    // SPEC 11.6 (PLAN G1220; DECISIONS BU-267): a fact request made while an inferred stored Property's header types its initializer
+    // (inferringHeader, which BindHeader sets for that header alone, so a function's or an annotated header's own requests walk nothing)
+    // demands the Signature query of every stored Property the request's Type contains: the parts the capability rows read and its
+    // declaration's storage in its formals (StoredSyntax; the base through DirectBase), each part the leaf rule does not decide. The parts
+    // are CapabilityParts', except that Copy of a declaration-judged instance reads, as NominalCopy does, each conditional opt-in's premises
+    // for the instance's arguments under each premise's own kind (SubstitutedPremise; SPEC 8.8.2), never an argument no premise names. A
+    // demand that meets the running header is its re-entry, whose rule records the cycle (ReenterHeader); the request then answers as
+    // before. Each Type is visited once per kind per walk (headerParts, this walk's own table), a declaration's storage once per instance
+    // and kind; a nested walk, begun by a header a demand binds, can only overwrite entries of headers it completes, so the walks of a pass
+    // stay bounded by the headers times the parts.
+    // Temporary (DECISIONS BU-267): deleted with its gate when the proof's stored-Type reads demand the Signature query during the headers (R7-D2
+    // d2 / C2 b, PLAN G381's removal).
+    private void DemandContainedHeaders(BoundType type, IntrinsicKind kind, BindingScope scope) => this.DemandHeaders(type, kind, scope, this.headerParts.Begin(this.storageVersion));
+
+    private void DemandHeaders(BoundType type, IntrinsicKind kind, BindingScope scope, uint query)
+    {
+        if (this.headerParts.TryGet((type, kind), query, out _) || this.TryLeafCapability(type, kind, out _))
+        {
+            return;
+        }
+
+        this.headerParts.Set((type, kind), query, true);
+        this.HeaderWalkWork++;
+        if (JudgedByDeclaration(type))
+        {
+            var container = (DeclarationContainerKoto)type.Symbol!.Declaration!;
+            this.DemandStoredHeaders(container, kind, scope, query); // Once per instance: its stored Types repeat in formals, met once.
+            if (kind == IntrinsicKind.Copy)
+            {
+                this.DemandPremiseHeaders(container, type, scope, query);
+                return;
+            }
+        }
+
+        foreach (var (part, _, _) in new CapabilityParts(type, BoundType.Unit))
+        {
+            if (part is not null)
+            {
+                this.DemandHeaders(part, kind, scope, query);
+            }
+        }
+    }
+
+    private void DemandPremiseHeaders(DeclarationContainerKoto container, BoundType type, BindingScope scope, uint query)
+    {
+        if (!this.copyByType.TryGetValue(container, out var copies))
+        {
+            return;
+        }
+
+        for (var i = 0; i < copies.Count; i++)
+        {
+            for (var j = 0; j < (copies[i].Premises?.Operands.Length ?? 0); j++)
+            {
+                this.DemandConditionHeaders(this.SubstitutedPremise((IsKoto)copies[i].Premises!.Operands[j], type, scope), scope, query);
+            }
+        }
+    }
+
+    // A premise's atoms, each under its own kind where the intrinsic table judges it, as JudgeConstraintAtom requests it (SPEC 8.8.1: the
+    // requirements of one clause joined by `and`).
+    private void DemandConditionHeaders(BoundConstraint? premise, BindingScope scope, uint query)
+    {
+        if (premise is { Kind: ConstraintKind.And })
+        {
+            this.DemandConditionHeaders(premise.Left, scope, query);
+            this.DemandConditionHeaders(premise.Right, scope, query);
+        }
+        else if (premise is { Subject: { } subject, Contract: { } contract } && IntrinsicContract.Of(contract.Intrinsic).Judged)
+        {
+            this.DemandHeaders(subject, contract.Intrinsic, scope, query);
+        }
+    }
+
+    private void DemandStoredHeaders(DeclarationContainerKoto container, IntrinsicKind kind, BindingScope scope, uint query)
+    {
+        if (container is StructKoto structure && this.DirectBase(structure) is { } baseSymbol)
+        {
+            this.DemandHeaders(structure.BaseClause!.BoundType ?? this.SelfType(baseSymbol), kind, scope, query);
+        }
+
+        var members = new StoredSyntax(container);
+        while (members.MoveNext())
+        {
+            if (members.Syntax is not { } syntax)
+            {
+                continue;
+            }
+
+            if (members.Member is PropertyKoto { BoundSymbol: { } field })
+            {
+                this.BindHeader(field);
+            }
+
+            if ((members.Member is PropertyKoto ? members.Member.BoundSymbol?.Type : syntax.BoundType) is { } stored)
+            {
+                this.DemandHeaders(stored, kind, scope, query);
+            }
+        }
     }
 
     // SPEC 9.7.2, 15.3.1 (PLAN G425): a declaration's Type at an occurrence of its Type, every Type and declared Origin slot mapped to the
@@ -847,5 +951,56 @@ public sealed partial class Binding
             CallResultSlot => result,
             _ => null,
         };
+    }
+
+    // A container's members in declaration order with the syntax each stores (SPEC 11.7: layout, Copy derivation and destruction use
+    // only stored Fields and base components; SPEC 15.2.3: the payloads of every Case): a stored Property once, with its annotation or,
+    // inferred, itself; a Case payload once per operand (none for an empty payload); any other member once, storing nothing (Syntax
+    // null). The one enumeration of a container's stored syntax: PrepareStorage forms the shape from it, the header walk demands its Properties
+    // (DemandStoredHeaders). Base clauses are no members.
+    private ref struct StoredSyntax(DeclarationContainerKoto container)
+    {
+        private readonly DeclarationContainerKoto container = container;
+        private int member = -1;
+        private int operand = -1;
+        private SyntaxFormKoto? payload;
+
+        public Koto Member { readonly get; private set; } = null!;
+
+        public Koto? Syntax { readonly get; private set; }
+
+        public bool MoveNext()
+        {
+            if (this.payload is { } open && ++this.operand < open.Operands.Length)
+            {
+                this.Syntax = open.Operands[this.operand];
+                return true;
+            }
+
+            this.payload = null;
+            while (++this.member < this.container.Members.Count)
+            {
+                this.Member = this.container.Members[this.member];
+                if (this.Member is PropertyKoto field && IsStoredVariable(field))
+                {
+                    this.Syntax = field.TypeKoto ?? field;
+                    return true;
+                }
+
+                if (!TryEnumPayload(this.Member, out var found))
+                {
+                    this.Syntax = null;
+                    return true;
+                }
+
+                if (found.Operands.Length != 0)
+                {
+                    (this.payload, this.operand, this.Syntax) = (found, 0, found.Operands[0]);
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

@@ -16,6 +16,10 @@ public class GenericStorageEmissionTest
     private const string Anchored = "struct Pair<s/T, U> {a}\n    s is value or valueborrow\n    public let anchor: ref/i32 during a\n    public let value: s/T\n    public let other: s/U during a\n" +
         "    public init(anchor: ref/i32 during a, value: s/T, other: s/U during a)\n        self.anchor = anchor\n        self.value = value@move\n        self.other = other@move\n";
 
+    // Two pair binders, a clause between the header slots and a Field nesting both binders' layers.
+    private const string NestedPair = "struct Pair<s/T, t/U> {a, b}\n    s is value or valueborrow\n    t is value or valueborrow\n    origin b outlives a\n    public let anchor: ref/i32 during a\n    public let anchor2: ref/i32 during b\n    public let value: s/T\n    public let other: t/U\n    public let both: s/(t/i64 during b) during a\n" +
+        "    public init(anchor: ref/i32 during a, anchor2: ref/i32 during b, value: s/T, other: t/U, both: s/(t/i64 during b) during a)\n        self.anchor = anchor\n        self.anchor2 = anchor2\n        self.value = value@move\n        self.other = other@move\n        self.both = both@move\n";
+
     private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     public static TheoryData<string, string, string> Fixtures => new()
@@ -37,6 +41,8 @@ public class GenericStorageEmissionTest
 
     // SPEC 8.1.1, 8.1.2, 8.15: a struct Field of pair Type stores the instance's Type in every admitted Semantics, the original
     // `s/T`, an application `s/U` and its conditional slot `s/U during a` alike; each header slot is anchored by a stored Origin.
+    // NestedField forms its instances over a function's input Origin; its former script, Borrows of one local under Pair's clause, waits
+    // for PLAN G1459 (PairFieldsKeepTheirChecks; O-548 (A), ruling G922-37).
     public static TheoryData<string, string, string> PairFixtures => new()
     {
         { "Ref", Holder + "let n: i32 = 3\nlet h = Holder<ref/i32>.init(n@ref)\nConsole.writeLine(\"\\(h.value)\")", "3\n" },
@@ -54,7 +60,7 @@ public class GenericStorageEmissionTest
         { "OptionField", "struct Holder<s/T>\n    s is value or valueborrow\n    public let value: Option<s/T>\n    public init(value: Option<s/T>) => self.value = value@move\nlet n: i32 = 3\nlet h = Holder<ref/i32>.init(.Some(n@ref))\nlet g = Holder<i32>.init(.None)\nmatch h.value\n    .Some(let v) => Console.writeLine(\"\\(v@follow)\")\n    .None => Console.writeLine(\"none\")\nmatch g.value\n    .Some(let v) => Console.writeLine(\"\\(v)\")\n    .None => Console.writeLine(\"none\")", "3\nnone\n" },
         { "PairOptionField", "struct Pair<s/T, U> {a}\n    s is value or valueborrow\n    public let anchor: ref/i32 during a\n    public let value: s/T\n    public let other: s/Option<U> during a\n    public init(anchor: ref/i32 during a, value: s/T, other: s/Option<U> during a)\n        self.anchor = anchor\n        self.value = value@move\n        self.other = other@move\nlet k: i32 = 9\nlet y: Option<i64> = .Some(7)\nlet h = Pair<ref/i32, i64>.init(k@ref, k@ref, y@ref)\nlet g = Pair<i32, i64>.init(k@ref, 5, .Some(6))\nConsole.writeLine(\"ok\")", "ok\n" },
         { "ArrayField", "struct Pair<s/T, U> {a}\n    s is value or valueborrow\n    public let anchor: ref/i32 during a\n    public let value: s/T\n    public let other: Array<s/U during a>\n    public init(anchor: ref/i32 during a, value: s/T, other: Array<s/U during a>)\n        self.anchor = anchor\n        self.value = value@move\n        self.other = other@move\nlet k: i32 = 9\nlet g = Pair<i32, i64>.init(k@ref, 5, [6, 7])\nConsole.writeLine(\"\\(g.other.length)\")", "2\n" },
-        { "NestedField", "struct Pair<s/T, t/U> {a, b}\n    s is value or valueborrow\n    t is value or valueborrow\n    origin b outlives a\n    public let anchor: ref/i32 during a\n    public let anchor2: ref/i32 during b\n    public let value: s/T\n    public let other: t/U\n    public let both: s/(t/i64 during b) during a\n    public init(anchor: ref/i32 during a, anchor2: ref/i32 during b, value: s/T, other: t/U, both: s/(t/i64 during b) during a)\n        self.anchor = anchor\n        self.anchor2 = anchor2\n        self.value = value@move\n        self.other = other@move\n        self.both = both@move\nlet k: i32 = 9\nlet y: i64 = 7\nlet r = y@ref\nlet h = Pair<ref/i32, ref/i32>.init(k@ref, k@ref, k@ref, k@ref, r@ref)\nlet g = Pair<i32, i32>.init(k@ref, k@ref, 5, 6, 8)\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "NestedField", NestedPair + "func build(x: ref/i32, w: ref/(ref/i64 during x) during x)\n    let h = Pair<ref/i32, ref/i32>.init(x, x, x, x, w)\n    let g = Pair<i32, i32>.init(x, x, 5, 6, 8)\nlet k: i32 = 9\nlet y: i64 = 7\nlet r = y@ref\nbuild(k@ref, r@ref)\nConsole.writeLine(\"ok\")", "ok\n" },
         { "EnumPayload", "enum Choice<s/T, U> {a}\n    s is owner or ref\n    First(s/T)\n    Second(s/U during a)\nlet y: i64 = 7\nlet c: Choice<ref/i32, i64> = .Second(y@ref)\nlet d: Choice<i32, i64> = .Second(8)\nConsole.writeLine(\"ok\")", "ok\n" },
         { "ObjectFamily", "struct Node\n    public let n: i32\n    public init(n: i32) => self.n = n\nstruct Pair<s/T, U>\n    s is object\n    U is ObjectPayload\n    public let value: s/T\n    public let other: s/U\n    public init(value: s/T, other: s/U)\n        self.value = value@move\n        self.other = other@move\nlet a = Node.init(1)@obj\nlet b = Node.init(2)@obj\nlet h = Pair<obj/Node, Node>.init(a@move, b@move)\nConsole.writeLine(\"ok\")", "ok\n" },
     };
@@ -112,6 +118,9 @@ public class GenericStorageEmissionTest
     [InlineData(Holder + "func leak() -> Holder<ref/i32 during static>\n    let n: i32 = 3\n    let h = Holder<ref/i32>.init(n@ref)\n    return h@move\nlet h = leak()\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
     [InlineData("struct Holder<s/T>\n    public let value: s/T\n    public init(value: s/T) => self.value = value\nlet n: i32 = 3\nlet h = Holder<ref/i32>.init(n@ref)\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.TransferRequired_Kd))]
     [InlineData("struct Holder<s/T, U> {a}\n    let value: s/T\n    let other: s/U during a\nConsole.writeLine(\"unused\")", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    // nf, NestedField's former script, V (SPEC 15.6.4 step 3, 15.6.5: Pair's `b outlives a` over Borrows of script locals, each its own
+    // finite Origin): a Type clause over body-formed Origins, unproven at each instance until PLAN G1459 (O-548 (A), ruling G922-37).
+    [InlineData(NestedPair + "let k: i32 = 9\nlet y: i64 = 7\nlet r = y@ref\nlet h = Pair<ref/i32, ref/i32>.init(k@ref, k@ref, k@ref, k@ref, r@ref)\nlet g = Pair<i32, i32>.init(k@ref, k@ref, 5, 6, 8)\nConsole.writeLine(\"ok\")", nameof(DiagnosticCode.UnprovenConstraint_Kd), nameof(DiagnosticCode.UnprovenConstraint_Kd))]
     public void PairFieldsKeepTheirChecks(string source, params string[] codes)
         => Assert.Equal(codes, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
 

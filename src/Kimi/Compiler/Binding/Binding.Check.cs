@@ -225,7 +225,7 @@ public sealed partial class Binding
     }
 
     // A failed node's issue of a Final pass, or its derived issue, with its problems; a node without a failure publishes its problems that
-    // set no slot (a located limit, RecordLocatedLimit, or a report's Defect; its Origin records are ReportResolvedOriginRecords'). True
+    // set no slot (a located limit, RecordLocatedLimit, or a report's Defect; its Origin records are ReportOutsideIssues'). True
     // when such a node published one: a rejected part, so the Bind is not complete (BindingResult.LimitedCount).
     private bool CollectIssue(Koto node, BindingMode mode)
     {

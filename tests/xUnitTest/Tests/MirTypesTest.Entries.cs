@@ -61,7 +61,7 @@ public sealed partial class MirTypesTest
         Assert.Empty(members);
         Assert.Empty(entries);
 
-        string Guard(BoundType type) => MirTypes.HoldsLoans(type, c.Types, seen, members, entries, out var writes) ? writes.ToString() : "-";
+        string Guard(BoundType type) => MirTypes.HoldsLoans(type, c.Types, seen, members, entries) is { Loan: true, Writes: var writes } ? writes.ToString() : "-";
     }
 
     // IMPL 21.3.2 (the limit is implementation-defined; fact.md §1, row 9; PLAN G416 U2): a level is one entry. A Case's payload component
@@ -84,7 +84,7 @@ public sealed partial class MirTypesTest
         var (seen, entries) = (new Dictionary<MirHoldingKey, MirModeDepths>(), new List<Hold>());
         Assert.Equal(
             [("x", "Through"), ("eb", enumBorrow), ("ei", enumInteger), ("db", dictionaryBorrow), ("di", dictionaryInteger)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], entries, out var writes) ? writes.ToString() : "-")));
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], entries) is { Loan: true, Writes: var writes } ? writes.ToString() : "-")));
 
         static string Nested(string open, string close, string inner, int levels)
             => string.Concat(Enumerable.Repeat(open, levels)) + inner + string.Concat(Enumerable.Repeat(close, levels));

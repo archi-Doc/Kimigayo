@@ -858,7 +858,7 @@ internal sealed class WorkspaceCheck
             requiresTest |= testPlan.Project?.HasTestSources == true;
             if (testPlan.Project is { Project: null })
             {
-                this.VisitUnit(inputs, testPlan); // A failing project keeps its test unit Blocked.
+                this.VisitUnit(inputs, testPlan); // The test unit shares the project load outcome (Blocked or Faulted).
                 continue;
             }
 

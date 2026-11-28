@@ -159,6 +159,12 @@ internal static partial class KimiLibraryCatalog
         // as a Storage keyed by the start and the range's Type (MirBuilder.First), never a Call.
         new(KimiDeclarationId.ViewStart, Form: true),
         new(KimiDeclarationId.RawReadVolatile), // SPEC 5.6: its storage's NoStore row (KimiLibraryCatalog.Rows.cs).
+        // SPEC 22.4.5: the platform a freestanding program supplies; Binding's startup check selects it by this identity.
+        new(KimiDeclarationId.Platform),
+        // IMPL 21.6: the frame an interrupt entry passes and the Contracts whose `handle` it runs (InterruptEntries), members of `Kimi.X86`.
+        new(KimiDeclarationId.InterruptFrame, X86: true),
+        new(KimiDeclarationId.InterruptHandler, X86: true),
+        new(KimiDeclarationId.ErrorCodeHandler, X86: true),
     ];
 
     // The public declaration of each linked implementation, by ID; -1 elsewhere.

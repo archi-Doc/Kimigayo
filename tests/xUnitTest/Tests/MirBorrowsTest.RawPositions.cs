@@ -194,10 +194,10 @@ public sealed partial class MirBorrowsTest
     // SPEC 5.7 Authority, 5.2.1 condition 3 (DECISIONS BU-113, PLAN G493): a Type argument's raw layer is judged where its Origin is bound,
     // by the binder's declared inputs, never by the callee's instantiated ones. Where the caller states `a` by `uniq` as well as `ref`, the
     // callee may store v through it and `z = 5` (or the scope end, e02 and e03) errs: s01, s03 (a method), s05 (a nested Type argument),
-    // a02 (a Tuple), a03 (`ref` through a `ref`-kept slot) and x04 (`uniq` through a slot) err, as on f69d55e12; G148 (1)'s route
-    // (BU-108, W-42) accepted s01, s03, s05, a03 and e02/e03 by counting the callee's Type argument `V = ref/… during a`. In s01, s02,
-    // s04, s05, a02, a03, e02 and x04 the layer lies in the binding of the callee's own Type parameter: `w.value` (s04: `*w`), storage
-    // of that U, holds `v` or `k` only where a premise makes it one (SPEC 15.6.4; the owner's O-360 (a)), but the holder the layer
+    // a02 (a Tuple) and a03 (`ref` through a `ref`-kept slot) err, as on f69d55e12; G148 (1)'s route (BU-108, W-42) accepted s01, s03,
+    // s05, a03 and e02/e03 by counting the callee's Type argument `V = ref/… during a`. In s01, s02, s04, s05, a02, a03 and e02 the layer
+    // lies in the binding of the callee's own Type parameter: `w.value` (s04: `*w`), storage of that U, holds `v` or `k` only where a
+    // premise makes it one (SPEC 15.6.4; the owner's O-360 (a)), but the holder the layer
     // addresses is reached, hidden or not, and takes what the borrows its Origin belongs to admit (5.7 Calls; the owner's O-312 (a);
     // PLAN G935 c3-5 reverts c2's relabel of these rows to valid). a03's `let vw` record comes back with them as on fcd6a5381, an
     // over-report on an invalid program (k's own value, a borrow of vw, fits no `raw/u8` holder; the holder past the layer is read as
@@ -208,15 +208,17 @@ public sealed partial class MirBorrowsTest
     // before). put's own pair binder `s/T during a` admits `uniq`, so its layer is not capped whatever case the call selects (every
     // admitted Semantics case decides the cap, SPEC 5.2.1, 5.7; the owner's O-36 (a)): t11u, whose pointer comes from `u: uniq`, errs
     // (accepted before), as t11i does (by `z = 5` alone: its former record at `var q` needed p's own value, the exclusive borrow of q,
-    // kept in `*x`, storage of putT11i's own T, which holds no such value; PLAN G935). t11v errs too, though it is valid only by its read-only path (SPEC 5.2.1, the t09c class); a
-    // recorded limit under the owner's O-36 (a), removed when a per-value raw provenance fact exists (G148 (1)).
+    // kept in `*x`, storage of putT11i's own T, which holds no such value; PLAN G935). x04 (`uniq` through a slot) and t11v
+    // (put's own pair binder) are valid only by their read-only path: each pointer is read through a `ref/` parameter (`r2@follow`,
+    // `r@follow`), which reaches what it addresses for reads only, so a `uniq`-kept slot or a pair binder caps that path and grants it
+    // nothing (SPEC 5.2.1 condition 3, 15.6.4).
     [Fact]
     public void ATypeArgumentsLayerIsJudgedWhereItsOriginIsBound()
         => Assert.Equal(
             [
                 "s01: z = 5", "s02: z = 5", "s03: z = 5", "s04: z = 5", "s05: z = 5", "a02: z = 5", "a03: z = 5",
-                "a03: let vw: ViewA03 during a = ViewA03.init(r)", "e02: var z = 3", "e03: var z = 3", "x04: z = 5", "t04i: z = 5",
-                "t11u: z = 5", "t11i: z = 5", "t11v: z = 5",
+                "a03: let vw: ViewA03 during a = ViewA03.init(r)", "e02: var z = 3", "e03: var z = 3", "t04i: z = 5",
+                "t11u: z = 5", "t11i: z = 5",
             ],
             Problems("""
                 func putAny<U, V>(t: uniq/U, v: V) => ()

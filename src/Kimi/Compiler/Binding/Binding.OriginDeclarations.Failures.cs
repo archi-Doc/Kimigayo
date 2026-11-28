@@ -6,8 +6,8 @@ namespace Kimi.Compiler;
 
 // The failure scope of an Origin declaration (SPEC 15.3.3, 23.1.2; DECISIONS BU-62, BU-68, R4-M118; H11b-0 B1): a failed clause fails
 // itself, not its owner, and the part each dependent rests on.
-// - Responsibility: a clause that does not bind (FailOriginClause: a guessed operator or an unavailable operand), the first such clause,
-//   `Failure`, and each one's bound Origins (FailedClauses); the slots its bound Origins name (RestsOnFailedClause); `PendingFailure`'s
+// - Responsibility: a clause that does not bind (FailOriginClause: a guessed operator or an unavailable operand) and each one's bound
+//   Origins (FailedClauses); the slots its bound Origins name (RestsOnFailedClause); `PendingFailure`'s
 //   one writer (RestPendingOn: path a here, path c at the Type, alias target and Case payload sites) and its reader (UnboundCause); an
 //   end that rests on a failed part (Rests; a `let` region through its published value) and rule W's one per-conjunct split
 //   (HoldsResting; DECISIONS Q13, PLAN G739). A fixed-fixed relation only a failed clause's repair could prove is a body row A5 judges
@@ -17,7 +17,7 @@ namespace Kimi.Compiler;
 // - Outputs: the clause's InvalidOrigin failure or its dependence on the unavailable operand; the named slots left Unbound; the part an
 //   Unbound atom rests on, or none; whether a conjunct holds by a resting end. Its owner's state, slot and other clauses are untouched:
 //   the declaration completes as one without the failed clause.
-// - Invariants: `Failure` and `PendingFailure` hold the first failed clause or part, and these and `FailedClauses` are reset each pass;
+// - Invariants: `PendingFailure` holds the first failed clause or part, and it and `FailedClauses` are reset each pass;
 //   RestPendingOn changes no State, so a later bind in State 1 keeps the same pending atom; a failed clause supplies no equality,
 //   outlives edge, elision evidence, obligation or premise.
 // - Prohibitions: no proof or judgment of its own; no write to the owner's state or slot; no failure lookup per binder (R4-M118,
@@ -112,14 +112,13 @@ public sealed partial class Binding
         (declaration.Forming.FailedClauses ??= new(1)).Add((left, right));
         if (IsRecovery(clause, out _))
         {
-            this.Fail(clause, BindingFailure.InvalidOrigin);
+            this.Record(clause, BindingFailure.InvalidOrigin, []);
         }
         else
         {
             this.CompleteDependent(clause, left is null ? clause.Left : clause.Right);
         }
 
-        declaration.Forming.Failure ??= clause;
         RestPendingOn(declaration, clause);
     }
 

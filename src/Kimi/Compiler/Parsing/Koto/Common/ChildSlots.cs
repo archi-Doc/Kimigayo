@@ -2,7 +2,8 @@
 
 // Owns the source-ordered child-slot walk used for visits and replacement.
 // Input: one node's declared slots and one requested operation. Output: visited nodes or updated slots.
-// Every child shape has one slot definition; non-replacement walks preserve the tree.
+// Every child shape has one slot definition; non-replacement walks preserve the tree. A source slot (a directive's marker, or its
+// Conditions and excluded parts) is handed to KotoVisitor.VisitSource, so a visitor walks excluded syntax only by overriding it.
 // Must not infer semantic children or maintain a second traversal (a collected child list is one: a reader visits).
 
 using System.Runtime.CompilerServices;
@@ -75,17 +76,29 @@ public ref struct ChildSlots
                 visitor.Visit(children[i]);
             }
         }
-        else if (this.Replacement is T replacement && children is IList<T> mutable && (!mutable.IsReadOnly || children is T[]))
+        else
         {
-            for (var i = 0; i < children.Count; i++)
-            {
-                if (ReferenceEquals(children[i], this.original))
-                {
-                    mutable[i] = replacement;
-                    this.Replaced = true;
-                    return;
-                }
-            }
+            this.ReplaceIn(children);
+        }
+    }
+
+    /// <summary>Walks a source slot: a compile-time directive's marker, or its Conditions and excluded parts (SPEC 19.4). A visit hands
+    /// the list to <see cref="KotoVisitor.VisitSource"/>, which walks nothing by default; a replacement replaces by identity.</summary>
+    /// <param name="source">The source slot's nodes, or null.</param>
+    public void Source(IReadOnlyList<Koto>? source)
+    {
+        if (source is null)
+        {
+            return;
+        }
+
+        if (this.visitor is { } visitor)
+        {
+            visitor.VisitSource(source);
+        }
+        else
+        {
+            this.ReplaceIn(source);
         }
     }
 
@@ -96,6 +109,23 @@ public ref struct ChildSlots
         if (this.original is null)
         {
             this.Slot(child);
+        }
+    }
+
+    private void ReplaceIn<T>(IReadOnlyList<T> children)
+        where T : Koto
+    {
+        if (this.Replacement is T replacement && children is IList<T> mutable && (!mutable.IsReadOnly || children is T[]))
+        {
+            for (var i = 0; i < children.Count; i++)
+            {
+                if (ReferenceEquals(children[i], this.original))
+                {
+                    mutable[i] = replacement;
+                    this.Replaced = true;
+                    return;
+                }
+            }
         }
     }
 

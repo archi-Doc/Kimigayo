@@ -34,6 +34,24 @@ public class GenericCallFormationBindingTest
         Assert.NotEqual(BindingState.Resolved, node.StateOf());
     }
 
+    // PLAN G144 F1 (SPEC 23.1.2, 9.6, 18.1): a decision's one read inside its own unheld frame is a read of that frame, so the frame's
+    // end keeps it. The Case call's frame reads its callee (resting on the written list) before the call rests on the written
+    // `Kimi.Option<i32, i64>`, so both are its causes; dev's frame end kept the callee alone (f1-o). The argument `missing` reads
+    // neither, so its record stays beside the written Type's (f1-o2).
+    [Theory]
+    [InlineData("Kimi.Option<i32, i64>.Some(1)", "InvalidTypeFormation_Kd Kimi.Option<i32, i64>")] // f1-o
+    [InlineData("Kimi.Option<i32, i64>.Some(missing)", "InvalidTypeFormation_Kd Kimi.Option<i32, i64>|UnresolvedBinding_Kd missing")] // f1-o2
+    public void ADecisionsReadInItsOwnFrameIsAReadOfTheFrame(string use, string records)
+    {
+        var c = CompilationTestHelper.Parse("func f()\n    let e = " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var written = nodes.OfType<GenericsKoto>().Single(x => x.ToString() == "Kimi.Option<i32, i64>");
+        var call = nodes.OfType<InvocationKoto>().Single(x => x.ToString() == use);
+        Assert.Contains(c.Binding.FailureCauses(call)!, x => ReferenceEquals(x.Subject, written));
+    }
+
     // PLAN's open issue on a decision's inline-bound callee or reference path (E3e ruling 23; SPEC 23.1.2, 8.3): a static member's call
     // (r2l) or reference (r2r) whose failed Type-application qualifier sits under its explicit-Type-argument name, a member access its
     // binder binds inline, is read by no decision, so the use keeps its Type and its reader records a dependent TypeMismatch_Kd beside

@@ -4,13 +4,33 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// The Origin proof and the relation judge (SPEC 15.3.3, 15.3.6, 15.4.4, 15.6.1, 15.6.5; PLAN G74; DECISIONS R7-M66, R7-M120).
+// - Responsibility: the pure proof (ProvesOriginOutlives; Final's IsVerifiedOriginObligation) and an Origin's one resolution at its
+//   use (OriginAtUse); a fit's Origin part (FitOrigin, FitConjunct) and the bounds it gives an open initializer's omitted Origins
+//   (FitOriginOutlives, CollectInitializerBound); a Type's clauses, proven (CheckTypeOriginRelations) or obligations at an occurrence
+//   (AddTypeClauseObligations), a callee's in a comparison (CheckCallOriginRelations) and Type declarations' Origin contracts
+//   (BindTypeOriginContracts); a comparison's region rows (LeavesBodyRows, ComparedRegionLimit); and the relation judge
+//   (JudgeOriginRelation, JudgeOriginObligation) for OJ1, OJ3 and OJ4 alone: the declaration frame (JudgeDeclarationPosition,
+//   FailedDeclaredRelation), Owned's static check (RefutedStatic) and a Callable comparison (OriginFailure, ComparedRegionLimit,
+//   LeavesBodyRows).
+// - Inputs: the premises at a use (EntailsOrigin, Binding.OriginPremises.cs), the Origin declarations and local initializers, the
+//   classes (Binding.OriginClasses.cs) and the region graph.
+// - Outputs: a proof's answer, a judgment (OriginJudgment), the obligations a fit or a Type's clauses form (AddObligation) and a
+//   comparison's rows in its query's row sink (comparisonRows).
+// - Invariants: a proof request leaves originStateVersion unchanged (PLAN G74's throw); between fixed Origins the judge reads premises
+//   alone, so a relation they do not prove is Unknown.
+// - Prohibitions: no body relation is judged here (FormBodyRelation forms its row and A5 judges it); no record (its callers record);
+//   no message text.
 public sealed partial class Binding
 {
     // The row sink of every reader of a comparison's region conjuncts (CallableInstance.Rows; LeavesBodyRows): one reused list (warm
     // 0 B), each reader's segment from the end it found when it built its query, formed or dropped and truncated when it returns.
     private readonly List<BindingObligation> comparisonRows = new();
 
-    // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
+    // The one version of the Origin state that premise environments are built from: Origin declarations' formation and replacements,
+    // local initializer inference, inherited declarations and the obligations whose region bounds R5 and J1 read. A reused environment (a
+    // premise session's, a Callable comparison's, a body's oracle) is valid only at the version it was built at, and a proof request
+    // leaves it unchanged (PLAN G74). It stays while a session's judge changes that state between its requests (DECISIONS R7-M120).
     private int originStateVersion;
 
     // The candidate evaluations in progress (EvaluateCallCandidates): the Origin part of a fit there is the pure answer, since only the
@@ -89,16 +109,18 @@ public sealed partial class Binding
     }
 
     // The atom that supplies an Origin at its use (DECISIONS R4-M133): the Origin declarations and local initializers that enclose the use
-    // applied, innermost first, and no receiver resolution: a Borrow's own atom, which a classified Closure's receiver resolution alone
-    // turns into ρ. A record's Supplier is this, at its use. A `let` region, written or a declaration's replacement, reads as its value in
-    // its own body (RegionValueAtUse; PLAN G492-a (ii)).
+    // applied, innermost first, completed (CompletedOrigin), and no receiver resolution: a Borrow's own atom, which a classified Closure's
+    // receiver resolution alone turns into ρ (ResolveReceiver, the step after this one). A record's Supplier is this, at its use. A `let`
+    // region, written or a declaration's replacement, reads as its value in its own body (RegionValueAtUse; PLAN G492-a (ii)).
     internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use) => this.CompletedOrigin(this.RegionValueAtUse(this.DeclaredAtUse(origin, use), use));
 
     // O-400 (b) (PLAN G492-a (ii) Revision 5): a failed condition of a Callable comparison is the located limit where a direction its
-    // ends' values do not prove has a `let` region of the use's body at its shorter end: the comparison reads that end as the region
-    // (O-363 (a)), which may lie inside its value, so only the region reading decides the condition, and the uses of the compared Type
-    // read values (LeavesBodyRows leaves no row their values do not prove), until (a) or (a') designs the region reading at uses. A
-    // direction with a fixed shorter end keeps its record: a `let` region outlives nothing its value does not, so the readings agree.
+    // ends' values do not prove has, at its shorter end, a region of the use's body published as an inclusion (ReadsLetValue: a `let`
+    // region, or a slot an equality fixes to one, FixedRegion): the comparison reads that end as the region (O-363 (a)), which may lie
+    // inside its value, so only the region reading decides the condition, and the uses of the compared Type read values (LeavesBodyRows
+    // leaves no row their values do not prove), until (a) or (a') designs the region reading at uses. A direction with a fixed shorter end
+    // keeps its record: a `let` region outlives nothing its value does not, so the readings agree; so does a region equal to its value (a
+    // slot fixed by equality to an Origin through which no inclusion is read, FixedRegion; SPEC 15.3.6) at either end.
     // Valid and invalid programs alike: no fact at the comparison separates them, since each verdict is decided at the uses of the
     // compared Type (us2 and us2n are identical through the comparison). So the invalid us family is rejected at the comparison by
     // this limit at dev's UnprovenOriginContract_Kd site, a record that differs from the one O-400 (b) states (Q13; no acceptance move).
@@ -111,8 +133,27 @@ public sealed partial class Binding
             => this.ReadsLetValue(b, use) || this.JudgeOriginRelation(a, b, use, this.formingBody) == OriginJudgment.Proven;
     }
 
-    // Whether `end` holds a `let` region of the use's body, which a use reads as its value (RegionValueAtUse changes it; O-400 (b)).
-    internal bool ReadsLetValue(BoundOrigin end, Koto use) => !ReferenceEquals(this.RegionValueAtUse(end, use), end);
+    // Whether `end` holds a region of the use's body that may lie inside the value a use reads for it (RegionValueAtUse): a value published
+    // as an inclusion (LocalRegion.Equality false): a `let` region's, or that of a `let` or `var` slot an equality fixes to such an end
+    // (the name, C-548's, says its `let` case). A region whose value is an equality equals it, so it is none and the value reading
+    // decides (SPEC 15.3.6 "Unless fixed by equality"; DECISIONS R8-M56 as amended, C-548, C-554). Read by O-400 (b)'s limit
+    // (ComparedRegionLimit) and by FixedRegion, whose region equal to such an end lies inside its value too.
+    internal bool ReadsLetValue(BoundOrigin end, Koto use)
+    {
+        for (var i = 0; this.regionValues != 0 && i < (end.Kind == OriginKind.Intersection ? end.Operands.Count : 1); i++)
+        {
+            if (this.ValueRow(end.Kind == OriginKind.Intersection ? end.Operands[i] : end, BodyOwner(use)) is { Equality: false })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether `end` holds a region of the use's body with a published value, an inclusion or an equality, which a use reads as that value
+    // (RegionValueAtUse changes it): the comparison leaves a row over it only where the values prove it (LeavesBodyRows, O-400 (b)).
+    internal bool ReadsAsValue(BoundOrigin end, Koto use) => !ReferenceEquals(this.RegionValueAtUse(end, use), end);
 
     // The order in which a judgment fails a relation: Refuted before Unknown before Unrepresentable.
     private static int Severity(OriginJudgment judgment) => judgment switch
@@ -137,7 +178,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1: the judge reads premises alone, so a relation between two fixed Origins it does not prove is Unknown, a region at a fixed
-    // end included, whose value is no premise: no reader takes it as holding. A caller that leaves a row asks BodyChain first.
+    // end included, whose value is no premise: no reader takes it as holding. A caller that leaves a row asks ConstrainsRegions first.
     private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
         if (UnstatedRelation(longer, shorter) is { } holds)
@@ -209,8 +250,8 @@ public sealed partial class Binding
 
     // The one resolution of an Origin at its use (2a0-D D4), which every judgment, record, the old reporter and the C1-F4 view read: the
     // atom that supplies it there (SuppliedAtUse; a deferred result slot's atom Final proved first read as its completion, R7-O2 O2-F),
-    // then the receiver of each classified Closure that encloses the use (ResolveReceiver), innermost first.
-    private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use) => this.ReceiverAtUse(this.SuppliedAtUse(origin, use), use);
+    // then the receiver resolution (ResolveReceiver): DECISIONS R4-M133's composition.
+    private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use) => this.ResolveReceiver(this.SuppliedAtUse(origin, use));
 
     // SPEC 15.3.7, 15.4.4 under the owner's O-363 (a): an end of a relation of the Callable comparison `comparison` (InComparison) at its
     // use, in its walk and in its conditions alike. A comparison is a later use that constrains a `let` local's slot, so a `let` region of
@@ -228,11 +269,11 @@ public sealed partial class Binding
 
     // A row's end as its producer read it (SuppliedAtUse with the row), its receivers resolved: OriginAtUse's composition for a row.
     private BoundOrigin OriginAtUse(BoundOrigin origin, in BindingObligation obligation)
-        => this.ReceiverAtUse(this.SuppliedAtUse(origin, obligation), obligation.Use);
+        => this.ResolveReceiver(this.SuppliedAtUse(origin, obligation));
 
     // An Origin at its use as written: OriginAtUse with a `let` region kept as the slot, not its value (RegionValueAtUse). A written
     // Origin binds so (BindOrigin), and a comparison's relation reads so (above); Binding.LocalRegions.cs's contract.
-    private BoundOrigin SlotAtUse(BoundOrigin origin, Koto use) => this.ReceiverAtUse(this.DeclaredAtUse(origin, use), use);
+    private BoundOrigin SlotAtUse(BoundOrigin origin, Koto use) => this.ResolveReceiver(this.DeclaredAtUse(origin, use));
 
     // The Origin declarations and local initializers that enclose the use applied, innermost first.
     private BoundOrigin DeclaredAtUse(BoundOrigin origin, Koto use)
@@ -254,58 +295,49 @@ public sealed partial class Binding
         return origin;
     }
 
-    // The receiver of each classified Closure that encloses the use, innermost first (ResolveReceiver).
-    private BoundOrigin ReceiverAtUse(BoundOrigin origin, Koto use)
-    {
-        for (var node = use; node is not null; node = node.Parent)
-        {
-            if (origin.Kind is OriginKind.Projection or OriginKind.Intersection &&
-                node is FunctionKoto { IsAnonymous: true, ClosureStorage: { Classified: true } plan } closure)
-            {
-                origin = this.ResolveReceiver(origin, closure, plan.Receiver);
-            }
-        }
-
-        return origin;
-    }
-
-    // SPEC 15.8.2, 15.6.5 (DECISIONS R4-M126 P5): in a classified Closure's body an environment binding is a Field of the call receiver's
-    // referent, so its own atom resolves to the receiver Origin ρ under a borrowed receiver, and ρ, no borrow under `owner/Self`, to
-    // static (the binding is then the call's own storage); a meet resolves operand by operand. An Origin without the Closure's atoms is
-    // returned as it is.
-    private BoundOrigin ResolveReceiver(BoundOrigin origin, FunctionKoto closure, SemanticsKind receiver)
+    // SPEC 15.8.2, 15.6.5 (DECISIONS R4-M126 P5, R4-M133; PLAN G922 envr R1.4, ruling G922-43): the receiver resolution, the step after
+    // SuppliedAtUse that alone turns an environment Borrow's atom into ρ, one row read per atom from its Binder and that Closure's Classify
+    // result. In a classified Closure's body an environment binding is a Field of the call receiver's referent, so its atom, its own or a
+    // Borrow's of it, reads as the receiver Origin ρ under a borrowed receiver, and ρ, no borrow under `owner/Self`, as static (the binding
+    // is then the call's own storage); an unclassified Closure's atom stays pending (PendingAtom), any other atom as it is, and a meet is
+    // read operand by operand. A judging reader reads it over CompletedOrigin (OriginAtUse, the region graph's bounds as stored,
+    // RegionValue, a Closure's published result); a record's Supplier and the displays read the end before it.
+    private BoundOrigin ResolveReceiver(BoundOrigin origin)
     {
         if (origin.Kind == OriginKind.Intersection)
         {
-            var resolved = origin;
+            BoundOrigin? result = null; // The meet so far, from the first operand that reads otherwise.
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                if (!ReferenceEquals(this.ResolveReceiver(origin.Operands[i], closure, receiver), origin.Operands[i]))
+                var operand = this.ResolveReceiver(origin.Operands[i]);
+                if (result is null && !ReferenceEquals(operand, origin.Operands[i]))
                 {
-                    resolved = BoundOrigin.Static;
-                    for (var j = 0; j < origin.Operands.Count; j++)
+                    result = BoundOrigin.Static;
+                    for (var j = 0; j < i; j++)
                     {
-                        resolved = this.Meet(resolved, this.ResolveReceiver(origin.Operands[j], closure, receiver));
+                        result = this.Meet(result, origin.Operands[j]);
                     }
-
-                    break;
                 }
+
+                result = result is null ? null : this.Meet(result, operand);
             }
 
-            return resolved;
+            return result ?? origin;
         }
 
-        if (origin.Kind != OriginKind.Projection || !ReferenceEquals(origin.Binder, closure))
+        if (!ReceiverAtom(origin) || origin.Binder is not FunctionKoto { ClosureStorage: { Classified: true } plan } closure)
         {
             return origin;
         }
 
-        return (RoleOf(origin), receiver == SemanticsKind.Owner) switch
+        var read = (RoleOf(origin), plan.Receiver == SemanticsKind.Owner) switch
         {
             (ProjectionRole.ClosureValue, true) => BoundOrigin.Static,
             (ProjectionRole.Environment, false) => this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot),
             _ => origin,
         };
+        this.OriginProofMetrics?.ClosureRow(origin, read);
+        return read;
     }
 
     // SPEC 15.3.6 (PLAN G74): a pure question: whether the premises visible at `use` entail `longer outlives shorter`
@@ -453,10 +485,10 @@ public sealed partial class Binding
             var operand = conjuncts == 1 ? longer : longer.Operands[i];
             if (HasLocalRegion(operand) && (conjuncts == 1 || !this.ProvesOriginOutlives(operand, shorter, use, comparison, condition)))
             {
-                // O-400 (b): a row over a `let` region of the use's body only where its ends' values prove it too, as every use of the
-                // compared Type reads them; otherwise the condition fails (ComparedRegionLimit classes it). A row over `var` regions alone
-                // is as before.
-                if ((this.ReadsLetValue(operand, use) || this.ReadsLetValue(bound, use)) && this.JudgeOriginRelation(this.OriginAtUse(operand, use), this.OriginAtUse(bound, use), use, this.formingBody, condition) != OriginJudgment.Proven)
+                // O-400 (b): a row over a region of the use's body with a value only where its ends' values prove it too, as every use of
+                // the compared Type reads them; otherwise the condition fails (ComparedRegionLimit classes it). A row over `var` regions
+                // alone is as before.
+                if ((this.ReadsAsValue(operand, use) || this.ReadsAsValue(bound, use)) && this.JudgeOriginRelation(this.OriginAtUse(operand, use), this.OriginAtUse(bound, use), use, this.formingBody, condition) != OriginJudgment.Proven)
                 {
                     return false;
                 }
@@ -568,9 +600,15 @@ public sealed partial class Binding
     // CollectDeclarationRows); each other, a body chain included (a local's inferred Origin, which region inference reads), is an
     // obligation at the Type occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is
     // never a premise of the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered;
-    // a nested signature's written result, a Function Type's or an anonymous function's, is formed at its own occurrence (FormNestedResult;
-    // DECISIONS R4-M162).
+    // a nested signature's written result, a Function Type's or an anonymous function's, is formed at its own occurrence (DECISIONS
+    // R4-M162). Its callers: a local's entry (BindVariable), FormNestedResult, and the declaration judge's roots (ValidateOriginRelations).
+    // DECISIONS BU-19: one call is a query of `clauseParts`, its occurrence and frame fixed, so each distinct part is decided once. A part
+    // met again forms nothing new: its rows are a function of the part, the occurrence and the frame (the obligation set keeps one), and
+    // the premises at the occurrence only grow during the walk (a row adds a region bound), so a clause its first visit proved stays proven.
     private void AddTypeClauseObligations(BoundType type, Koto occurrence)
+        => this.ClauseObligationPart(type, occurrence, this.clauseParts.Begin(this.storageVersion));
+
+    private void ClauseObligationPart(BoundType type, Koto occurrence, uint query)
     {
         this.termWalks++;
         if (type.OriginArguments.Count != 0 && type.Symbol is { } symbol &&
@@ -582,7 +620,7 @@ public sealed partial class Binding
                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax);
                 if (!ReferenceEquals(a, b) &&
-                    (BodyChain(this.OriginAtUse(a, occurrence), this.OriginAtUse(b, occurrence), this.formingBody) || !this.PublishedPremise(obligation, a, b)))
+                    (ConstrainsRegions(this.OriginAtUse(a, occurrence), this.OriginAtUse(b, occurrence), this.formingBody) || !this.PublishedPremise(obligation, a, b)))
                 {
                     this.AddObligation(obligation);
                 }
@@ -596,7 +634,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddTypeClauseObligations(type.Components[i], occurrence);
+            if (FirstVisit(this.clauseParts, type.Components[i], query, 1))
+            {
+                this.ClauseObligationPart(type.Components[i], occurrence, query);
+            }
         }
     }
 

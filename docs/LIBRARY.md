@@ -11,7 +11,7 @@ Names are relative to `Kimi`. The default alias opens its root, but not nested g
 
 Tables omit `public` and may omit `func`. Each signature includes its receiver and result; `Self` denotes the containing Type. Properties are read-only unless stated otherwise. An argument Type written as `A or B` abbreviates two overloads, not a union Type. `during` annotations identify result dependencies; they never extend storage lifetimes.
 
-This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §9. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
+This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §11. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
 
 ## 1. Foundational Types and Contracts
 
@@ -596,7 +596,80 @@ All names in this section belong to `Async`. Implementation of this entire secti
 
 Only the structured operations above request cancellation, for the children they started; no public operation makes a request. Only `sleep`, `checkpoint`, I/O waits, `send` and `receive` observe it, and `each` and `offloadEach` check before each pull. Worker computations run to completion and cannot be preempted by cancellation. Cancellation never interrupts, unwinds or destroys a task frame. Apart from their children's effects, the operations other than `run` have no environment effects and are usable in `confined` implementations. Apart from `run`, every Kimi operation that may wait takes the task slot; `Console.writeLine` stays synchronous.
 
-## 9. Current Source Differences
+## 9. Freestanding Platform
+
+[Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and [the platform](spec/22-core-execution-and-foreign-functions.md#2245-platform).
+
+`Platform` is the platform a freestanding program supplies (SPEC §22.4.5): a static Contract with `Self is Copy`, declared on every target. On a freestanding profile one root-level struct of the Application conforms; the runtime calls `start` once before the startup body and the other members as its platform operations, in the order below. A conforming struct's members are `public`.
+
+| Requirement | Guarantee |
+| --- | --- |
+| `start(boot: Boot) -> Self` | Called once by the runtime before the startup body, with what the loader described. |
+| `mapPages(self: uniq/Self, bytes: isize) -> raw/u8` | A page-aligned run of at least `bytes`, or null. |
+| `releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64` | Releases a whole run `mapPages` returned: 0, or a nonzero platform error. |
+| `write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64` | Writes every byte of `text` to stream 1 (Console) or 2 (the Abort report): 0, or a nonzero platform error. |
+| `clock(self: uniq/Self) -> i64` | Monotonic nanoseconds, or a negative value when there is no clock. |
+| `terminate(self: uniq/Self, status: i32) -> Never` | Ends the program: status 0 after the startup body and shutdown, 1 after an Abort's report. |
+
+`Boot` is what the loader described: a C-layout Copy struct created only by the runtime (it declares no constructor). `Boot.Region` is one memory map entry, a C-layout Copy struct.
+
+| Field | Guarantee |
+| --- | --- |
+| `Boot.directMapOffset: usize` | The higher-half direct map: physical address p is at p + directMapOffset. |
+| `Boot.regions: raw/raw/Boot.Region` | The loader's array of `regionCount` pointers to its memory map entries, read in `unsafe`. |
+| `Boot.regionCount: isize` | The number of entries. |
+| `Boot.Region.address: u64` | The entry's physical start address. |
+| `Boot.Region.length: u64` | The entry's length in bytes. |
+| `Boot.Region.kind: u64` | The loader's entry type: 0 usable, 1 reserved, ..., 5 bootloader reclaimable, ... |
+
+## 10. x86-64 Instructions
+
+[Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations); the implementation's table is IMPL §21.6.8 ([machine instructions](impl/21-layout-runtime-and-code-generation.md#2168-machine-instructions)).
+
+`X86` groups x86-64 processor instructions and is declared where the Condition `arch == "x86_64"` holds; its privileged functions only where `os == "none"` also holds. Every function except `entry` and `errorCodeEntry` executes its instruction once per call, which the compiler keeps in program order with every memory access and every other function's call (a compiler barrier, not a processor fence), and is an environment effect, so a `confined` implementation calls none of them.
+
+| Function | Guarantee |
+| --- | --- |
+| `X86.pause() -> ()` | Safe, every x86-64 target. Hints that the caller spins in a wait loop (`pause`). |
+| `X86.readTimestamp() -> u64` | Safe, every x86-64 target. The processor's time-stamp counter (`rdtsc`). |
+| `X86.cpuid(leaf: u32, subleaf: u32) -> X86.CpuidResult` | Safe, every x86-64 target. The processor's identification and feature information for `leaf` and `subleaf` (`cpuid`). |
+| `X86.halt() -> ()` | Safe, `os == "none"`. Stops the processor until the next interrupt (`hlt`). |
+| `X86.disableInterrupts() -> ()`, `X86.enableInterrupts() -> ()` | Safe, `os == "none"`. Clears or sets the interrupt flag (`cli`, `sti`). |
+| `unsafe X86.readPort8(port: u16) -> u8`, `readPort16(port: u16) -> u16`, `readPort32(port: u16) -> u32` | `os == "none"`. Reads one, two or four bytes from an I/O port (`in`). The device at `port` may change any storage it can reach; the caller keeps that storage within the program's platform contract. |
+| `unsafe X86.writePort8(port: u16, value: u8) -> ()`, `writePort16(port: u16, value: u16) -> ()`, `writePort32(port: u16, value: u32) -> ()` | `os == "none"`. Writes one, two or four bytes to an I/O port (`out`), under the same obligation. |
+| `X86.enableInterruptsAndHalt() -> ()` | Safe, `os == "none"`. Sets the interrupt flag and stops the processor until the next interrupt (`sti; hlt`); with interrupts disabled at the call, `sti` holds them off for one more instruction, so one pending at the call ends the halt instead of running before it. |
+| `X86.readCr0() -> u64`, `readCr2() -> u64`, `readCr3() -> u64`, `readCr4() -> u64` | Safe, `os == "none"`. Reads control register 0, 2, 3 or 4. |
+| `unsafe X86.writeCr0(value: u64) -> ()`, `writeCr4(value: u64) -> ()` | `os == "none"`. Writes control register 0 or 4; the mode or extensions that follow keep the program's storage and execution within its platform contract. |
+| `unsafe X86.writeCr3(value: u64) -> ()` | `os == "none"`. Writes control register 3, switching the page tables to the root at `value`; the page tables stay live while the processor uses them, and each translation they give, including after a later edit and its invalidation, keeps the program's storage within its platform contract. |
+| `unsafe X86.loadInterruptTable(descriptor: raw/u8) -> ()`, `loadDescriptorTable(descriptor: raw/u8) -> ()` | `os == "none"`. Loads the interrupt or global descriptor table register from the 10-byte limit and base at `descriptor` (`lidt`, `lgdt`); reads them and stores nothing there. The bytes are live, and the table they name stays live and unchanged while the processor may use it. |
+| `unsafe X86.loadTaskRegister(selector: u16) -> ()` | `os == "none"`. Loads the task register (`ltr`); `selector` names an available task-state segment descriptor, and the segment stays live and unchanged while the processor may use it. |
+| `unsafe X86.invalidatePage(address: raw/()) -> ()` | `os == "none"`. Invalidates the cached translation of the page that holds `address` (`invlpg`), accessing no storage there; the translation that follows keeps the program's storage within its platform contract. |
+| `unsafe X86.readMsr(index: u32) -> u64`, `writeMsr(index: u32, value: u64) -> ()` | `os == "none"`. Reads or writes the model-specific register `index` (`rdmsr`, `wrmsr`); a read may change the state it reports; `index` names a model-specific register the processor implements, and the state that follows `writeMsr` keeps the program's storage and execution within its platform contract. |
+| `unsafe X86.entry<H>() -> usize`, `H is X86.InterruptHandler` | `os == "none"`. The code address of `H`'s interrupt entry, for a gate of the interrupt descriptor table; the entry calls `H.handle` with the frame. Whenever the entry runs, `H.handle` meets IMPL 21.6.9's handler rules: it does not allocate or release storage, write to Console, Abort on purpose, or start or wait for a task; it accesses only static storage Initialized before interrupts were enabled; and it shares storage with the code it interrupts only through volatile accesses on both sides or while that code has interrupts disabled. |
+| `unsafe X86.errorCodeEntry<H>() -> usize`, `H is X86.ErrorCodeHandler` | `os == "none"`. As `entry`, for a vector that pushes an error code (8, 10-14, 17, 21, 29, 30): the entry calls `H.handle` with the frame and the code, under the same handler rules. |
+
+`X86.InterruptFrame` is what the processor pushes on an interrupt in 64-bit mode, as it lies in memory from its lowest address: a C-layout Copy struct that a program never constructs (it declares no constructor and has no implicit one), whose Fields hold the interrupted code's registers; an interrupt entry (`X86.entry`, `X86.errorCodeEntry`) passes it to the handler's `handle`. `X86.InterruptHandler` and `X86.ErrorCodeHandler` are the Contracts of interrupt handler Types. All three are declared on every x86-64 target and execute nothing.
+
+| Declaration | Guarantee |
+| --- | --- |
+| `X86.InterruptFrame.ip: u64` | The address at which the interrupted code resumes (`rip`). |
+| `X86.InterruptFrame.cs: u64` | The interrupted code's code segment selector (`cs`). |
+| `X86.InterruptFrame.flags: u64` | The interrupted code's flags (`rflags`). |
+| `X86.InterruptFrame.sp: u64` | The interrupted code's stack pointer (`rsp`). |
+| `X86.InterruptFrame.ss: u64` | The interrupted code's stack segment selector (`ss`). |
+| `X86.InterruptHandler.handle(frame: ref/InterruptFrame) -> ()` | The Contract of a handler for a vector without an error code. |
+| `X86.ErrorCodeHandler.handle(frame: ref/InterruptFrame, code: u64) -> ()` | The Contract of a handler for a vector that pushes an error code, which `code` receives. |
+
+`X86.CpuidResult` is what `cpuid` returns: a C-layout Copy struct of the four registers the instruction writes, in the order `eax`, `ebx`, `ecx`, `edx`, that a program never constructs (it declares no constructor and has no implicit one). It is declared on every x86-64 target and executes nothing.
+
+| Field | Guarantee |
+| --- | --- |
+| `X86.CpuidResult.eax: u32` | The value `cpuid` leaves in `eax`. |
+| `X86.CpuidResult.ebx: u32` | The value `cpuid` leaves in `ebx`. |
+| `X86.CpuidResult.ecx: u32` | The value `cpuid` leaves in `ecx`. |
+| `X86.CpuidResult.edx: u32` | The value `cpuid` leaves in `edx`. |
+
+## 11. Current Source Differences
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 

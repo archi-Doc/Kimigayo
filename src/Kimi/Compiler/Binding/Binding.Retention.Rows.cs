@@ -23,10 +23,10 @@ public sealed partial class Binding
     // (by target node: the start and count of its run in retentionClosureNodes), and the storages' kinds, reused.
     private readonly Dictionary<BoundType, RetentionKind[]> retentionHidden = new(ReferenceEqualityComparer.Instance); // HiddenKinds' per Type, per Storages.
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
-    private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // CanCarryLoan's walk, per query: the Types met.
+    private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // MayCarry's walk, per query: the Types met.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
-    private readonly HashSet<(HoldAt At, HeldIn In, int Storage)> retentionMet = new();
+    private readonly HashSet<(HoldAt At, HeldIn In, int Storage, RetentionUntie Untie)> retentionMet = new();
     private readonly Dictionary<int, (int Start, int Count)> retentionClosures = new();
     private readonly List<int> retentionClosureNodes = new();
     private readonly List<RetentionKind[]> retentionKinds = new();
@@ -85,6 +85,7 @@ public sealed partial class Binding
         Lent = 4,
         Unbounded = 8,
         Loans = 16,
+        Writable = 32, // Met at a layer stepping Unstated or Static in untie Writable (R2: through no layer the walk does not write).
         Any = 128,
         Chained = 256,
     }
@@ -173,13 +174,14 @@ public sealed partial class Binding
     // input at a raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule narrowing it), the raw arguments
     // at one the result lends (R′); one stepping Unstated or Static,
     // not lent, unties every storage of the output, where a transfer operation writes it (TransferWrites, as for rule A), and a result
-    // atom whose non-static Origin reaches no input unties the result. A result the call forms within a raw parameter's storage
+    // position stating a non-static Origin no input reaches, outside a `during self` storage, unties the result, with its mode (R1, R2;
+    // DECISIONS BU-278). A result the call forms within a raw parameter's storage
     // (`within`) retains that argument's own value. The transfer key by declaring identity
     // also gives the stores written only where the receiver refers (ReferentStores). The work is one closure per node a target names, each
     // node with its incoming premises once, and the walks; the identity key is read once per contract, and for a callee it does not name
-    // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance
-    // with an abstract part under (null: none, or an erased callable's, which has no callee). CallRetention.Limit where a walk meets
-    // storage past its limits.
+    // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read the instance
+    // under (null only for an erased callable, which has no callee). CallRetention.Limit where a walk meets
+    // storage past its limits; the rows with CallRetention.IsDeep where a finding a walk left past its bound can carry (G408B-17).
     private CallRetention RetentionRows(
         OriginPremiseEnvironment environment,
         int[] nodes,
@@ -251,27 +253,28 @@ public sealed partial class Binding
         this.BeginStorages();
         this.storageResultLeaves.Clear();
         this.storageResultSeen.Clear();
-        this.ResultLeaves(result, 0);
-        var site = this.OpenRetentionSite(callee, -1); // PLAN G651 U2b R11 OP1: the result's walk.
+        var site = this.OpenRetentionSite(callee, -1); // PLAN G651 U2b R11 OP1: the result's walk, and the leaves it reads (ResultLeaves).
+        this.ResultLeaves(result);
         this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true) with { Signature = this.SignatureResult });
         this.Restore(site);
         var kept = this.Kept(inputs.Length);
         var whole = (new HoldAt(result, null, null, this.SignatureResult), ResultStorage);
-        var untied = this.Hold(environment, CallRetention.ResultOutput, new(in whole), inputs, (key, callee, premises), ref transfer);
+        var untie = this.Hold(environment, CallRetention.ResultOutput, new(in whole), inputs, (key, callee, premises), ref transfer);
         if (within >= 0)
         {
             kept[ResultStorage][within] |= RetentionKind.Value;
         }
 
-        for (var i = 0; i < atoms.Count; i++)
+        foreach (var (storage, node, _, _, position) in this.storagePositions)
         {
-            untied |= atoms[i].Input == CallRetention.ResultOutput && atoms[i].Origin?.Kind != OriginKind.Static &&
-                !this.Reaches(environment, nodes[i], links);
+            untie = storage == ResultStorage && position > untie && !this.Reaches(environment, node, links) ? position : untie;
         }
 
+        site = this.OpenRetentionSite(callee, -1); // The fits asked at the positions the result's walk names (CanHold) read its owner.
         this.Storages(environment, links, kept, CallRetention.ResultOutput);
+        this.Restore(site);
         var resultKinds = this.retentionKinds[ResultStorage];
-        var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);
+        var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untie);
         var resultWrites = this.ResultWrites(environment, links, inputs, result, (key, callee, premises), ref transfer) is { } past
             ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All, past.Kept, [.. past.Handed]) : null;
         var writes = this.retentionWrites;
@@ -289,16 +292,18 @@ public sealed partial class Binding
             this.BeginStorages();
             this.RootWalk(environment, inputs[output], this.SignatureInput(output));
             kept = this.Kept(inputs.Length);
-            var held = this.Hold(environment, output, CollectionsMarshal.AsSpan(this.storageHolds), inputs, (key, callee, premises), ref transfer);
+            untie = this.Hold(environment, output, CollectionsMarshal.AsSpan(this.storageHolds), inputs, (key, callee, premises), ref transfer);
             this.Storages(environment, links, kept, output);
-            if (this.Written(output, held) is { } written)
+            if (this.Written(output, untie) is { } written)
             {
                 writes.Add(written);
             }
         }
 
+        // Deep is read first: its CanCarryLoan walks may leave a carrier walk incomplete (MayCarry), which is the Limit.
+        var deep = !this.retentionLimit && this.retentionPast.Count > 0 && this.HolderCarries(result) && this.AnyCarries(this.retentionPast);
         return this.retentionLimit ? CallRetention.Limit
-            : new(resultRecord, resultWrites, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs), composes: !this.StatesWrites(callee));
+            : new(resultRecord, resultWrites, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs), composes: !this.StatesWrites(callee), deep);
     }
 
     // The result read as an output (CallRetention.ResultWrites; G841's H2, PLAN G935): the walk an input's output takes, from the result's
@@ -318,9 +323,11 @@ public sealed partial class Binding
         this.StorageWalk(environment, result, StorageAt.Output(OwnStorage, writable: true) with { Signature = this.SignatureResult });
         this.Restore(site);
         var kept = this.Kept(inputs.Length);
-        var untied = this.Hold(environment, CallRetention.ResultOutput, CollectionsMarshal.AsSpan(this.storageHolds), inputs, call, ref transfer);
+        var untie = this.Hold(environment, CallRetention.ResultOutput, CollectionsMarshal.AsSpan(this.storageHolds), inputs, call, ref transfer);
+        site = this.OpenRetentionSite(call.Callee, -1); // As in RetentionRows: the fits read the result's walk's owner.
         this.Storages(environment, links, kept, CallRetention.ResultOutput);
-        return this.Written(CallRetention.ResultOutput, untied) is { Reached.Length: > 0 } past ? past : null;
+        this.Restore(site);
+        return this.Written(CallRetention.ResultOutput, untie) is { Reached.Length: > 0 } past ? past : null;
     }
 
     // Each storage's kinds for the walk made (retentionKinds, by storage): Content where the closure from one of its targets reaches an
@@ -340,6 +347,8 @@ public sealed partial class Binding
     {
         var kinds = this.retentionKinds;
         kinds.Clear();
+        this.retentionHoldAnswers.Clear(); // Holds' and Borrows' answers hold for one output's positions (CanHold), in its view.
+        this.retentionBorrowAnswers.Clear();
         for (var s = 0; s < this.storageTypes.Count; s++)
         {
             if (s == this.retentionKindPool.Count)
@@ -368,7 +377,7 @@ public sealed partial class Binding
 
         this.retentionPairs.Clear();
         this.retentionConjuncts.Clear();
-        foreach (var (storage, node, type, signature) in this.storagePositions)
+        foreach (var (storage, node, type, signature, _) in this.storagePositions)
         {
             // R's exclusion (SPEC 15.6.4): storage written through a raw layer input `output` holds never retains that input's own value.
             var excluded = output >= 0 && !this.storageBorrowed.Contains(storage) ? output : -1;
@@ -519,6 +528,10 @@ public sealed partial class Binding
             {
                 this.retentionHiddenSeen.Clear();
                 known[i] = this.HiddenKind(this.SignatureInput(i), hidden, RetentionKind.Value, 0);
+                if (Past(this.retentionHiddenSeen, StorageBound))
+                {
+                    this.retentionPast.Add(this.retentionArguments[i]); // A kind set: no yes decides the kinds not found. Its subject: the argument.
+                }
             }
         }
 
@@ -534,19 +547,39 @@ public sealed partial class Binding
     // MirTypes.HoldsLoans' Loan fact, which Binding does not read (MIR); HoldsLoans keeps its own walk for its modes and its write fact.
     // They disagree only at a part Binding did not bind (HoldsLoans: no Loan; here: carries, failing closed); PLAN's open issue: one
     // publisher, TyCtxt, that both read. It decides no Loan, holder or write. At Binding's Limit it answers true and makes the contract
-    // the Limit (retentionLimit, as HiddenKind); past StorageBound it answers true and reports nothing, as the input fold's walk stops
-    // there silently (StorageWalk). Each Type is walked once per query (retentionCarried), so a recursive Type ends; its repeat adds
-    // nothing its first meeting lacks.
+    // the Limit (retentionLimit, as HiddenKind). A walk over a Type's storage, it has no bound (G408B-9 R1, G408B-16): each Type is
+    // walked once per query (retentionCarried), so a recursive Type ends; its repeat adds nothing its first meeting lacks.
     private bool CanCarryLoan(BoundType type)
     {
         this.retentionCarried.Clear();
-        return this.MayCarry(type, 0);
+        return this.MayCarry(type);
+    }
+
+    // G408B-6 (3), G408B-16: whether a holder the rows name can carry a Loan or an address (CanCarryLoan), where a walk of the computation
+    // was undecided past its bound (retentionPast): the result and each holder the output walks entered (retentionHolders). Where none
+    // can, no retention verdict reads the undecided answer, and the rows decide.
+    private bool HolderCarries(BoundType result) => this.CanCarryLoan(result) || this.AnyCarries(this.retentionHolders);
+
+    // G408B-17 (SPEC 15.6.4: retention is per argument): whether a value of one of a list's Types can carry a Loan or an address
+    // (CanCarryLoan): the holders (HolderCarries), or the subjects of the findings a walk left undecided past its bound (retentionPast),
+    // where none that can carry means that what a holder would retain there carries nothing, whatever the walk would have found, so the
+    // rows decide. One query: a Type met for one entry, a repeated one included, adds nothing for another.
+    private bool AnyCarries(List<BoundType?> types)
+    {
+        this.retentionCarried.Clear();
+        var carries = false;
+        for (var i = 0; !carries && i < types.Count; i++)
+        {
+            carries = this.MayCarry(types[i]);
+        }
+
+        return carries;
     }
 
     // CanCarryLoan's fold over Holdings: a Type and, through the entries that pass on, its parts.
-    private bool MayCarry(BoundType? type, int depth)
+    private bool MayCarry(BoundType? type)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null)
         {
             return true;
         }
@@ -562,7 +595,7 @@ public sealed partial class Binding
         for (var i = run.Start; !carries && i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
-            carries = !Passes(entry) || this.MayCarry(entry.Part, depth + 1);
+            carries = !Passes(entry) || this.MayCarry(entry.Part);
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
@@ -599,13 +632,13 @@ public sealed partial class Binding
     // members' referents are read through it too (`p: raw/u8 during a` beside `n: uniq/(K<T> during a)` reads K's kept T).
     private RetentionKind HiddenKind(BoundType? declared, BoundType hidden, RetentionKind kind, int depth)
     {
-        if (declared is null || depth > StorageBound)
+        if (declared is null)
         {
             return RetentionKind.None;
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionHiddenSeen, (declared, kind), out var met);
-        if (!Enters(ref shallowest, met, depth))
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
             return RetentionKind.None; // Entered at this depth or shallower: what lies below it is counted there (the bounded walks' rule).
         }
@@ -723,11 +756,12 @@ public sealed partial class Binding
 
     // Whether a value of an input's Type hands the body a callable (Filled; SPEC 15.6.4 "a callable value an input holds"): one of the
     // callables TyCtxt.HandedCallables lists for the Type, Origins erased: a Function part at any depth, a nominal Field's included
-    // (`Maker<E, T>`'s `make: (E) -> T`), which the Type's components alone do not name.
+    // (`Maker<E, T>`'s `make: (E) -> T`), which the Type's components alone do not name. `argument` is an input or its declared Type,
+    // which RetentionPremises has handed (Handed), so the parts it leaves unentered past HandedBound are already subjects (retentionPast).
     private bool Hands(BoundType argument, BoundType callable)
     {
         var erased = this.types.Erase(callable);
-        foreach (var handed in this.types.HandedCallables(argument))
+        foreach (var handed in this.types.HandedCallables(argument, out _))
         {
             if (ReferenceEquals(this.types.Erase(handed), erased))
             {
@@ -766,6 +800,11 @@ public sealed partial class Binding
             }
         }
 
+        if (Past(this.retentionReaches, StorageBound))
+        {
+            this.retentionPast.Add(position); // Undecided past the bound (Enters). Its subject: the Type written.
+        }
+
         return false;
     }
 
@@ -782,13 +821,13 @@ public sealed partial class Binding
     // makes the contract the Limit, never "writes nothing".
     private bool WrittenThrough(BoundType? type, BoundType position, HoldStep reach, int depth, BindingScope? view)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null)
         {
             return false;
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionReaches, (type, reach), out var met);
-        if (!Enters(ref shallowest, met, depth))
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
             return false;
         }
@@ -889,7 +928,7 @@ public sealed partial class Binding
     // where the walk met an abstract part or a handed callable's write keeps a row there (retentionFilled), and All, their join with every one of their pairs; every one untied where the output is; null
     // where the call keeps nothing there. Read in the callee's terms, it names the callee (Kept) and which kept Types the walk met a
     // handed callable writes (Handed, HandedTypes).
-    private OutputRetention? Written(int output, bool untied)
+    private OutputRetention? Written(int output, RetentionUntie untie)
     {
         var kinds = this.retentionKinds;
         var inputs = kinds[OwnStorage].Length;
@@ -916,17 +955,22 @@ public sealed partial class Binding
             }
 
             Join(all, join);
-            reached.Add((erased, new(join, this.Pairs(join, members), untied)));
+            reached.Add((erased, new(join, this.Pairs(join, members), untie)));
         }
 
         var hidden = this.storagePositions.Exists(static x => x.Storage == AbstractStorage) || this.retentionFilled;
         if (hidden)
         {
-            reached.Add((null, new([.. kinds[AbstractStorage]], this.Pairs(kinds[AbstractStorage], AbstractStorage), untied)));
+            this.retentionHolders.Add(null); // What an abstract part hides may be any Type (HolderCarries).
+        }
+
+        if (hidden)
+        {
+            reached.Add((null, new([.. kinds[AbstractStorage]], this.Pairs(kinds[AbstractStorage], AbstractStorage), untie)));
             Join(all, kinds[AbstractStorage]);
         }
 
-        var any = untied;
+        var any = untie != RetentionUntie.None;
         for (var i = 0; i < inputs; i++)
         {
             any |= kinds[OwnStorage][i] != RetentionKind.None || all[i] != RetentionKind.None;
@@ -937,12 +981,12 @@ public sealed partial class Binding
             return null;
         }
 
-        var own = new StorageRetention([.. kinds[OwnStorage]], this.Pairs(kinds[OwnStorage], OwnStorage), untied);
+        var own = new StorageRetention([.. kinds[OwnStorage]], this.Pairs(kinds[OwnStorage], OwnStorage), untie);
         var joined = this.Members();
         Array.Fill(joined, true, ResultStorage + 1, kinds.Count - ResultStorage - 1);
         joined[AbstractStorage] = hidden;
         var kept = this.retentionParametric ? this.retentionCallee : null;
-        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied), kept, kept is null ? [] : this.HandedTypes());
+        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untie), kept, kept is null ? [] : this.HandedTypes());
     }
 
     // OutputRetention.Handed (SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... through its result
@@ -1140,17 +1184,18 @@ public sealed partial class Binding
     }
 
     // An output's hold walk (Held from each of its holds: the result's whole Type, or each position of input j's storages the storage walk
-    // emits with the Type its declaration writes there and the instance holding it, DECISIONS BU-52; each position once per HeldIn and
-    // storage) and what it keeps, by storage (retentionKept; C-352: the rows of a raw layer belong to the storage holding it, never to
+    // emits with the Type its declaration writes there and the instance holding it, DECISIONS BU-52; each position once per HeldIn, untie
+    // and storage) and what it keeps, by storage (retentionKept; C-352: the rows of a raw layer belong to the storage holding it, never to
     // every storage of the output): rule A's rows at a written unstated layer (WrittenUnstated, the transfer read once per contract; formed
     // once per output, whole where the storage holds such a layer, a declaration's own layer reaches it or it holds a part no Type bounds,
     // Holding.Any, and through Storages' admission where it holds only Loan-carrying positions past a bounding one, Holding.Chained), the
     // raw arguments at a lent one (R′: SPEC's "the raw arguments", the raw sources at their own layer, never a wrapped one), at a
     // stated layer the raw sources its Origin admits (StatedFits), and at an abstract part the walk met at no position rule 3's fill alone,
-    // in the Abstract storage (HiddenFills; BU-225); whether it met a layer stepping Unstated or Static, not lent, which unties
-    // the output. A published transfer operation writes only its own outputs (TransferWrites, by the declaring-identity key: an Iterator's
+    // in the Abstract storage (HiddenFills; BU-225); the output's untie: where it met a layer stepping Unstated or Static, not lent,
+    // Writable if one such meeting is through no layer the walk does not write (R2's state, Held), else ReadOnly; else None. A published
+    // transfer operation writes only its own outputs (TransferWrites, by the declaring-identity key: an Iterator's
     // `next` writes each), so at another it neither forms rule A's rows nor unties it: the output has no record from these layers.
-    private bool Hold(
+    private RetentionUntie Hold(
         OriginPremiseEnvironment environment,
         int output,
         ReadOnlySpan<(HoldAt At, int Storage)> holds,
@@ -1165,7 +1210,7 @@ public sealed partial class Binding
         Array.Clear(met, 0, count);
         foreach (var (at, storage) in holds)
         {
-            met[storage] |= this.Held(at, output, storage, HeldIn.Storage);
+            met[storage] |= this.Held(at, output, storage, HeldIn.Storage, RetentionUntie.Writable);
         }
 
         this.HiddenFills(output);
@@ -1177,7 +1222,7 @@ public sealed partial class Binding
             reach |= (met[s] & Holding.Unstated) != 0 ? met[s] & (Holding.Unstated | Holding.Unbounded) : Holding.None;
         }
 
-        var untied = false;
+        var untie = RetentionUntie.None;
         var rows = Reused(ref this.retentionChained, inputs.Length);
         Array.Clear(rows);
         var ruled = false; // Rule A's rows are the output's, the same in every storage they reach: formed once.
@@ -1212,7 +1257,8 @@ public sealed partial class Binding
                 }
             }
 
-            untied |= writes && (met[s] & (Holding.Unstated | Holding.Static)) != 0;
+            var mode = (met[s] & Holding.Writable) != 0 ? RetentionUntie.Writable : RetentionUntie.ReadOnly;
+            untie = writes && (met[s] & (Holding.Unstated | Holding.Static)) != 0 && mode > untie ? mode : untie;
         }
 
         for (var s = 0; s < count; s++)
@@ -1220,7 +1266,7 @@ public sealed partial class Binding
             Join(this.retentionKept[AbstractStorage], this.retentionKept[s]); // What an abstract part hides may be any Type: every storage's rows.
         }
 
-        return untied;
+        return untie;
     }
 
     // Whether a storage of the output's walk is the root of a binding of the callee's kept Type (storageBound): with no hold of its own
@@ -1286,7 +1332,11 @@ public sealed partial class Binding
     // reads, SPEC 15.3.5; DECISIONS BU-44), and where it is met (`held`): Lent below a borrow in the result (BorrowReferent: a borrow layer, a pair
     // layer admitting only borrows, a Slice's or UniqSlice's elements) or below a result raw layer stating an input's or slot's Origin
     // (stepping Exclusive or Shared: it retains as that borrow would, SPEC 5.7 Calls, so what it addresses is that borrow's storage, 5.2.1;
-    // PLAN G255's C1), Dependency in a Type argument that is no part by value (ByValue: a Loan entry, row 3b), whose layers give nothing.
+    // PLAN G255's C1), Dependency in a Type argument that is no part by value (ByValue: a Loan entry, row 3b), whose layers give nothing;
+    // and in which untie (R2: Writable at a hold, lowered to ReadOnly below a part whose entry steps Shared, an rc or arc payload included,
+    // EntryStep and StepWrites; a meeting of an Unstated or Static layer in Writable is Holding.Writable; DECISIONS BU-278). The hold walk
+    // does not read Admitted's state, so inside a `during self` content it keeps dev's untie (that entry's Remaining, PLAN G416 U4); it rejects
+    // nothing dev accepts.
     // Each input other than `output` with a stated raw layer (retentionRawStated) is kept by its joined kind at a raw layer stating an
     // Origin or `static` where one of its layers fits that Origin, whatever its pointee Type (it retains as the borrow its Origin belongs to would, SPEC 15.6.4, and a raw cast keeps the
     // address and the Origin, 5.4; StatedFits judges the fit by the premise closure), at a `during self` layer or a pair layer's raw case, which
@@ -1296,13 +1346,14 @@ public sealed partial class Binding
     // `written` states the layer, its Origin's kind elsewhere, DECISIONS BU-24): Unstated is what the call writes there (Holding.Unstated) or
     // lends (Holding.Lent), and Static is storage the body does not own (Holding.Static, lent or not). A value stored at a writable position
     // brings its whole Type (BU-1), so the walk goes below every layer that stores (IsCallable), as RetentionParts' writable positions do, and
-    // into a struct's or enum's stored content. What a position gives depends on its Type, `written`, its holder, `held` and `storage` alone
-    // and only accumulates, so each position is walked at most once per HeldIn, storage and output (retentionMet): the work is linear in the
+    // into a struct's or enum's stored content. What a position gives depends on its Type, `written`, its holder, `held`, `untie` and
+    // `storage` alone and only accumulates, so each position is walked once per HeldIn, untie, storage and output (retentionMet; at most
+    // twice the meetings: Writable and ReadOnly): the work is linear in the
     // distinct positions per storage, not in the paths to them through the interned Types (V16). A struct or enum whose storage is a Limit, a
     // growing one among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit; Rejected storage is
     // walked as far as it substitutes (Readable, BU-36), and it and a part that does not (null) may be any Type: Loans and Any, failing
     // closed (Holding; superseding BU-36's "holds nothing" for the Chained verdict).
-    private Holding Held(in HoldAt at, int output, int storage, HeldIn held)
+    private Holding Held(in HoldAt at, int output, int storage, HeldIn held, RetentionUntie untie)
     {
         if (at.Type is not { } type)
         {
@@ -1311,7 +1362,7 @@ public sealed partial class Binding
 
         var written = Written(at.Written);
         var holder = written is null ? null : at.Holder;
-        if (!this.retentionMet.Add((new(type, written, holder, Routed: at.Routed), held, storage)))
+        if (!this.retentionMet.Add((new(type, written, holder, Routed: at.Routed), held, storage, untie)))
         {
             return Holding.None;
         }
@@ -1371,6 +1422,7 @@ public sealed partial class Binding
             HoldStep.Address => Holding.Unstated,
             _ => Holding.None,
         };
+        met |= untie == RetentionUntie.Writable && (met & (Holding.Unstated | Holding.Static)) != 0 ? Holding.Writable : Holding.None;
         var below = held == HeldIn.Storage && output == CallRetention.ResultOutput && refers ? HeldIn.Lent : held;
         if (type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice)
         {
@@ -1382,8 +1434,9 @@ public sealed partial class Binding
         {
             var part = this.retentionHeld[i];
             var next = part.Step == HoldStep.Loan && !this.ByValue(type, part) ? HeldIn.Dependency : below;
-            met |= part.Step == HoldStep.Abstract ? this.HeldComponents(at, type, output, storage, below)
-                : this.Held(new(part.Part, part.Written, part.Holder, Routed: at.Routed), output, storage, next);
+            var state = UntieBelow(untie, StepWrites(EntryStep(part)));
+            met |= part.Step == HoldStep.Abstract ? this.HeldComponents(at, type, output, storage, below, state)
+                : this.Held(new(part.Part, part.Written, part.Holder, Routed: at.Routed), output, storage, next, state);
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
@@ -1415,12 +1468,12 @@ public sealed partial class Binding
 
     // An abstract part's components (a projection's base and Contract, an adaptation's cases), which rule A's hold walk goes through though
     // row 17 publishes none: dev's answer, removed at U3b, where rule A reads entries (G416).
-    private Holding HeldComponents(in HoldAt at, BoundType type, int output, int storage, HeldIn held)
+    private Holding HeldComponents(in HoldAt at, BoundType type, int output, int storage, HeldIn held, RetentionUntie untie)
     {
         var met = Holding.None;
         for (var i = 0; i < type.Components.Count; i++)
         {
-            met |= this.Held(new(type.Components[i], null, null, Routed: at.Routed), output, storage, held);
+            met |= this.Held(new(type.Components[i], null, null, Routed: at.Routed), output, storage, held, untie);
         }
 
         return met;

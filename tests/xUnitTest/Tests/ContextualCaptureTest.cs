@@ -144,11 +144,13 @@ public class ContextualCaptureTest
 
     // SPEC 23.1: each record is a Language error with the helper borrow's Note and the captured binding's declaration related; a capture
     // site relates the value that brought the helper borrow into its var's region (borrow) unless that is the var's initializer, and a
-    // late source relates every capture it reaches (capture); console and LSP place them.
+    // late source is one record per capture it reaches, which it relates (capture; O-D1 (a): it was one record relating them all);
+    // console and LSP place them.
     [Theory]
     [InlineData("        let w = self@ref\n        let f = func [w] () => Audit.inspect(w)\n        f()\n", 1, "declaration")]
     [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = w.buffer@ref\n", 1, "capture,declaration")]
-    [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        let g = func () => Audit.observe(v)\n        f()\n        g()\n        let w = self@ref\n        v = w.buffer@ref\n", 1, "capture,capture,declaration")]
+    [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        let g = func () => Audit.observe(v)\n        f()\n        g()\n        let w = self@ref\n        v = w.buffer@ref\n", 2, "capture,declaration")]
+    [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        let g = func () => Audit.observe(v)\n        let h = func [v] () => Audit.observe(v)\n        f()\n        g()\n        h()\n        let w = self@ref\n        v = w.buffer@ref\n", 3, "capture,declaration")]
     [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func () => Audit.observe(v) + Audit.observe(v)\n", 2, "borrow,declaration")]
     [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n", 1, "borrow,declaration")]
     public void TheHelperBorrowCaptureRecordIsPublished(string body, int count, string roles)
@@ -327,6 +329,25 @@ public class ContextualCaptureTest
             var c = CompilationTestHelper.ParseSuccess(Destructor + "        let whole = self@ref\n        Audit.inspect(whole)\n        var v = self.buffer@ref\n        let b = self.buffer@ref\n        let f = func [b, v] () => Audit.observe(v)\n        f()\n");
             Assert.True(c.Bind().IsComplete);
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        }
+
+        // SPEC 16.3.1, 15.6.5 (O-D1 (a)): a late helper source reaching k captures, written entries and first uses in turn, is k records
+        // over reused facts (it copied a growing array of the captures' spans), so a warm rebind allocates nothing and keeps them.
+        [Theory]
+        [InlineData(2)]
+        [InlineData(16)]
+        public void RejectingALateHelperSourceAllocatesNothingWarm(int captures)
+        {
+            var body = new System.Text.StringBuilder("        var v = self.buffer@ref\n");
+            for (var i = 0; i < captures; i++)
+            {
+                body.Append($"        let f{i} = func {(i % 2 == 0 ? "[v] " : string.Empty)}() => Audit.observe(v)\n        f{i}()\n");
+            }
+
+            var c = CompilationTestHelper.ParseSuccess(Destructor + body + "        let w = self@ref\n        v = w.buffer@ref\n");
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+            Assert.Equal(captures, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCaptureBinding_Kd));
         }
     }
 }

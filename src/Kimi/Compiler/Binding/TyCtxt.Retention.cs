@@ -19,7 +19,7 @@
 // Output: an immutable CallRetention, one per callee, signature or erased destruction's receiver, Type instantiation (a direct call's
 // case key, CaseSubst), the premise scope or declaration it reads and a Closure's call receiver, for the latest Binding pass and reused
 // by later passes until an edit
-// (DECISIONS R4-M154): its Result (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), the result read as an output
+// (DECISIONS R4-M154): its Result (a StorageRetention: per input the RetentionKind flags the result retains it by, and its Untie), the result read as an output
 // (ResultWrites: Own the Result, Reached the storages past the result's written layers; null where it has none; G841's H2), per output it
 // may write (Writes, ascending) an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the
 // argument's direct Loans name, the referent of a borrowed input, a raw input's pointee, or what the exclusive layers and the raw
@@ -30,9 +30,11 @@
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
 // past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
-// arguments; Binding.RawMembers). Storage a Binding failure left Rejected is no limit: its parts that do not substitute hold nothing and
-// the rows that hold whatever they are stay (SPEC 23.1.2; DECISIONS BU-36); in a complete compilation it is a broken contract, an
-// exception, which ends the check as CheckFaulted_Kd.
+// arguments; Binding.RawMembers); a Deep contract (CallRetention.IsDeep), its rows with a part past the bound beside them, where a walk
+// over a contract Type leaves a finding undecided past its own bound and both a holder the rows name and the finding's subject can carry
+// a Loan or an address (Binding.Retention.cs, retentionPast; G408B-17, R4-M153's Join). Storage a Binding failure left Rejected is no
+// limit: its parts that do not substitute hold nothing and the rows that hold whatever they are stay (SPEC 23.1.2; DECISIONS BU-36); in
+// a complete compilation it is a broken contract, an exception, which ends the check as CheckFaulted_Kd.
 // Invariants: a storage retains an input when the callee's body may move a value of the input there under the premises its body is
 // checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins left as the
 // call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name one abstract
@@ -65,7 +67,7 @@
 // 15.6.4 as DECISIONS R4-M131 states it; BU-40), in the result (a nominal Type's Fields included) or in input j's writable storage
 // (each position of it, a by-value input's included, DECISIONS BU-52; a consuming callee's cleanup of the input writes only there, so
 // its drop's rows are among these, SPEC 15.6.4 "including callee cleanup"), retains every input by what any chain of reads through it
-// carries (Chain) and every input but j by its own value (Value), and unties that output (its records' Untied), as a `static` layer
+// carries (Chain) and every input but j by its own value (Value), and unties that output (its records' Untie), as a `static` layer
 // does without these rows; one behind a borrow in the result (a Slice's or UniqSlice's elements included, and a result raw layer
 // stating a borrow's Origin, which retains as that borrow would) is lent, not written: it retains only the raw inputs, by Value and
 // Chain, and unties nothing (R′). A published operation that transfers values (an Iterator's `next`, `exchange`, `swap`, an operation
@@ -81,7 +83,7 @@
 // SPEC 5.2 Placement, 5.6; the value `replace` and `exchange` place in their target, 15.7) is no output: the call writes no storage
 // through it, so it has no Writes entry, rule A forms no row there and nothing unties it (PLAN G780).
 // Keeps: whether the result or a storage the call may write may hold an input (MirValidator.ConstantRecords).
-// Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
+// Files: this one (the contract and its records RetentionKind, RetentionUntie, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,
 // .Storage.cs, .Sources.cs, .Rows.cs and .Transfers.cs (the computation).
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
@@ -114,26 +116,43 @@ internal enum RetentionKind : byte
     Chain = 4,
 }
 
+/// <summary>The untie a storage's record states (SPEC 15.6.4, 5.2.1 condition 3; design A3's Φ_E; DECISIONS BU-278): whether the storage may
+/// receive a pointer tied to no input, and with which authority. Ordered so that the join of two records' unties is the greater.</summary>
+internal enum RetentionUntie : byte
+{
+    /// <summary>Every pointer the storage may receive is tied to an input.</summary>
+    None,
+
+    /// <summary>It may receive one tied to no input that it reached only through a shared layer (an rc or arc handle's payload included),
+    /// through which no write has authority (SPEC 5.2.1 condition 3).</summary>
+    ReadOnly,
+
+    /// <summary>It may receive one tied to no input that may carry write authority.</summary>
+    Writable,
+}
+
 /// <summary>What a call may retain in one storage (DECISIONS R4-M154): per input its kinds (<see cref="Kinds"/>, by the input slots
 /// <see cref="TyCtxt.Signature"/> numbers, the receiver at its written slot, a Callable signature's input positions, or a destruction's
-/// input 0), whether it may receive a pointer tied to no input (<see cref="Untied"/>: a raw layer stepping Unstated or Static that the
-/// call may write there, or for the result an atom reached from no input, design A3's Φ_E), and the conditions under which an input not
+/// input 0), whether it may receive a pointer tied to no input and with which authority (<see cref="Untie"/>, <see cref="Untied"/> where
+/// it is not None: a raw layer stepping Unstated or Static that the call may write there, or for the result a position stating a
+/// non-static Origin reached from no input, outside a `during self` storage, design A3's Φ_E), and the conditions under which an input not
 /// Value in <see cref="Kinds"/> is Value (<see cref="Pairs"/>: conjunctions, each of an input and the pairs of two Origins of the call's
 /// Type arguments, Self or declaring Type whose relations `Longer outlives Shorter` the fit needs and the premises do not prove, one per
 /// layer of a source's path the position's closure misses, the call's solved Origins' to judge; a pair `Joined` continues the previous
 /// pair's conjunction; the input is Value where every pair of one of its conjunctions holds; DECISIONS R4-M154, Revisions 2 and 10).
 /// Immutable.</summary>
-internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)[] pairs, bool untied)
+internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)[] pairs, RetentionUntie untie)
 {
     private readonly RetentionKind[] kinds = kinds;
     private readonly (int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)[] pairs = pairs;
-    private readonly bool untied = untied;
 
     internal ReadOnlySpan<RetentionKind> Kinds => this.kinds;
 
     internal ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)> Pairs => this.pairs;
 
-    internal bool Untied => this.untied;
+    internal RetentionUntie Untie { get; } = untie;
+
+    internal bool Untied => this.Untie != RetentionUntie.None;
 
     /// <summary>Whether this storage may hold an input, by any kind or under a condition.</summary>
     /// <param name="input">The input slot.</param>
@@ -200,8 +219,12 @@ internal sealed class OutputRetention(int output, StorageRetention own, (BoundTy
 
 /// <summary>A call's retention: what its result retains (<see cref="Result"/>), the storages past the result's written layers
 /// (<see cref="ResultWrites"/>), what the storage it may write through each input retains (<see cref="Writes"/>, by ascending output),
-/// and the stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them.</summary>
-internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores, bool composes)
+/// and the stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them. A Deep
+/// contract (<see cref="IsDeep"/>) has them with a part past the bound beside them: its rows are a lower bound on the exact rows, so
+/// a reader that a present row moves (a record, a Loan or a plan entry) follows them, and A5 records the Deep part at the call
+/// (R4-M153's Join: a decided part ranks over Deep); every answer from a row's absence (<see cref="Keeps"/>, the storing rule's
+/// refusal, a Closure's receiver independence) is conservative: it reads a Deep contract as the Limit. Immutable.</summary>
+internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores, bool composes, bool deep)
 {
     /// <summary>The output slot of a call's result, beside its inputs' slots (0 and up).</summary>
     internal const int ResultOutput = -1;
@@ -211,7 +234,7 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     /// member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: nothing is computed, and A5
     /// records a located Unsupported_Kd at the call. Storage a Binding failure left Rejected is not a Limit (DECISIONS BU-36). Reading its
     /// Result, Writes or ReferentStores is a broken contract.</summary>
-    internal static readonly CallRetention Limit = new(null, null, [], [], composes: true);
+    internal static readonly CallRetention Limit = new(null, null, [], [], composes: true, deep: false);
 
     private readonly StorageRetention? result = result;
     private readonly OutputRetention? resultWrites = resultWrites;
@@ -219,6 +242,11 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     private readonly int[] referentStores = referentStores;
 
     internal bool IsLimit => this.result is null;
+
+    /// <summary>Gets a value indicating whether a part of the contract lies past a walk's bound beside its rows (G408B-17): a finding a
+    /// retention walk left undecided there where both a holder the rows name and the finding's subject can carry a Loan or an address
+    /// (Binding.Retention.Rows.cs). Its rows are those found within the bound; never with <see cref="IsLimit"/>.</summary>
+    internal bool IsDeep { get; } = deep;
 
     /// <summary>Gets a value indicating whether the call's writes and reads compose within it (SPEC 15.6.4: "Except for the operations whose
     /// writes SPEC states, ... a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): false for `replace`,
@@ -228,12 +256,13 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     internal bool Composes { get; } = composes;
 
     /// <summary>Whether the call may keep an input past its end: its result or a storage it may write holds it, and the Limit, which states
-    /// nothing, may. False is what an inspection means (SPEC 13.4: the `bool` result keeps none).</summary>
+    /// nothing, and a Deep contract, whose rows are a lower bound, may. False is what an inspection means (SPEC 13.4: the `bool` result
+    /// keeps none).</summary>
     /// <param name="input">The input slot.</param>
     /// <returns>Whether the input may outlive the call in any output.</returns>
     internal bool Keeps(int input)
     {
-        if (this.result is null || this.result.Holds(input))
+        if (this.result is null || this.IsDeep || this.result.Holds(input))
         {
             return true;
         }

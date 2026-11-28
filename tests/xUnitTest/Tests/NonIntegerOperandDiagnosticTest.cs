@@ -67,6 +67,18 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Null(error.Note);
     }
 
+    // SPEC 13.3.4 row 3, 13.3.3, 23.1.2: an f64 left takes the right's Left Contract beside a user provider right (a
+    // `LeftRemainderProvider<f64>` right is eligible), so its `%` verdict beside an unresolved right rests on that operand, and only the
+    // operand's record stands; a literal or numeric right keeps the verdict (above). PLAN G1356, Q13 rule W: before, NonIntegerOperand_Kd
+    // at `x % missing` beside it (a removal).
+    [Fact]
+    public void AFloatRemainderBesideAnUnresolvedRightRestsOnIt()
+    {
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check("func f(x: f64) -> ()\n    let r = x % missing\npublic func main() => ()")));
+        Assert.Equal(nameof(DiagnosticCode.UnresolvedBinding_Kd), error.Code);
+        Assert.Equal("missing", error.Text);
+    }
+
     // A shift count is located at the count; only a wrapping count has a Note of its own.
     [Theory]
     [InlineData("let x: i32 = 1\nlet v = x << 1.0", "f64", "<<", "1.0")]

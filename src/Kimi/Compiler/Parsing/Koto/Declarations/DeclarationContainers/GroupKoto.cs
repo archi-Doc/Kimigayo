@@ -64,7 +64,8 @@ public sealed class GroupKoto : DeclarationContainerKoto
     {
         ConsumeBlockStart(ref reader);
         var list = new RootItems(this);
-        Parser.ParseItems(ref reader, ref list);
+        Parser.ParseItemList(ref reader, ref list, out var markers);
+        this.AdoptSource(markers);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -174,9 +175,17 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
         reader.ExpectLineEnd();
 
-        if (item is not null && !reader.InExcludedSyntax)
+        if (item is not null)
         {
-            this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
+            // Excluded syntax contributes no root item; its directive's marker keeps it (SPEC 19.4).
+            if (reader.ExcludingMarker is { } marker)
+            {
+                marker.AddSource(item);
+            }
+            else
+            {
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
+            }
         }
 
         if (reader.Position == oldPosition)
@@ -197,13 +206,13 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
         public readonly bool RequiresItem => false;
 
-        public void EnterExcluded(ref TokenReader reader)
-            => this.owner.Enter(ref reader);
-
         public void ParseItem(ref TokenReader reader)
-            => this.owner.Of(ref reader).ParseRootItem(ref reader, ref this.state);
+        {
+            this.owner.Of(ref reader).ParseRootItem(ref reader, ref this.state);
+            this.owner.Release(ref reader);
+        }
 
-        // A #switch keeps its marker only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the root.
+        // A #switch is an item only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the root.
         public readonly void AddUnselected(ref TokenReader reader, Koto unselected)
             => this.owner.Container.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, unselected);
     }

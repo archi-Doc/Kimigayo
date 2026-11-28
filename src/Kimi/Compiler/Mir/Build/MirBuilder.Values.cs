@@ -47,7 +47,6 @@ internal sealed partial class MirBuilder
 
     // The value a node's own form produces, into the destination; as a call's input that reserves (input), a written exclusive borrow,
     // also inside parentheses, is two-phase (SPEC 15.6.7), and a selection's or a do's bodies give their values as Result places them.
-    [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
     private void IntoAt(MirPlace destination, Koto node, bool input)
     {
         switch (HirTables.Op(node))
@@ -369,7 +368,7 @@ internal sealed partial class MirBuilder
     // Never value is neither, so the target keeps its old value (DECISIONS R4-M62).
     private void Overwrite(MirPlace target, MirPlace value, Koto node)
     {
-        if (!this.IsNever(value) && MirTypes.MayNeedDrop(compilation.Types, this.body.TypeOf(target), this.walked))
+        if (!this.IsNever(value) && this.MayNeedDrop(this.body.TypeOf(target)))
         {
             this.DropAt(target, this.Info(node));
         }

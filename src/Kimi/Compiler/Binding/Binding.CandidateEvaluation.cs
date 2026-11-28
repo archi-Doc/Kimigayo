@@ -158,7 +158,7 @@ public sealed partial class Binding
     // (E > R > L > U), read where the trial left it and never proven again (AGENTS Diagnostics). None when the trial left no fact, as for
     // a candidate that failed before its Constraints were judged, or when the clause did not bind (its binding failure is its own record).
     private static ReferenceConstraintFailure? ClauseFailure(ClauseFact? fact, BindingSymbol? declaration)
-        => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration) : null;
+        => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration, clause.Conformance) : null;
 
     // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
     // any other row), which no other argument or tie-breaker rescues.
@@ -220,9 +220,7 @@ public sealed partial class Binding
     }
 
     // SPEC 10.4: this comparison reads explicit source arguments only; receiver acquisition is common to the group. Step 1 compares each
-    // argument's class and each element position's (Positions). Two fits of one argument walk its syntax alike, so they record the same
-    // positions, unequal counts being a broken contract (InternalInvariant_Kd at the argument); a candidate that leaves the argument open
-    // (no Type) records none and is compared at the argument only (step 2 then makes the pair incomparable).
+    // argument's class and each element position's (Positions, ComparePositions).
     private bool BetterCandidate(
         in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
     {
@@ -231,30 +229,10 @@ public sealed partial class Binding
         var positions = CollectionsMarshal.AsSpan(this.positionOperations);
         for (var i = 0; i < left.Length; i++)
         {
-            var x = positions[left[i].Positions];
-            var y = positions[right[i].Positions];
-            if (!CompareClasses(left[i].Adaptation, right[i].Adaptation, ref better, ref worse))
+            if (!CompareClasses(left[i].Adaptation, right[i].Adaptation, ref better, ref worse) ||
+                !this.ComparePositions(positions, left[i], right[i], ref better, ref worse))
             {
                 return false;
-            }
-
-            if (x.Length != y.Length)
-            {
-                if (!x.IsEmpty && !y.IsEmpty)
-                {
-                    this.Fail(left[i].Source!, BindingFailure.Internal);
-                    return false;
-                }
-
-                continue;
-            }
-
-            for (var p = 0; p < x.Length; p++)
-            {
-                if (!CompareClasses(x[p].Adaptation, y[p].Adaptation, ref better, ref worse))
-                {
-                    return false;
-                }
             }
         }
 
@@ -304,6 +282,43 @@ public sealed partial class Binding
         var aGeneric = a.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
         var bGeneric = b.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
         return aGeneric != bGeneric ? !aGeneric : a.DefaultsUsed < b.DefaultsUsed;
+    }
+
+    // SPEC 10.4 step 1 and its exception (PLAN G814): two fits of one argument compared position by position. Both walk its syntax
+    // alike, a nested literal's operation following its own positions (FitElement), so the walk runs from each range's end. Where one
+    // fit holds a part whole (an operation with no positions: at a bare atom, an unbound slot that takes it whole, or a join at an open
+    // Type) and the other records the part's positions, the part's own classes are compared and the other's positions skipped: no
+    // position within it is compared; two parts that both record positions are walked into. The root is that case too: an argument held
+    // at a bare atom has no positions. Ranges that do not end together are a broken contract (InternalInvariant_Kd at the argument).
+    private bool ComparePositions(
+        ReadOnlySpan<BoundArgumentOperation> positions, in BoundArgumentOperation left, in BoundArgumentOperation right, ref bool better, ref bool worse)
+    {
+        var (x, xLength) = left.Positions.GetOffsetAndLength(positions.Length);
+        var (y, yLength) = right.Positions.GetOffsetAndLength(positions.Length);
+        if (xLength == 0 || yLength == 0)
+        {
+            return true;
+        }
+
+        var (i, j) = (x + xLength - 1, y + yLength - 1);
+        while (i >= x && j >= y)
+        {
+            if (!CompareClasses(positions[i].Adaptation, positions[j].Adaptation, ref better, ref worse))
+            {
+                return false;
+            }
+
+            var (p, q) = (positions[i].Positions.GetOffsetAndLength(positions.Length).Length, positions[j].Positions.GetOffsetAndLength(positions.Length).Length);
+            (i, j) = (p == 0) == (q == 0) ? (i - 1, j - 1) : (i - 1 - p, j - 1 - q);
+        }
+
+        if (i == x - 1 && j == y - 1)
+        {
+            return true;
+        }
+
+        this.Fail(left.Source!, BindingFailure.Internal);
+        return false;
     }
 
     // A failed selection: its omitted header Types wait, and its record is the selection's (RecordSelection) with the parties built.
@@ -365,7 +380,7 @@ public sealed partial class Binding
     private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(CallableConstraintRows.Family, call, BindingFailure.UnprovenConstraint, fact, true);
+        return this.RecordCallableConstraint(call, fact, unresolved: true);
     }
 
     // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused.

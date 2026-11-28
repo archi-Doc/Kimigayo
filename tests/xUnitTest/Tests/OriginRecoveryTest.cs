@@ -153,6 +153,25 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.Equal(codes.Split(' '), errors.Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
+    // SPEC 23.1.2 (R7-E4 E4c: readers of an Origin input that failed first): a meet whose operand `q` names nothing (15.2.1) records at
+    // `q` alone, since the annotation's reader keeps `Fail` over BindOrigin's failed result (Origins.Annotations); a binding set on a
+    // Contract, which declares no slots (15.3.2), records at the set, and BoundContracts' reader of that failed reference returns with no
+    // record of its own; a name that is a set and a parameter, or a signature's Origin and a body local (parameters share the body's
+    // space, SPEC 9), of one scope (15.3.4's same-scope role conflict) records its DuplicateBinding_Kd at the use, and BindOriginName,
+    // reading that failed lookup, records nothing beside it.
+    [Theory]
+    [InlineData("func f(x: ref/i32, y: ref/i32) -> i32\n    let z: ref/i32 during (x and q) = x\n    return 0\n", "MissingOriginBinding_Kd q")]
+    [InlineData("contract C<U>\n    func get(self: ref/Self) -> U\nstruct S<T>\n    T is C<i32>{v}\n", "InvalidOriginBinding_Kd C<i32>{v}")]
+    [InlineData("struct View {source}\nfunc f(value: View{s}, s: i32, x: ref/i32 during s) -> i32\n    return 0\n", "DuplicateBinding_Kd View{s}; DuplicateBinding_Kd s")]
+    [InlineData("func f(x: ref/i32 during a) -> i32\n    let a = 1\n    let y: ref/i32 during a = x\n    return 0\n", "DuplicateBinding_Kd a")]
+    public void AnOriginInputThatFailedFirstGivesItsReaderNoRecord(string declarations, string records)
+    {
+        var source = declarations + "public func main() => ()\n";
+        // Not pinned: P148's InvalidConstraint_Kd at `struct` belongs to the row "a Constraint over a premise whose Type failed".
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Where(x => x.Code != nameof(DiagnosticCode.InvalidConstraint_Kd));
+        Assert.Equal(records.Split("; "), errors.Select(x => x.Code + " " + (x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)));
+    }
+
     // SPEC 23.1.2: three independent records. R7-O1 H: the relation is A5's one record (Binding's twin went), so the analysis's records
     // are published beside Binding's (ReportAnalysis).
     [Fact]

@@ -144,9 +144,12 @@ public sealed partial class Binding
                 this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
             }
 
-            // SPEC 15.3.4 (PLAN G230 (A)): the header may be bound before the body types a local its written Origins name; bound
-            // again here, with that local bound, each parameter takes its Type and a result the header could not bind takes its own,
-            // its `during r` naming r's region, which a named nested function's body reads as a fixed Origin through its declaring body.
+            // Temporary (PLAN G230-H's Q-B row): a `let` or `var` local that a header names is demanded there (OriginCandidate). So a
+            // parameter or result that the header failed is bound again here only for a local that the demand cannot form before its
+            // evaluating construct binds: a Pattern or `for` binding, which has no declaration to demand, or a local of a Closure body
+            // whose literal's environment is not ready (FormEnvironment: an omitted parameter Type, SPEC 7.7.1, or a pending entry
+            // source such as a `for` binding). It goes when the demand can form both: the Pattern or `for` head bound on demand, and the
+            // literal's expected input formed on demand.
             if (function.ReturnType is { } resultSyntax && symbol is { Type: null })
             {
                 symbol.Type = this.BindType(resultSyntax, scope);
@@ -240,15 +243,11 @@ public sealed partial class Binding
             pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.HoldsPendingProjection(parameterType);
         }
 
-        if (pendingInputs || (symbol.Type is { } resultType && this.HoldsPendingProjection(resultType)))
+        // A pending input leaves the Origin declaration open; a pending result alone completes it once its clauses are ready, and the
+        // parameter symbols then take the completed Types, as on the header's completion (DECISIONS R7-M132).
+        var pendingResult = !pendingInputs && symbol.Type is { } resultType && this.HoldsPendingProjection(resultType);
+        if (pendingInputs || (pendingResult && !this.PartialOriginContractReady(function)))
         {
-            // Result portions that do not depend on missing Type values use the ordinary Origin
-            // completion. Unrelated result holes do not hide a determined input/elision contract.
-            if (!pendingInputs && this.PartialOriginContractReady(function))
-            {
-                this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
-            }
-
             return false;
         }
 
@@ -256,6 +255,11 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.ParameterSymbol(function, i).Type = function.Parameters[i].Type.BoundType;
+        }
+
+        if (pendingResult)
+        {
+            return false;
         }
 
         if (symbol.ReceiverIndex >= 0)

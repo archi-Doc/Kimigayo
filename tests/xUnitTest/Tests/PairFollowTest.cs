@@ -514,7 +514,7 @@ public class PairFollowTest
         var named = KotoTree.Walk(body).Select(x => x.TypeOf()).OfType<BoundType>().Where(NamesOuterOrigin).Distinct().ToArray();
         Assert.Contains(named, x => x.Origin is { Kind: OriginKind.Intersection } origin && origin.Operands.Any(IsOuterOrigin));
         Assert.Contains(named, x => x.OriginArguments.Any(origin => origin.Operands.Prepend(origin).Any(IsOuterOrigin)));
-        Assert.All(named, x => Assert.False(NamesOuterOrigin(c.Types.ReadableInstance(x, c.Types.StorageSubst(write))!)));
+        Assert.All(named, x => Assert.False(NamesOuterOrigin(c.Types.ReadableInstance(x, c.Types.SubstOf(write)!)!)));
     }
 
     private static bool IsOuterOrigin(BoundOrigin origin) => origin is { Kind: OriginKind.Parameter, Slot: < 0 };
@@ -824,7 +824,7 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Box + "func f<s/T>(item: s/T, factor: s/i32) -> i32\n    return factor * 2");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
+        Assert.Contains(DiagnosticCode.OperatorNotDefined_Kd, Codes(c)); // PLAN G1356, Q13: was TypeMismatch_Kd at `2` (SPEC 13.3.4: no provider)
     }
 
     [Fact]
@@ -927,8 +927,8 @@ public class PairFollowTest
     [Theory]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    return -a", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(m: s/T) -> T\n    s is owner or ref\n    T is PrimitiveInteger\n    let v: T = 128\n    return v", DiagnosticCode.InvalidNumericLiteral_Kd)]
-    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.ArithmeticSelection_Kd)]
-    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: T, b: T, m: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.UnprovenConstraint_Kd)] // PLAN G1356, Q13: was ArithmeticSelection_Kd
+    [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(a: s/T, b: s/T) -> T\n    s is owner or ref\n    T is Copy\n    return a + b", DiagnosticCode.UnprovenConstraint_Kd)] // PLAN G1356, Q13: was ArithmeticSelection_Kd
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    let v: i32 = x\n    return v", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i32\n    s is value or object\n    return h(x)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("func h(v: i32) -> i32 => v\nfunc f<s/T>(x: s/i32, m: s/T) -> i64\n    s is owner or ref\n    let v: i64 = x\n    return v", DiagnosticCode.TypeMismatch_Kd)]

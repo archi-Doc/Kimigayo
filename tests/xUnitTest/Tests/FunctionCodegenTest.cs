@@ -1452,7 +1452,7 @@ public sealed partial class FunctionCodegenTest
             "Storage.clockFailure",
         ];
         var library = Compilation.CreateForTest().Library;
-        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Member!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
         Assert.Equal(8, codes.Distinct().Count());
         Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
         Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
@@ -1955,6 +1955,175 @@ public sealed partial class FunctionCodegenTest
         Assert.True(functions[2] - functions[1] <= (2 * (functions[1] - functions[0])) + 8, shown);
     }
 
+    // IMPL 21.6 (the Tatara plan's decisions 36-43; design C-457 4.4): each call of a machine instruction calls its member's routine, which
+    // the module defines once, internal and always inlined, as the row's inline asm under its constraints and the one clobber suffix: the
+    // freestanding row's Board (design 4.1) polls COM1's line status, spins, writes a byte and halts.
+    [Fact]
+    public void AnInstructionCallsItsRoutine()
+    {
+        const string Source = "public func write(bytes: ref/[4 of u8])\n    var i: isize = 0\n    while i < 4\n        unsafe\n" +
+            "            while (X86.readPort8(0x3FD) & 0x20) == 0\n                X86.pause()\n            X86.writePort8(0x3F8, bytes[i])\n        i += 1\n" +
+            "public func stop(status: i32) -> Never\n    unsafe => X86.writePort8(0xF4, status@u8)\n    loop => X86.halt()\n";
+        var text = Instructions(TargetProfile.None, Source);
+        string[] routines =
+        [
+            "define internal void @__kimi_x86_pause() alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"pause\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
+            "define internal void @__kimi_x86_hlt() alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"hlt\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
+            "define internal i8 @__kimi_x86_inb(i16 %port) alwaysinline #0 {\nentry:\n" +
+                "  %r = call i8 asm sideeffect \"inb %dx, %al\", \"={ax},{dx},~{memory},~{dirflag},~{fpsr},~{flags}\"(i16 %port)\n  ret i8 %r\n}\n",
+            "define internal void @__kimi_x86_outb(i16 %port, i8 %value) alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"outb %al, %dx\", \"{dx},{ax},~{memory},~{dirflag},~{fpsr},~{flags}\"(i16 %port, i8 %value)\n  ret void\n}\n",
+        ];
+        Assert.All(routines, x => Assert.Single(Regex.Matches(text, Regex.Escape(x))));
+        Assert.Equal(routines.Length, Regex.Count(text, @"(?m)^define internal \S+ @__kimi_x86_"));
+        Assert.Matches(@"  %t\d+ = call i8 @__kimi_x86_inb\(i16 1021\)\n", text);
+        Assert.Matches(@"  call void @__kimi_x86_outb\(i16 1016, i8 %[\w.]+\)\n", text);
+        Assert.Matches(@"  call void @__kimi_x86_outb\(i16 244, i8 %[\w.]+\)\n", text);
+        Assert.Contains("  call void @__kimi_x86_pause()\n", text, StringComparison.Ordinal);
+        Assert.Contains("  call void @__kimi_x86_hlt()\n", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 19.2, IMPL 21.6 (OSF's row 5): windows-x64's executable executes `rdtsc` through the member's routine and runs to its end; the
+    // counter has counted since the processor's reset, so it is nonzero.
+    [Fact]
+    public void ATimestampReadRuns()
+        => Assert.Contains(
+            "asm sideeffect \"rdtsc\\0A",
+            ScalarEmissionTest.EmitFixture("X86ReadTimestamp", "let stamp = X86.readTimestamp()\nrequire stamp != 0 else => $abort(\"rdtsc\")\nConsole.writeLine(\"rdtsc\")", "rdtsc\n"),
+            StringComparison.Ordinal);
+
+    // IMPL 21.6: a machine instruction is a compiler barrier: its routine's `~{memory}` clobber keeps a port write between two plain stores
+    // to one buffer, in the order the body runs them (keeping it there at O2 is LLVM's guarantee for an asm call: no O2 run).
+    [Fact]
+    public void AnInstructionStaysBetweenTwoStores()
+        => Assert.Matches(
+            @"  store i8 1, ptr [^\n]*\n(?:[^\n]*\n)*?  call void @__kimi_x86_outb\(i16 1016, i8 %[\w.]+\)\n(?:[^\n]*\n)*?  store i8 2, ptr ",
+            Instructions(TargetProfile.None, "public func mark(buffer: uniq/[2 of u8], value: u8)\n    buffer[0] = 1\n    unsafe => X86.writePort8(0x3F8, value)\n    buffer[1] = 2\n"));
+
+    // SPEC 7.7.4 (design C-457 4.4, B C2): an instruction member's Item is a value whose call calls the member's routine, as a direct call
+    // does, on each row that declares it: readTimestamp's on every x86-64 row, readCr3's where `os == "none"` (OSF1b).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "readTimestamp", "rdtsc")]
+    [InlineData("x86_64-unknown-none", "readTimestamp", "rdtsc")]
+    [InlineData("x86_64-unknown-none", "readCr3", "rdcr3")]
+    public void AnInstructionItemsCallCallsItsRoutine(string triple, string member, string row)
+    {
+        var text = Instructions(TargetProfile.Find(triple)!, $"public func stamp() -> u64\n    let f = X86.{member}\n    return f()\n");
+        Assert.Single(Regex.Matches(text, $@"(?m)^define internal i64 @__kimi_x86_{row}\(\) alwaysinline #0 \{{$"));
+        Assert.Contains($"call i64 @__kimi_x86_{row}()\n", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 7.7.4, IMPL 21.1.3: an instruction member's Item converted to a Function Type is an adapter whose entry calls the member's
+    // routine, which the value's erased call reaches through its table.
+    [Fact]
+    public void AnInstructionsAdapterEntryCallsItsRoutine()
+    {
+        var text = Instructions(TargetProfile.Windows, "public func stamp() -> u64\n    let g: () -> u64 = X86.readTimestamp\n    return g()\n");
+        var callers = text.Split("\ndefine ").Where(static x => x.Contains("call i64 @__kimi_x86_rdtsc()", StringComparison.Ordinal)).ToArray();
+        Assert.DoesNotContain("call i64 %", Assert.Single(callers), StringComparison.Ordinal);
+        Assert.Matches(@"call i64 %t\d+\(", text);
+    }
+
+    // IMPL 21.6: the module defines a requested routine once, whatever number of calls and functions request it.
+    [Fact]
+    public void AnInstructionsRoutineIsDefinedOnce()
+    {
+        var text = Instructions(TargetProfile.Windows, "public func a() => X86.pause()\npublic func b() => X86.pause()\n");
+        Assert.Single(Regex.Matches(text, @"(?m)^define internal void @__kimi_x86_pause\(\)"));
+        Assert.Equal(2, Regex.Count(text, @"  call void @__kimi_x86_pause\(\)\n"));
+    }
+
+    // IMPL 21.6 (OSF1b; design C-457 4.3): the none row's call of a member calls its routine, whose entry block calls the row's template
+    // under its constraints and the one suffix over the routine's operands: design 6.1's install loading its interrupt table, a write of
+    // the EFER model-specific register (wrmsr's split of the value into EDX:EAX) and the idle wait, `sti` directly followed by `hlt`.
+    [Theory]
+    [InlineData(
+        "public func install(descriptor: raw/u8)\n    unsafe => X86.loadInterruptTable(descriptor)\n    X86.enableInterrupts()\n",
+        "lidt",
+        "void (ptr)",
+        "call void asm sideeffect \"lidt ($0)\", \"r,~{memory},~{dirflag},~{fpsr},~{flags}\"(ptr %)")]
+    [InlineData(
+        "public func efer()\n    unsafe => X86.writeMsr(0xC0000080, 0)\n",
+        "wrmsr",
+        "void (i32, i64)",
+        "call void asm sideeffect \"movq %rax, %rdx\\0Ashrq $$32, %rdx\\0Awrmsr\", \"{cx},{ax},~{dx},~{memory},~{dirflag},~{fpsr},~{flags}\"(i32 %, i64 %)")]
+    [InlineData(
+        "public func idle() => X86.enableInterruptsAndHalt()\n", "stihlt", "void ()", "call void asm sideeffect \"sti\\0Ahlt\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()")]
+    public void AnInstructionsRoutineCallsItsTemplate(string source, string row, string signature, string asm)
+    {
+        var ir = GeneratedIr.Parse(Instructions(TargetProfile.None, source));
+        var routine = ir.Function("__kimi_x86_" + row);
+        Assert.Equal("internal " + signature, routine.Signature);
+        Assert.Contains("alwaysinline", routine.Attributes);
+        Assert.Equal([asm, "ret void"], routine.Instructions.Select(static x => x.Shape));
+        Assert.Equal(routine.Parameters, routine.Instructions[0].Operands);
+        Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Callee == routine);
+    }
+
+    // IMPL 21.6, 21.3.1 (OSF1b; the Tatara plan's ruling 165): a routine that returns through a result slot, cpuid's C-layout struct, stores
+    // the asm's result into the slot in one store of the struct's storage Type and returns void, and the call passes its destination as
+    // the slot, whose Field at offset 4 is `ebx`.
+    [Fact]
+    public void AnInstructionsResultSlotHoldsItsResult()
+    {
+        var ir = GeneratedIr.Parse(Instructions(TargetProfile.Windows, "public func vendor() -> u32\n    let r = X86.cpuid(0, 0)\n    return r.ebx\n"));
+        var cpuid = ir.Function("__kimi_x86_cpuid");
+        Assert.Equal("internal void (ptr, i32, i32)", cpuid.Signature);
+        Assert.Equal(
+            [
+                "call { i32, i32, i32, i32 } asm sideeffect \"cpuid\", \"={ax},={bx},={cx},={dx},{ax},{cx},~{memory},~{dirflag},~{fpsr},~{flags}\"(i32 %, i32 %)",
+                "store { i32, i32, i32, i32 } %, ptr %", "ret void",
+            ],
+            cpuid.Instructions.Select(static x => x.Shape));
+        Assert.Equal(cpuid.Parameters.Skip(1), cpuid.Instructions[0].Operands);
+        Assert.Equal([cpuid.Instructions[0], cpuid.Parameters[0]], cpuid.Instructions[1].Operands);
+        var call = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Callee == cpuid);
+        Assert.Equal("call void @(ptr %, i32 0, i32 0)", call.Shape);
+        var slot = Assert.Single(call.Operands);
+        Assert.Equal("alloca", slot.Opcode);
+        Assert.Contains(Assert.Single(ir.Functions, x => x.Instructions.Contains(call)).Instructions, x => x.Shape == "getelementptr i8, ptr %, i64 4" && x.Operands[0] == slot);
+    }
+
+    // IMPL 21.6 (OSF3b's rows 12 and 13; design C-457 §6.4, T's ruling 196 (3)): an entry call's result is its InterruptEntry item's thunk's
+    // code address, and the thunk is an x86_intrcc function taking the frame by value (X86.InterruptFrame's storage) and, for an
+    // ErrorCodeHandler's entry, the error code, that realigns the stack and whose one call runs the handler's body with its inputs. Row 29's
+    // twin (SPEC 22.6 ¶2): a body `handle` forwarding to an import is that body, which calls the import.
+    [Theory]
+    [InlineData("InterruptHandler", "entry", "", "64", "unsafe => X86.writePort8(0x20, 0x20)", @"call void @__kimi_x86_outb\(i16 32, i8 32\)")]
+    [InlineData("ErrorCodeHandler", "errorCodeEntry", ", code: u64", "14", "unsafe => X86.writePort8(0x20, 0x20)", @"call void @__kimi_x86_outb\(i16 32, i8 32\)")]
+    [InlineData("InterruptHandler", "entry", "", "64", "Native.onTick(frame)", @"call void @on_tick\(ptr %\w+\)")]
+    public void AnInterruptEntryIsItsThunksAddress(string contract, string entry, string code, string vector, string body, string call)
+    {
+        var source = Handler(contract, entry, code, vector, $"\n        {body}\n") + "group Native\n" +
+            "    #LibraryImport(\"codec\", \"on_tick\")\n    public func onTick(frame: ref/X86.InterruptFrame)\n";
+        var ir = CompilationTestHelper.WriteIr(ForeignEmissionTest.AnalyzeAs(TargetProfile.None, source, "static", OutputKind.Library));
+        var thunk = Regex.Match(ir, Thunk(code, @"(__kimi_f\d+)"));
+        Assert.True(thunk.Success, ir);
+        Assert.Matches(@"= ptrtoint ptr @" + thunk.Groups[1].Value + @" to i64\n", ir);
+        var handle = @"\ndefine internal void @" + thunk.Groups[2].Value + @"\(ptr %a0" + (code.Length == 0 ? string.Empty : ", i64 %a1") + @"\) #0 \{\n";
+        Assert.Matches(handle + @"(?:(?!\})[^\n]*\n)*?  " + call + @"\n", ir);
+    }
+
+    // SPEC 22.6 ¶2, 8.6.3, IMPL 21.6 (OSF3b's row 29b, the accepted row R-e; T's ruling 196, the Middle's M1, B's C4): a handler whose
+    // `handle` is a #LibraryImport witness, a receiverless struct Type function, is accepted with no record, and its thunk calls the import
+    // by its C signature through code generation's one target rule, with no InternalInvariant_Kd: one call of the import with the frame
+    // (and the code), the import declared once and its library required.
+    [Theory]
+    [InlineData("InterruptHandler", "entry", "", "64", "on_tick", "ptr")]
+    [InlineData("ErrorCodeHandler", "errorCodeEntry", ", code: u64", "14", "on_fault", "ptr, i64")]
+    public void AnImportHandlersThunkCallsTheImport(string contract, string entry, string code, string vector, string import, string types)
+    {
+        var source = Handler(contract, entry, code, vector, "\n", $"    #LibraryImport(\"codec\", \"{import}\")\n");
+        var c = ForeignEmissionTest.AnalyzeAs(TargetProfile.None, source, "static", OutputKind.Library);
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Matches(Thunk(code, import), ir);
+        Assert.Single(Regex.Matches(ir, $@"\ndeclare void @{import}\({types}\)\n"));
+        Assert.Equal([("codec", "static")], c.Generated.Libraries);
+    }
+
     // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
     // the definitions of the body items its generation marks Generated; any record fails (DECISIONS R5-M146).
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
@@ -2017,6 +2186,11 @@ public sealed partial class FunctionCodegenTest
     // The module's internal functions: its generated code and runtime, without the runtime's memory functions, which every module defines
     // with external linkage (IMPL 21.4.7).
     private static IEnumerable<IrFunction> Internal(GeneratedIr ir) => ir.Functions.Where(static x => x.Signature.StartsWith("internal ", StringComparison.Ordinal));
+
+    // A Library program's module text on a target row, the source's functions the members of a public group (a Library generates every
+    // root, K11).
+    private static string Instructions(TargetProfile row, string source)
+        => CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(row, "public group Board\n" + Regex.Replace(source, "(?m)^(?=.)", "    "), "Hello.kimi", OutputKind.Library));
 
     // The module's functions that body items' texts define.
     private static IrFunction[] Functions(GeneratedIr ir, string[] items)
@@ -2109,6 +2283,20 @@ public sealed partial class FunctionCodegenTest
 
     // The pointer loads between a value and the slot it was first loaded from: 0 for a slot's own value.
     private static int Loads(IrValue value) => value.Opcode == "load" && value.Operands[0].Opcode == "load" ? 1 + Loads(value.Operands[0]) : 0;
+
+    // A none-row Library's handler Tick of `contract` and its public install, which stores its entry's address in `table[vector]`.
+    private static string Handler(string contract, string entry, string code, string vector, string body, string attribute = "")
+        => $"struct Tick\n    Self is X86.{contract}\n\n{attribute}    public func handle(frame: ref/X86.InterruptFrame{code}){body}\n" +
+            $"public group Interrupts\n    public func install(table: raw/u64)\n        unsafe\n            table[{vector}] = X86.{entry}<Tick>()@u64\n";
+
+    // The pattern of an interrupt entry's thunk (group 1: its symbol) whose one call is of `callee` with the frame and, for a handler
+    // whose `code` parameter is not empty, the code.
+    private static string Thunk(string code, string callee)
+    {
+        var extra = code.Length == 0 ? string.Empty : ", i64 %code";
+        return @"\ndefine internal x86_intrcc void @(__kimi_f\d+)\(ptr byval\(\{ i64, i64, i64, i64, i64 \}\) %frame" + extra +
+            @"\) ""stackrealign"" #0 \{\nentry:\n  call void @" + callee + @"\(ptr %frame" + extra + @"\)\n  ret void\n\}\n";
+    }
 
     private static (string Code, string? Text)[] Records(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text))];

@@ -22,6 +22,10 @@ public sealed partial class InstanceCollectorTest
     private const string Outer = "func outer<T>(x: T) -> T\n    T is Copy\n";
     private const string CopyBox = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n";
 
+    // A Field initializer whose generic call's Type argument passes the layout limit (PLAN G215's g_ twins, design probe q2c).
+    private const string LayerLimit = "group Util\n    public func make<T>() -> raw/T => Raw.allocate<T>(0)\nstruct Holder {a}\n    public let p: ref/i32 during a\n" +
+        "    public var n: i32 = if true\n        let q = Util.make<[2147483648 of u8]>()\n        unsafe => Raw.release(q)\n        yield 0\n    else => 0\n";
+
     // The F3 reproducers' nested functions (X40): one level into a generic function, one there calling a selected specialization, two
     // levels in, in a block, in a generic struct's method and in a specialization inside a generic struct; and in its getter and setter.
     private const string OneLevel = Outer + "    func middle(y: T) -> T => y\n    return middle(x)\n";
@@ -684,6 +688,30 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal("now", set.Items[import].Key.Symbol!.Name);
         Assert.Empty(set.Targets(import).ToArray());
         Assert.Equal(sites, Enumerable.Range(0, set.Items.Length).Sum(x => set.Targets(x).ToArray().Count(t => t.Item == import)));
+    }
+
+    // SPEC 22.6 ¶2, 8.6.3 (OSF3b's row 29; T's ruling 196, PLAN G1454 folded into OSF3b): a handler whose `handle` is a #LibraryImport
+    // witness, a receiverless struct Type function, is valid: check has no record, and its interrupt entry's one target is the import's
+    // item, which has none of its own (the import's own rule, Imported).
+    [Fact]
+    public void AnImportHandlerIsItsEntrysTarget()
+    {
+        const string Source = "#if os == \"none\"\n    struct TimerTick\n        Self is X86.InterruptHandler\n\n" +
+            "        #LibraryImport(\"board\", \"on_tick\")\n        public func handle(frame: ref/X86.InterruptFrame)\n\n" +
+            "    group Interrupts\n        func install(table: raw/u64)\n            unsafe\n                table[64] = X86.entry<TimerTick>()@u64\n";
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.OutputKind = OutputKind.Library;
+        c.Project.ProjectFile.NativeRequirements[TargetProfile.None.Target] = new(StringComparer.Ordinal) { ["board"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(TargetProfile.None.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Board.kimi", Source));
+        c.Check();
+        Assert.Equal(string.Empty, TimeLibraryTest.Errors(c));
+        var set = c.Instances!;
+        var entry = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.InterruptEntry);
+        var import = Assert.Single(set.Targets(entry).ToArray()).Item;
+        Assert.Equal((MonoKind.Import, "handle"), (set.Items[import].Key.Kind, set.Items[import].Key.Symbol!.Name));
+        Assert.Empty(set.Targets(import).ToArray());
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
     }
 
     // DECISIONS BU-11 (PLAN G153 (2)), R7-T1 (the owner's RQ12): Binding's storage bound is a property of each instance, whatever was
@@ -1674,7 +1702,8 @@ public sealed partial class InstanceCollectorTest
     // K 4.5 rows 5, 12 and 13, DECISIONS R5-M70: a requirement's function item is, in the instance, the item of the witness its requirement
     // runs on the Item's Self through the Contract reference it records (TyCtxt.Witness(item)), where it is made, where it is called and as
     // its adapter's target: a user conformance's body, a built-in Type's Builtin shim, and through a bound reference the witness of the
-    // conformance it names (Tag<bool>, not Tag<i32>), the body Binding's Item context also runs.
+    // conformance it names (Tag<bool>, not Tag<i32>). Binding's Item context is the requirement's call on the Item's Self, and
+    // Witness(item) runs that body from that call.
     [Fact]
     public void ARequirementItemIsItsWitnessInTheInstance()
     {
@@ -1693,7 +1722,10 @@ public sealed partial class InstanceCollectorTest
             x => Assert.Equal(witness, x.Item));
         Assert.Equal("bool", TyCtxt.Name(((FunctionKoto)program.Body(set.Items[witness].BodyOrdinal).Key.Decl!.Declaration).Parameters[0].Type.TypeOf()!));
         var item = set.Items[adapter].RepresentativeType!;
-        Assert.Same(c.Types.SubstOfItem(item), c.Types.Witness(item)!.Value.Subst);
+        Assert.Same(item.Symbol, c.Types.SubstOfItem(item)!.Target); // SPEC 7.3, R5-M70: the Item's call is the requirement's.
+        var runs = c.Types.Witness(item)!.Value; // SPEC 8.6.1: what that call runs, the body the collector's adapter targets.
+        Assert.Equal(RequirementTargetKind.Body, runs.Kind);
+        Assert.Same(program.Body(set.Items[witness].BodyOrdinal).Key.Decl, runs.Target);
     }
 
     // K 4.5 row 3, F package 4.5 (DECISIONS R5-M61, R5-M67): a requirement call in an instance is the item of its witness there. A conformance
@@ -2374,11 +2406,14 @@ public sealed partial class InstanceCollectorTest
     // K 4.8, IMPL 21.3.2, DECISIONS R5-M44, R5-M171: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the
     // Type's least use in its declaration: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
     // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
-    // error and Option<Never> is laid out (X31), neither with a record. Subjects by their first line.
+    // error and Option<Never> is laid out (X31), neither with a record; a Field initializer's instance in its constructor's body and in a
+    // constructorless layer's body, which is checked only (DECISIONS R7-M115, the owner's (a2)). Subjects by their first line.
     [Theory]
     [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "[2147483648 of u8]")]
     [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "[2147483648 of ()]")]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<[2147483648 of u8]>()\nunsafe => Raw.release(p)\n", "Raw.allocate<T>(0)")]
+    [InlineData(LayerLimit + "    public init(p: ref/i32 during a) => self.p = p\npublic func main() => ()\n", "Raw.allocate<T>(0)")] // g_ctor
+    [InlineData(LayerLimit + "public func main() => ()\n", "Raw.allocate<T>(0)")] // g_noctor: the layer body, a checked-only root (the owner's (a2))
     [InlineData(
         "func host(big: [1073741824 of i32]) -> i32\n    let f = func [big] () -> i32 => 1\n    let e: () -> i32 = f\n    return e()\n",
         "[1073741824 of i32]|let f = func [big]() -> i32 => 1")]
@@ -2941,14 +2976,17 @@ public sealed partial class InstanceCollectorTest
             .Order(StringComparer.Ordinal).ToArray();
     }
 
-    // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ReserveDispatch, StaticEnsure, the creations and DestroyValues name a
-    // target (a type test and a clone acquire nothing, SPEC 13.6.4).
+    // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ReserveDispatch, StaticEnsure, the creations, DestroyValues and
+    // InterruptEntry (its thunk, IMPL 21.6) name a target (a type test and a clone acquire nothing, SPEC 13.6.4).
     [Fact]
     public void OnlyTheWhitelistedIntrinsicsCarryATarget()
     {
         var targets = Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None && IntrinsicRows.Of(x).Target != IntrinsicTarget.None);
         Assert.Equal(
-            [IntrinsicId.DestroyValues, IntrinsicId.ReserveDispatch, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
+            [
+                IntrinsicId.DestroyValues, IntrinsicId.ReserveDispatch, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc,
+                IntrinsicId.StaticEnsure, IntrinsicId.InterruptEntry,
+            ],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }

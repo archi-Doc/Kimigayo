@@ -12,8 +12,8 @@
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, MeetAtom, MeetOperand, an atom's part, whether
 //   it is an enclosing body's call region, and an enclosing body's local region's solved value, OriginAtomEntry.Value: Binding's
 //   RegionValue, BU-127 and the owner's O-422 (a)), keyed by MirDefKey.Body, its
-//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its layer units with rows
-//   (TyCtxt.OriginLayers), beside the program's constructor bodies and the root range; the view throws at a broken contract (DECISIONS BU-102); after Judge,
+//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part; a layer body's is its layer's,
+//   DECISIONS R7-M115); the view throws at a broken contract (DECISIONS BU-102); after Judge,
 //   its queries (Outlives, Fixed) re-form a class's edges from these (IndexClass).
 // - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd
 //   (Ownership.UnprovenOrigin) at a chain's last edge's site (a row's Site, or the Ref's statement for a containment edge), with Reason
@@ -28,10 +28,7 @@
 //   an enclosing body's call region (the nested-body limit), while a Dependent node, an end a Binding failure left Unbound or an unclassified
 //   Closure's pending atom (R4-M126 §2.5 (c)), is never a source or a judged target, so only a chain through it is judged, between its
 //   ends (SPEC 23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a body whose arena MirDataflow.Within refuses, through
-//   MirDataflow.StorageLimit with its arguments (G213), which the stratum then skips (D20); and, which Findings adds once per program
-//   after step 4, Unsupported_Kd (Ownership.Unsupported, NoBody, every view) at each row in the root range of a layer whose rows no
-//   constructor body's slice includes, G215's located limit (R4-M168; removal condition: a body of the layer's own); a row outside the
-//   root range is the library check's (PLAN G951 E1).
+//   MirDataflow.StorageLimit with its arguments (G213), which the stratum then skips (D20).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
 //   or a dereferenced layer's through OriginAtom at the Ref's site, a meet's operands and a solved value's as the view holds them
 //   (MeetOperand); a chain's
@@ -50,8 +47,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A5's Origin stratum (2a0-D §6): <see cref="Judge"/> judges a body's classes of views and adds their problems;
-/// <see cref="Findings"/> adds G215's layer limit once per program.</summary>
+/// <summary>A5's Origin stratum (2a0-D §6): <see cref="Judge"/> judges a body's classes of views and adds their problems.</summary>
 /// <param name="types">The Type context, whose C1-F4 view gives the rows and the atoms.</param>
 /// <param name="cases">The Semantics case views.</param>
 internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
@@ -59,7 +55,6 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     private readonly MirSteps steps = new(cases);
     private readonly List<Pending> pending = []; // The problems Judge found, in order, with their class's views.
     private readonly List<ProblemFact> pendingFacts = [];
-    private readonly HashSet<ExecutableBody> included = []; // Findings: the layers some constructor body's slice includes.
     private readonly MirReach reach = new(); // In a body with a case branch, the blocks the view being classified reaches.
     private MirStep[] walk = [];
     private Ref[] refs = []; // The body's Refs with an Origin outside every Inlined scope, in body order.
@@ -165,48 +160,6 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         }
 
         this.IndexCauses();
-    }
-
-    /// <summary>Adds, once per program after step 4's reads of the view, G215's located limit, one Unsupported_Kd in every view at each
-    /// row of a layer whose rows no constructor body's slice includes (R4-M168): no MIR body judges them until the layer has a body of its
-    /// own. A row outside the root range is the library check's (PLAN G951 E1, DECISIONS R5-M168's input rule).</summary>
-    /// <param name="program">The program, whose constructor bodies' slices name the layers they include.</param>
-    /// <param name="report">The program's problems.</param>
-    /// <param name="rootModules">The root range: the rows whose site's module is below it are judged.</param>
-    internal void Findings(MirProgram program, MirReport report, int rootModules)
-    {
-        var layers = types.OriginLayers;
-        if (layers.Count == 0)
-        {
-            return;
-        }
-
-        this.included.Clear();
-        foreach (var body in program.Bodies)
-        {
-            if (AdtDef.IsConstructor(body.Key.Decl))
-            {
-                this.included.Add(types.OriginRows(body.Key.Body).Layer); // The view decides which slice includes a layer (E4).
-            }
-        }
-
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-        for (var l = 0; l < layers.Count; l++)
-        {
-            if (this.included.Contains(layers[l]))
-            {
-                continue;
-            }
-
-            var rows = types.OriginRows(layers[l]).Rows;
-            for (var r = 0; r < rows.Count; r++)
-            {
-                if (rows[r].Site.Module < rootModules)
-                {
-                    report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, requirement, rows[r].Site));
-                }
-            }
-        }
     }
 
     // A part's fixed-fixed oracle (2a0-D §4, D8): the body's, or the layer's for the layer's part (the Type's public premises, SPEC 6.3.3;

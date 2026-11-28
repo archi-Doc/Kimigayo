@@ -10,6 +10,11 @@ public sealed partial class Binding
     // (FixedPattern.Of, AdaptInput) runs an evidence walk, so no InferAdaptedParts re-enters between its Add calls and SelectCommonType.
     private readonly List<BoundType> adaptedPartTypes = new();
 
+    // SPEC 10.5.1 bullet 2 (PLAN G1266): the own Types of OwnTypeSteps' call step that the late walk met, each with its position's
+    // pattern and its call argument (SolveLate's index; -1 for a payload), per pass: InferGathered infers those since the pass's mark at
+    // its end (OwnTypeSteps' order), and the pass removes them, as `wholes`.
+    private readonly List<(BoundType Pattern, Koto Part, int Argument)> ownTypes = new();
+
     // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
     // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises). At a Signature
     // position whose pattern is a slot, the slot's solution is its contributor's (the premise visits stop there; DECISIONS BU-99); at an
@@ -205,7 +210,7 @@ public sealed partial class Binding
                         ? binding.FitsLiteralPart(literal, complete, this.Scope) : binding.Infer(target, shape, this.Solve, this.Frame);
                 }
 
-                return !this.DefaultBindsAt(memberPattern) || binding.Infer(binding.LiteralInputType(formed), shape, this.Solve, this.Frame);
+                return !this.DefaultBindsAt(memberPattern, out _, out _) || binding.Infer(binding.LiteralInputType(formed), shape, this.Solve, this.Frame);
             }
             finally
             {
@@ -255,6 +260,15 @@ public sealed partial class Binding
             return misfit;
         }
 
+        // SPEC 10.5.1 bullet 2 (PLAN G1266, the owner's O-408 (a)): the gathered own Type `index` (ownTypes) at the end of its pass
+        // (OwnTypeSteps' order): evidence for the slots still unbound at its position (InferOwnType); `argument` is its call argument.
+        internal bool InferGathered(int index, out int argument)
+        {
+            var (pattern, part, at) = this.Binding.ownTypes[index];
+            argument = at;
+            return this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null || this.InferOwnType(pattern, part);
+        }
+
         // SPEC 10.8: the evidence of the parts at a position (Binding.ArgumentKinds.Positions.cs) for the slots of its pattern.
         private bool InferPosition(BoundType pattern, int start, bool late)
         {
@@ -280,7 +294,12 @@ public sealed partial class Binding
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, node, late);
                 case PartKind.Typed when binding.DefaultOf(node) is not null:
-                    return !late || binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null || this.InferOwnType(pattern, node);
+                    if (late)
+                    {
+                        binding.ownTypes.Add((pattern, node, -1)); // SPEC 10.5.1 bullet 2: after every literal's default (InferGathered).
+                    }
+
+                    return true;
                 default:
                     if (this.Binding.ArgumentTypeAt(node) is not { } actual || ReferenceEquals(actual, BoundType.Never))
                     {
@@ -430,28 +449,33 @@ public sealed partial class Binding
 
         // SPEC 10.2.1, 10.8 (the owner's O-343 (a), O-347 (a)): whether a Literal's default has anything to bind at `pattern`. A Literal
         // is no evidence, and its default binds only slots no evidence binds: along the outer layers, a pair layer whose target holds no
-        // slot left unbound (a closed leaf, or a Type slot another input bound) gives it nothing, whatever fixes the binder and whenever,
-        // so the Literal fits that target once the binder is fixed (SPEC 12.3), in any argument order and beside an expected result.
-        // The original, and a layer over a slot still open, are where the default binds (the binder owner when nothing else fixes it).
-        // Read by the shape check before selection (FitsLiteralShape) and by the late pass (InferLiteral).
-        private readonly bool DefaultBindsAt(BoundType pattern)
+        // slot left unbound (a closed leaf, or a Type slot another input bound) gives it no Type to bind, whatever fixes the binder and
+        // whenever, so the Literal fits that target once the binder is fixed (SPEC 12.3), in any argument order and beside an expected
+        // result; `layer` is that layer and `target` its fixed target. The original, and a layer over a slot still open, are where the
+        // default binds (the binder owner when nothing else fixes it). Read by the shape check before selection (FitsLiteralShape) and by
+        // the late pass (InferLiteral).
+        private readonly bool DefaultBindsAt(BoundType pattern, out BoundType? layer, out BoundType? target)
         {
-            while (pattern is { Kind: BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication, Components: [var target] })
+            while (pattern is { Kind: BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication, Components: [var inner] })
             {
                 if (pattern.Kind == BoundTypeKind.SemanticsApplication &&
-                    this.Binding.SubstituteType(target, this.SlotOwner, this.Types, this.Lengths) is not null)
+                    this.Binding.SubstituteType(inner, this.SlotOwner, this.Types, this.Lengths) is { } fixedTarget)
                 {
+                    (layer, target) = (pattern, fixedTarget);
                     return false;
                 }
 
-                pattern = target;
+                pattern = inner;
             }
 
+            (layer, target) = (null, null);
             return true;
         }
 
         // SPEC 10.2.1: a Literal is evidence only through its default, applied to the selected candidate, for slots no other evidence binds;
-        // at a fixed `ref/U` it is a borrowed temporary (InferTemporary).
+        // at a fixed `ref/U` it is a borrowed temporary (InferTemporary). SPEC 10.8, 12.3.1 (PLAN G1266; the owner's O-343 (a), O-408 (a)):
+        // at an exact source (IsExactSource) whose target is fixed, its own Type is that target, an owner Type, so it is the exact source
+        // of a binder that no source has fixed yet (Selector: neither a binding nor selector evidence) and binds it to owner (IsSource).
         private bool InferLiteral(BoundType pattern, Koto literal, bool late)
         {
             if (!late)
@@ -459,25 +483,34 @@ public sealed partial class Binding
                 return true;
             }
 
-            var fixedType = this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths);
-            if (fixedType is not null || !this.DefaultBindsAt(pattern))
+            var binding = this.Binding;
+            var fixedType = binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths);
+            BoundType? layer = null;
+            BoundType? target = null;
+            if (fixedType is null && this.DefaultBindsAt(pattern, out layer, out target))
             {
-                // Nothing for the default to bind: a temporary borrowed under a binder already fixed `ref` (by evidence or the expected
-                // result; a late default fixes owner) supplies its Origin, at the complete Type or at the formed layer.
-                if ((fixedType ?? this.AdaptationPattern(pattern, literal)?.Type) is not { } at)
-                {
-                    return false; // Unformed (BU-240): the layer forms no Type, and the call is Unsupported.
-                }
-
-                if (this.Binding.Materialization(literal, at, this.Scope) is not null)
-                {
-                    this.InferTemporary(pattern, literal);
-                }
-
-                return true;
+                return this.InferOwnType(pattern, literal);
             }
 
-            return this.InferOwnType(pattern, literal);
+            if (layer is { Symbol: { } selector } && IsExactSource(layer, this.SlotOwner, this.Frame) &&
+                ContainerSlot(this.SlotOwner, selector) is >= 0 and var slot && Selector(this.Frame, slot) is null)
+            {
+                _ = binding.IsSource(this.Frame, slot, target!, layer.Components[0]); // No source to compare with: it fixes the binder.
+            }
+
+            // Nothing for the default to bind: a temporary borrowed under a binder already fixed `ref` (by evidence or the expected result;
+            // a literal's own Type fixes owner) supplies its Origin, at the complete Type or at the formed layer.
+            if ((fixedType ?? this.AdaptationPattern(pattern, literal)?.Type) is not { } at)
+            {
+                return false; // Unformed (BU-240): the layer forms no Type, and the call is Unsupported.
+            }
+
+            if (binding.Materialization(literal, at, this.Scope) is not null)
+            {
+                this.InferTemporary(pattern, literal);
+            }
+
+            return true;
         }
 
         // SPEC 10.2.1 (O-341 (a)): a part's own Type after selection (DefaultOf: a literal's default, a nested call's resolution) is

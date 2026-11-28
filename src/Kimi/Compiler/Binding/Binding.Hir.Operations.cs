@@ -213,7 +213,7 @@ public sealed partial class Binding
                 case MatchKoto:
                     return node.SelectionRole == SelectionRole.Pattern ? HirPosition.Pattern : position;
                 case ForKoto loop:
-                    return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) ? position : HirPosition.None;
+                    return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) || ReferenceEquals(node, loop.Iteration?.Subject) ? position : HirPosition.None;
                 case InvocationKoto or MacroKoto:
                     return binding.Covers(parent, node) ? position | HirPosition.Covered : position;
                 case GenericsKoto:

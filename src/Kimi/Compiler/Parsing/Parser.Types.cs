@@ -73,22 +73,42 @@ public static partial class Parser
             return type;
         }
 
-        var arrowRange = reader.CurrentTokenRange;
-        if (!parameterList)
+        // A Function Type's result is a Type, so `->` nests to the right: the links are read in this loop and nested from the last, as
+        // a recursive read would build them, so a chain takes no recursion (PLAN G444 U2b).
+        (Koto Parameters, SourceSpan Arrow)? link = null;
+        Stack<(Koto Parameters, SourceSpan Arrow)>? outer = null;
+        do
         {
-            // A bare or Semantics-applied Type cannot replace the Function Parameter List: ref/(T) -> U is invalid (SPEC 3.2).
-            type.Expected(SyntaxForm.FunctionParameterList);
+            if (!parameterList)
+            {
+                // A bare or Semantics-applied Type cannot replace the Function Parameter List: ref/(T) -> U is invalid (SPEC 3.2).
+                type.Expected(SyntaxForm.FunctionParameterList);
+            }
+
+            if (link is { } enclosing)
+            {
+                (outer ??= new()).Push(enclosing);
+            }
+
+            link = (type, reader.CurrentTokenRange);
+            reader.Advance();
+            type = ParseAnnotatedType(ref reader, TypeContext.Type, out parameterList);
+        }
+        while (reader.CurrentTokenKind == TokenKind.MinusGreaterThan);
+
+        while (link is { } frame)
+        {
+            var functionType = new FunctionTypeKoto(
+                ref reader,
+                SourceSpan.FromBounds(frame.Parameters.Span.Start, Math.Max(frame.Arrow.End, type.Span.End)),
+                frame.Parameters,
+                type);
+            reader.Hover(functionType, frame.Arrow);
+            type = functionType;
+            link = outer is { Count: > 0 } ? outer.Pop() : null;
         }
 
-        reader.Advance();
-        var returnType = ParseType(ref reader, TypeContext.Type);
-        var functionType = new FunctionTypeKoto(
-            ref reader,
-            SourceSpan.FromBounds(type.Span.Start, Math.Max(arrowRange.End, returnType.Span.End)),
-            type,
-            returnType);
-        reader.Hover(functionType, arrowRange);
-        return functionType;
+        return type;
     }
 
     // SPEC F.5: AnnotatedType := SemanticsType "?"* BorrowOrigin?, with the parts its context admits; parameterList reports a bare group,

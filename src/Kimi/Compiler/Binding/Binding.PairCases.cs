@@ -140,10 +140,10 @@ public sealed partial class Binding
     {
         // A negative slot keeps the atom apart from the declared Origins of the same binder (slots 0 and up, Binding.Origins);
         // the closure environment slots of Binding.ArgumentOperations are Projection atoms and never meet a Parameter atom.
-        var key = (target.Scope.Owner, OriginKind.Parameter, -1 - target.Slot);
+        var key = (target.Scope.Owner, OriginKind.Parameter, -1 - target.Slot, target.Scope.Owner, false);
         if (!this.originAtoms.TryGetValue(key, out var origin))
         {
-            this.originAtoms.Add(key, origin = new(OriginKind.Parameter, key.Owner, key.Item3, target.Pair?.Name ?? target.Name) { Occurrence = target.Declaration });
+            this.originAtoms.Add(key, origin = new(OriginKind.Parameter, key.Item1, key.Item3, target.Pair?.Name ?? target.Name) { Occurrence = target.Declaration });
         }
 
         return origin;
@@ -280,11 +280,11 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Parameter)
         {
-            return type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget, Type: { } projection } target && CaseOf(cases, target) is { } semantics
+            return type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget, Type: { } projection } target && PairCase.Of(cases, target) is { } semantics
                 ? this.Form(semantics, projection, this.OuterOrigin(type)) : type;
         }
 
-        if (type.Kind == BoundTypeKind.SemanticsAdaptation && CaseOf(cases, type.Symbol!) is { } selected)
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation && PairCase.Of(cases, type.Symbol!) is { } selected)
         {
             return FamilyCase(type, selected) is { } child ? this.CaseType(child, cases) : type;
         }
@@ -307,7 +307,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(scratch[i], type.Components[i]);
             }
 
-            if (type.Kind == BoundTypeKind.SemanticsApplication && type.Symbol is { } selector && CaseOf(cases, selector) is { } applied)
+            if (type.Kind == BoundTypeKind.SemanticsApplication && type.Symbol is { } selector && PairCase.Of(cases, selector) is { } applied)
             {
                 return this.Form(applied, scratch[0], type.Origin);
             }
@@ -375,20 +375,6 @@ public sealed partial class Binding
 
     // The condition of a relation required where a slot exists: a binder without a bit is judged in every case.
     private static ulong RequiredCondition(ulong? condition) => condition is { } value && value != ulong.MaxValue ? value : 0;
-
-    // The Semantics a case gives one binder, or null when the binder is not resolved in it.
-    private static SemanticsKind? CaseOf(ReadOnlySpan<PairCase> cases, BindingSymbol target)
-    {
-        for (var i = 0; i < cases.Length; i++)
-        {
-            if (ReferenceEquals(cases[i].Target, target))
-            {
-                return cases[i].Semantics;
-            }
-        }
-
-        return null;
-    }
 
     // SPEC 8.1.1 table: the complete Type of one case over the direct target; only a safe borrow keeps the outer-Origin slot (so the raw
     // case states none, as a raw argument's binding does, TyCtxt.PairBinding).

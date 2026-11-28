@@ -31,6 +31,12 @@ internal sealed partial class TyCtxt
         _ => BodylessKind.Unclassified,
     };
 
+    // SPEC 8.7.5: whether a dispatching callee is `tryResolve`, the one requirement a closed Contract declares, whose every implementation
+    // reads only its boundaries and the length and has no other effect (Binding.DispatchBounds: every bound; A4's Discharged). The `format`
+    // they inherit is Utf8Format's and takes its bound from their effect item.
+    internal static bool ClosedRequirement(BindingSymbol callee)
+        => callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange;
+
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
     // parameter On, the parameter below which it destroys, -1 for none, whether it destroys that target in place (`replace`), and the
     // by-value Callable parameter it calls through a shared borrow and then destroys, -1 for none (`removeAll`); null for an operation
@@ -51,16 +57,6 @@ internal sealed partial class TyCtxt
         return (requirement, row.On, row.Destroys, row.InPlace, row.Calls);
     }
 
-    // SPEC 8.11.3: what a requirement call runs on a Self that is not abstract under the Contract reference it recorded (MirCallee.Contract)
-    // and its substitution, as Witness reads them (Binding.Witnesses), appended to a caller-owned list with the instance each target runs
-    // at; false where none resolves. `call` holds the Self, the reference instantiated (Subst.Declaring) and the call's own Types and
-    // lengths, at which a Conformance target's instance is the witness under its declaring instance by position (SPEC 8.6.3), as Witness's
-    // Conformance binds them; a requirement no call names (a published row's) has Synthesized(requirement, self, reference), which binds
-    // no own slot.
-    internal bool Witnesses(
-        BindingSymbol requirement, BindingSymbol? contract, Subst call, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
-        => binding.Witnesses(requirement, contract, call, definition, into);
-
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.
     internal void EffectObligations(List<EffectObligation> rows) => binding.EffectObligations(rows);
 
@@ -79,7 +75,8 @@ internal sealed partial class TyCtxt
     internal BoundType CallsSignature(BindingSymbol operation, int calls)
         => binding.OneCallable(operation, this.Signature(operation, null, calls, out _)!)!.Value.Signature;
 
-    // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
+    // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract), the recorded one for every
+    // Self; null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
 
     // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per definition, whose premises are read at its

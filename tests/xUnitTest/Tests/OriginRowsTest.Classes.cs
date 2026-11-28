@@ -70,7 +70,8 @@ public sealed partial class OriginRowsTest
     // mode); under a borrowed receiver it resolves to ρ, so its relation is fixed-fixed and Binding's, no row (AClosuresValueAndAReceiverAre
     // ClassedByTheirRole reads its class). A local whose failed clause names no bound Origin keeps its Type's Origins (SPEC 15.3.3: a
     // local's clause assumes nothing, so its failure rests nothing; H11b-0 B1): RepeatedSet's longer end is the `let` local's own slot
-    // region, Inferred as its `var` twin's (PLAN G492-a (ii); it was Fixed, the parameter's set, while a `let` slot took its initializer's).
+    // region, whose value its declaration fixes (SPEC 15.3.6; R7-O2 A4-L under the owner's O-544 (b)), and a reader in the body reads
+    // that value (R8-M56), so the end is Fixed; a `var` k's region publishes none and stays Inferred (PLAN G492-a (ii)).
     [Theory]
     [InlineData(Destructors, "drop", "self.buffer@ref", "Finite", "Receiver")]
     [InlineData(Destructors, "drop", "whole.buffer@ref", "Finite", "Helper")]
@@ -79,7 +80,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
-    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Inferred", "None")]
+    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Fixed", "None")]
     [InlineData(LocalOmission, "f", "x", "Fixed", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
     {
@@ -204,6 +205,27 @@ public sealed partial class OriginRowsTest
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is IdentifierNameKoto && First(x) == "r" && c.Binding.ReadsReferent(x));
         var atom = Atom(c, g, new BoundOrigin(OriginKind.Projection, read, 0) { Body = g }, read);
         Assert.Equal((OriginAtomKind.Inferred, ProjectionRole.Place), (atom.Kind, atom.Role));
+    }
+
+    // SPEC 15.6.5 (PLAN G922 tms, envr): each Borrow of a local, a parameter, a constructor's receiver or an environment binding has its
+    // own finite Origin, so two Borrows of one Place are two atoms (one before), each a Finite root of the role its Place's binder gives
+    // (rows 3 and 4's Place, Parameter, Receiver and Environment: a Closure that consumes its environment, whose bindings are its call's
+    // own storage, SPEC 15.8.2).
+    [Theory]
+    [InlineData("func outer(p: ref/i64) -> i32\n    let t = (p, p)\n    let a = t@ref\n    let b = t@ref\n    return 0\n", "outer", "t@ref", "Place")]
+    [InlineData("func outer(q: i64) -> i32\n    let a = q@ref\n    let b = q@ref\n    return 0\n", "outer", "q@ref", "Parameter")]
+    [InlineData("struct S\n    var m: i64\n    var n: i64\n    init(v: i64)\n        self.m = v\n        self.n = v\n        let a = self.m@ref\n        let b = self.m@ref\n", "init", "self.m@ref", "Receiver")]
+    [InlineData("func consume(s: string) => ()\nfunc outer(p: ref/i64, s: string) -> i32\n    let t = (p, p)\n    let h = func [t@move, s@move] () -> i32\n        let a = t@ref\n        let b = t@ref\n        consume(s@move)\n        return 0\n    return h@move()\n", "", "t@ref", "Environment")]
+    public void EachBorrowOfARootIsItsOwnAtomOfTheRootsRole(string source, string body, string site, string role)
+    {
+        var c = MirBuildTest.Compile(source + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        var key = Bodies(c).Single(x => x.Key.Decl is { } decl && decl.Name == body && InProgram(decl.Declaration)).Key.Body;
+        var atoms = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x is ConversionKoto && InProgram(x) && First(x) == site)
+            .Select(x => Atom(c, key, HirTables.TypeOf(x)!.Origin!, x)).ToArray();
+        Assert.Equal(2, atoms.Length);
+        Assert.NotSame(atoms[0].Atom, atoms[1].Atom);
+        Assert.All(atoms, x => Assert.Equal(("Finite", role), (x.Kind.ToString(), x.Role.ToString())));
     }
 
     // PLAN G216 (SPEC 15.3.4, 15.6.1; DECISIONS R4-M126 P10, R4-M137): a nested signature's input, an anonymous function's or a Function

@@ -99,7 +99,10 @@ public sealed partial class Binding
             var unknown = this.ScopeReads.Unknown;
             var limit = this.ScopeReads.Limit;
             var error = this.ScopeReads.Error;
+            this.ScopeReads.Conformance = null; // The R fact is the clause's own proof's (PLAN G1386), taken below: the list hands none on.
             var proof = this.FailedClauseRead(constraint, bound) is { } failed ? this.RestOnFailure(failed) : this.ProveConstraint(substituted, scope, QuerySite.Nested);
+            var conformance = this.ScopeReads.Conformance;
+            this.ScopeReads.Conformance = null;
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
@@ -120,7 +123,7 @@ public sealed partial class Binding
             if (outcome != ConstraintProof.Proven)
             {
                 var onLimit = outcome == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
-                best = FirstAtVerdict(best, new(constraint, substituted, outcome, onLimit));
+                best = FirstAtVerdict(best, new(constraint, substituted, outcome, onLimit) { Conformance = conformance });
             }
 
             result = CombineProof(result, outcome, true);

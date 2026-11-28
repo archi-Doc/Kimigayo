@@ -19,8 +19,8 @@
 // 1. per judged program body, A3;
 // 2. per program body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program, in rounds;
-// 4. per judged body, A5: the Origin stratum's judgment, which adds its problems, then the Loan stratum per view; then, once per program,
-//    the rows of layers no constructor body includes (MirOrigins.Findings);
+// 4. per judged body, a layer body's included (DECISIONS R7-M115), A5: the Origin stratum's judgment, which adds its problems, then the
+//    Loan stratum per view;
 // 5. A6 inside MirReport.
 // Steps 1 and 2 have one path (Step): the version's bodies built since the last step, in build order, a body a lookup builds
 // meanwhile included (MirProgram's demand point, PLAN G951); the library step has stepped the library list's, whose facts are kept or
@@ -29,7 +29,7 @@
 // runs it again until a round is clean; a collector run stops before it, and its driver (Compilation.Collect) steps and runs it again,
 // resuming there, until a run reaches its end (PLAN G337 U2).
 // Input rule (DECISIONS R5-M168, PLAN G951): steps 1 and 4 judge the bodies of the root modules (Judged), step 3 the obligations whose
-// subject is in them and MirOrigins.Findings their layers' rows, whose problems are the program's; a body or declaration outside them is
+// subject is in them, whose problems are the program's; a body or declaration outside them is
 // built from its library definition alone, so its verdicts are the same in every program. Steps 2 and 3 visit every body without a
 // validator finding (step 2 of a library body at the library step): A4 composes library callees' local facts and code generation reads
 // A2's tables. The library's own verdicts are MirAnalysisTest.TheLibraryHasNoAnalysisProblem's, the check every unit changing the
@@ -191,7 +191,6 @@ internal sealed class MirAnalysis
             }
         }
 
-        this.origins.Findings(program, program.Problems, rootModules); // 4. once per program.
         program.Enter(MirProgram.Phase.Open);
         return program;
     }

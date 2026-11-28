@@ -2,7 +2,9 @@
 
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), an Integer
 // constant's one encoding (Normalize, DECISIONS BU-133), a safe reference's stored representation (IsStoredReference) and two Types'
-// storage agreement with their Origins erased (StorageMatches), and the lifetime of TyCtxt's views (ResetViews); substitutions are
+// storage agreement with their Origins erased (StorageMatches), a function's parameter Types under a call (Signature, whose requirement
+// receiver slot reads the dispatch view TyCtxt.Dispatch.cs's RequirementImplementation through ProjectedReceiver), and the lifetime of
+// TyCtxt's views (ResetViews); substitutions are
 // TyCtxt.Substitutions.cs's (a call's in a Semantics case, CaseSubst, beside CaseType), the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
 // and R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
 // TyCtxt.OriginChains.cs's.
@@ -146,14 +148,35 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
     // its call gives (a constructor's: its object), under a call's substitution, by the substitution alone (Apply: its storage unread);
-    // null past its parameters or where the substitution does not form it. The MIR validator checks calls and bodies by it; the MIR
-    // builder, code generation and the instance collector's property-witness agreement read it.
+    // null past its parameters or where the substitution does not form it; a requirement's receiver whose witness is inherited, its
+    // witness's (ProjectedReceiver). The MIR validator checks calls and bodies by it; the MIR builder, code generation and the instance
+    // collector's property-witness agreement read it.
     internal BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
     {
         var declaration = (FunctionKoto)function.Declaration;
         count = declaration.Parameters.Count;
         var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(binding, function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(binding, declaration) : function.Type;
-        return type is null || subst is null ? type : this.Apply(type, subst).Type;
+        if (type is null || subst is null)
+        {
+            return type;
+        }
+
+        return slot >= 0 && slot == function.ReceiverIndex && this.ProjectedReceiver(function, subst) is { } projected ? projected : this.Apply(type, subst).Type;
+    }
+
+    // SPEC 8.6.2, 9.6.1: a requirement call on a Self with no abstract part makes its witness's call (RequirementImplementation), so where
+    // the witness is inherited (its BasePath) its receiver is a shared borrow of the base that declares it, of the requirement receiver's
+    // Origin (the core's Refused leaves only a `ref` receiver there): Signature's receiver slot, and the Type a default copy's receiver is
+    // projected to (MirBuilder.Inline), as Binding's ProjectReceiver projects a selected call's; null for any other call.
+    internal BoundType? ProjectedReceiver(BindingSymbol function, Subst subst)
+    {
+        if (function.ReceiverIndex < 0 || this.RequirementImplementation(function, subst) is not { BasePath: not null, Subst.Declaring: { } declaring })
+        {
+            return null;
+        }
+
+        return CallPlan.Parameter(binding, function, function.ReceiverIndex)?.Type is { } declared && this.Apply(declared, subst).Type is { } receiver
+            ? this.Reference(SemanticsKind.Ref, declaring, receiver.Origin) : null;
     }
 
     // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key: the root key of `input` (the slot's instantiated Type

@@ -72,6 +72,7 @@ public class BorrowOriginSuffixTest
     [InlineData("ref/T during f(1)")]
     [InlineData("ref/T during a and b")]
     [InlineData("ref/T during a.b.c")]
+    [InlineData("ref/T during t.0")]
     [InlineData("owner/ref/T during a")]
     [InlineData("obj/T during a")]
     [InlineData("ref/T from a")]

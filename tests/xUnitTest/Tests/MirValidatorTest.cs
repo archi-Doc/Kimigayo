@@ -64,6 +64,19 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 22.5.1 (PLAN G1017): only a Drop carries an offset of its document, -1 or a position; a Drop below -1 and a Return at 0 break it.
+    [Theory]
+    [InlineData("Drop", -2)]
+    [InlineData("Return", 0)]
+    public void OnlyADropIsLocatedAtAnOffset(string kind, int offset)
+    {
+        var body = Build(null);
+        var index = Array.FindIndex(body.Blocks.ToArray(), x => x.Terminator.Kind == Enum.Parse<MirTerminatorKind>(kind));
+        ref var block = ref Unsafe.AsRef(in body.Blocks[index]);
+        block.Terminator = block.Terminator with { Offset = offset };
+        Assert.Equal(MirViolation.Operation, Assert.Single(Validate(body)).Rule);
+    }
+
     // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
     // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its undecided uses', is
     // an undecided use's (MirDescriptors.IsUndecided, G191 N1; DECISIONS Z17).
@@ -120,7 +133,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // A3 E14: an intrinsic serving a library declaration takes its parameters first, so its row's arity covers them, and the operand its
-    // row says the result retains is one the builder adds beyond them (RawSlice's backing).
+    // row says the result retains is one the builder adds beyond them (RawSlice's backing); a family's row of arity -1 takes each
+    // declaration's shape, which the validator reads (Instruction's, design C2, and InterruptEntry's, C-457 C4).
     [Fact]
     public void AnIntrinsicsRowCoversItsDeclaration()
     {
@@ -131,10 +145,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         foreach (var (row, declaration) in declared)
         {
             _ = c.Types.Signature(declaration!, null, -1, out var count);
-            Assert.True(count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity)), declaration!.Name);
+            Assert.True(
+                (row.Arity < 0 && declaration!.Definition.Id is IntrinsicId.Instruction or IntrinsicId.InterruptEntry) ||
+                (count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity))),
+                declaration!.Name);
         }
 
         Assert.Equal([IntrinsicId.RawSlice], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Retained: >= 0 }));
+        Assert.Equal([IntrinsicId.Instruction, IntrinsicId.InterruptEntry], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Arity: < 0 }));
     }
 
     // SPEC 17.4 (A3 E14): the compiler-only $abort is no library declaration, so an Abort call names none; one naming $abort's symbol is
@@ -149,6 +167,41 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var callee = body.Blocks[abort].Terminator.Callee with { Symbol = named ? Fixture.Value.Compilation.Library.Abort : null };
         Unsafe.AsRef(in body.Blocks[abort]).Terminator = body.Blocks[abort].Terminator with { Callee = callee, Source = Broken };
         Assert.Equal(named ? [(MirViolation.Callee, Broken.Syntax)] : [], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // IMPL 21.6 (the Tatara plan's decisions 36-43; design C-457 4.3): the Instruction family's row has arity -1, the declaration a call
+    // names giving its shape, so a call naming none is a Callee finding at the call, and one with an operand beyond the declaration's an
+    // Arity finding there.
+    [Theory]
+    [InlineData("declaration", "Callee")]
+    [InlineData("operand", "Arity")]
+    public void AnInstructionCallHasItsDeclarationsShape(string broken, string rule)
+    {
+        var c = MirBuildTest.Compile("func stamp() -> u64 => X86.readTimestamp()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "stamp");
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.Instruction } });
+        var terminator = body.Blocks[call].Terminator;
+        Unsafe.AsRef(in body.Blocks[call]).Terminator = broken == "declaration"
+            ? terminator with { Callee = terminator.Callee with { Symbol = null }, Source = Broken }
+            : terminator with { Start = AddOperands(body, [MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)))]), Count = 1, Source = Broken };
+        Assert.Equal([(Enum.Parse<MirViolation>(rule), Broken.Syntax)], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // IMPL 21.6 (OSF3b; design C-457 C4): so has the InterruptEntry family's, so an entry call naming no declaration is a Callee finding at
+    // the call.
+    [Fact]
+    public void AnInterruptEntryCallHasItsDeclarationsShape()
+    {
+        var c = MinimalEmissionTest.Analyze(TargetProfile.None, TimeLibraryTest.Tick + TimeLibraryTest.Install, "Board.kimi", OutputKind.Library);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "install");
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Symbol.Name: "entry" } });
+        var terminator = body.Blocks[call].Terminator;
+        Unsafe.AsRef(in body.Blocks[call]).Terminator = terminator with { Callee = terminator.Callee with { Symbol = null }, Source = Broken };
+        Assert.Equal([(MirViolation.Callee, Broken.Syntax)], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // An rvalue's operands before its Place, the index locals of a Place before it, a destination last; static accesses, pair cases,
@@ -343,6 +396,24 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var findings = new List<MirFinding>();
         new MirValidator(c.Types).Validate(body, findings);
         Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
+    }
+
+    // DECISIONS R7-M115: a layer body's _0, its Receiver, is its struct's Self Type, which its Return gives; an _0 of another Type (an
+    // i32) is a Type finding at the Return.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ALayerBodysReturnLocalIsItsStructsSelfType(bool broken)
+    {
+        var c = MirBuildTest.Compile("struct S\n    public let p: i32\n    public var n: i32 = 1\n");
+        var symbol = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "S").SymbolOf()!;
+        var body = new MirBody();
+        body.Reset(new(symbol, MirBodyKind.Layer), default);
+        body.AddLocal(new(broken ? BoundType.I32 : c.Types.SelfType(symbol), MirLocalKind.Return, At, Role: MirLocalRole.Receiver));
+        body.Terminate(body.AddBlock(), MirTerminator.Return(At));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(broken ? [MirViolation.Type] : [], findings.Select(static x => x.Rule));
     }
 
     // SPEC 4.8.1, 8.15.3 (PLAN G597): a keyed Storage has two operands, its start position, an isize, and the token of its key's Type,
@@ -1039,8 +1110,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         BoundType Layer(SemanticsKind semantics, BoundType referent) => semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc
             ? c.Types.Intern(BoundTypeKind.Semantics, null, semantics, [referent]) : c.Types.Reference(semantics, referent);
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
-        var prepared = new MirPlace(body.AddLocal(new(
-            Layer(SemanticsKind.Ref, form == "slot ref" ? Layer(SemanticsKind.Ref, tuple) : BoundType.I32), MirLocalKind.Arg, At, Role: MirLocalRole.PreparedInput)));
+        var prepared = Prepared(body, c.Types, form == "slot ref" ? Layer(SemanticsKind.Ref, tuple) : BoundType.I32);
         PairBinder.Collect(c.Binding, types.Generic, body.Binders); // Its binder admits owner or uniq.
         if (form == "pair ref")
         {
@@ -1055,7 +1125,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (entry, exit) = (body.AddBlock(), body.AddBlock());
         var at = form switch
         {
-            "inlined" => Broken with { Scope = body.AddScope(0, MirScopeKind.Inlined, default) },
+            "inlined" => Inlined(body),
             "unscoped" => Broken with { Scope = 9 },
             _ => Broken,
         };
@@ -1156,8 +1226,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     // SharedPath finding at the location, here at Broken, whatever the layer (a ref, objref, rc or arc Deref, a Slice's Index, a pair layer
     // in a shared case). A PairAcquire's and an Adapt's pair layers are read in the view's cases, so the own pair layer is no shared layer;
     // a PairAcquire whose case Types are no exclusive reference only Copies, and one over `uniq/i32` with `s is owner or ref` Reborrows in
-    // the owner case. None for a Ref through a raw pointer past a shared layer (SPEC 5.2.1 (3)); a shared
-    // borrow and an address are the write theory's rows.
+    // the owner case. None for a Ref through a raw pointer past a shared layer (SPEC 5.2.1 (3)), for an Adapt's exclusive borrow of the
+    // Deref directly on a PreparedInput (the caller's slot itself; a shared layer past it is a finding) and for an Adapt at a location in
+    // an inline default copy (its template's check); a shared borrow and an address are the write theory's rows.
     [Theory]
     [InlineData("uniq ref", true)]
     [InlineData("two-phase ref", true)]
@@ -1169,11 +1240,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("acquire ref", true)]
     [InlineData("acquire target past ref", true)]
     [InlineData("adapt ref", true)]
+    [InlineData("adapt slot ref", true)]
     [InlineData("uniq raw", false)]
     [InlineData("acquire own", false)]
     [InlineData("acquire copy", false)]
     [InlineData("acquire target", false)]
     [InlineData("adapt own", false)]
+    [InlineData("adapt slot", false)]
+    [InlineData("adapt inlined", false)]
     public void AnExclusiveAcquisitionPastASharedLayerIsAFinding(string form, bool finding)
     {
         var (c, types) = Fixture.Value;
@@ -1187,6 +1261,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         };
         body.Binders[0] = body.Binders[0] with { Admitted = admitted };
         _ = TyCtxt.Layer(types.Pair, out var payload, out var binder); // s/T: T and s.
+        var prepared = Prepared(body, c.Types, form == "adapt slot ref" ? c.Types.Reference(SemanticsKind.Ref, payload!) : payload!);
         var exclusive = c.Types.Reference(SemanticsKind.Uniq, BoundType.I32);
         var target = c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [exclusive]); // s/(uniq/i32)
         MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
@@ -1210,7 +1285,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "acquire target past ref" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, target))),
             "acquire target" => Local(target),
             "acquire own" => body.Project(c.Types, Local(c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [types.Pair])), MirProjectionKind.PairLayer, 0),
-            _ => Deref(Local(c.Types.Reference(SemanticsKind.Ref, payload!))), // adapt ref: T of s/T, past ref.
+            "adapt slot" => Deref(prepared),
+            "adapt slot ref" => Deref(Deref(prepared)), // The parameter's own shared layer past the slot.
+            _ => Deref(Local(c.Types.Reference(SemanticsKind.Ref, payload!))), // adapt ref and adapt inlined: T of s/T, past ref.
         };
         var type = body.TypeOf(place)!;
         var rvalue = form[..form.IndexOf(' ')] switch
@@ -1220,7 +1297,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             var kind => MirRvalue.Ref(kind == "uniq" ? MirRefKind.Uniq : MirRefKind.TwoPhaseUniq, place, c.Types.Reference(SemanticsKind.Uniq, type)),
         };
         var (entry, exit) = (body.AddBlock(), body.AddBlock());
-        body.Push(entry, MirStatement.Assign(Local(rvalue.Type ?? type), rvalue, Broken));
+        body.Push(entry, MirStatement.Assign(Local(rvalue.Type ?? type), rvalue, form == "adapt inlined" ? Inlined(body) : Broken));
         body.Terminate(entry, MirTerminator.Goto(exit, At));
         body.Terminate(exit, MirTerminator.Return(At));
         MirViolation[] expected = finding ? [MirViolation.SharedPath] : [];
@@ -2624,6 +2701,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
         return start;
     }
+
+    // A PreparedInput Arg of a body at ref/referent, whose Deref directly on it is the caller's slot itself (plan 5.6.2, A3 E17).
+    private static MirPlace Prepared(MirBody body, TyCtxt types, BoundType referent)
+        => new(body.AddLocal(new(types.Reference(SemanticsKind.Ref, referent), MirLocalKind.Arg, At, Role: MirLocalRole.PreparedInput)));
+
+    // Broken at a new scope of an inline default copy (R4-M69: its template's check).
+    private static SourceInfo Inlined(MirBody body) => Broken with { Scope = body.AddScope(0, MirScopeKind.Inlined, default) };
 
     // What a location of a body uses, or under the selected view of it.
     private static string[] Uses(MirBody body, int block, int index, MirCases? view = null)
