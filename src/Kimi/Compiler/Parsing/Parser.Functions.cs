@@ -19,11 +19,11 @@ namespace Kimi.Compiler;
 // defaults or attributes are one OverrideHeader record, and the override rests on it. The form selects what these readers judge: the
 // attribute prefix, the captures, the Name, the generic list's production, the `!` boundary, an AnonymousParameter, the receiver
 // shorthand, what follows the list and the node's form facts; their one other selector, the prefix's `override` read once, turns a
-// Function into F.6.3's OverrideDeclaration and selects the override's rules (no Access, OverrideHeader) for every header under it that
-// is no Constructor, Specialization or Expression, so for a Requirement under `override` too (PLAN G557: F.6.2 admits none). Judged
-// elsewhere: a RequirementParameter's default and attribute (Parser.ParseRequirementBody); a SpecializationParameter's attribute and
-// default (Binding.Specializations, SPEC 8.13.2). PLAN G557's parameter part makes the requirement's rules, the specialization's default
-// and every parameter attribute row tests here.
+// Function or a Member into F.6.3's OverrideDeclaration and selects the override's rules (no Access, OverrideHeader) for every header
+// under it that is no Constructor, Specialization or Expression, so for a Requirement under `override` too (PLAN G557: F.6.2 admits
+// none). Judged elsewhere: a RequirementParameter's default and attribute (Parser.ParseRequirementBody); a SpecializationParameter's
+// attribute and default (Binding.Specializations, SPEC 8.13.2). PLAN G557's parameter part makes the requirement's rules, the
+// specialization's default and every parameter attribute row tests here.
 // Prohibitions: a body's items belong to Parser.Blocks, the clauses after a header to Parser.Syntax.
 public static partial class Parser
 {
@@ -34,6 +34,10 @@ public static partial class Parser
         /// <summary>FunctionHeader (F.6.3), of a FunctionDefinition or a BodilessFunctionDeclaration: a Name, GenericParameters and
         /// ParameterList&lt;Parameter&gt;.</summary>
         Function,
+
+        /// <summary>A FunctionHeader (F.6.3) directly in a struct or enum, its conditional conformance Blocks included: the Function
+        /// that has a receiver (SPEC 7.3.1). The member parse selects it from the host's kind, which a detached host keeps.</summary>
+        Member,
 
         /// <summary>OverrideDeclaration (F.6.3, 6.4.1; the owner's O-222 (b)): read as a FunctionHeader, whose Type parameters, <c>!</c>
         /// boundary and parameter defaults or attributes are one OverrideHeader record. The header reads a Function under the prefix's
@@ -63,15 +67,16 @@ public static partial class Parser
 
     /// <summary>Parses a function header after its keyword: the Name, Type parameters, parameters and result (SPEC 7.1, Appendix F FunctionHeader).</summary>
     /// <param name="reader">The token reader; at <c>init</c> for a Constructor.</param>
-    /// <param name="form">The production of the caller's position; a Function under <c>override</c> is read as an Override.</param>
+    /// <param name="form">The production of the caller's position; a Function or a Member under <c>override</c> is read as an
+    /// Override.</param>
     /// <returns>The parsed function without its body, or <see langword="null"/> after an error that leaves no header to keep.</returns>
     internal static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader, FunctionForm form)
     {
-        // The header reads the prefix's override once: a Function under it is F.6.3's OverrideDeclaration (6.4.1), and the override's
-        // rules (no Access, OverrideHeader) judge every header under it that is no Constructor, Specialization or Expression.
+        // The header reads the prefix's override once: a Function or a Member under it is F.6.3's OverrideDeclaration (6.4.1), and the
+        // override's rules (no Access, OverrideHeader) judge every header under it that is no Constructor, Specialization or Expression.
         var overrides = form is not (FunctionForm.Constructor or FunctionForm.Specialization or FunctionForm.Expression) &&
             (reader.ModifierKind & ModifierKind.Override) != 0;
-        if (form == FunctionForm.Function && overrides)
+        if (form is (FunctionForm.Function or FunctionForm.Member) && overrides)
         {
             form = FunctionForm.Override;
         }

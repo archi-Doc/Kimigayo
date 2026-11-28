@@ -863,7 +863,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function, reader.CurrentTokenRange);
         reader.Advance();
-        var form = this is ContractKoto ? Parser.FunctionForm.Requirement : Parser.FunctionForm.Function;
+        var form = this switch
+        {
+            ContractKoto => Parser.FunctionForm.Requirement,
+            StructKoto or EnumKoto => Parser.FunctionForm.Member, // A detached host keeps its container's kind (CreateDetached).
+            _ => Parser.FunctionForm.Function,
+        };
         var functionKoto = Parser.ParseFuncDeclaration(ref reader, form);
         if (functionKoto is null)
         {
