@@ -120,7 +120,7 @@ internal sealed partial class MirBorrows
     }
 
     // A call input's key, read by W and the pun rule alike (SPEC 15.6.4, 5.7 Calls, 8.2.3; PLAN G823), and the result's at the result slot
-    // (CallRetention.ResultOutput; PLAN G841 (3)): a called function's parameter key (TyCtxt.ParameterKey; at the result, the Type its
+    // (CallRetention.ResultOutput; DECISIONS R4-M245): a called function's parameter key (TyCtxt.ParameterKey; at the result, the Type its
     // declaration writes for the result, Binding's SignatureResult), at which OwnLayers marks Hidden the layers its own Type parameters'
     // bindings hold; a Closure call's receiver key at its receiver input (TyCtxt.ReceiverKey, Receiver; SPEC 15.8.2), past whose borrow
     // OwnLayers marks Let the parts its `let` environment bindings hold (PLAN G941); the root key of the input or result for any other
