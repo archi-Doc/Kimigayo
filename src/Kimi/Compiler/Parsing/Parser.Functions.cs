@@ -289,6 +289,9 @@ public static partial class Parser
     /// <returns>The list, or <see langword="null"/> when it is not closed; the header is then dropped.</returns>
     private static ParameterList? ParseParameterList(ref TokenReader reader, FunctionForm form)
     {
+        // Each parameter is a delimiter region of its own, as an argument is (SPEC F.4.4), so a default's if or body lies in no
+        // enclosing body or header; the list's nesting levels are unchanged.
+        var region = reader.EnterRegion();
         List<FunctionParameterKoto>? parameters = null;
         var nameBoundary = -1;
         var afterComma = false;
@@ -395,7 +398,9 @@ public static partial class Parser
             }
         }
 
-        if (reader.ExpectCloser(TokenKind.CloseParenthesis, out var close) is not null && close == default)
+        var unclosed = reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        reader.RestoreRegion(region);
+        if (unclosed is not null && close == default)
         {
             return null; // The list ended without a closer, written or supplied by the tokenizer.
         }
