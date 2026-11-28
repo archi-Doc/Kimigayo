@@ -787,7 +787,7 @@ public class ParserRegressionTest
 
         Assert.Empty(TestDiagnostics.Of(kotonoha));
         var field = Assert.IsType<FieldKoto>(GetChildren(kotonoha.RootKoto).Single());
-        Assert.Equal(CompileTimeConditionResult.False, CompileTimeConditionEvaluator.Evaluate(compilation, field.InitializerKoto!));
+        Assert.Equal(CompileTimeConditionResult.False, CompileTimeConditionEvaluator.Evaluate(compilation, field.InitializerKoto!, out _));
     }
 
     [Fact]

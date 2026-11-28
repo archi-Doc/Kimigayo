@@ -92,6 +92,12 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     internal IReadOnlyList<DiagnosticKey>? OmittedDeclarations => this.omittedDeclarations;
 
+    /// <summary>Gets the marker of this module's first directive outside excluded syntax whose selection did not complete because a
+    /// Condition is an Error only through parts the syntax depth limit cut (IMPL 21.3.2, SPEC 19.3): its Compilation analyzes no
+    /// semantic check (<see cref="Compilation.RestsOnSelection"/>). Its writer is the directive selection (Parser.Directives).</summary>
+    [IgnoreMember]
+    internal CompileTimeSwitchKoto? RestingSelection => this.restingSelection;
+
     /// <summary>Gets the base of this module's logical source names (IMPL 20.1): its project's directory, normalized; for a
     /// module without a <see cref="Url"/> (the root) and a project without a directory, the current directory its compilation
     /// captured when created; empty for a module whose <see cref="Url"/> is not a full path (library, <c>$abort</c>, tests).
@@ -220,6 +226,9 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     private List<DiagnosticKey>? omittedDeclarations;
 
+    [IgnoreMember]
+    private CompileTimeSwitchKoto? restingSelection;
+
     /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
     [IgnoreMember]
     public IReadOnlyList<DocumentationSource> DocumentationSources => (IReadOnlyList<DocumentationSource>?)this.documentationSources ?? [];
@@ -312,6 +321,7 @@ public sealed partial class Kotonoha
         this.Syntax = new();
         this.GeneratedFunction = null;
         this.documentationSources = null;
+        this.restingSelection = null;
 
         if (this.sourceFormat != 1 || this.sourceLanguageVersion != Compilation.CurrentLanguageVersion ||
             this.sourceCompilerVersion != Compilation.CompilerVersion)
@@ -408,6 +418,11 @@ public sealed partial class Kotonoha
     /// <param name="cause">The key of the syntax Error.</param>
     internal void RecordOmission(DiagnosticKey cause)
         => (this.omittedDeclarations ??= []).Add(cause);
+
+    /// <summary>Records a directive whose selection did not complete because of a cut Condition; the first one is kept.</summary>
+    /// <param name="marker">The directive's marker.</param>
+    internal void RecordRestingSelection(CompileTimeSwitchKoto marker)
+        => this.restingSelection ??= marker;
 
     /// <summary>Adds executable top-level syntax to the generated function.</summary>
     /// <param name="codeContext">The parsing context that produced the syntax.</param>

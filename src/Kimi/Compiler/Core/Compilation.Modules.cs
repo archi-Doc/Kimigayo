@@ -28,6 +28,12 @@ public partial class Compilation
     /// (SPEC 23.2.2), and no fact of a parsed source exists.</summary>
     internal bool AnalyzesNoModule => this.SourceModules.Length == 0;
 
+    /// <summary>Gets a value indicating whether a source module holds a directive outside excluded syntax that could not complete its
+    /// selection because a Condition is an Error only through parts the syntax depth limit cut (<see cref="Kotonoha.RestingSelection"/>;
+    /// IMPL 21.3.2): no semantic check is analyzed (<see cref="Check"/>), its source checks run, and the result is Completed, rejected by
+    /// the cut's NestingLimit_Kd (SPEC 23.2.2).</summary>
+    internal bool RestsOnSelection => Array.Exists(this.SourceModules, static m => m.RestingSelection is not null);
+
     // A module's effective default-alias paths (SPEC 18.2.3): the required paths and the configured additions, each without a leading
     // `::`, in ordinal order. A module adding no other path gets the RequiredAliases instance itself (never a copy), the key by which
     // DefaultAliases returns the library's rows; a caller never writes the result.

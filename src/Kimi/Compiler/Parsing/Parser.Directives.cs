@@ -262,6 +262,7 @@ public static partial class Parser
         scan.Advance(); // The arm list is not a new lookup scope.
         var armCount = 0;
         var selected = -1;
+        var cut = false;
         var fallback = default(CaseFallbackRule);
         while (scan.CanRead)
         {
@@ -290,9 +291,12 @@ public static partial class Parser
                 continue;
             }
 
-            // SwitchArm := "#" "case" (CompileCondition | "_") IndentedList<Item> (SPEC F.11), part by part.
-            var result = ScanCompileTimeCaseCondition(ref scan, ref fallback, marker);
-            invalid |= result == CompileTimeConditionResult.Error;
+            // SwitchArm := "#" "case" (CompileCondition | "_") IndentedList<Item> (SPEC F.11), part by part. A Condition that is an Error
+            // only through skip marks (G144-23) is cut; any other Error is recorded.
+            var result = ScanCompileTimeCaseCondition(ref scan, ref fallback, marker, out var cause);
+            var isCut = cause is ErrorKoto { IsSkip: true };
+            cut |= isCut;
+            invalid |= result == CompileTimeConditionResult.Error && !isCut;
             invalid |= !ExpectCompileTimeHeaderEnd(ref scan);
             if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
@@ -319,9 +323,17 @@ public static partial class Parser
             return new(-1, scan.Diagnostic.LastError);
         }
 
-        if (invalid || fallback.Broken)
+        if (invalid || fallback.Broken || (cut && !reader.InSelectedSyntax))
         {
             return new(-1, scan.Diagnostic.LastError);
+        }
+
+        if (cut)
+        {
+            // Selection happens here and cannot complete, and nothing else of the #switch is in error: the Compilation rests on it
+            // (IMPL 21.3.2), and the marker takes no recovery cause.
+            reader.CodeContext.Kotonoha.RecordRestingSelection(marker);
+            return new(-1, null);
         }
 
         if (selected < 0 && reader.InSelectedSyntax)
@@ -358,9 +370,11 @@ public static partial class Parser
     /// <param name="scan">The scanning reader positioned at <c>#case</c>.</param>
     /// <param name="fallback">The <c>#case _</c> rule of the arm list.</param>
     /// <param name="marker">The marker of the <c>#switch</c>, which receives the Condition.</param>
+    /// <param name="cause">The Error's cause (<see cref="CompileTimeConditionEvaluator.Evaluate"/>), or <see langword="null"/>.</param>
     /// <returns>The Condition's result; a <c>_</c> is True.</returns>
-    private static CompileTimeConditionResult ScanCompileTimeCaseCondition(ref TokenReader scan, ref CaseFallbackRule fallback, CompileTimeSwitchKoto marker)
+    private static CompileTimeConditionResult ScanCompileTimeCaseCondition(ref TokenReader scan, ref CaseFallbackRule fallback, CompileTimeSwitchKoto marker, out Koto? cause)
     {
+        cause = null;
         if (fallback.TryRead(ref scan))
         {
             return CompileTimeConditionResult.True;
@@ -368,7 +382,7 @@ public static partial class Parser
 
         var condition = ParseRequiredCompileTimeCondition(ref scan);
         marker.AddSource(condition);
-        return CompileTimeConditionEvaluator.Evaluate(scan.CodeContext.Compilation, condition);
+        return CompileTimeConditionEvaluator.Evaluate(scan.CodeContext.Compilation, condition, out cause);
     }
 
     // A directive header ends with its line: a NEWLINE or an IndentedList follows it (SPEC F.11).
@@ -405,7 +419,7 @@ public static partial class Parser
         reader.IsParsingCompileTimeCondition = true;
         try
         {
-            return SyntaxNesting.Bound(ParseHeaderExpression(ref reader), reader.Depth); // Evaluated before the module's walk.
+            return SyntaxNesting.MarkPastLimit(ParseHeaderExpression(ref reader), reader.Depth); // Evaluated before the module's walk.
         }
         finally
         {
@@ -420,12 +434,18 @@ public static partial class Parser
         reader.Advance(2); // The caller saw '#' and 'if'.
         var condition = ParseRequiredCompileTimeCondition(ref reader);
         var invalidHeader = !ExpectCompileTimeHeaderEnd(ref reader);
-        var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
+        var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition, out var cause);
         var owner = OwningMarker(ref reader);
         var marker = owner ?? new CompileTimeSwitchKoto(ref reader, SourceSpan.FromBounds(start, reader.PreviousEnd));
         if (owner is null)
         {
             PlaceMarker(ref reader, marker);
+        }
+
+        if (reader.InSelectedSyntax && !invalidHeader && cause is ErrorKoto { IsSkip: true })
+        {
+            // Selection happens here and cannot complete, and nothing else of the directive is in error (IMPL 21.3.2).
+            reader.CodeContext.Kotonoha.RecordRestingSelection(marker);
         }
 
         marker.AddSource(condition);
@@ -450,7 +470,7 @@ public static partial class Parser
         if (!reader.TryConsume(TokenKind.Underscore))
         {
             condition = ParseRequiredCompileTimeCondition(ref reader);
-            _ = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
+            _ = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition, out _);
         }
 
         _ = ExpectCompileTimeHeaderEnd(ref reader);

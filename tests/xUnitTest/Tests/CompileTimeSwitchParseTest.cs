@@ -256,6 +256,28 @@ public class CompileTimeSwitchParseTest
         Assert.Empty(group.Children());
     }
 
+    // IMPL 21.3.2 (G144x U3): a `#switch` outside excluded syntax with a Condition cut at L and nothing else of it in error cannot
+    // complete its selection, so the Compilation rests on it (m-switch-use-V; t-se-switch-I, whose first arm is True: an Error in any
+    // Condition selects nothing, SPEC 19.3). Another recorded failure in it (D, y-switch-mixed-I) or excluded syntax around it
+    // (y-rest-in-excl-switch-I) keeps dev's records. Fail-before: t-se-switch-I had dev's UnresolvedBinding_Kd@3:28 (class 4, Q13).
+    [Theory]
+    [InlineData("m-switch-use-V", "NestingLimit_Kd@2:11")]
+    [InlineData("t-se-switch-I", "NestingLimit_Kd@4:11")]
+    [InlineData("y-switch-mixed-I", "NestingLimit_Kd@2:11 | UnknownCompileTimeName_Kd@4:11 | UnresolvedBinding_Kd@7:23")]
+    [InlineData("y-rest-in-excl-switch-I", "NestingLimit_Kd@4:19 | UnresolvedBinding_Kd@9:23")]
+    public void ASwitchWithACutConditionRestsOnlyWhereItSelects(string row, string records)
+    {
+        var ors = CompilationEntryTest.Ors(3000);
+        var source = row switch
+        {
+            "m-switch-use-V" => $"#switch\n    #case {ors}\n        func p() => ()\n    #case _\n        func p() => ()\n\npublic func main() => p()\n",
+            "t-se-switch-I" => $"#switch\n    #case true\n        func g() -> i32 => missing\n    #case {ors}\n        func h() -> () => ()\n    #case _\n        func k() -> () => ()\n",
+            "y-switch-mixed-I" => $"#switch\n    #case {ors}\n        func f() => ()\n    #case missing\n        func g() => ()\n\npublic func main() => f()\n",
+            _ => $"#if false\n    func g() -> ()\n        #switch\n            #case {ors}\n                let x = 1\n            #case _\n                let x = 2\n\npublic func main() => missing\n",
+        };
+        Assert.Equal(records, CompilationEntryTest.CheckedSites(source));
+    }
+
     private static string SelectedFieldName(Koto item)
         => Assert.IsType<FieldKoto>(item).NameKoto.IdentifierName;
 

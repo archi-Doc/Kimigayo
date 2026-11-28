@@ -307,6 +307,16 @@ public class DirectiveConditionValidationTest
         Assert.True(compilation.Analyze().IsVerified, MinimalEmissionTest.Describe(compilation));
     }
 
+    // IMPL 21.3.2 (G144x U3): a cut Condition rests the Compilation only where nothing else of the directive is in error: another
+    // Condition part (C, y-dir-mixed-I), a header with tokens left (y-if-header-I) and an orphan `#case` (y-orphan-case-I, which
+    // selects nothing, SPEC 19.3) keep dev's records.
+    [Theory]
+    [InlineData("#if {0} or missing\nfunc f() => ()\n\npublic func main() => f()\n", "NestingLimit_Kd@1:5 | UnknownCompileTimeName_Kd@1:24005 | UnresolvedBinding_Kd@4:23")]
+    [InlineData("#if {0} x\nfunc f() => ()\n\npublic func main() => f()\n", "NestingLimit_Kd@1:5 | ExpectedSyntax_Kd@1:24002 | UnresolvedBinding_Kd@4:23")]
+    [InlineData("#case {0}\n    func f() => ()\n\npublic func main() => f()\n", "CompileTimeCaseOutsideSwitch_Kd@1:1 | NestingLimit_Kd@1:7 | UnresolvedBinding_Kd@4:23")]
+    public void ACutConditionBesideAnotherErrorRestsNothing(string format, string records)
+        => Assert.Equal(records, CompilationEntryTest.CheckedSites(string.Format(System.Globalization.CultureInfo.InvariantCulture, format, CompilationEntryTest.Ors(3000))));
+
     private static Compilation Parse(string source, bool debug = false)
     {
         var compilation = Compilation.CreateForTest();

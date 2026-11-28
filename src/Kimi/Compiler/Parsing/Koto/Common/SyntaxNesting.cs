@@ -1,13 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns Parsing's syntax nesting limit L (IMPL A.4, 21.3.2; DECISIONS BU-112): the depth of every tree a parse publishes.
-// Input: a module's tree right after one document's parse, and that document; or a detached tree a parse-time walk reads first (a
-// directive's Condition, a runtime type test's target), at the reader's count. Output: the same tree, in which a node at depth L (its
+// Input: a module's tree right after one document's parse, and that document. Output: the same tree, in which a node at depth L (its
 // distance from the module root) that has a child is cut: replaced in its slot by an ErrorKoto, or, where its slot holds only its own
 // form (a body, a name, an attribute), its parent is cut instead; a declaration container at depth L, whose slot takes only
-// containers, is emptied in place (DeclarationContainerKoto.ClearChildren) and becomes a recovery; a detached tree with a node past L
-// is cut at its root. One NestingLimit_Kd record per cut, at the cut's span, which the ErrorKoto or the emptied container rests on;
-// this walk is the one writer of that record.
+// containers, is emptied in place (DeclarationContainerKoto.ClearChildren) and becomes a recovery. One NestingLimit_Kd record per cut,
+// at the cut's span, which the ErrorKoto or the emptied container rests on; this walk is the one writer of that record.
+// F-I (G144-21; MarkPastLimit): an unrecorded formation-time skip at the parser's lower-bound count, for a detached tree a parse-time
+// walk reads first (a directive's Condition, a runtime type test's target): each first node past L, counted from depth
+// (TokenReader.Depth), becomes an ErrorKoto.IsSkip mark; siblings within L stay; nothing is recorded; the module walk's cut, at least
+// as deep, records it once.
 // Depth: two places count no level, a directive's marker (its Source slot, the Conditions and excluded parts, is walked at the
 // marker's own depth) and the generated function with its Body (G144-25), so every root item stands at depth 1, and an excluded part
 // or a Condition stands where selected syntax at its place stands (SPEC 19.4). A marker past L is cut like any node. DepthOf gives a
@@ -136,26 +138,23 @@ internal sealed class SyntaxNesting : KotoVisitor
         }
     }
 
-    /// <summary>Cuts and records a tree before a parse-time walk reads it, ahead of the module's walk: a directive's Condition or a
-    /// runtime type test's target (DECISIONS BU-112). The reader's count can lie below the root's depth in the module (an enclosing
-    /// left-deep chain is built after the tree), so a tree that has a node past L at that count is one overflow, cut at its root: the
-    /// module's walk finds the ErrorKoto childless and cuts nothing more on its path.</summary>
-    /// <param name="tree">The tree, not yet attached.</param>
-    /// <param name="depth">The depth of its root: the reader's count, at most the root's depth in the module.</param>
-    /// <returns>The tree, or the ErrorKoto that replaces it.</returns>
-    internal static Koto Bound(Koto tree, int depth)
+    /// <summary>Marks a tree before a parse-time walk reads it, ahead of the module's walk: a directive's Condition or a runtime type
+    /// test's target (F-I, G144-21; DECISIONS BU-112). Each first node past L, counted from <paramref name="depth"/>, becomes an
+    /// <see cref="ErrorKoto.IsSkip"/> mark, or its parent does where its slot takes no ErrorKoto; nothing is recorded. The reader's
+    /// count is at most the root's depth in the module, so each mark lies under a cut of the module's walk, which records it once.</summary>
+    /// <param name="tree">The tree, not yet attached; it holds no marker and no generated function.</param>
+    /// <param name="depth">The depth of its root: the reader's count.</param>
+    /// <returns>The tree, or the mark that replaces it.</returns>
+    internal static Koto MarkPastLimit(Koto tree, int depth)
     {
-        var walk = new SyntaxNesting(tree.CodeContext.SourceDocument, null) { depth = depth };
+        var walk = new LimitMarks(depth);
         walk.Visit(tree);
-        if (walk.cuts is not { Count: > 0 } && walk.waiting is not { Count: > 0 })
-        {
-            return tree;
-        }
-
-        var cut = new ErrorKoto(tree.CodeContext, tree.Span);
-        cut.Cause = Record(cut);
-        return cut;
+        return walk.Past ? Mark(tree) : tree;
     }
+
+    // An unrecorded skip mark in place of a node past L (F-I).
+    private static ErrorKoto Mark(Koto node)
+        => new(node.CodeContext, node.Span) { IsSkip = true };
 
     // The levels a node adds to its children's depth: none for a directive's marker and for the generated function or its Body
     // (G144-25), one for every other node.
@@ -210,4 +209,46 @@ internal sealed class SyntaxNesting : KotoVisitor
 
     // A node waiting for its parent's cut; the cuts made under it are cuts[From..To).
     private readonly record struct Waiting(Koto Node, int From, int To);
+
+    // F-I's walk (MarkPastLimit): the nodes past L wait in `past` for their parent, which replaces each by a mark; a slot that takes no
+    // mark makes the parent wait for its own parent instead.
+    private sealed class LimitMarks(int depth) : KotoVisitor
+    {
+        private int depth = depth;
+        private List<Koto>? past;
+
+        // Whether the root itself waits: it lies past L, or a slot under it took no mark.
+        internal bool Past => this.past is { Count: > 0 };
+
+        public override void Visit(Koto node)
+        {
+            if (this.depth > Limit)
+            {
+                (this.past ??= []).Add(node);
+                return;
+            }
+
+            var first = this.past?.Count ?? 0;
+            var level = Level(node, null);
+            this.depth += level;
+            node.VisitChildren(this);
+            this.depth -= level;
+            if (this.past is not { } past || past.Count == first)
+            {
+                return;
+            }
+
+            var refused = false;
+            for (var i = first; i < past.Count; i++)
+            {
+                refused |= !node.ReplaceChild(past[i], Mark(past[i]));
+            }
+
+            past.RemoveRange(first, past.Count - first);
+            if (refused)
+            {
+                past.Add(node);
+            }
+        }
+    }
 }

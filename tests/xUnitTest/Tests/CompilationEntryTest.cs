@@ -286,6 +286,45 @@ public sealed class CompilationEntryTest
     public void BuildMirBuildsOnACompilerThread() // Calls 480; the MIR builder overflowed from about 450.
         => AcceptsAndGenerates(Source(Calls(480)));
 
+    // IMPL 21.3.2 (G144x U3, O-551 (a)): a directive outside excluded syntax whose Condition is an Error only through parts the syntax
+    // depth limit cut cannot complete its selection, so the Compilation analyzes no semantic check: the cut's NestingLimit_Kd is its
+    // record, whether the program is valid past the cut or not (`(cut) and false` too: the Error absorbs the other operand; c3-ifs-1030,
+    // the parser's own skip of `true` under 1,019 parentheses). Fail-before: each I row also had dev's UnresolvedBinding_Kd at
+    // `missing` (class 4, Q13).
+    [Theory]
+    [InlineData("m-dir-use-V", "NestingLimit_Kd@1:5")]
+    [InlineData("m-dir-sel-I", "NestingLimit_Kd@1:5")]
+    [InlineData("tw-dir-I", "NestingLimit_Kd@1:5")]
+    [InlineData("t-se-return-V", "NestingLimit_Kd@2:9")]
+    [InlineData("t-se-init-V", "NestingLimit_Kd@3:9")]
+    [InlineData("t-se-return-I", "NestingLimit_Kd@2:9")]
+    [InlineData("example-I", "NestingLimit_Kd@1:1028")]
+    [InlineData("y-and-false-I", "NestingLimit_Kd@1:6")]
+    [InlineData("c3-ifs-1030-I", "NestingLimit_Kd@6:1038")]
+    public void ADirectiveThatCannotCompleteItsSelectionRestsTheCompilation(string row, string records)
+        => Assert.Equal(records, CheckedSites(Resting(row)));
+
+    // SPEC 19.4, IMPL A.4 (G144x U3): a directive inside excluded syntax selects nothing, so its cut Condition rests nothing, in a body
+    // and a member list too (review-design-u3 B1); a Condition the parser reads within L completes its selection at the parser's
+    // count (c3-ifs-1023 to -1025, E: `true` at reader count 1,020). Each keeps dev's records.
+    [Theory]
+    [InlineData("y-rest-in-excl-I", "NestingLimit_Kd@2:9 | UnresolvedBinding_Kd@5:23")]
+    [InlineData("y-rest-in-excl-body-I", "NestingLimit_Kd@3:13 | UnresolvedBinding_Kd@6:23")]
+    [InlineData("y-rest-in-excl-member-I", "NestingLimit_Kd@3:13 | UnresolvedBinding_Kd@6:23")]
+    [InlineData("c3-ifs-1023-I", "UnresolvedBinding_Kd@10:23")]
+    [InlineData("c3-ifs-1024-I", "UnresolvedBinding_Kd@10:23")]
+    [InlineData("c3-ifs-1025-I", "NestingLimit_Kd@6:1038 | UnresolvedBinding_Kd@10:23")]
+    public void ADirectiveThatSelectsNothingOrCompletesItsSelectionRestsNothing(string row, string records)
+        => Assert.Equal(records, CheckedSites(Resting(row)));
+
+    // `#if` with `true or` written `terms` times (G144x U3's `<ors>`): a left-deep chain past L at 1,025 terms.
+    internal static string Ors(int terms)
+        => string.Join(" or ", Enumerable.Repeat("true", terms));
+
+    // A program checked as a Library build checks it, as its errors' sites (TestDiagnostics.ErrorSites).
+    internal static string CheckedSites(string source)
+        => TestDiagnostics.ErrorSites(MinimalEmissionTest.Check(source, output: OutputKind.Library), source);
+
     // G444's probe shapes: `public func f(c: bool) -> i32` with `depth` nested levels.
     internal static string NestedIfs(int depth)
     {
@@ -319,6 +358,44 @@ public sealed class CompilationEntryTest
         }
 
         return source.Append("    return y0\n").ToString();
+    }
+
+    // G144x U3's rows (design-u3 §6).
+    private static string Resting(string row)
+    {
+        var ors = Ors(3000);
+        return row switch
+        {
+            "m-dir-use-V" => $"#if {ors}\nfunc f() => ()\n\npublic func main() => f()\n",
+            "m-dir-sel-I" => $"#if {ors}\nfunc f() -> i32 => missing\n\npublic func main() => ()\n",
+            "tw-dir-I" => $"#if {Ors(2000)}\nfunc f() => ()\n#if true\nfunc g() -> i32 => missing\n\npublic func main() => ()\n",
+            "t-se-return-V" => $"func g() -> i32\n    #if {ors}\n        return 1\n",
+            "t-se-init-V" => $"func g() -> i32\n    let x: i32\n    #if {ors}\n        x = 1\n    return x\n",
+            "t-se-return-I" => $"func g(b: bool) -> i32\n    #if {ors}\n        return 1\n    missing()\n",
+            "example-I" => $"#if {new string('(', 1100)}debug{new string(')', 1100)}\n    func helper() -> i32 => 1\nfunc main() -> ()\n    let a = helper()\n    let b: i32 = missing\n",
+            "y-and-false-I" => $"#if ({ors}) and false\nfunc f() => ()\n\npublic func main() => f()\n",
+            "y-rest-in-excl-I" => $"#if false\n    #if {ors}\n        func f() => ()\n\npublic func main() => f()\n",
+            "y-rest-in-excl-body-I" => $"#if false\n    func g() -> ()\n        #if {ors}\n            let x = 1\n\npublic func main() => missing\n",
+            "y-rest-in-excl-member-I" => $"#if false\n    struct S\n        #if {ors}\n            let x: i32\n\npublic func main() => missing\n",
+            "c3-ifs-1023-I" => NestedIfDirective(1012),
+            "c3-ifs-1024-I" => NestedIfDirective(1013),
+            "c3-ifs-1025-I" => NestedIfDirective(1014),
+            _ => NestedIfDirective(1019),
+        };
+    }
+
+    // `#if` with `parentheses` parentheses around `true` in four nested `if c` (G144x U3's c3 rows): the Condition's root stands at
+    // IMPL A.4 depth 11 and at reader count 6, so `true` stands at 11 + parentheses and at 6 + parentheses.
+    private static string NestedIfDirective(int parentheses)
+    {
+        var source = new System.Text.StringBuilder("func f(c: bool) -> i32\n");
+        for (var i = 0; i < 4; i++)
+        {
+            source.Append(' ', 4 * (i + 1)).Append("if c\n");
+        }
+
+        return source.Append(' ', 20).Append("#if ").Append('(', parentheses).Append("true").Append(')', parentheses).Append('\n')
+            .Append(' ', 24).Append("let z = 1\n    return 1\n\npublic func main() => missing\n").ToString();
     }
 
     private static Compilation Source(string source)

@@ -612,6 +612,19 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.NotNull(encoding.Span);
     }
 
+    // IMPL 21.3.2, SPEC 23.2.2 (G144x U3, design-u3 §5): a Compilation resting on a cut Condition's selection is Completed and
+    // rejected by the cut's record alone; its TestPresence is Unknown (a syntax Error, no marker), and hover over its unbound syntax,
+    // inside a function body, faults nothing. Fail-before: dev also published UnresolvedBinding_Kd at `missing`.
+    [Fact]
+    public void ACheckRestingOnASelectionIsCompletedWithItsCutAlone()
+    {
+        var source = $"#if {CompilationEntryTest.Ors(3000)}\nfunc f() -> i32 => missing\n\npublic func main() => ()\n";
+        var output = this.Run(this.WriteProject("App", ("main.kimi", source)), collectHover: true);
+
+        Assert.Equal((CheckOutcome.Completed, false, TestPresence.Unknown, (string?)null), (output.Outcome, output.Accepted, output.Presence, output.HoverFault));
+        Assert.Equal(nameof(DiagnosticCode.NestingLimit_Kd), Assert.Single(output.Diagnostics, static x => x.Severity == DiagnosticSeverity.Error).Code);
+    }
+
     [Theory]
     [InlineData(Valid, TestPresence.No)]
     [InlineData("#Test\nfunc check()\n    $expect(true)\n", TestPresence.Yes)]
@@ -772,13 +785,13 @@ public sealed partial class CheckServiceTest : IDisposable
     private static SourceIdentity Location(CheckOutput output, CheckDiagnostic diagnostic)
         => diagnostic.Source < 0 ? default : SourceIdentity.FromPath(output.Sources[diagnostic.Source].Path);
 
-    private CheckOutput Run(string projectPath, CheckMode mode = CheckMode.Product, string target = "", CheckInputSource? inputs = null)
+    private CheckOutput Run(string projectPath, CheckMode mode = CheckMode.Product, string target = "", CheckInputSource? inputs = null, bool collectHover = false)
     {
         inputs ??= CheckInputSource.Disk;
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, projectPath, inputs, out var project, out var failures),
             string.Join(", ", failures));
-        return CheckService.Run(project, target.Length == 0 ? TargetProfile.Windows.Target : target, mode, false, inputs, TestContext.Current.CancellationToken);
+        return CheckService.Run(project, target.Length == 0 ? TargetProfile.Windows.Target : target, mode, false, inputs, TestContext.Current.CancellationToken, collectHover);
     }
 
     private string PathOf(params string[] parts)

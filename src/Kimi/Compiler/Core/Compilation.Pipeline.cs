@@ -132,12 +132,19 @@ public partial class Compilation
     /// run through <c>Project</c>. Final Binding, the startup check (a test build's test startup, else the project's output kind; IMPL
     /// 20.6.1) and the analysis each run whatever an earlier one found (SPEC 23.1.2) and publish their records, except over a refused Kimi
     /// library, whose Bind leaves no result: the check then publishes Binding's records and stops (PLAN G949 Stage 2 U2a); an accepted test build
-    /// discovers its tests, the catalog its generation reads. It is not a site: it composes sites that hop to a compiler thread
+    /// discovers its tests, the catalog its generation reads. A Compilation that rests on a directive's incomplete selection
+    /// (<see cref="RestsOnSelection"/>, IMPL 21.3.2) analyzes no semantic check: Binding does not run, and its records are its sources'
+    /// checks, the cut's NestingLimit_Kd among them. It is not a site: it composes sites that hop to a compiler thread
     /// themselves (Bind, BuildMir, ReportAnalysis, TestCatalog.Discover; DECISIONS R4-M178) and runs the startup check and Binding's and
     /// the startup's publication on its caller's thread.</summary>
     /// <returns>Whether the check accepted the program (<see cref="Accepts"/>).</returns>
     internal bool Check()
     {
+        if (this.RestsOnSelection)
+        {
+            return false;
+        }
+
         this.Bind();
         this.Binding.ReportDiagnostics();
         if (this.Binding.Result == default)
