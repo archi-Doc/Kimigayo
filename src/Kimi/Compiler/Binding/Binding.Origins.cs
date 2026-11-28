@@ -14,10 +14,11 @@ namespace Kimi.Compiler;
 // Binding.Origins.Annotations.cs's.
 public sealed partial class Binding
 {
-    // An owner-keyed interner's row key (KeyedRow: originAtoms, openOrigins): an atom's kind, its slot, then whether it names one Borrow
-    // (ruling G922-19). With its owner it is the atom's whole identity: a row's atoms are its owner's own (the owner their binder) or name
-    // the Borrow rooted at it (BorrowRoot, their binder that root's declaration: Binding.PlaceAtom).
-    private static readonly Func<BoundOrigin, (OriginKind Kind, int Slot, bool HasBorrowRoot)> AtomKey = static x => (x.Kind, x.Slot, x.BorrowRoot is not null);
+    // An owner-keyed interner's row key (KeyedRow: originAtoms, openOrigins): an atom's kind, its slot, whether it names one Borrow, and
+    // its binder (ruling G922-19, -22). With its owner it is the atom's whole identity: a row's atoms are its owner's own (the owner their
+    // binder) or name a Borrow rooted at it (BorrowRoot; their binder the root's declaration, Binding.PlaceAtom), of several binders at
+    // one root occurrence when it is a capture list's literal.
+    private static readonly Func<BoundOrigin, AtomRowKey> AtomKey = static x => new(x.Kind, x.Slot, x.BorrowRoot is not null, x.Binder);
 
     private readonly OriginAtomRows originAtoms;
     private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
@@ -157,14 +158,14 @@ public sealed partial class Binding
 
     // The atom an owner-keyed interner puts at its owner's key (KeyedRow: originAtoms, openOrigins), which is its whole identity: its owner
     // (its BorrowRoot, else its binder) and its row key (AtomKey).
-    private static BoundOrigin Interned(BoundOrigin atom, Koto owner, (OriginKind Kind, int Slot, bool HasBorrowRoot) key)
+    private static BoundOrigin Interned(BoundOrigin atom, Koto owner, AtomRowKey key)
         => ReferenceEquals(atom.BorrowRoot ?? atom.Binder, owner) && AtomKey(atom) == key ? atom
             : throw new InvalidOperationException($"{atom} was interned at ({owner}, {key}) (InternalInvariant; DECISIONS BU-220).");
 
     // The atom of `binder`'s slot, owned by `borrowRoot` when it names one Borrow (PlaceAtom alone passes it) and else by its binder.
     private BoundOrigin OriginAtom(Koto binder, OriginKind kind, int slot, string? name = null, Koto? borrowRoot = null)
     {
-        var key = (borrowRoot ?? binder, kind, slot, borrowRoot is not null);
+        var key = (borrowRoot ?? binder, kind, slot, binder, borrowRoot is not null);
         if (!this.originAtoms.TryGetValue(key, out var origin) || (name is not null && origin.Name != name))
         {
             // An edited declaration may reuse a slot with a different name. Keep old expressions immutable while
@@ -299,11 +300,11 @@ public sealed partial class Binding
     /// no row a later step made. Its members keep the names and the tuple key its readers use.</summary>
     private readonly struct OriginAtomRows(Binding binding)
     {
-        internal BoundOrigin this[(Koto Owner, OriginKind Kind, int Slot, bool HasBorrowRoot) key]
+        internal BoundOrigin this[(Koto Owner, OriginKind Kind, int Slot, Koto Binder, bool HasBorrowRoot) key]
         {
             set
             {
-                var atom = Interned(value, key.Owner, (key.Kind, key.Slot, key.HasBorrowRoot));
+                var atom = Interned(value, key.Owner, new(key.Kind, key.Slot, key.HasBorrowRoot, key.Binder));
                 if (key.Owner.SyntaxOwner is { Frozen: true } library)
                 {
                     binding.programAtoms.Grow(library.Count); // A frozen table's count is final.
@@ -316,19 +317,20 @@ public sealed partial class Binding
             }
         }
 
-        internal bool TryGetValue((Koto Owner, OriginKind Kind, int Slot, bool HasBorrowRoot) key, [NotNullWhen(true)] out BoundOrigin? origin)
+        internal bool TryGetValue((Koto Owner, OriginKind Kind, int Slot, Koto Binder, bool HasBorrowRoot) key, [NotNullWhen(true)] out BoundOrigin? origin)
         {
             var table = key.Owner.SyntaxOwner;
-            origin = table is null ? null : KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Owner.SyntaxId), (key.Kind, key.Slot, key.HasBorrowRoot), AtomKey, ref binding.originRowProbes);
+            var row = new AtomRowKey(key.Kind, key.Slot, key.HasBorrowRoot, key.Binder);
+            origin = table is null ? null : KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Owner.SyntaxId), row, AtomKey, ref binding.originRowProbes);
             if (origin is null && table is { Frozen: true })
             {
-                origin = KeyedRow.Find(binding.programAtoms.Get(key.Owner.SyntaxId), (key.Kind, key.Slot, key.HasBorrowRoot), AtomKey, ref binding.originRowProbes);
+                origin = KeyedRow.Find(binding.programAtoms.Get(key.Owner.SyntaxId), row, AtomKey, ref binding.originRowProbes);
             }
 
             return origin is not null;
         }
 
-        internal void Add((Koto Owner, OriginKind Kind, int Slot, bool HasBorrowRoot) key, BoundOrigin origin)
+        internal void Add((Koto Owner, OriginKind Kind, int Slot, Koto Binder, bool HasBorrowRoot) key, BoundOrigin origin)
         {
             if (this.TryGetValue(key, out _))
             {
@@ -336,6 +338,20 @@ public sealed partial class Binding
             }
 
             this[key] = origin;
+        }
+    }
+
+    // AtomKey's value, ordered for KeyedRow: kind, slot and HasBorrowRoot first (a row with one binder keeps that order), then the
+    // binder as CompareOrigins orders it last (CompareNodes); its equality is the binder's reference.
+    private readonly record struct AtomRowKey(OriginKind Kind, int Slot, bool HasBorrowRoot, Koto? Binder) : IComparable<AtomRowKey>
+    {
+        public int CompareTo(AtomRowKey other)
+        {
+            var order = ((int)this.Kind).CompareTo((int)other.Kind);
+            order = order != 0 ? order : this.Slot.CompareTo(other.Slot);
+            order = order != 0 ? order : this.HasBorrowRoot.CompareTo(other.HasBorrowRoot);
+            return order != 0 || ReferenceEquals(this.Binder, other.Binder) ? order
+                : this.Binder is not { } left ? -1 : other.Binder is not { } right ? 1 : CompareNodes(left, right);
         }
     }
 }

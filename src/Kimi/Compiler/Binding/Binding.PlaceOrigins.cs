@@ -92,11 +92,12 @@ public sealed partial class Binding
         : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
 
     // SPEC 15.6.5: the atom of a Borrow that dereferences nothing, named by its Place's binder and Projection slot (PlaceOriginBinder,
-    // PlaceOriginSlot; a capture entry's, Binding.Captures). The one form of such an atom. A Borrow whose root occurrence `root` is a local
-    // or a parameter (a constructor's or destructor's `self` among them) has its own finite Origin, so that occurrence is also its atom's
-    // identity (BorrowRoot); any other root names the Place's one atom, and so does a capture entry, whose root stays unsited (PLAN G922).
-    private BoundOrigin PlaceAtom(Koto binder, int slot, Koto? root)
-        => this.OriginAtom(binder, OriginKind.Projection, slot, borrowRoot: root?.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter ? root : null);
+    // PlaceOriginSlot; a capture entry's, Binding.Captures). The one form of such an atom. A Borrow whose root binding `root` is a local
+    // or a parameter (a constructor's or destructor's `self` among them) has its own finite Origin, so its root occurrence `at` is also its
+    // atom's identity (BorrowRoot); any other root names the Place's one atom, and so does a capture entry, whose root stays unsited (PLAN
+    // G922).
+    private BoundOrigin PlaceAtom(Koto binder, int slot, BindingSymbol? root, Koto at)
+        => this.OriginAtom(binder, OriginKind.Projection, slot, borrowRoot: root?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter ? at : null);
 
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
     // (SPEC 13.5.5), as the adaptation recorded it; otherwise the source Place's.
@@ -185,10 +186,10 @@ public sealed partial class Binding
                 walk.Met = this.MeetWith(walk.Met, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin);
                 return true;
             case PathStep.Candidate:
-                walk.Met = this.MeetWith(walk.Met, this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path), path));
+                walk.Met = this.MeetWith(walk.Met, this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path), path.BoundSymbol, path));
                 return true;
             case PathStep.Root when walk.Met is not null || walk.Unbounded is not null:
-                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path), path));
+                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path), path.BoundSymbol, path));
                 return true;
             case PathStep.Root or PathStep.Receiver or PathStep.RawFollow:
                 return true;
@@ -268,7 +269,7 @@ public sealed partial class Binding
         => this.HelperOrigin(source) ?? (KotoHelper.UnwrapParentheses(source) is var slot &&
             (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
             slot is InvocationKoto)
-            ? this.PlaceAtom(this.PlaceOriginBinder(slot), PlaceOriginSlot(slot), slot) : this.PlaceOrigin(source));
+            ? this.PlaceAtom(this.PlaceOriginBinder(slot), PlaceOriginSlot(slot), slot.BoundSymbol, slot) : this.PlaceOrigin(source));
 
     // SPEC 13.5.6: the Origin of a Borrow of the Place `source` designates; a caller typing the Places reached through a receiver
     // names one of them, never the receiver.
@@ -326,7 +327,7 @@ public sealed partial class Binding
         // A pair layer's Origin is that of the reference it may hold, so the layer itself is its own dependency.
         var layer = this.AccessType(source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
         return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
-            ? (IsRawRoot(source) ? this.RawAnchor(place, place) : this.PlaceAtom(this.PlaceOriginBinder(source), PlaceOriginSlot(source), source))
+            ? (IsRawRoot(source) ? this.RawAnchor(place, place) : this.PlaceAtom(this.PlaceOriginBinder(source), PlaceOriginSlot(source), source.BoundSymbol, source))
             : reachedThrough ? layer.Origin!
             : this.MeetWith(layer.Origin!, IsExclusive(layer.Semantics) ? this.EnvironmentContainment(source.BoundSymbol) : null)!;
     }
