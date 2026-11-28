@@ -88,7 +88,7 @@ internal sealed partial class MirBuilder
         // such a statement if one is added (its removal condition).
         var pointer = compilation.Types.Pointer(type);
         this.Set(this.Temp(pointer, taken), this.Ref(place, pointer, input: false), taken);
-        if (MirTypes.MayNeedDrop(compilation.Types, type, this.walked))
+        if (this.MayNeedDrop(type))
         {
             this.DropAt(place, this.Info(taken));
         }

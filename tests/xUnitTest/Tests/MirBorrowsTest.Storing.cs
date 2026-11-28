@@ -55,6 +55,40 @@ public sealed partial class MirBorrowsTest
         ["payloadBorrow"] = PayloadType + "func st(t: uniq/(obj/PR))\n    let v = t@follow.q@raw@raw/u8\n    let r = t@follow.p@uniq\n    r@follow = v",
         ["mixedOtherLayer"] = "struct SM3\n    public var pair: (raw/u8 during self, raw/u8)\n    public init() => self.pair = (null, null)\n" +
             "func st(p: (uniq/SM3 during a, uniq/u8 during a))\n    p.0@follow.pair = (null, p.1@follow@raw@raw/u8)",
+        ["twoRaw"] = "func st(t: uniq/(uniq/(raw/(raw/u8)) during a))\n    t@follow@follow = t@follow@raw@raw/(raw/u8)",
+        ["dropGone"] = "func st(t: uniq/(uniq/(raw/u8) during a), s: raw/u8)\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["dropKept"] = "func st(t: uniq/(uniq/(raw/u8) during a), s: string)\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["local"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    let v: raw/u8 = t@follow@raw@raw/u8\n    t@follow@follow = v",
+        ["castLocal"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    let v: raw/u8 = t@follow@raw@raw/u8\n    t@follow@follow = v@raw/u8",
+        ["refBeside"] = "func st<U>(t: uniq/(uniq/(raw/u8) during a), w: ref/U)\n    t@follow@follow = t@follow@raw@raw/u8",
+
+        // Invalid under an identity premise (SPEC 8.2.3: T is raw/u8 in st's scope, so each means what its spelled form above means; PLAN
+        // G355's interim readers, G986): the store, also where only the unpremised Type would need a drop (dropGone) or hold a pointer
+        // (dropKept, a string's destruction), and a by-value raw part spelled T.
+        ["id"] = "func st<T>(t: uniq/(uniq/T during a))\n    T is raw/u8\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["idLocal"] = "func st<T>(t: uniq/(uniq/T during a))\n    T is raw/u8\n    let v: T = t@follow@raw@raw/u8\n    t@follow@follow = v",
+        ["idTwoRaw"] = "func st<T>(t: uniq/(uniq/T during a))\n    T is raw/(raw/u8)\n    t@follow@follow = t@follow@raw@raw/(raw/u8)",
+        ["idThreeLayers"] = "func st<T>(t: uniq/(uniq/(uniq/T during a) during a))\n    T is raw/u8\n    t@follow@follow@follow = t@follow@raw@raw/u8",
+        ["idProjection"] = "contract HasItem\n    associate Item\nfunc st<I>(t: uniq/(uniq/(I.Item) during a))\n    I is HasItem\n" +
+            "    I.Item is raw/u8\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["idDropGone"] = "func st<T>(t: uniq/(uniq/(raw/u8) during a), s: T)\n    T is raw/u8\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["idDropKept"] = "func st<T>(t: uniq/(uniq/(raw/u8) during a), s: T)\n    T is string\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["idRawPart"] = "func st<T>(p: (uniq/(raw/u8) during a, T))\n    T is raw/u8\n    p.0@follow = p.1",
+        ["idCast"] = "func st<T>(t: uniq/(uniq/(raw/u8) during a))\n    T is raw/u8\n    let v: T = t@follow@raw@raw/u8\n    t@follow@follow = v@raw/u8",
+        ["idRefBeside"] = "func st<T, U>(t: uniq/(uniq/T during a), w: ref/U)\n    T is raw/u8\n    t@follow@follow = t@follow@raw@raw/u8",
+
+        // Invalid beside a Drop A2 elides in every view (`w: s/U` under `s is ref or uniq`, or moved out), or in the view A5 checks (a
+        // body a view decides is checked in each view; one no view decides in view 0 only, PLAN G1507): a Drop that destroys nothing
+        // redirects nothing (MirDrops.Elides).
+        ["pair"] = "func st<s/U>(t: uniq/(uniq/(raw/u8) during a), w: s/U)\n    s is ref or uniq\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["oneViewDecided"] = "func st<s/U>(t: uniq/(uniq/(raw/u8) during a), w: s/U)\n    s is owner or ref\n    let z = w@follow@ref\n" +
+            "    t@follow@follow = t@follow@raw@raw/u8",
+        ["refObj"] = "func st<s/U>(t: uniq/(uniq/(raw/u8) during a), w: s/U)\n    s is ref or obj\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["idPair"] = "func st<T, s/U>(t: uniq/(uniq/T during a), w: s/U)\n    s is ref or uniq\n    T is raw/u8\n" +
+            "    t@follow@follow = t@follow@raw@raw/u8",
+        ["pairReturned"] = "func st<s/U>(t: uniq/(uniq/(raw/u8) during a), w: s/U during b) -> s/U during b\n    s is ref or uniq\n" +
+            "    t@follow@follow = t@follow@raw@raw/u8\n    return w",
+        ["ownReturned"] = "func st<U>(t: uniq/(uniq/(raw/u8) during a), w: U) -> U\n    t@follow@follow = t@follow@raw@raw/u8\n    return w@move",
 
         // Valid: another input's part (rule A), a read through the input (Chain), a self-link (O-56 (a); through objuniq, a dereference,
         // not an own step), a redirected landing; a store into a stated layer, also a payload's `during self` Field (5.2.1, 5.7).
@@ -79,8 +113,31 @@ public sealed partial class MirBorrowsTest
         ["exposedOther"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    var v: raw/u8 = t@follow@raw@raw/u8\n" +
             "    let pv = v@raw\n    unsafe => *pv = u@follow@raw@raw/u8\n    t@follow@follow = v",
 
+        // Valid under an identity premise (SPEC 8.2.3, 15.6.4 rule A): another input's part, each the neighbour of an invalid form above,
+        // and SPEC 5.2.1's own self-link spelled T.
+        ["idOther"] = "func st<T>(t: uniq/(uniq/T during a), u: uniq/(raw/u8))\n    T is raw/u8\n    t@follow@follow = u@follow@raw@raw/u8",
+        ["idTwoRawOther"] = "func st<T>(t: uniq/(uniq/T during a), u: uniq/(raw/(raw/u8)))\n    T is raw/(raw/u8)\n" +
+            "    t@follow@follow = u@follow@raw@raw/(raw/u8)",
+        ["idThreeLayersOther"] = "func st<T>(t: uniq/(uniq/(uniq/T during a) during a), u: uniq/(raw/u8))\n    T is raw/u8\n" +
+            "    t@follow@follow@follow = u@follow@raw@raw/u8",
+        ["idProjectionOther"] = "contract HasItem\n    associate Item\nfunc st<I>(t: uniq/(uniq/(I.Item) during a), u: uniq/(raw/u8))\n" +
+            "    I is HasItem\n    I.Item is raw/u8\n    t@follow@follow = u@follow@raw@raw/u8",
+        ["idDropGoneOther"] = "func st<T>(t: uniq/(uniq/(raw/u8) during a), s: T, u: uniq/(raw/u8))\n    T is raw/u8\n" +
+            "    t@follow@follow = u@follow@raw@raw/u8",
+        ["idDropKeptOther"] = "func st<T>(t: uniq/(uniq/(raw/u8) during a), s: T, u: uniq/(raw/u8))\n    T is string\n" +
+            "    t@follow@follow = u@follow@raw@raw/u8",
+        ["idSelfLink"] = "func st<T>(t: uniq/T)\n    T is raw/u8\n    t@follow = t@follow@raw@raw/u8",
+        ["idRawPartOther"] = "func st<T>(p: (uniq/(raw/u8) during a, T), u: uniq/(raw/u8))\n    T is raw/u8\n    p.0@follow = u@follow@raw@raw/u8",
+        ["idCastOther"] = "func st<T>(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    T is raw/u8\n    let v: T = u@follow@raw@raw/u8\n" +
+            "    t@follow@follow = v@raw/u8",
+        ["idPairOther"] = "func st<T, s/U>(t: uniq/(uniq/T during a), w: s/U, u: uniq/(raw/u8))\n    s is ref or uniq\n    T is raw/u8\n" +
+            "    t@follow@follow = u@follow@raw@raw/u8",
+        ["pairOther"] = "func st<s/U>(t: uniq/(uniq/(raw/u8) during a), w: s/U, u: uniq/(raw/u8))\n    s is ref or uniq\n" +
+            "    t@follow@follow = u@follow@raw@raw/u8",
+
         // Invalid and silent, named limits (O-62 (a); DECISIONS, STATUS): a join, a part read, a loop head, an exposed holder, a call
-        // result, a redirect later in the body, a value read back, Binding's joined record, an `unsafe` scope.
+        // result, a redirect later in the body, a value read back, Binding's joined record, an `unsafe` scope, an owned input's Drop A2
+        // keeps (its destruction may run code), and a view A5 does not run (PLAN G1507: only view 0's, owner, where A2 keeps w's Drop).
         ["join"] = "func st(t: uniq/(uniq/(raw/u8) during a), c: bool)\n    var v: raw/u8 = null\n    if c\n        v = t@follow@raw@raw/u8\n" +
             "    else\n        v = t@follow@raw@raw/u8\n    t@follow@follow = v",
         ["partRead"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    let q = (t@follow@raw@raw/u8, u@follow@raw@raw/u8)\n" +
@@ -95,6 +152,8 @@ public sealed partial class MirBorrowsTest
         ["readBack"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    u@follow = t@follow@raw@raw/u8\n    t@follow@follow = u@follow",
         ["joinedRecord"] = "func st(t: uniq/(uniq/((raw/u8 during a, raw/u8)) during a) during a)\n    t@follow@follow.1 = t@follow@raw@raw/u8",
         ["unsafeScope"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    unsafe => t@follow@follow = t@follow@raw@raw/u8",
+        ["ownDropped"] = "func st<U>(t: uniq/(uniq/(raw/u8) during a), w: U)\n    t@follow@follow = t@follow@raw@raw/u8",
+        ["oneView"] = "func st<s/U>(t: uniq/(uniq/(raw/u8) during a), w: s/U)\n    s is owner or ref\n    t@follow@follow = t@follow@raw@raw/u8",
         ["unsafeFn"] = "unsafe func st(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@raw@raw/u8",
         ["statedPast"] = "func st(t: uniq/(uniq/(raw/u8 during a) during a) during a)\n    t@follow@follow = t@follow@raw@raw/u8",
         ["statedTupleElem"] = "func st(t: uniq/(uniq/((raw/u8 during a, raw/u8)) during a) during a)\n    t@follow@follow.0 = t@follow@raw@raw/u8",
@@ -146,6 +205,28 @@ public sealed partial class MirBorrowsTest
     [InlineData("payloadLocal", "st: r@follow.p = v")]
     [InlineData("payloadBorrow", "st: r@follow = v")]
     [InlineData("mixedOtherLayer", "st: p.0@follow.pair = (null, p.1@follow@raw@raw/u8)")]
+    [InlineData("twoRaw", "st: t@follow@follow = t@follow@raw@raw/(raw/u8)")]
+    [InlineData("dropGone", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("dropKept", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("local", "st: t@follow@follow = v")]
+    [InlineData("castLocal", "st: t@follow@follow = v@raw/u8")]
+    [InlineData("refBeside", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("id", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("idLocal", "st: t@follow@follow = v")]
+    [InlineData("idTwoRaw", "st: t@follow@follow = t@follow@raw@raw/(raw/u8)")]
+    [InlineData("idThreeLayers", "st: t@follow@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("idProjection", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("idDropGone", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("idDropKept", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("idRawPart", "st: p.0@follow = p.1")]
+    [InlineData("idCast", "st: t@follow@follow = v@raw/u8")]
+    [InlineData("idRefBeside", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("pair", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("oneViewDecided", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("refObj", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("idPair", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("pairReturned", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("ownReturned", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("other", "")]
     [InlineData("reached", "")]
     [InlineData("selfLink", "")]
@@ -159,6 +240,17 @@ public sealed partial class MirBorrowsTest
     [InlineData("redirectViaLocal", "")]
     [InlineData("redirectMiddle", "")]
     [InlineData("exposedOther", "")]
+    [InlineData("idOther", "")]
+    [InlineData("idTwoRawOther", "")]
+    [InlineData("idThreeLayersOther", "")]
+    [InlineData("idProjectionOther", "")]
+    [InlineData("idDropGoneOther", "")]
+    [InlineData("idDropKeptOther", "")]
+    [InlineData("idSelfLink", "")]
+    [InlineData("idRawPartOther", "")]
+    [InlineData("idCastOther", "")]
+    [InlineData("idPairOther", "")]
+    [InlineData("pairOther", "")]
     [InlineData("join", "")]
     [InlineData("partRead", "")]
     [InlineData("loopCarried", "")]
@@ -168,6 +260,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("readBack", "")]
     [InlineData("joinedRecord", "")]
     [InlineData("unsafeScope", "")]
+    [InlineData("ownDropped", "")]
+    [InlineData("oneView", "")]
     [InlineData("unsafeFn", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("statedPast", "")]
     [InlineData("statedTupleElem", "")]

@@ -1693,6 +1693,24 @@ public sealed partial class MirBorrowsTest
             keepChain(a@raw, spare)
             kk = 2
             usep(t2)
+        func walkOrderDecidedOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = null
+            var t2: raw/u8 = null
+            var t: raw/(raw/u8) = t2@raw
+            var w: raw/(raw/(raw/u8)) = t@raw
+            var g: (u64, raw/(raw/(raw/(raw/u8)))) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/(raw/(raw/u8)) = null
+            unsafe => vU = *gp
+            var y: raw/(raw/(raw/u8)) = t@raw
+            var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)
+            keepChain(a@raw, spare)
+            kk = 2
+            usep(t2)
         func walkOrderRests()
             var kk: u8 = 1
             let r = kk@uniq
@@ -1710,10 +1728,49 @@ public sealed partial class MirBorrowsTest
             var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)
             keepChain(a@raw, spare)
             kk = 2
+        func walkOrderRestsOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = null
+            var t2: raw/u8 = null
+            var t: raw/(raw/u8) = t2@raw
+            var w: raw/(raw/(raw/u8)) = t@raw
+            var g: (u64, raw/(raw/(raw/(raw/u8)))) = (0, w@raw)
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/(raw/(raw/u8)) = null
+            unsafe => vU = *gp
+            var y: raw/(raw/(raw/u8)) = t@raw
+            var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)
+            keepChain(a@raw, spare)
+            kk = 2
         func walkOrderShapeBad(flag: bool)
             var kk: u8 = 1
             let r = kk@uniq
             var spare: raw/u8 = r@follow@raw
+            var x0: raw/u8 = null
+            var t0: raw/(raw/u8) = x0@raw
+            var w0: raw/(raw/(raw/u8)) = t0@raw
+            var g: (u64, raw/(raw/(raw/(raw/u8)))) = (0, w0@raw)
+            if flag
+                g.1 = w0@raw
+            let tg = g@raw@raw/u16
+            unsafe => *tg = 7
+            let gp = g.1
+            var vU: raw/(raw/(raw/u8)) = null
+            unsafe => vU = *gp
+            var y: raw/(raw/(raw/u8)) = t0@raw
+            if flag
+                y = t0@raw
+            var a: (raw/(raw/(raw/u8)), raw/(raw/(raw/(raw/u8)))) = (vU, y@raw)
+            keepChain(a@raw, spare)
+            kk = 2
+            usep(x0)
+        func walkOrderShapeOk(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = null
             var x0: raw/u8 = null
             var t0: raw/(raw/u8) = x0@raw
             var w0: raw/(raw/(raw/u8)) = t0@raw
@@ -3178,13 +3235,13 @@ public sealed partial class MirBorrowsTest
     // it is the conflict, whether the rested entries reach the holder by a read (eDecidedBesideRestedBad), a call's rested store into E
     // beside other's decided address there (escBesideRestedBad's Closure form, dClosureEscBesideBad) or a later raw write through the
     // punned pointer (rLaterWriteEscBad); each Ok twin is valid. Where r's Loan reaches E only through the punned pointer, rested, the
-    // verdict rests on the write, the located Unsupported_Kd (rRestedOnlyRests; rTwoHopStoreRests, two hops through it). W walks its
-    // targets in walk order (MirBorrows.Reach's walkOrder): t, first reached rested through vU (a read through the punned g.1), is read
-    // on again once y reaches it decided, so t2 past it receives the call's store decided and conflicts in every layout
+    // verdict rests on the write, the located Unsupported_Kd (rRestedOnlyRests; rTwoHopStoreRests, two hops through it). W reads a node
+    // at each tier that reaches it (MirBorrows.Reach's Reads): t, first reached rested through vU (a read through the punned g.1), is
+    // read on decided where y reaches it, so t2 past it receives the call's store decided and conflicts in every layout
     // (walkOrderDecidedBad; walkOrderShapeBad, RestedEntriesScaleLinearly's shape at n = 1, where x0's decided entry is reached only after
     // the rested reach of t0); without t2's later use the call's own pointer, written at the decided node y reaches t through, takes that
-    // node's tier (S5 (c)) and stores spare in storage the body does not own: the conflict too (walkOrderRests, SPEC 15.6.4). The design
-    // review's twins: a receipt through the punned pointer is decided (rcvM*), Chain
+    // node's tier (S5 (c)) and stores spare in storage the body does not own: the conflict too (walkOrderRests, SPEC 15.6.4); each Ok
+    // twin, spare null, is valid. The design review's twins: a receipt through the punned pointer is decided (rcvM*), Chain
     // carries past a holder whose state holds Φ_M (chainPastM*; its Rests twin reads through it), and a call through it may retain hh's
     // value, which carries r's Loan, in storage the body does not own (SPEC 15.6.4), which Through's Φ_M clause rests, the allowed
     // precision limit (chainPastMCallRests), where a read through it that stores nothing is valid (chainPastMNoStore); a call through it
@@ -3206,8 +3263,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("rTwoHopStoreOk", "")]
     [InlineData("cutHolderFirstOk", "")]
     [InlineData("walkOrderDecidedBad", "walkOrderDecidedBad: kk = 2")]
+    [InlineData("walkOrderDecidedOk", "")]
     [InlineData("walkOrderRests", "walkOrderRests: kk = 2")] // OwnPointer's write at its decided node (S5 (c)); limit (a) is keepU's.
+    [InlineData("walkOrderRestsOk", "")]
     [InlineData("walkOrderShapeBad", "walkOrderShapeBad: kk = 2")]
+    [InlineData("walkOrderShapeOk", "")]
     [InlineData("rcvMBad", "rcvMBad: kk = 2")]
     [InlineData("rcvMOk", "")]
     [InlineData("chainPastMBad", "chainPastMBad: kk = 2")]
@@ -3258,6 +3318,22 @@ public sealed partial class MirBorrowsTest
         long[] work = [.. runs.Select(static x => x.Work)];
         output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", runs.Select(static x => x.Bytes))}");
         Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
+    }
+
+    // SPEC 5.2.1 condition 5, 5.6 (IMPL 21.6, PLAN G1290): volatileReadOk with X86.loadInterruptTable, which reads the descriptor its raw
+    // operand addresses and stores nothing there (KimiLibraryCatalog.NoStore's Instruction clause), in place of Raw.readVolatile is
+    // accepted, and volatileWriteBad keeps its pun, on the none row, where the member is declared.
+    [Theory]
+    [InlineData("volatileReadOk", "")]
+    [InlineData("volatileWriteBad", "volatileWriteBad: kk = 2")]
+    public void AnInstructionStoresNothingThroughItsRawOperand(string form, string expected)
+    {
+        var body = Form(PunForms, form).Replace("_ = Raw.readVolatile(q@raw@raw/usize)", "X86.loadInterruptTable(q@raw@raw/u8)", StringComparison.Ordinal);
+        Assert.Equal(form == "volatileReadOk", body.Contains("X86.loadInterruptTable", StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(
+            TargetProfile.None, Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + body, "Board.kimi", OutputKind.Library);
+        var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
 
     // SPEC 5.2, 5.2.1 condition 5, 5.6 (C-457 R-c; OSF2's row 27 premise): C-457's peek, a volatile read of a ref's bits through a raw

@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 // MirWrites of the Type a holder's state is read at; its chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain row's
 // measure), the least fixed point of a read from it, each holder read once per closure and tier. Every reach is at the tier of the
 // entry that names its holder (MirBorrows.Puns' Through; DECISIONS R4-M2xx): a rested entry's holder is read rested, and read again
-// where a decided entry reaches it; Chain and W read σ(h)'s Φ_M by its parts (MirBorrows.States' Holds), never forming σ(h). W is one walk over state parts, in walk order (walkOrder): each part of a reached holder's state is
+// where a decided entry reaches it; Chain and W read σ(h)'s Φ_M by its parts (MirBorrows.States' Holds), never forming σ(h). W is one walk over state parts: each part of a reached holder's state is
 // read once per walk and tier at its reading, the guard of the holder's own root Type (Read; Through and Named take one step from a
 // state; W's own mark by walk, MirBorrows.States' walkedBy, two-field like steppedBy, which no read moves), each holder taking the
 // Reached entry of the Type of the Place the reaching Loan names (DECISIONS R4-M154, Revision 8), except where the walk reads a holder
@@ -65,9 +65,6 @@ internal sealed partial class MirBorrows
     private readonly List<(int Holder, int Root, MirRefKind? Mode, TieredElement By)> refs = [];
     private readonly List<int> targets = []; // The holders a call's store writes (W).
     private readonly List<int> targetRoots = []; // The targets' root locals, -1 for E (the Type a holder's state is read at).
-    // W's reads of its targets in walk order (Writes): each target's index at its first reach and again at its first decided one
-    // (Written), so W reads a holder on rested, then decided (DECISIONS R4-M2xx); at most two per target.
-    private readonly List<int> walkOrder = [];
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once, again where first reached writable (Chain).
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
@@ -98,7 +95,6 @@ internal sealed partial class MirBorrows
     private int closures; // The closures made (Chain).
     private long[] writing = []; // By slot: the W walk that reached it.
     private byte[] writingVia = []; // By slot: how that walk reached it (ViaRoot, ViaPast).
-    private int[] targetAt = []; // By slot: its index in that walk's targets (Written), the inverse of `targets`.
     private (BoundType? Type, bool Several)[] writingPlace = []; // By slot: the erased case Type of the storage by which that walk
                                                                  // reached it past a holder (a reading layer's, ReadPart; else the
                                                                  // Place the reaching Loan names, PlaceType), or several.
@@ -470,12 +466,10 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.writing, this.holderCount);
         MirDataflow.Grow(ref this.writingVia, this.holderCount);
         MirDataflow.Grow(ref this.writingPlace, this.holderCount);
-        MirDataflow.Grow(ref this.targetAt, this.holderCount);
         MirDataflow.Grow(ref this.keyedBy, this.holderCount);
         this.walks++;
         this.targets.Clear();
         this.targetRoots.Clear();
-        this.walkOrder.Clear();
         this.nodes.Clear();
         this.nodeSeen.Clear();
         this.nodeParts.Clear();
@@ -509,16 +503,15 @@ internal sealed partial class MirBorrows
     // holder h ≠ E of W whose root Type passes the guard (MirWrites.Through, or Named: an abstract part, SPEC 15.6.4's provenance list),
     // the holder each direct Loan not shared or address of σ(h) names, and E where σ(h) carries Φ_W, at either guard (item 1; DECISIONS
     // R4-M249), but where σ(h) carries Φ_E past a holder whose Type holds storage it does not state (ReadDeclared) and at a declared-step
-    // target the walk cannot place whose own raw layer its Type expression writes (DeclaredUnowned). One walk, in walk order (walkOrder):
-    // each holder it reaches is read on at its tier, again where a decided entry reaches it after a rested one, and each part of its
-    // state is a node read once per walk and tier at that reading (Read); a holder the first step reads punned is read at its rows'
-    // guard too (Punned, Reading), whose Limit and Deep count as its own guard's. The two facts that leave the store undecided, which
-    // the call's location records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves undecided
-    // (MirWrites.Limit, R4-M147), and whether, at W's fixed point, the step from a holder whose guard is Deep would change what
-    // W writes (Changes, R4-M153; that step is left out, and a Deep holder whose step changes nothing decides nothing). Every store path
-    // (a Call's rows, its untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a
-    // 4.6 to 4.9 operation's referent store, which takes W's first step alone, its row's destruction composed at the call (Referents;
-    // MirBorrows.Destructions; DECISIONS R4-M150).
+    // target the walk cannot place whose own raw layer its Type expression writes (DeclaredUnowned). One walk: each holder it reaches is
+    // asked its guard once and read on at its tier, and each part of its state is a node read once per walk and tier at that reading
+    // (Read); a holder the first step reads punned is read at its rows' guard too (Punned, Reading), whose Limit and Deep count as its
+    // own guard's. The two facts that leave the store undecided, which the call's location records (MirBorrows.Calls, .Locations):
+    // whether W reached a holder the guard leaves undecided (MirWrites.Limit, R4-M147), and whether, at W's fixed point, the step from a
+    // holder whose guard is Deep would change what W writes (Changes, R4-M153; that step is left out, and a Deep holder whose step
+    // changes nothing decides nothing). Every store path (a Call's rows, its untied stores among them; A5-F7's capture stores, unit 2c;
+    // A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent store, which takes W's first step alone, its
+    // row's destruction composed at the call (Referents; MirBorrows.Destructions; DECISIONS R4-M150).
     // The walk's state: its arguments, the output whose store it is (`output`: its records name the entries, the Φ_E rule's key condition
     // reads its Kept), and walkComposes, which Keep sets from the plan before the walk begins.
     private (bool Limit, bool Deep) Writes(ulong[] state, in MirTerminator call, int position, OutputRetention output)
@@ -535,9 +528,8 @@ internal sealed partial class MirBorrows
         var punned = this.Punned(set, facts);
         this.Keyed(set, facts, output);
         var (limited, deeps) = (false, false);
-        for (int k = 0, n = 0; k < this.walkOrder.Count; k++)
+        for (int i = 0, n = 0; i < this.targets.Count; i++)
         {
-            var i = this.walkOrder[k]; // In walk order: a target first reached rested comes again at its first decided reach.
             var (guard, pun) = (this.DeclaredGuard(i, output), this.PunGuard(this.targets[i], punned));
             var (held, via) = (state[this.targets[i]], (byte)(ViaPast | (this.writingVia[this.targets[i]] & ViaDecided))); // At its tier.
             limited |= guard == MirWrites.Limit || pun == MirWrites.Limit;
@@ -1241,20 +1233,14 @@ internal sealed partial class MirBorrows
     // A holder W reaches, with its root local (E: -1), whose Type the walk reads its state at, and how it was reached (past a holder, with
     // the erased case Type of the Place the Loan names, `place`, the storage the call writes there; DECISIONS R4-M154, Revision 8). E
     // takes Reached.All by every way but a layer's own, whose record `place` names (a punned reading's layers, Punned and Unowned; the
-    // call's own pointer's layer, OwnPointer): a reach of E with no `place` counts as several, so All stands beside any record. The
-    // holder's index enters the walk order at its first reach and again at its first decided one (walkOrder).
+    // call's own pointer's layer, OwnPointer): a reach of E with no `place` counts as several, so All stands beside any record.
     private void Written(int slot, int root, byte via, BoundType? place)
     {
         if (this.writing[slot] != this.walks)
         {
-            (this.writing[slot], this.writingVia[slot], this.writingPlace[slot], this.targetAt[slot]) = (this.walks, 0, default, this.targets.Count);
-            this.walkOrder.Add(this.targets.Count);
+            (this.writing[slot], this.writingVia[slot], this.writingPlace[slot]) = (this.walks, 0, default);
             this.targets.Add(slot);
             this.targetRoots.Add(root);
-        }
-        else if ((via & ~this.writingVia[slot] & ViaDecided) != 0)
-        {
-            this.walkOrder.Add(this.targetAt[slot]);
         }
 
         this.writingVia[slot] |= via;

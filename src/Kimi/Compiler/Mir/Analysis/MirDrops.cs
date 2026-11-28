@@ -3,7 +3,7 @@
 // Owns drop elaboration (A2; SPEC 16.2, 16.3.2, 15.1.3; DECISIONS R4-M6, R4-M6a) of one body per Semantics case view.
 // Input: the state MirInit's checks replay holds before each Drop (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
-// no subtree event, so no point); the selected view (MirCases); the programs' TyCtxt (MirAnalysis's).
+// no subtree event, so no point); the selected view and the body's identity premises (MirCases); the programs' TyCtxt (MirAnalysis's).
 // Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
 // for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
 // the views judged (A1 and A2 completed them), whether the table holds a body (Holds: the driver's one stepping path closed its entry in
@@ -13,9 +13,10 @@
 // A1 or A2 problem, an inline copy's included (its code and its subject in its location's scope; the table is exact only without one,
 // R4-M6a, R4-M102), which both record through Problem, the one path of their Language problems to MirReport: one inside an inline
 // default copy is its template's check and is not added (SPEC 7.2.3, R4-M69); A1's broken contract and storage limit reach MirReport
-// directly; and MovedPlace_Kd through Problem where a layer with its own drop may be incomplete at a runtime Drop. Elide where the view's
-// Type needs no drop (MirTypes.MayNeedDrop) or nothing is initialized on any path; Keep where the whole is initialized on every path or
-// the Place has no Move Path, and in a check-only group
+// directly; and MovedPlace_Kd through Problem where a layer with its own drop may be incomplete at a runtime Drop. Elide where the Type
+// of the Drop's Place in the view, as the body's identity premises make it (MirCases.PremisedTypeOf; PLAN G355's interim until R7-Y5),
+// needs no drop (MirTypes.MayNeedDrop) or nothing is initialized on any path; Keep where the whole is initialized on every path or the
+// Place has no Move Path, and in a check-only group
 // also where Flag or an incomplete layer with its own drop would be; Flag where it is complete or wholly absent on every path, the flag
 // mirroring the path's own bit; Open where a part may be missing: the components without a child path follow the own bit, each child
 // path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per view. Flags are numbered in path
@@ -182,7 +183,8 @@ internal sealed partial class MirDropTable
     }
 
     /// <summary>Gets whether a Drop destroys nothing under a view: its group is Elide (SPEC 16.2.1, 14.10.3), the one
-    /// statement A5 (Dropping) reads; the walk of a group (<see cref="Destroyed"/>) gives an Elide row no step.</summary>
+    /// statement A5 reads (Dropping, and Storing's Redirects); the walk of a group (<see cref="Destroyed"/>) gives an Elide
+    /// row no step.</summary>
     /// <param name="body">The body's ordinal.</param>
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="view">The view.</param>
@@ -453,8 +455,9 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
         }
     }
 
-    // A Drop's tree under the view: the Types top-down from the Drop's case Type; a node whose Type needs no drop is Elide with its subtree,
-    // and an Open layer whose Type declares a drop may be incomplete where that drop would run (SPEC 15.1.3, 16.3.2): MovedPlace_Kd at a
+    // A Drop's tree under the view: the Types top-down from the Drop's case Type as the body's identity premises make it (MirCases'
+    // PremisedTypeOf, the Type the builder's drop rule reads; PLAN G355's interim until R7-Y5); a node whose Type needs no drop is Elide
+    // with its subtree, and an Open layer whose Type declares a drop may be incomplete where that drop would run (SPEC 15.1.3, 16.3.2): MovedPlace_Kd at a
     // runtime Drop. A check-only Drop is read here alone: not judged and flagless (R4-M6a), so Flag's state reads as Keep, no row has a
     // flag, and such a layer is destroyed whole (Keep, its drop included). Only an Open row has child rows. Returns the next tree.
     private int Tree(int first, ulong views)
@@ -476,7 +479,7 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
 
             var step = node.Path < 0 ? default : moves.Paths[node.Path];
             MirDataflow.Grow(ref this.types, node.Depth + 1);
-            var type = this.types[node.Depth] = node.Depth == 0 ? cases.TypeOf(drop.Terminator.Place)
+            var type = this.types[node.Depth] = node.Depth == 0 ? cases.PremisedTypeOf(drop.Terminator.Place)
                 : this.body.ProjectedType(typeContext, this.types[node.Depth - 1], step.Kind, step.Arg);
             var state = node.State == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : node.State;
             var verdict = MirTypes.MayNeedDrop(typeContext, type, this.walked) ? state : MirDropVerdict.Elide;
