@@ -14,6 +14,7 @@ public class GenericClosureIdentityTest
 
     private const string Identity = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n    return action(value)\n";
     private const string Ok = "Console.writeLine(\"ok\")";
+    private const string Main = "public func main()\n";
 
     // A Contract whose static requirement tells A (1) from B (2), and a struct whose stored Field initializer's Closure returns T's tag.
     private static readonly string[] Tagged =
@@ -223,6 +224,21 @@ public class GenericClosureIdentityTest
         var source = string.Join('\n', TaggedBox) + "\n" + use + Ok + "\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(("UnprovenConstraint_Kd", at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 3.2.1, 23.1 (DECISIONS BU-60, BU-222, R7-M<next>): one definition's nested Types in two instances differ only in the instance
+    // they hold, so a mismatch shows it: a Closure whose signature names T, one whose signature does not, a held function's Item and a
+    // nested Type's Closure; a Closure read in its own Type's frame holds none and shows none.
+    [Theory]
+    [InlineData("struct Box<T>\n    T is Copy\n    public var f = func [] (x: T) -> T => x\n    public init() => ()\n" + Main + "    var g = Box<i32>.init().f\n    g = Box<i64>.init().f\n", "Box<i64>.init().f", "expected closure (T) -> T in Box<i32>, found closure (T) -> T in Box<i64>")]
+    [InlineData("struct Box<T>\n    public var n = func [] () -> u16 => 5\n    public init() => ()\n" + Main + "    var g = Box<i32>.init().n\n    g = Box<i64>.init().n\n", "Box<i64>.init().n", "expected closure () -> u16 in Box<i32>, found closure () -> u16 in Box<i64>")]
+    [InlineData("struct Box<T>\n    public let p = func ()\n        func pk(x: ref/T) -> isize => 1\n        return pk\n    public init() => ()\n" + Main + "    var f = Box<i32>.init().p()\n    f = Box<i64>.init().p()\n", "Box<i64>.init().p()", "expected function item pk in Box<i32>, found function item pk in Box<i64>")]
+    [InlineData("struct Outer<T>\n    public init() => ()\n    public struct Inner\n        public var m = func [] () -> u16 => 5\n        public init() => ()\n" + Main + "    var g = Outer<i32>.Inner.init().m\n    g = Outer<i64>.Inner.init().m\n", "Outer<i64>.Inner.init().m", "expected closure () -> u16 in Inner<i32>, found closure () -> u16 in Inner<i64>")]
+    [InlineData("struct Box<T>\n    T is Copy\n    public var f = func [] (x: T) -> T => x\n    public init() => ()\n    public func m(self: ref/Self)\n        var g = self.f\n        g = Box<i32>.init().f\npublic func main() => ()\n", "Box<i32>.init().f", "expected closure (T) -> T, found closure (T) -> T in Box<i32>")]
+    public void ANestedTypeShowsTheInstanceItHolds(string source, string at, string label)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("TypeMismatch_Kd", at, label), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length), error.Label));
     }
 
     // SPEC 3.2.1, 6.1.3, 8.13.3 (PLAN G846; the owner's O-258 (a)): the Item of a function declared in a Field initializer's Closure

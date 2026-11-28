@@ -43,10 +43,11 @@ public sealed partial class Binding
         _ => throw new ArgumentOutOfRangeException(nameof(form)),
     };
 
-    // The display does not recurse on the Type (DECISIONS BU-153): Show notes a form's parts in reading order (Emit), and
-    // the loop shows them from one list used as a stack, so neither a Type's height nor a chain of closure signatures, which the
-    // height does not count (BU-71), reaches the host stack. A Primitive or Parameter returns before the list exists: a Bind, and a
-    // check without Hover whose records name no structural Type, allocate nothing more; each structural Type displayed adds one list.
+    // The display does not recurse on the Type (DECISIONS BU-153): Show notes a form's parts (ShowForm), then the instance it holds,
+    // in reading order (Emit), and the loop shows them from one list used as a stack, so neither a Type's height nor a chain of
+    // closure signatures, which the height does not count (BU-71), reaches the host stack. A Primitive or Parameter returns before
+    // the list exists: a Bind, and a check without Hover whose records name no structural Type, allocate nothing more; each
+    // structural Type displayed adds one list.
     private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, Binding? hover)
     {
         var complete = hover is not null;
@@ -118,7 +119,20 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 3.2.1, 6.1.3 (DECISIONS BU-60, R7-M<next>): a nested definition's Type, a Closure Type or the Item of a function declared
+        // in a body, is one per Type instance it holds, so it shows that instance after its form, as `closure (T) -> T in Box<i32>`
+        // (DIAGNOSTICS: a mismatch's Types keep their differing parts); a context a function's instance made, and none, add nothing.
+        // Here, not in the Closure arm: a held Item has the Closure's fact (BU-222), so that arm alone would need a copy in the Item arm.
         void Show(BoundType current, bool underBorrow)
+        {
+            ShowForm(current, underBorrow);
+            if (TyCtxt.HeldType(current) is { } held)
+            {
+                Emit(" in ", held);
+            }
+        }
+
+        void ShowForm(BoundType current, bool underBorrow)
         {
             if (current is { Kind: BoundTypeKind.Open, Components: [var formed] })
             {
