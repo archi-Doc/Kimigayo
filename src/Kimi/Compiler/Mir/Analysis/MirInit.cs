@@ -9,10 +9,11 @@
 // lies; OwnershipStorageLimit_Kd, the arena limit, through MirDataflow.StorageLimit; to A2, with each problem, its subject in the
 // location's scope (R4-M102, R4-M132), the paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
 // before each Drop, with whether the runtime edges reach it, and each state event the runtime edges reach.
-// Six lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, for A2 MaybeInit and MaybePartial (a non-root path a Move or
-// a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self), and Unplaced, A1's alone: the value the
-// path holds lacks a part no Place names (a construction left it unplaced on the path; a Places Call's construction its entry). A
-// definition initializes a path's subtree but its Never parts and what a temp it takes left unplaced on the path (MirMoveData's
+// Six lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, for A2 MaybeInit and MaybePartial (a non-root path a Move, a
+// Drop or a case test's edge excluding its Case took out of its parent, cleared with the subtree by any event of an ancestor-or-self),
+// and Unplaced, A1's alone: the value the path holds lacks a part no Place names (a construction left it unplaced on the path; a Places
+// Call's construction its entry).
+// A definition initializes a path's subtree but its Never parts and what a temp it takes left unplaced on the path (MirMoveData's
 // NeverParts and Carries, SPEC 14.10.3; a fact on a Move Path is MaybeUninit, its complement Unplaced), clearing Unplaced first: a
 // carry gives its destination its fact where its source's own bit is set, and one onto the defined path itself (a Use of a whole temp
 // that holds nothing there places nothing) keeps the destination's state instead, which is exact only where the value's construct
@@ -70,7 +71,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     /// <summary>MaybeInit, which A2 reads.</summary>
     internal const int Init = 3;
 
-    /// <summary>MaybePartial, which A2 reads: the path was taken out of its parent, whose own bit stayed.</summary>
+    /// <summary>MaybePartial, which A2 reads: the path was taken out of its parent, whose own bit stayed, by a Move, a Drop or a case
+    /// test's edge excluding its Case.</summary>
     internal const int Partial = 4;
 
     private const int Moved = 1; // MaybeMoved.

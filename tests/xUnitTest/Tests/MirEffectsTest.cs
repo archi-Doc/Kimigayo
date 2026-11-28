@@ -413,6 +413,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public var b: Loud = Loud.init()\ncontract Make\n    func make(self: ref/Self) -> Loud\n        effect confined\nstruct M\n    Self is Make\n" +
                 "    public func make(self: ref/Self) -> Loud\n" + body));
 
+    // PLAN G220 (SPEC 15.1.6, 16.3.2): a matched Subject's Drop after the arms' join destroys only what its active Case still holds. The
+    // Some arm appending the exchanged Loud (SPEC 4.9.6: `append` destroys nothing) and a None arm leave nothing to destroy, so the witness
+    // is confined (8.11.2; A2: `open ((_ as case 0) elide)`); a `.Some(_)` arm leaves the Loud in the Subject, destroyed at the join
+    // (G220 review C1's sinkAppendsItsLoud and sinkDropsItsLoud).
+    [Theory]
+    [InlineData("            .Some(let l) => self.items.append(l@move)\n", "")]
+    [InlineData("            .Some(_) => ()\n", Failed)]
+    public void AJoinDestroysOnlyTheActiveCasesPayload(string some, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + "struct S\n    Self is Sink\n    var slot: Option<Loud> = .None\n    var items: Array<Loud> = []\n" + Put +
+                "        match Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)\n" + some + "            .None => ()\n        return .Ok(())\n"));
+
     // R4-M6a: a Drop only the checks reach runs no destructor (drop elaboration applies to runtime paths only, SPEC 14.10.3), whatever its
     // group (a whole value's Keep, a partly moved one's Open: PLAN G641 kind 4), while the check-only statements' own effects count.
     [Theory]
