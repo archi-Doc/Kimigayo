@@ -109,6 +109,22 @@ public sealed class GeneratedIrTest
         ir.AssertNoTerminationClaim();
     }
 
+    // IMPL 21.6 (PLAN G1481): an inline asm call is a call without a callee function, its template and constraints kept as text, in which
+    // no register is a value: a Library calling X86.readTimestamp, whose routine's asm call names registers, and the ordinary call of
+    // that routine.
+    [Fact]
+    public void AnInlineAsmCallIsReadAsText()
+    {
+        var ir = GeneratedIr.Parse(Generate("public group Board\n    public func stamp() -> u64 => X86.readTimestamp()\n", OutputKind.Library));
+        var routine = ir.Function("__kimi_x86_rdtsc");
+        var asm = Assert.Single(routine.Instructions, static x => x.Opcode == "call");
+        Assert.Equal("call i64 asm sideeffect \"rdtsc\\0Ashlq $$32, %rdx\\0Aorq %rdx, %rax\", \"={ax},~{dx},~{memory},~{dirflag},~{fpsr},~{flags}\"()", asm.Shape);
+        Assert.Null(asm.Callee);
+        Assert.Empty(asm.Operands);
+        Assert.Equal([asm], routine.Blocks[0].Terminator.Operands);
+        Assert.Equal("call i64 @()", Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Callee == routine).Shape);
+    }
+
     // Each place a termination claim can take fails: a definition's or a declaration's attributes, a group, a call site and loop metadata.
     [Theory]
     [InlineData("define internal void @f() mustprogress {\nentry:\n  ret void\n}")]
