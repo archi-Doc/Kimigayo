@@ -96,7 +96,7 @@ public sealed partial class Binding
 
     // Through no shared layer (SPEC 5.2.1 condition 3: a pointer read past a shared layer has no write authority): the walk's one per-layer
     // predicate, whether the call may write past a layer of this step (LayerStep), Past's `written`.
-    private static bool WritesPast(HoldStep step) => step != HoldStep.Shared;
+    private static bool StepWrites(HoldStep step) => step != HoldStep.Shared;
 
     // Begins a storage walk: no storage but the three fixed ones.
     private void BeginStorages()
@@ -235,7 +235,7 @@ public sealed partial class Binding
     }
 
     // What a Type's entries reach, by the first: a pair layer's one reading, until U3b reads its cases (G416 D2); what a borrow, shared handle
-    // or raw layer refers to (Past, written where the layer's step, LayerStep's, WritesPast; a raw layer by its position's step, `during
+    // or raw layer refers to (Past, written where the layer's step, LayerStep's, StepWrites; a raw layer by its position's step, `during
     // self` content as Admitted); its parts by value (Parts); an abstract part or a callable, nothing.
     private void Reach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, HoldStep step, int layer)
     {
@@ -243,7 +243,7 @@ public sealed partial class Binding
         if (TryPairLayer(type, out _, out var target))
         {
             var written = this.SignaturePast(at.Signature, type, default);
-            this.Borrowed(this.Past(environment, target, at.Targets, WritesPast(step), layer, below with { Signature = written }));
+            this.Borrowed(this.Past(environment, target, at.Targets, StepWrites(step), layer, below with { Signature = written }));
             if (at.Source.Input >= 0 && this.Referent(run, out _) is null)
             {
                 this.Parts(environment, type, at, run); // A pair layer admitting no borrow holds its target by value in its owning cases.
@@ -265,11 +265,11 @@ public sealed partial class Binding
         else if (first.Step is HoldStep.Shared or HoldStep.Exclusive)
         {
             var written = this.SignaturePast(at.Signature, type, first);
-            this.Borrowed(this.Past(environment, first.Part!, at.Targets, WritesPast(step), layer, below with { Signature = written }));
+            this.Borrowed(this.Past(environment, first.Part!, at.Targets, StepWrites(step), layer, below with { Signature = written }));
         }
         else if ((first.Flags & HoldFlags.ReadOnly) != 0)
         {
-            this.Past(environment, first.Part!, at.Targets, WritesPast(step), layer: -1, below with { Signature = this.SignaturePast(at.Signature, type, first) });
+            this.Past(environment, first.Part!, at.Targets, StepWrites(step), layer: -1, below with { Signature = this.SignaturePast(at.Signature, type, first) });
         }
         else if (first.Step is not (HoldStep.Abstract or HoldStep.Erased))
         {
@@ -334,7 +334,7 @@ public sealed partial class Binding
         // The holder a kept binding's raw layer addresses is written by route 1 as this layer states it; past that holder the walk is
         // Routed unless the declaring code acts there (Routes), so no layer met there makes storage of no Type (PLAN G964).
         below = below with { Routed = at.Routed || this.Routes(at, this.retentionHeld[run.Start]) };
-        var past = this.Past(environment, pointee, at.Targets, WritesPast(step), layer, below);
+        var past = this.Past(environment, pointee, at.Targets, StepWrites(step), layer, below);
         if (!at.Routed && (content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage)
         {
             this.storageHolds.Add((default, past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
