@@ -2121,8 +2121,10 @@ public sealed partial class InstanceCollectorTest
     // order, the walk code generation writes it by, not the dropped Type's whole glue: a struct's Fields from the last (an i32 none), an
     // Open Field by its own rows (a Tuple's elements from the last), a Flag Field whole; a fixed array's elements from the last, each run
     // without a row through the element's glue, an Open element by its rows; an Open base by its rows after the Fields; an enum's Case
-    // payload elements by their Case's rows (no Elide one: each is moved on one arm only). An Elide row (the part moved out on every path
-    // in partly, elements and based) destroys nothing and requests no glue; no whole glue is requested.
+    // payload elements by their Case's rows (G220, design §0.2 (b), (d), DECISIONS R5-M100: on each arm's edge the other Case is vacuous,
+    // so case 0's payload 0 and case 1's payload elide and only case 0's payload 1 is destroyed). An Elide row (the part moved out on
+    // every path in partly, elements and based, or on its arm's edge in cases) destroys nothing and requests no glue; no whole glue is
+    // requested.
     [Fact]
     public void AnOpenDropTargetsWhatItsGroupDestroysInWalkOrder()
     {
@@ -2140,7 +2142,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Glues("Fn partly"));
         Assert.Equal(["DropGlue (string, string)", "DropGlue string", "DropGlue (string, string)"], Glues("Fn elements"));
         Assert.Equal(["DropGlue string", "DropGlue Array<i32>"], Glues("Fn based"));
-        Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue string"], Glues("Fn cases"));
+        Assert.Equal(["DropGlue Array<i32>"], Glues("Fn cases"));
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is "DropGlue Pair" or "DropGlue [3 of (string, string)]" or "DropGlue Two");
     }
 

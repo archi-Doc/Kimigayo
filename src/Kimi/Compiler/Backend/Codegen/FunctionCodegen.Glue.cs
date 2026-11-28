@@ -17,8 +17,8 @@ namespace Kimi.Compiler.Backend;
 // (MirTypes.MayNeedDrop, the rule the collector targets by) by its Keep or Flag row (an Elide row, destroying nothing, has no step), or its
 // parent's own bit without one, through its glue, the destruction's next target, at the part's address (Component, the aggregate writer's
 // rule; a base at the value's own address, X1), an Open part by its own level; an enum's parts under one switch on its tag over the Cases
-// holding such a part (an Open enum's tag is defined: Case payload paths exist only in an owned match Subject, initialized before arm
-// selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a row in one counted loop (Loop, Fill's
+// holding such a part (an Open enum's tag is defined: Case payload paths exist only in a case-tested Place, initialized before its
+// test, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a row in one counted loop (Loop, Fill's
 // loop), so the text does not grow with the length.
 // A common Function value's calls its table's drop entry, when present, on a copy of its word in an entry slot (FunctionCodegen.Erasures),
 // and an owning handle's releases its object (FunctionCodegen.Objects' Release), each only in its glue function, since no move path opens
@@ -175,8 +175,8 @@ internal sealed partial class FunctionCodegen
 
     // An Open step's level at its address, its Type's parts (a Function value, a handle or a collection has none a move path opens) up to
     // its End: an enum's under one switch on its tag (Switch), each Case holding a part that may need a drop a block (an Open enum's tag
-    // is defined: Case payload paths exist only in an owned match Subject, initialized before arm selection, SPEC 15.1.6). The index after
-    // its End.
+    // is defined: Case payload paths exist only in a case-tested Place, initialized before its test, SPEC 15.1.6). The index after its
+    // End.
     private int Opened(int index, Value address, Site site)
     {
         var type = this.steps[index].Part.Type;

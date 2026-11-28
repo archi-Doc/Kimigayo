@@ -146,6 +146,18 @@ public sealed class MirInitTest
             Problems("struct Holder {a}\n    public let p: ref/i32 during a\n    public var n: i32 = if true\n        let s: Array<i32> = []\n" +
                 $"        let t = s@move\n{second}        yield 0\n    else => 0\n{constructor}public func main() => ()\n"));
 
+    // SPEC 15.1.6, 14.8.3 (PLAN G220): an edge of a case test makes the Case paths it excludes vacuous, not moved, so a whole Move of the
+    // Subject after a guard rejection joined with the otherwise edge, or after a nested test's failure joined with the outer one's, is valid.
+    [Fact]
+    public void AWholeMoveAfterAFailedCaseTestIsValid()
+    {
+        const string Keeps = Resource + "func keep(o: Option<Resource>) => ()\nfunc keepResult(r: Result<Option<Resource>, i32>) => ()\n";
+        Assert.Empty(Problems(Keeps + "func f(o: Option<Resource>, g: bool)\n    match o@move\n        .Some(let x) if g => consume(x@move)\n" +
+            "        let other => keep(other@move)\n"));
+        Assert.Empty(Problems(Keeps + "func f(r: Result<Option<Resource>, i32>)\n    match r@move\n        .Ok(.Some(let x)) => consume(x@move)\n" +
+            "        let other => keepResult(other@move)\n"));
+    }
+
     // SPEC 15.1.1: a let binding is initialized once per binding lifetime: a loop body's let starts a lifetime per iteration, one outside
     // the loop does not, and neither a Move nor a destruction resets the first initialization.
     [Fact]

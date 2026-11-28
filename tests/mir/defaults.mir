@@ -82,13 +82,12 @@ defaulttemplate evaluate#1 @139
   s1: lexical in s0 @141
   s2: lexical in s1 @154
   s3: lexical in s1 @162
-  flags 1
   bb0:
       StorageLive(_2) @142 s1
     * _2 = Adt case 1(): Option<T> @148 s1
       StorageLive(_3) @150 s1
-      StorageLive(_4) [clear f0] @151 s1
-    * _4 = move _2 [set f0] @152 s1
+      StorageLive(_4) @151 s1
+    * _4 = move _2 @152 s1
       StorageLive(_5) @154 s1
       _5 = discriminant(_4) @154 s1
       switch copy _5 [0: bb4, otherwise: bb3] @154 s1
@@ -97,14 +96,14 @@ defaulttemplate evaluate#1 @139
   bb2:
       StorageDead(_8) @162 s1
       StorageDead(_5) @154 s1
-      drop _4 -> bb21 [open ((_ as case 0) open (.0 keep))] @151 s1
+      drop _4 -> bb21 [open ((_ as case 0) open (.0 elide))] @151 s1
   bb3:
       StorageLive(_8) @162 s1
       _8 = discriminant(_4) @162 s1
       switch copy _8 [1: bb17, otherwise: bb16] @162 s1
   bb4:
       StorageLive(_6) @158 s2
-      _6 = move (_4 as case 0).0 [clear f0] @158 s2
+      _6 = move (_4 as case 0).0 @158 s2
     * goto bb13 check bb14 @160 s2
   bb5:
       _0 = move _7 @140
@@ -119,9 +118,9 @@ defaulttemplate evaluate#1 @139
       goto bb6 @135
   bb9:
       StorageDead(_5) @154 s1
-      drop _4 -> bb10 [open ((_ as case 0) open (.0 flag f0))] [clear f0] @151 s1
+      drop _4 -> bb10 [open ((_ as case 0) open (.0 elide))] @151 s1
   bb10:
-      StorageDead(_4) [clear f0] @151 s1
+      StorageDead(_4) @151 s1
       goto bb8 @135
   bb11:
       drop _6 -> bb12 [keep] @158 s2
@@ -503,7 +502,6 @@ fn replicas @169
   s7: lexical in s6 @141
   s8: lexical in s7 @154
   s9: lexical in s7 @162
-  flags 1
   bb0:
       StorageLive(_1) @171 s1
       StorageLive(_2) @175 s1
@@ -512,8 +510,8 @@ fn replicas @169
       StorageLive(_4) @142 s3
     * _4 = Adt case 1(): Option<string> @148 s3
       StorageLive(_5) @150 s3
-      StorageLive(_6) [clear f0] @151 s3
-    * _6 = move _4 [set f0] @152 s3
+      StorageLive(_6) @151 s3
+    * _6 = move _4 @152 s3
       StorageLive(_7) @154 s3
       _7 = discriminant(_6) @154 s3
       switch copy _7 [0: bb5, otherwise: bb4] @154 s3
@@ -524,14 +522,14 @@ fn replicas @169
   bb3:
       StorageDead(_10) @162 s3
       StorageDead(_7) @154 s3
-      drop _6 -> bb22 [open ((_ as case 0) open (.0 keep))] @151 s3
+      drop _6 -> bb22 [open ((_ as case 0) open (.0 elide))] @151 s3
   bb4:
       StorageLive(_10) @162 s3
       _10 = discriminant(_6) @162 s3
       switch copy _10 [1: bb18, otherwise: bb17] @162 s3
   bb5:
       StorageLive(_8) @158 s4
-      _8 = move (_6 as case 0).0 [clear f0] @158 s4
+      _8 = move (_6 as case 0).0 @158 s4
     * goto bb14 check bb15 @160 s4
   bb6:
       _3 = move _9 @140 s2
@@ -546,9 +544,9 @@ fn replicas @169
       goto bb7 @135 s2
   bb10:
       StorageDead(_7) @154 s3
-      drop _6 -> bb11 [open ((_ as case 0) open (.0 flag f0))] [clear f0] @151 s3
+      drop _6 -> bb11 [open ((_ as case 0) open (.0 elide))] @151 s3
   bb11:
-      StorageDead(_6) [clear f0] @151 s3
+      StorageDead(_6) @151 s3
       goto bb9 @135 s2
   bb12:
       drop _8 -> bb13 [keep] @158 s4

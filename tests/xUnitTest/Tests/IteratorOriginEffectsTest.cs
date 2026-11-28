@@ -143,15 +143,33 @@ public class IteratorOriginEffectsTest
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    // H3b T32a: the forms of AWrapperMayHoldAnItemInALocalBeforeTransferringIt that match the held item, under PLAN G220 (see
-    // AssertRefusedPendingG220).
+    // SPEC 15.1.6, 16.3.2 (PLAN G220, H3b T32a): matching the held item, the Subject's destruction destroys only the remaining payload
+    // of its active Case, so in an arm whose Case holds none (`.None`, a catch-all's otherwise edge, a guard rejection's join) it
+    // destroys nothing, and a last arm takes the whole Subject, complete (14.8.3).
     [Theory]
     [InlineData("let first = self.inner.next()\n        match first@move\n            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        loop\n            i += 1\n            if i == 2 => exit\n        self.steps += i\n        match first@move\n" +
         "            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
-    public void AWrapperMatchingItsHeldItemIsRefusedPendingG220(string body)
-        => AssertRefusedPendingG220(Bounded(HoldSource(body)), "Hold");
+    [InlineData("match self.inner.next()\n            .Some(let item) => return .Some(item@move)\n            .None\n                self.steps += 1\n                return self.inner.next()")]
+    [InlineData("match self.inner.next()\n            .Some(let item) => return .Some(item@move)\n            _ => return .None")]
+    [InlineData("match self.inner.next()\n            .None => return self.inner.next()\n            let other => return other@move")]
+    [InlineData("match self.inner.next()\n            .Some(let item) if self.steps > 0 => return .Some(item@move)\n            .None => return .None\n            let other => return other@move")]
+    public void AWrapperMatchingItsHeldItemIsAccepted(string body)
+    {
+        var c = Bounded(HoldSource(body));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // PLAN G220's invalid counterparts: the bound item destroyed at the arm's exit, a payload a guarded `_` keeps in the Subject, one the
+    // Subject keeps at the match's end, and an initialized local replaced (SPEC 8.11.2: no Case is tracked for `out`, 15.1.3).
+    [Theory]
+    [InlineData("let first = self.inner.next()\n        match first@move\n            .Some(let item) => return .None\n            .None => return self.inner.next()")]
+    [InlineData("match self.inner.next()\n            .Some(_) if self.steps > 0 => return .None\n            .None => return .None\n            let other => return other@move")]
+    [InlineData("var out: Option<I.(Iterator).Item> = .None\n        match self.inner.next()\n            .Some(_) => self.steps += 2\n            .None => self.steps += 1\n        return out@move")]
+    [InlineData("var out: Option<I.(Iterator).Item> = .None\n        match self.inner.next()\n            .Some(let item) => out = .Some(item@move)\n            .None => self.steps += 1\n        return out@move")]
+    public void AWrapperKeepingItsHeldItemIsRejected(string body)
+        => AssertRefused(Bounded(HoldSource(body)), "struct Hold<I>\n    I is Feed\n    Self is Feed", "Self is Feed");
 
     // G28: an item held across effects executes, and the effects run once per step.
     [Fact]
@@ -273,7 +291,7 @@ public class IteratorOriginEffectsTest
     public void ALoopMayContinueWithItsReinitializedItem()
     {
         var c = Bounded(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 1 => continue\n            self.retries += 0\n");
-        AssertRefusedPendingG220(c, "LoopRetry"); // H3b T32a, PLAN G220 (see AssertRefusedPendingG220)
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c)); // H3b T32a, PLAN G220
     }
 
     // A `continue` that leaves a match arm drops the payload bound there.
@@ -355,7 +373,7 @@ public class IteratorOriginEffectsTest
     public void AnArmValueStoringThePayloadIsAccepted()
     {
         var c = Bounded(Pick + "            .Some(let item) => .Some(item@move)\n            .None => .None\n        return result@move\n");
-        AssertRefusedPendingG220(c, "Pick"); // H3b T32a, PLAN G220 (see AssertRefusedPendingG220)
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c)); // H3b T32a, PLAN G220
     }
 
     // An arm that yields another value, or a match result left to its scope, destroys the payload.
@@ -384,16 +402,12 @@ public class IteratorOriginEffectsTest
 
     [Theory]
     [InlineData("match self.steps\n            0 => first@move\n            _ => first@move\n        return chosen@move\n")]
+    [InlineData("match first@move\n            .Some(let item) => .Some(item@move)\n            .None => .None\n        return chosen@move\n")] // H3b T32a, PLAN G220
     public void AMatchDeliveringTheItemIsAccepted(string tail)
     {
         var c = Bounded(Choose + tail);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
-
-    // H3b T32a: AMatchDeliveringTheItemIsAccepted's form that matches the held item, under PLAN G220 (see AssertRefusedPendingG220).
-    [Fact]
-    public void AMatchOfTheHeldItemIsRefusedPendingG220()
-        => AssertRefusedPendingG220(Bounded(Choose + "match first@move\n            .Some(let item) => .Some(item@move)\n            .None => .None\n        return chosen@move\n"), "Choose");
 
     // A branch that delivers another value leaves the item to its scope.
     [Theory]
@@ -518,24 +532,75 @@ public class IteratorOriginEffectsTest
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
+    // PLAN G220's twins beyond Feed's Hold: Res, whose destruction prints, a confined Src of them, Step, a confined Result producer with
+    // two abstract associates, and its Wrap; Gen, a concrete self-IntoIterable Iterator making each Res, and Lend, one stepping a Feed
+    // (its step a requirement call of Feed.next, bounded by confined), each with a confined Feed over a `for` of it.
+    private const string Res = "struct Res\n    public var value: i32 = 7\n    drop\n        Console.writeLine(\"res\")\n";
+
+    private const string Step = "contract Step\n    associate Item\n    associate Flaw\n    func step(self: uniq/Self) -> Result<Self.Item, Self.Flaw>\n        effect confined\n";
+
+    private const string Src = "struct Src\n    Self is Feed\n    associate Feed.Item is Res\n    var slot: Option<Res> = .None\n    public var steps: i32 = 0\n" +
+        "    public func next(self: uniq/Self) -> Option<Res>\n        ";
+
+    private const string Wrap = "struct Wrap<S>\n    S is Step\n    Self is Step\n    associate Step.Item is S.(Step).Item\n    associate Step.Flaw is S.(Step).Flaw\n    var inner: S\n" +
+        "    public func step(self: uniq/Self) -> Result<S.(Step).Item, S.(Step).Flaw>\n        ";
+
+    private const string Gen = "struct Gen\n    Self is Iterator\n    associate Iterator.Item is Res\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is Self\n" +
+        "    public var left: i32 = 1\n    public init() => ()\n    public func intoIterator(self: Self) -> Self => self@move\n    public func next(self: uniq/Self) -> Option<Res>\n" +
+        "        if self.left == 0 => return .None\n        self.left -= 1\n        return .Some(Res.init())\n" +
+        "struct Take\n    Self is Feed\n    associate Feed.Item is Res\n    public func next(self: uniq/Self) -> Option<Res>\n        ";
+
+    private const string Lend = "struct Lend<I> {source}\n    I is Feed\n    Self is Iterator\n    associate Iterator.Item is I.(Feed).Item\n    Self is IntoIterable\n" +
+        "    associate IntoIterable.IteratorType is Self\n    var inner: uniq/I during source\n    public init(inner: uniq/I during source) => self.inner = inner@move\n" +
+        "    public func intoIterator(self: Self) -> Self => self@move\n    public func next(self: uniq/Self) -> Option<I.(Feed).Item>\n        return self.inner.next()\n" +
+        "struct First<I>\n    I is Feed\n    Self is Feed\n    associate Feed.Item is I.(Feed).Item\n    var inner: I\n    public func next(self: uniq/Self) -> Option<I.(Feed).Item>\n        ";
+
+    // SPEC 15.1.6, 16.3.2, 8.11.2 (PLAN G220): a case-tested Subject's destruction destroys only the remaining payload of its active
+    // Case, concrete or abstract: a match of a printing Res, through a temp or a held local; a `for` finishing on None (14.6.2), through
+    // Gen or Lend; a match and a `try` of a Result (17.3), each arm transferring its own Case's payload.
+    [Theory]
+    [InlineData(Src + "match Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)\n            .Some(let r) => return .Some(r@move)\n            .None => return .None\n")]
+    [InlineData(Src + "let first = Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)\n        match first@move\n            .Some(let r) => return .Some(r@move)\n            .None => return .None\n")]
+    [InlineData(Gen + "for r in Gen.init()\n            return .Some(r@move)\n        return .None\n")]
+    [InlineData(Lend + "for item in Lend<I>.init(self.inner@uniq)\n            return .Some(item@move)\n        return .None\n")]
+    [InlineData(Wrap + "match self.inner.step()\n            .Ok(let v) => return .Ok(v@move)\n            .Err(let e) => return .Err(e@move)\n")]
+    [InlineData(Wrap + "let v = try self.inner.step()\n        return .Ok(v@move)\n")]
+    public void ACaseTestedSubjectDestroysOnlyItsActiveCasesPayload(string source)
+    {
+        var c = Confined(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // Their invalid counterparts: a Res a `_` keeps in the Subject, an initialized local replaced (no Case is tracked for `out`, 15.1.3),
+    // a `for _` item taken and cleaned up (14.6.2), an error an `.Err(_)` keeps, and a value `try` extracted, then destroyed.
+    [Theory]
+    [InlineData(Src + "match Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)\n            .Some(_) => return .None\n            .None => return .None\n", "struct Src\n    Self is Feed", "Self is Feed")]
+    [InlineData(Src + "var out: Option<Res> = .None\n        match Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)\n            .Some(let r) => out = .Some(r@move)\n            .None => self.steps += 1\n        return out@move\n", "struct Src\n    Self is Feed", "Self is Feed")]
+    [InlineData(Gen + "for _ in Gen.init()\n            return .None\n        return .None\n", "struct Take\n    Self is Feed", "Self is Feed")]
+    [InlineData(Lend + "for _ in Lend<I>.init(self.inner@uniq)\n            return .None\n        return .None\n", "struct First<I>\n    I is Feed\n    Self is Feed", "Self is Feed")]
+    [InlineData(Wrap + "match self.inner.step()\n            .Ok(let v) => return .Ok(v@move)\n            .Err(_) => return self.inner.step()\n", "struct Wrap<S>\n    S is Step\n    Self is Step", "Self is Step")]
+    [InlineData(Wrap + "let v = try self.inner.step()\n        return self.inner.step()\n", "struct Wrap<S>\n    S is Step\n    Self is Step", "Self is Step")]
+    public void ACaseTestedSubjectKeepingAPayloadIsRejected(string source, string context, string conformance)
+        => AssertRefused(Confined(source), context, conformance);
+
     private static string HoldSource(string body)
         => Counter + "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
             "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n" +
             "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
             "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
 
-    // H3b T32a, PLAN G220 (behind GXS, per R4): A1/A2 keep no selected-Case fact at an owned match Subject, so in an arm whose Case
-    // leaves no payload A4 still composes the payload's unknown destructor at the Subject's destruction, and the conformance to the
-    // confined Feed is refused: one IncompatibleContractImplementation_Kd at `type`'s `Self is Feed`, where the old analysis verified it.
-    // H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): G220's fix restores the acceptance and re-points these rows back.
-    private static void AssertRefusedPendingG220(Compilation c, string type)
+    // A conformance to a confined Contract refused: its one record, IncompatibleContractImplementation_Kd at the conformance in context.
+    private static void AssertRefused(Compilation c, string context, string conformance)
     {
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
-        MirTargetSide.Check(c, (DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At($"struct {type}<I>\n    I is Feed\n    Self is Feed", "Self is Feed")));
+        MirTargetSide.Check(c, (DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At(context, conformance)));
     }
 
     private static Compilation Bounded(string source)
         => MinimalEmissionTest.Analyze(Feed + source.Replace("is Iterator", "is Feed", StringComparison.Ordinal)
             .Replace("Iterator.Item", "Feed.Item", StringComparison.Ordinal).Replace("(Iterator)", "(Feed)", StringComparison.Ordinal));
+
+    // A source with Feed, Step and Res, as written.
+    private static Compilation Confined(string source) => MinimalEmissionTest.Analyze(Feed + Step + Res + source);
 }

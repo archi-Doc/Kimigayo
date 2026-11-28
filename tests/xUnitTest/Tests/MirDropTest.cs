@@ -47,16 +47,17 @@ public sealed partial class MirDropTest
     // secured so far in reverse acquisition order (_4, then _3) and not the unbuilt Array, whose flag the aggregate sets. The Drop after
     // the return, which only the checks reach, destroys the whole Array (PLAN G641 kind 4). SPEC 15.1.6, 17.3, 16.2.1 (F's C8 rulings 24
     // and 28; C-520 C1): the try's operand `_6` is a by-value Subject whose bindings Move its payload, so its drop elides exactly the moved
-    // parts: case 0's `.0` by the success binding (bb22), case 1 whole by the propagation on the Err path (bb18, where case 0 is kept); it
-    // was kept whole there while the failure binding Copied the i32 (no destruction lost or added: an i32 has none).
+    // parts: case 0's `.0` by the success binding (bb22), case 1 whole by the propagation on the Err path (bb18); it was kept whole there
+    // while the failure binding Copied the i32 (no destruction lost or added: an i32 has none). SPEC 15.1.6, 16.3.2 (PLAN G220): the
+    // case test excludes each inactive Case, so case 0 elides on the Err path, and its path, made at the test, comes first.
     [Fact]
     public void AnInterruptedArrayLiteralDestroysItsSecuredElementsInReverse()
     {
         Assert.Equal(
             [
-                "flags 1", "StorageLive(_2) [clear f0]", "drop _6 -> bb22 [open ((_ as case 1) elide, (_ as case 0) open (.0 elide))]",
+                "flags 1", "StorageLive(_2) [clear f0]", "drop _6 -> bb22 [open ((_ as case 0) open (.0 elide), (_ as case 1) elide)]",
                 "drop _8 -> bb7 [elide]", "drop _2 -> bb13 [flag f0] [clear f0]", "StorageDead(_2) [clear f0]", "drop _4 -> bb15 [keep]",
-                "drop _3 -> bb16 [keep]", "drop _6 -> bb18 [open ((_ as case 1) elide, (_ as case 0) keep)]", "_2 = Array(move _3, move _4, move _5): Array<Resource> [set f0]",
+                "drop _3 -> bb16 [keep]", "drop _6 -> bb18 [open ((_ as case 0) elide, (_ as case 1) elide)]", "_2 = Array(move _3, move _4, move _5): Array<Resource> [set f0]",
                 "drop _5 -> bb23 [elide]", "drop _4 -> bb24 [elide]", "drop _3 -> bb25 [elide]", "drop _2 -> bb29 [keep]",
             ],
             Lines(
@@ -88,7 +89,8 @@ public sealed partial class MirDropTest
 
     // SPEC 16.2.2, 16.3.2: after a Partial Move, the remaining parts are destroyed (Open): each child path by its own verdict, the components
     // without one by the own bit; restoring the part makes the value whole again, and a part moved on some paths only is flagged. An owned
-    // decomposition leaves the enum Subject's other payloads and Cases with the own bit.
+    // decomposition leaves the enum Subject's other payloads and Cases with the own bit; a payload its arm's binding moves is elided where
+    // the arms join, since the other arms' edges exclude its Case (SPEC 15.1.6, PLAN G220).
     [Fact]
     public void OpenAfterAPartialMove()
     {
@@ -100,7 +102,7 @@ public sealed partial class MirDropTest
         Assert.Contains("drop _2 -> bb7 [open (.0 flag f0)] [clear f0]", Lines(Pair + "    if flag => see((pair.0@move, 1))\n", "f"));
         const string Decomposed = Resource + "enum Packet\n    Data(Resource)\n    Empty\nfunc f(packet: Packet)\n    match packet@move\n" +
             "        .Data(let r) => consume(r@move)\n        _ => ()\n";
-        Assert.Contains("drop _3 -> bb9 [open ((_ as case 0) open (.0 flag f0))] [clear f0]", Lines(Decomposed, "f"));
+        Assert.Contains("drop _3 -> bb9 [open ((_ as case 0) open (.0 elide))]", Lines(Decomposed, "f"));
     }
 
     // SPEC 13.7.1, 14.10.3 (DECISIONS R4-M62; the owner's O-336 (a), O-371 (a)): a path on which an overwrite's value holds nothing goes
@@ -400,7 +402,8 @@ public sealed partial class MirDropTest
     // order: a struct's Fields from the last, each by its child row (an Open Field its own level, a Flag Field whole, an Elide one no
     // step), a part without a row whole under the level's own bit, then the base; a fixed array's elements from the last, no Run above an
     // element row at the highest position or below one at the lowest, one Run per gap between element rows, a Flag element whole between
-    // its Runs; an enum's Case payloads by ordinal, an Open payload its own level beside a Case without a row, whole. Each walk is
+    // its Runs; an enum's Case payloads by ordinal, an Open payload its own level beside a Keep Case (a case test's Case path, PLAN
+    // G220), whole; the moved payload part, which the other arm's edge excludes, Elide, no step. Each walk is
     // followed by the level of the dropped Type no row governs (MirDropTable.Level, a glue function's): the same enumeration, so every
     // level of a walk names its parts in that level's order (Walks checks each).
     [Fact]
@@ -421,7 +424,7 @@ public sealed partial class MirDropTest
         Assert.Equal(["_( [3..3]:string [2]:string:Flag [1..1]:string )", "_( [0..4]:string )"], Walks(types, program, "elements"));
         Assert.Equal(["_( .0:string base( .1:Array<i32> ) )", "_( .0:string base:Base )"], Walks(types, program, "based"));
         Assert.Equal(
-            ["_( case 0( .1:Array<i32> .0:string:Flag ) case 1:(string, string) )", "_( case 0:(string, Array<i32>) case 1:(string, string) )"],
+            ["_( case 0( .1:Array<i32> ) case 1:(string, string):Keep )", "_( case 0:(string, Array<i32>) case 1:(string, string) )"],
             Walks(types, program, "cases"));
     }
 

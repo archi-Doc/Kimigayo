@@ -26,7 +26,10 @@
 // (closed upward and backward through the carries), so a source's parts whose counterparts lie under different Move Paths have
 // different owners. A fact on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part"
 // (A1's Unplaced lane); a fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking
-// entry. A published fact is a path's number, or its complement for the Unplaced lane.
+// entry. A published fact is a path's number, or its complement for the Unplaced lane. Each case test, a block whose SwitchInt reads a
+// temp its last statement defines as the Discriminant of a Place with a Move Path (MirBuilder.CaseTest), lists that Place's Downcast
+// paths whose payload may need a drop (MirTypes.MayNeedDrop of the body Type, which a view only narrows), created there beside those its
+// Places name, which A1 makes vacuous on the edges excluding their Case (SPEC 15.1.6, 16.3.2; PLAN G220).
 // Invariants: a carry's source lies in a run recorded before the carry's (a temp is defined at a location the walk visits before the
 // one that takes it, and runs are appended) and differs from its destination (MirValidator: no placing location takes its own
 // destination temp, no insertion's value holds its construction), so one reverse pass over the carries closes them.
@@ -66,6 +69,8 @@ internal sealed class MirMoveData(TyCtxt types)
     private readonly MirTable<MirPlace> places = new(); // Each projected Place's path by creation index << 2 | access.
     private readonly MirTable<int> nevers = new(); // An Assign's Never parts' run, by statement index; a temp's newest tracked run, by ~local.
     private readonly MirTable<int> carried = new(); // An Assign's carries' run (pairs of a temp's path and the component's), by statement.
+    private readonly MirTable<int> tested = new(); // A case test's run of Case paths, by block.
+    private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // MayNeedDrop's scratch.
     private int[] runs = []; // Runs of paths: a count, the next run of the same temp (-1: none), then the paths.
     private int[] trail = []; // Mirror's steps from a path up to its temp.
     private int runCount;
@@ -123,6 +128,7 @@ internal sealed class MirMoveData(TyCtxt types)
         this.places.Clear();
         this.nevers.Clear();
         this.carried.Clear();
+        this.tested.Clear();
         MirDataflow.Grow(ref this.chains, locals);
         MirDataflow.Grow(ref this.live, locals);
         MirDataflow.Grow(ref this.constructions, locals);
@@ -178,6 +184,10 @@ internal sealed class MirMoveData(TyCtxt types)
                 {
                     this.Inserted(block, body.Blocks[block].Terminator);
                 }
+                else if (!statement && body.Blocks[block].Terminator.Kind == MirTerminatorKind.SwitchInt)
+                {
+                    this.Tested(block);
+                }
 
                 types.CloseSite(site);
             }
@@ -223,6 +233,13 @@ internal sealed class MirMoveData(TyCtxt types)
     /// <returns>The pairs, source then destination; empty for most.</returns>
     internal ReadOnlySpan<int> Carries(int statement)
         => this.carried.TryGetValue(statement, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
+
+    /// <summary>Gets the Case paths a case test of the built body lists (SPEC 15.1.6, 16.3.2; PLAN G220): the Downcast paths of the tested
+    /// Place whose payload may need a drop, each its Case ordinal as its step's argument, which A1 makes vacuous on the edges excluding it.</summary>
+    /// <param name="block">The block, whose SwitchInt is the test.</param>
+    /// <returns>The paths; empty for a block without a case test or such a Case.</returns>
+    internal ReadOnlySpan<int> CaseTest(int block)
+        => this.tested.TryGetValue(block, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
 
     /// <summary>Gets the path of a Place of the built body and how the Place is below it.</summary>
     /// <param name="place">A local's Place.</param>
@@ -540,6 +557,48 @@ internal sealed class MirMoveData(TyCtxt types)
                     this.named[source] = true;
                 }
             }
+        }
+    }
+
+    // A case test (MirBuilder.CaseTest): the block's SwitchInt reads a whole temp its last statement defines as the Discriminant of a Place
+    // with a Move Path (a borrowed Subject's Deref Place has none); its run lists the Place's Downcast paths whose payload may need a drop.
+    private void Tested(int block)
+    {
+        var (data, read) = (this.body.Blocks[block], this.body.Blocks[block].Terminator.Operand);
+        if (data.Count == 0 || read.Kind != MirOperandKind.Copy || read.Place.IsStatic || read.Place.Projection != 0)
+        {
+            return;
+        }
+
+        ref readonly var last = ref this.body.Statements[data.Start + data.Count - 1];
+        if (last.Kind != MirStatementKind.Assign || last.Rvalue.Kind != MirRvalueKind.Discriminant || last.Place != read.Place ||
+            last.Rvalue.Place.IsStatic)
+        {
+            return;
+        }
+
+        // MirValidator: a Discriminant's Place is an enum, but one of no Type (a dependent of Binding's rejection), which has no Case path.
+        var found = this.Resolve(last.Rvalue.Place);
+        if ((found & 3) != Direct || this.body.TypeOf(last.Rvalue.Place) is not { } type || AdtDef.CaseTypes(types, type) is not { } payloads)
+        {
+            return;
+        }
+
+        var run = this.Open();
+        for (var c = 0; c < payloads.Length; c++)
+        {
+            if (MirTypes.MayNeedDrop(types, payloads[c], this.walked))
+            {
+                var path = this.Child(found >> 2, MirProjectionKind.Downcast, c);
+                this.named[path] = true;
+                this.Push(path);
+            }
+        }
+
+        run = this.Close(run);
+        if (run >= 0)
+        {
+            this.tested.Add(block, run);
         }
     }
 

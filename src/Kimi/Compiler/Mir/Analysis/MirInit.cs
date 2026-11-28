@@ -41,7 +41,13 @@
 // where nothing was placed): a construction leaves a part unplaced, and a temp holds nothing, only after a Never form, which ends the
 // runtime paths (SPEC 14.9.3, 14.10.3); and no path, assumed too, reaches an overwrite's Use without its value (the Use of a temp
 // MirBuilder.Replace published as MirLocalRole.Assigned), as a path without it goes around the overwrite (SPEC 13.7.1; DECISIONS
-// R4-M62), so a kept definition is a first placement; a broken one is InternalInvariant_Kd at the location.
+// R4-M62), so a kept definition is a first placement; a broken one is InternalInvariant_Kd at the location. An edge of a case test
+// makes each Case path it excludes vacuous (Edge; PLAN G220), and a tested Place's Case changes only by a definition or a storage event
+// of an ancestor-or-self, which clears or sets that vacuity with its subtree: the tested Places are builder temps (match and try
+// Subjects, MirBuilder.HoldSubject; for Subjects; Formatting's Results), which no exclusive borrow, Reborrow or write through a reference
+// reaches after their test (a guard candidate is a shared Ref); only the pass edge's Pattern and Bind read a Downcast Place; and a
+// narrowed path lies only under Case payloads and Tuple elements (SPEC 14.8.1), never under a struct with a drop. A producer breaking
+// this would let A2 Elide a live payload, so it is a contract.
 // Must not judge Take eligibility (Binding's), decide a Drop (A2's), apply a derived-problem rule (MirReport's) or copy the body per view.
 
 using Kimi.Diagnostics;
@@ -104,6 +110,20 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         transfer.Checks = true;
         flow.Replay(ref transfer);
         return true;
+    }
+
+    // Whether a SwitchInt's values list a Case ordinal.
+    private static bool Lists(ReadOnlySpan<MirSwitchCase> values, int ordinal)
+    {
+        foreach (var value in values)
+        {
+            if (value.Value == ordinal)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The lanes of A1 over the move paths: the entry, each block's statements and terminator, and in Replay the checks and A2's input.
@@ -182,7 +202,41 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             }
         }
 
-        public readonly bool Edge(int block, int edge, Span<ulong> into) => false;
+        // SPEC 15.1.6, 16.3.2 (PLAN G220): an edge of a case test (MirMoveData.CaseTest) makes each listed Case path it excludes vacuous, its
+        // subtree neither initialized nor uninitialized nor unplaced and itself taken out of its Place (Ever stays): a value edge every one
+        // but its Case's, the otherwise edge each Case the test lists. The CheckTarget (-1) and a chain-local Place, which no head stores,
+        // keep the scratch.
+        public readonly bool Edge(int block, int edge, Span<ulong> into)
+        {
+            var listed = moves.CaseTest(block);
+            if (edge < 0 || listed.IsEmpty || listed[0] >= moves.FlowCount)
+            {
+                return false;
+            }
+
+            var terminator = body.Blocks[block].Terminator;
+            var values = body.Cases.Slice(terminator.Start, terminator.Count);
+            var narrowed = false;
+            foreach (var path in listed)
+            {
+                var ordinal = moves.Paths[path].Arg;
+                if (edge < values.Length ? values[edge].Value == ordinal : !Lists(values, ordinal))
+                {
+                    continue;
+                }
+
+                if (!narrowed)
+                {
+                    state.AsSpan(0, into.Length).CopyTo(into);
+                    narrowed = true;
+                }
+
+                MirDataflow.Apply(into, Lanes, path, moves.Paths[path].End, set: 0, clear: (1 << Uninit) | (1 << Moved) | (1 << Init) | (1 << Unplaced));
+                MirDataflow.Apply(into, Lanes, path, path + 1, set: 1 << Partial, clear: 0);
+            }
+
+            return narrowed;
+        }
 
         // The union join (R4-M34).
         public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);

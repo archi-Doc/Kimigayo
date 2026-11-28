@@ -111,7 +111,7 @@ internal sealed class MirDataflow(MirReach reach, MirCases? cases)
     /// <param name="end">The path after the last.</param>
     /// <param name="set">The lanes set, bit l for lane l.</param>
     /// <param name="clear">The lanes cleared.</param>
-    internal static void Apply(ulong[] state, int lanes, int first, int end, int set, int clear)
+    internal static void Apply(Span<ulong> state, int lanes, int first, int end, int set, int clear)
     {
         for (var group = first >> 6; group << 6 < end; group++)
         {

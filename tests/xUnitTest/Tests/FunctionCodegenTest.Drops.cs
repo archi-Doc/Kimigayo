@@ -41,8 +41,9 @@ public sealed partial class FunctionCodegenTest
 
     // A Library's values destroyed after a Partial Move (R5 C4c; DECISIONS R5-M100), each part a string, so each glue its Drops call is the
     // string's: a struct's Fields moved on one path, borrowed and unnamed, or moved while the whole is moved on the other path; a fixed
-    // array's elements at constant indices; a derived struct's nested Field and base Field; an owned match Subject's two Cases; a generic
-    // pair at i32, which needs no drop, and at string; a pair-generic pair in its owner and its ref case.
+    // array's elements at constant indices; a derived struct's nested Field and base Field; an owned match Subject's two Cases, matched by
+    // unguarded arms and by a guarded arm; a generic pair at i32, which needs no drop, and at string; a pair-generic pair in its owner and
+    // its ref case.
     private const string Opens =
         "struct Triple\n    public var a: string\n    public var b: string\n    public var c: string\n" +
         "    public init(a: string, b: string, c: string)\n        self.a = a@move\n        self.b = b@move\n        self.c = c@move\n" +
@@ -55,6 +56,7 @@ public sealed partial class FunctionCodegenTest
         "func element(c: bool, a: [5 of string])\n    if c => take(a[1]@move)\n    take(a[3]@move)\n" +
         "func layers(c: bool, l: Leaf)\n    if c => take(l.y.b@move)\n    if c => take(l.p@move)\n" +
         "func cases(c: bool, t: Two)\n    match t@move\n        .A(let r, _) => if c => take(r@move)\n        .B(let s) => take(s@move)\n" +
+        "func guarded(c: bool, t: Two)\n    match t@move\n        .A(let r, _) if c => take(r@move)\n        .A(_, _) => ()\n        .B(_) => ()\n" +
         "func give<T>(c: bool, p: (T, T))\n    if c => sink(p.0@move)\nfunc view<s/T>(pair: (s/T, s/T)) -> s/T\n    s is owner or ref\n" +
         "    return pair.0@move\nfunc use(a: string, b: string, x: string, y: string, k: string)\n    give(true, (1, 2))\n" +
         "    give(true, (a@move, b@move))\n    let one = view((x@move, y@move))\n    let two = view((k@ref, k@ref))\n";
@@ -256,29 +258,45 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([null, null, Assert.Single(FlagsOf(element)), null], calls.Select(x => GuardOf(element, x)));
     }
 
-    // SPEC 16.3.2, 15.1.6 (DECISIONS R5-M100): an owned match Subject's Open Drop switches on its tag, as its glue does, each Case's
-    // payloads by that Case's row, though A2 lists case 1's row first: case 0's unnamed payload 1 always and its payload 0 under its flag,
-    // case 1's payload under another flag.
+    // SPEC 16.3.2, 15.1.6 (DECISIONS R5-M100; G220, design §0.2): an owned match Subject's Open Drop switches on its tag, as its glue does,
+    // over the Cases that still hold a payload: on each arm's edge the other Case is vacuous, so case 0's unnamed payload 1 is destroyed
+    // unguarded, and neither case 0's payload 0, moved into r, nor case 1's payload, moved into s, is destroyed there. R5-M100's two-Case
+    // switch, with a payload kept in each Case at the Drop, is held by AGuardedArmLeavesItsCasePayloadUnderAFlag (the Opens library's
+    // `guarded`).
     [Fact]
     public void AnOpenCaseIsDestroyedUnderItsTag()
     {
         var (c, ir) = Opened();
         var text = GlueOf(ir, c, "take");
         var cases = Assert.Single(FunctionsOf(ir, c, "cases"));
-        var tag = Assert.Single(cases.Blocks, static x => x.Terminator.Shape == "switch i32 %, label % [ i32 0, label % i32 1, label % ]");
+        var tag = Assert.Single(cases.Blocks, static x => x.Terminator.Shape == "switch i32 %, label % [ i32 0, label % ]");
+        Assert.Equal("load i32, ptr %, align 4", tag.Terminator.Operands[0].Shape);
+        var (done, zero) = (tag.Successors[0], tag.Successors[1]);
+        var payload = Assert.Single(CallsOf(zero, text));
+        Assert.Equal("getelementptr i8, ptr %, i64 32", payload.Operands[0].Shape);
+        Assert.Same(tag.Terminator.Operands[0].Operands[0], payload.Operands[0].Operands[0]);
+        Assert.Null(GuardOf(cases, payload));
+        Assert.Same(done, Assert.Single(zero.Successors));
+        Assert.Empty(CallsOf(done, text));
+    }
+
+    // SPEC 16.3.2, 14.8.3 (DECISIONS R5-M100; G220): a guarded arm moves case 0's payload 0 only when its guard holds, so the Subject's Open
+    // Drop switches over both Cases, each Case's payloads by its own row: case 0's payload 1 always and its payload 0 under its flag, case 1's
+    // payload unguarded.
+    [Fact]
+    public void AGuardedArmLeavesItsCasePayloadUnderAFlag()
+    {
+        var (c, ir) = Opened();
+        var text = GlueOf(ir, c, "take");
+        var guarded = Assert.Single(FunctionsOf(ir, c, "guarded"));
+        var tag = Assert.Single(guarded.Blocks, static x => x.Terminator.Shape == "switch i32 %, label % [ i32 0, label % i32 1, label % ]");
         Assert.Equal("load i32, ptr %, align 4", tag.Terminator.Operands[0].Shape);
         var (first, second) = (tag.Successors[1], tag.Successors[2]);
-        var subject = tag.Terminator.Operands[0].Operands[0];
-        Assert.Equal(["getelementptr i8, ptr %, i64 32"], CallsOf(first, text).Select(static x => x.Operands[0].Shape));
-        Assert.Empty(CallsOf(second, text));
-        var (zero, one) = (CallsOf(first.Successors[0], text), CallsOf(second.Successors[0], text));
-        Assert.Equal("getelementptr i8, ptr %, i64 8", Assert.Single(zero).Operands[0].Shape);
-        Assert.Equal("getelementptr i8, ptr %, i64 8", Assert.Single(one).Operands[0].Shape);
-        Assert.All(CallsOf(first, text).Concat(zero).Concat(one), x => Assert.Same(subject, x.Operands[0].Operands[0]));
-        var (guard0, guard1) = (GuardOf(cases, zero[0]), GuardOf(cases, one[0]));
-        Assert.NotNull(guard0);
-        Assert.NotNull(guard1);
-        Assert.NotSame(guard0, guard1);
+        var calls = CallsOf(first, text).Concat(CallsOf(first.Successors[0], text)).Concat(CallsOf(second, text)).ToArray();
+        string[] addresses = ["getelementptr i8, ptr %, i64 32", "getelementptr i8, ptr %, i64 8", "getelementptr i8, ptr %, i64 8"];
+        Assert.Equal(addresses, calls.Select(static x => x.Operands[0].Shape));
+        Assert.All(calls, x => Assert.Same(tag.Terminator.Operands[0].Operands[0], x.Operands[0].Operands[0]));
+        Assert.Equal([null, Assert.Single(FlagsOf(guarded)), null], calls.Select(x => GuardOf(guarded, x)));
     }
 
     // SPEC 16.3.2, X1 (DECISIONS R5-M100): a nested Open row destroys its Field's remaining parts one level down at that Field's address

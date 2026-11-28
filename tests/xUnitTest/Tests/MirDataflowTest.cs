@@ -9,7 +9,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The dataflow's own contract (docs/dev/DECISIONS.md R4-M20, R4-M34, R4-M158) through a backward problem, the liveness of whole
-/// locals, which <see cref="MirDataflow.Backward"/> solves and <see cref="MirDataflow.ReplayBackward"/> reads.</summary>
+/// locals, which <see cref="MirDataflow.Backward"/> solves and <see cref="MirDataflow.ReplayBackward"/> reads, and a forward problem's
+/// edge states (<see cref="IMirFlow.Edge"/>).</summary>
 public sealed class MirDataflowTest
 {
     // R4-M158: over every body of the MIR goldens' sources, as each compilation builds them, and of the library (MirBuildTest.LibraryBuild,
@@ -55,6 +56,26 @@ public sealed class MirDataflowTest
             Assert.Contains(Enumerable.Range(0, body.Blocks.Length), b => !flow.Runtime(b));
             Assert.Equal(checkOnly, Enumerable.Range(0, body.Blocks.Length).Any(b => !flow.Runtime(b) && Live(entries, words, b, x)));
         }
+    }
+
+    // PLAN G220 (C4): a forward solve narrows each edge of a chain's last block by its own index (IMirFlow.Edge), so a SwitchInt's case
+    // edge and otherwise edge into one block carry two states, which the block's head joins.
+    [Fact]
+    public void TwoEdgesIntoOneBlockCarryTheirOwnStates()
+    {
+        var (_, types) = MirModelTest.Fixture();
+        var body = MirModelTest.NewBody(types);
+        var flag = MirModelTest.Local(body, BoundType.I32);
+        var (entry, exit) = (body.AddBlock(), body.AddBlock());
+        body.AddCase(0, exit);
+        body.Terminate(entry, MirTerminator.SwitchInt(MirOperand.Copy(flag), 0, 1, exit, default));
+        body.Terminate(exit, MirTerminator.Return(default));
+        var flow = new MirDataflow(new MirReach(), null);
+        flow.Begin(body);
+        var marks = new Marks(flow.Prepare(0, 1, 1, out _)!, new ulong[2]);
+        flow.Forward(ref marks);
+        flow.Replay(ref marks);
+        Assert.Equal(0b110UL, marks.Entries[exit]);
     }
 
     // G213 (DECISIONS R4-M132, R4-M15a): the one record of an arena over the analyses' byte limit is OwnershipStorageLimit_Kd at the body in
@@ -193,5 +214,23 @@ public sealed class MirDataflowTest
         public readonly void Effect(MirEffect effects, int site)
         {
         }
+    }
+
+    // A forward problem of one word whose edge i sets bit i + 1, recording each block's state at its entry.
+    private readonly struct Marks(ulong[] state, ulong[] entries) : IMirFlow
+    {
+        internal ulong[] Entries => entries;
+
+        public void Entry() => state[0] = 0;
+
+        public void Block(int block) => entries[block] = state[0];
+
+        public bool Edge(int block, int edge, Span<ulong> into)
+        {
+            into[0] = state[0] | (1UL << (edge + 1));
+            return true;
+        }
+
+        public bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);
     }
 }

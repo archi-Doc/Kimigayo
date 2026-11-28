@@ -102,7 +102,7 @@ public sealed partial class MirDropTest
             "a1\nend\na2\na0\nend\na2\na1\na0\n", 6
         },
         {
-            "OpenCase", "f", @"\[open \(\(_ as case 0\) open \(\.0 flag f0\)\)\]", 1,
+            "OpenCase", "f", @"\[open \(\(_ as case 0\) open \(\.0 elide\)\)\]", 1,
             "enum Packet\n    Data(Counted, Counted)\n    Empty\nfunc f(c: bool, packet: Packet)\n    match packet@move\n        .Data(let r, _)\n" +
             "            if c => consume(r@move)\n            Console.writeLine(\"arm\")\n        _ => ()\n    Console.writeLine(\"end\")\n" +
             "f(true, .Data(Counted.init(\"p0\"), Counted.init(\"p1\")))\nf(false, .Data(Counted.init(\"q0\"), Counted.init(\"q1\")))\nf(true, .Empty)\n",
@@ -114,6 +114,24 @@ public sealed partial class MirDropTest
             "    let one = f((Counted.init(\"first\"), Counted.init(\"second\")))\n    Console.writeLine(\"after\")\n    let two = f((kept@ref, kept@ref))\n" +
             "    Console.writeLine(\"end\")\nrun()\n",
             "second\nafter\nend\nfirst\nkept\n", 3
+        },
+
+        // SPEC 15.1.6, 16.3.2, 14.6.2, 17.3 (PLAN G220): a case-tested Subject destroys only its active Case's remaining payload: nothing in
+        // a `.None` arm, at a Flag join, after a guard rejection's join (a last arm takes the whole Subject), at a `for` exit on None, and
+        // on either path of a `try`, where the inactive Case holds a Counted. In f, the `for` exit elides the whole Case.
+        {
+            "OpenCaseTests", "f", @"\[open \(\(_ as case 0\) elide\)\]", 1,
+            "func some(c: bool, name: string) -> Option<Counted>\n    if c => return .Some(Counted.init(name@move))\n    return .None\n" +
+            "func res(c: bool) -> Result<Counted, Counted>\n    if c => return .Ok(Counted.init(\"ok\"))\n    return .Err(Counted.init(\"err\"))\n" +
+            "func t(c: bool) -> Result<i32, Counted>\n    let v = try res(c)\n    consume(v@move)\n    return .Ok(1)\n" +
+            "struct Gen\n    Self is Iterator\n    associate Iterator.Item is Counted\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is Self\n" +
+            "    public var left: i32 = 2\n    public init() => ()\n    public func intoIterator(self: Self) -> Self => self@move\n" +
+            "    public func next(self: uniq/Self) -> Option<Counted>\n        if self.left == 0 => return .None\n        self.left -= 1\n" +
+            "        return .Some(Counted.init(\"item\"))\nfunc f(c: bool)\n    match some(c, \"a\")\n        .Some(let x) => consume(x@move)\n" +
+            "        .None => Console.writeLine(\"none\")\n    var out: i32 = 0\n    match some(c, \"b\")\n        .Some(let x) => consume(x@move)\n" +
+            "        .None => out += 1\n    match some(c, \"g\")\n        .Some(let x) if out > 5 => consume(x@move)\n" +
+            "        let other => Console.writeLine(\"other\")\n    for item in Gen.init()\n        consume(item@move)\n    _ = t(c)\nf(true)\nf(false)\n",
+            "a\nb\nother\ng\nitem\nitem\nok\nnone\nother\nitem\nitem\nerr\n", 9
         },
 
         // SPEC 16.3.2 (DECISIONS R5-M100): each layer's remaining parts by its own state: a derived struct whose nested Field's Field and

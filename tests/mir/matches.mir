@@ -1053,11 +1053,10 @@ fn nestedCleanup @412
   _9: () temp @437 s2
   s1: lexical in s0 @418
   s2: lexical in s0 @431
-  flags 1
   bb0:
       StorageLive(_2) @414
-      StorageLive(_3) [clear f0] @415
-    * _3 = move _1 [set f0] @416
+      StorageLive(_3) @415
+    * _3 = move _1 @416
       StorageLive(_4) @418
       _4 = discriminant(_3) @418
       switch copy _4 [0: bb3, otherwise: bb2] @418
@@ -1065,7 +1064,7 @@ fn nestedCleanup @412
       StorageDead(_8) @431
       StorageDead(_5) @422
       StorageDead(_4) @418
-      drop _3 -> bb8 [open ((_ as case 0) open (.0 open ((_ as case 0) open (.0 flag f0))))] [clear f0] @415
+      drop _3 -> bb8 [open ((_ as case 0) open (.0 open ((_ as case 0) open (.0 elide))))] @415
   bb2:
       StorageLive(_8) @431
       _8 = discriminant(_3) @431
@@ -1076,7 +1075,7 @@ fn nestedCleanup @412
       switch copy _5 [0: bb4, otherwise: bb2] @422
   bb4:
       StorageLive(_6) @426 s1
-      _6 = move ((_3 as case 0).0 as case 0).0 [clear f0] @426 s1
+      _6 = move ((_3 as case 0).0 as case 0).0 @426 s1
       StorageLive(_7) @430 s1
     * _7 = const () @430 s1
       StorageDead(_7) @430 s1
@@ -1094,7 +1093,7 @@ fn nestedCleanup @412
       _2 = const () @437 s2
       goto bb1 @437
   bb8:
-      StorageDead(_3) [clear f0] @415
+      StorageDead(_3) @415
       StorageDead(_2) @414
       _0 = const () @414
       drop _1 -> bb9 [elide] @413
@@ -1121,7 +1120,6 @@ fn loopSubject @438
   s4: lexical in s3 @460
   s5: lexical in s2 @466
   s6: lexical in s5 @469
-  flags 1
   bb0:
       StorageLive(_2) @441 s1
     * goto bb1 @441 s1
@@ -1133,10 +1131,10 @@ fn loopSubject @438
       StorageDead(_3) @442 s1
       StorageLive(_4) @443 s1
       StorageLive(_5) @444 s2
-      StorageLive(_6) [clear f0] @445 s2
+      StorageLive(_6) @445 s2
       StorageLive(_7) @446 s2
     * _7 = Adt case 0(const "text"): Option<string> @446 s2
-      _6 = move _7 [set f0] @446 s2
+      _6 = move _7 @446 s2
       StorageLive(_8) @454 s2
       _8 = discriminant(_6) @454 s2
       switch copy _8 [0: bb7, otherwise: bb6] @454 s2
@@ -1151,14 +1149,14 @@ fn loopSubject @438
   bb5:
       StorageDead(_12) @466 s2
       StorageDead(_8) @454 s2
-      drop _6 -> bb12 [open ((_ as case 0) open (.0 flag f0))] [clear f0] @445 s2
+      drop _6 -> bb12 [open ((_ as case 0) open (.0 elide))] @445 s2
   bb6:
       StorageLive(_12) @466 s2
       _12 = discriminant(_6) @466 s2
       switch copy _12 [1: bb11, otherwise: bb10] @466 s2
   bb7:
       StorageLive(_9) @458 s3
-      _9 = move (_6 as case 0).0 [clear f0] @458 s3
+      _9 = move (_6 as case 0).0 @458 s3
       StorageLive(_10) @461 s4
       StorageLive(_11) @465 s4
     * _11 = &_9: ref/string @465 s4
@@ -1183,7 +1181,7 @@ fn loopSubject @438
       drop _7 -> bb13 [elide] @446 s2
   bb13:
       StorageDead(_7) @446 s2
-      StorageDead(_6) [clear f0] @445 s2
+      StorageDead(_6) @445 s2
       StorageDead(_5) @444 s2
       _4 = const () @443 s2
       StorageDead(_4) @443 s1
@@ -1205,11 +1203,10 @@ fn evaluatedOnce @480
   _8: () temp @498 s2
   s1: lexical in s0 @484
   s2: lexical in s0 @495
-  flags 1
   bb0:
       StorageLive(_1) @481
-      StorageLive(_2) [clear f0] @482
-    * _2 = makeOption() -> bb1 [set f0] @482
+      StorageLive(_2) @482
+    * _2 = makeOption() -> bb1 @482
   bb1:
       StorageLive(_3) @484
       _3 = discriminant(_2) @484
@@ -1217,14 +1214,14 @@ fn evaluatedOnce @480
   bb2:
       StorageDead(_7) @495
       StorageDead(_3) @484
-      drop _2 -> bb9 [open ((_ as case 0) open (.0 flag f0))] [clear f0] @482
+      drop _2 -> bb9 [open ((_ as case 0) open (.0 elide))] @482
   bb3:
       StorageLive(_7) @495
       _7 = discriminant(_2) @495
       switch copy _7 [1: bb8, otherwise: bb7] @495
   bb4:
       StorageLive(_4) @488 s1
-      _4 = move (_2 as case 0).0 [clear f0] @488 s1
+      _4 = move (_2 as case 0).0 @488 s1
       StorageLive(_5) @490 s1
       StorageLive(_6) @494 s1
     * _6 = &_4: ref/string @494 s1
@@ -1246,7 +1243,7 @@ fn evaluatedOnce @480
       _1 = const () @498 s2
       goto bb2 @498
   bb9:
-      StorageDead(_2) [clear f0] @482
+      StorageDead(_2) @482
       StorageDead(_1) @481
       _0 = const () @481
       return @481
@@ -1720,7 +1717,7 @@ fn loopContinue @614
   bb5:
       StorageDead(_10) @638 s2
       StorageDead(_8) @630 s2
-      drop _6 -> bb19 [keep] @621 s2
+      drop _6 -> bb19 [open ((_ as case 0) elide)] @621 s2
   bb6:
       StorageLive(_10) @638 s2
       _10 = discriminant(_6) @638 s2
@@ -1860,7 +1857,7 @@ fn abortAfterAcquisition @664
   bb1:
       StorageDead(_7) @681
       StorageDead(_4) @673
-      drop _3 -> bb9 [open ((_ as case 0) open (.0 keep))] @670
+      drop _3 -> bb9 [open ((_ as case 0) open (.0 elide))] @670
   bb2:
       StorageLive(_7) @681
       _7 = discriminant(_3) @681

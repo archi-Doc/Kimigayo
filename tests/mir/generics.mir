@@ -230,7 +230,7 @@ fn unwrapTry @61
   bb12:
       StorageDead(_6) @113
       StorageDead(_4) @74
-      drop _3 -> bb13 [keep] @71
+      drop _3 -> bb13 [open ((_ as case 0) elide)] @71
   bb13:
       StorageDead(_3) @71
       goto bb11 @61
