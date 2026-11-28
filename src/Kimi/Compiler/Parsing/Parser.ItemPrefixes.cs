@@ -143,8 +143,8 @@ public static partial class Parser
         {
             StructKoto => null,
             { IsRoot: true } => "the source root",
-            GroupKoto group => $"group {group.Name}",
-            EnumKoto enumeration => $"enum {enumeration.Name}",
+            GroupKoto group => $"{TokenKind.Group.ToText()} {group.Name}",
+            EnumKoto enumeration => $"{TokenKind.Enum.ToText()} {enumeration.Name}",
             ContractKoto => throw new InvalidOperationException("A Contract item holds an access word the parser rejects (InternalInvariant; G689)."),
             _ => "a Container other than a struct",
         };
@@ -159,7 +159,7 @@ public static partial class Parser
             VariableKoto variable => variable.NameKoto.Span,
             _ => null,
         };
-        declaration.Report(DiagnosticRequirement.SyntaxOf(SyntaxForm.ProtectedPlacement), DiagnosticCode.ProtectedPlacement_Kd, declaring, span: span);
+        declaration.Report(DiagnosticRequirement.Syntax, DiagnosticCode.ProtectedPlacement_Kd, declaring, span: span);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

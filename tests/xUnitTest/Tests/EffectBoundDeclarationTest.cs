@@ -222,16 +222,19 @@ public class EffectBoundDeclarationTest
         Assert.Equal(contract is null ? [] : [$"the Contract {contract}"], related);
     }
 
-    // SPEC 23.1.2, DIAGNOSTICS 4.3 (R7-E2 E2-3b c6): a misplaced item whose selector also fails on its own holds two problems, conditions 0
-    // and 1, each a direct issue of the item; a misplaced item with a valid selector holds one.
+    // SPEC 23.1.2, DIAGNOSTICS 4.3 (R7-E2 E2-3b c6; PLAN G1511): a misplaced item whose selector also fails on its own holds two problems,
+    // the place the parser's record (Parser.ParseEffectItem) and the selector's Binding's one direct issue of the item; a misplaced item
+    // with a valid selector holds the parser's alone.
     [Theory]
     [InlineData("struct Plain\nenum E\n    A\n    effect (Plain).take confined\n", 2)]
     [InlineData("enum E\n    A\n    effect (Source).take confined\n", 1)]
     public void AMisplacedItemsSelectorIsItsSecondProblem(string declarations, int problems)
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
-        Assert.Equal(problems, c.Binding.Issues.Count(static x => x.Node is EffectBoundKoto));
+        Assert.Equal(problems - 1, c.Binding.Issues.Count(static x => x.Node is EffectBoundKoto));
         Assert.DoesNotContain(c.Binding.DerivedIssues, static x => x.Node is EffectBoundKoto);
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(problems, TestDiagnostics.Of(c).Count(static x => x.Code == nameof(DiagnosticCode.InvalidEffectBound_Kd)));
     }
 
     // Warm rebinding of valid and rejected effect items reuses every table and the rejection store.

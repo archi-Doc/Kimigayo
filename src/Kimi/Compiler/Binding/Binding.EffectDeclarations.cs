@@ -7,8 +7,8 @@
 // - Inputs: the pass's Contract shapes, bound requirement headers, Constraint facts and validated virtual declarations;
 //   PrepareEffectBounds runs once per pass after them and before conformances are verified.
 // - Outputs: BoundContract.EffectBounds, boundedRequirements, callableEffectClauses, virtualEffectBounds, one rejection per
-//   invalid item (EffectBoundRejection, which AppliesBound reads), and its problem at the item, with a misplaced item's selector's own
-//   as a second (RecordEffectRejection), published as InvalidEffectBound_Kd (ReportEffectRejection).
+//   invalid item (EffectBoundRejection, which AppliesBound reads), and its problem at the item, a misplaced item's selector's own
+//   among them (RecordEffectRejection), published as InvalidEffectBound_Kd (ReportEffectRejection).
 // - Invariants: the position of an item is the parser's judgment alone (Parser.ParseEffectItem, EffectBoundKoto.Misplacement),
 //   before its position's own checks; an item AppliesBound rejects supplies no bound (SPEC 8.11.3); every table is rebuilt per
 //   pass in reused storage; a rejection records facts, its text is formed at publication.
@@ -553,10 +553,11 @@ public sealed partial class Binding
 
         if (recovery || misplaced)
         {
-            // DIAGNOSTICS 4.3 (several problems of one node): a misplaced item's selector's own is its second, after the place's record.
+            // DIAGNOSTICS 4.3: a misplaced item's selector's own is Binding's one problem of the item, its slot's (condition 0); the place's
+            // record is the parser's, under its own requirement (Syntax), so the item holds both.
             if (own is { } fault)
             {
-                this.RecordEffectRejection(effect, fault, 1);
+                this.RecordEffectRejection(effect, fault, 0);
             }
 
             return Complete(effect, null);

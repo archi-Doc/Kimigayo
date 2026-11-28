@@ -102,9 +102,8 @@ public static partial class Parser
         };
         if (misplaced is { } rejection)
         {
-            var requirement = DiagnosticRequirement.SyntaxOf(SyntaxForm.EffectPlacement);
-            effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd, note: rejection.Note, evidence: [rejection.Cause]);
-            effect.Misplacement = effect.KeyOf(requirement);
+            effect.Report(DiagnosticRequirement.Syntax, DiagnosticCode.InvalidEffectBound_Kd, note: rejection.Note, evidence: [rejection.Cause]);
+            effect.Misplacement = effect.KeyOf(DiagnosticRequirement.Syntax);
         }
 
         return effect;

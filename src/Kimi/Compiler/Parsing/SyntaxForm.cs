@@ -313,10 +313,4 @@ public enum SyntaxForm : ushort
 
     /// <summary>A specialization outside the source root and a group, struct or enum body: in an executable body or a Contract (SPEC 8.13.1, F.6).</summary>
     SpecializationDeclaration,
-
-    /// <summary>A protected access form on a declaration that is no member of a struct (SPEC 9.4.1), reported as <c>ProtectedPlacement_Kd</c>.</summary>
-    ProtectedPlacement,
-
-    /// <summary>An effect item that declares no bound where it stands (SPEC 8.11.1), reported as <c>InvalidEffectBound_Kd</c>.</summary>
-    EffectPlacement,
 }

@@ -182,14 +182,6 @@
     Description="a specialization is declared at the source root or in a group, struct or enum body"
     Phrase="specialization declaration"
 
-  + Name="Syntax.ProtectedPlacement"
-    Description="a protected access form modifies a member of a struct"
-    Phrase="protected, protected internal and private protected"
-
-  + Name="Syntax.EffectPlacement"
-    Description="an effect specification is a Contract item, and an effect clause bounds a requirement, a Callable Constraint or an original virtual function"
-    Phrase="effect item"
-
   + Name="Syntax.CompileTimeDirective"
     Description="a compile-time directive selects whole items"
     Phrase="compile-time directive"
