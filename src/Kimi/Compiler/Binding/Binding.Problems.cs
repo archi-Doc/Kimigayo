@@ -39,9 +39,11 @@ public sealed partial class Binding
         this.UnlinkProblems(node);
     }
 
-    // A located limit's one fact: the part's span, packed (start above, length below), read back by LocatedPart.
+    // A located part's Span fact: start above, length below, read back by LocatedPart.
     private static ProblemFact LocatedFact(Koto node, SourceSpan part)
         => new(ProblemFactKind.Span, SourceRef.Of(node), ((long)part.Start << 32) | (uint)part.Length);
+
+    private static SourceSpan LocatedPart(ProblemFact fact) => new((int)(fact.Value >> 32), (int)fact.Value);
 
     // The code of a failure at a node: the one table, with the rows that read the node until their checks record their own (E3, E4).
     private DiagnosticCode CodeOf(Koto node, BindingFailure failure)
@@ -267,7 +269,7 @@ public sealed partial class Binding
 
     // The part of a located problem (its Span fact), or null for no problem.
     private SourceSpan? LocatedPart(int problem)
-        => problem >= 0 && this.FactOf(problem, ProblemFactKind.Span) is { } fact ? new((int)(fact.Value >> 32), (int)fact.Value) : null;
+        => problem >= 0 && this.FactOf(problem, ProblemFactKind.Span) is { } fact ? LocatedPart(fact) : null;
 
     // A problem's fact of a kind, or null.
     private ProblemFact? FactOf(int problem, ProblemFactKind kind)
@@ -364,6 +366,12 @@ public sealed partial class Binding
             case BindingFailure.AnalysisLimit when this.FactOf(index, ProblemFactKind.Reason) is { } bound:
                 var (limitValue, limitText) = AnalysisLimitOf((AnalysisBound)bound.Value);
                 node.ReportIn(store, problem.Requirement, problem.Code, limitValue, limitText, condition: problem.Condition);
+                break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Constraint }, { Kind: ProblemFactKind.Reason }, ..]:
+                this.ReportOwnedConversion(node, store, index, problem); // `S is Owned`, then its member row (RecordOwned).
+                break;
+            case BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Related, Value: 0 }, { Kind: ProblemFactKind.Constraint }, { Kind: ProblemFactKind.OriginRecord }]:
+                this.ReportCallableConstraint(node, store, index, problem); // A clause's record with its trial's contract (RecordCallableConstraint).
                 break;
             case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { } entry && entry.Value == 2:
                 // Role 2, "entry": a range iteration's selected entry declaration (IntoIterable, Iterable or UniqIterable, SPEC 14.6.2),

@@ -116,7 +116,7 @@ public class Utf8FormatBindingTest
         };
         var contract = c.Library.GetSymbol(KimiDeclarationId.Utf8Format)!;
         var requirement = contract.Contract!.OwnRequirement()!;
-        var target = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!));
+        var target = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!), null);
         Assert.Equal(RequirementTargetKind.Body, target.Kind);
         Assert.Same(c.Library.Members(Enum.Parse<WitnessMembers>(group)), target.Target!.Scope.Owner);
     }

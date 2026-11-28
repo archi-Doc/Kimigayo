@@ -129,6 +129,8 @@ public static partial class Parser
         }
     }
 
+    internal static bool IsComparison(KotoKind kind) => IsComparisonKind[(int)kind];
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsExpressionBoundary(ref TokenReader reader)
         => !reader.CanRead || IsExpressionBoundaryKind[(byte)reader.CurrentTokenKind];

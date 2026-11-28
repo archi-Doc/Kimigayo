@@ -63,7 +63,7 @@ public sealed partial class Binding
         }
 
         this.dictionaryLiteralKeys.Clear();
-        FormedTypeRows.Add(literal); // SPEC 12.4: the literal forms its Dictionary Type from its entries (PLAN G1278's open line: at an expected Type too).
+        FormedTypeRows.Add(literal, this.formingBody); // SPEC 12.4: the literal forms its Dictionary Type from its entries (PLAN G1278's open line: at an expected Type too).
         if (stated is not null)
         {
             key = key is null ? null : this.StatedPlaceType(key, stated.Components[0]);

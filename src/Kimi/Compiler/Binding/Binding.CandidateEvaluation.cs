@@ -380,7 +380,7 @@ public sealed partial class Binding
     private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailExplained(CallableConstraintRows.Family, call, BindingFailure.UnprovenConstraint, fact, true);
+        return this.RecordCallableConstraint(call, fact, unresolved: true);
     }
 
     // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused.

@@ -171,17 +171,17 @@ public sealed partial class Binding
         for (var level = generic is not null && unwrapped is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : null; level is not null; level = ReferenceEquals(level, generic) ? null : ((TypeSemanticsKoto)level).Type)
         {
             level.BoundSymbol = declaration;
-            FormedTypeRows.Add(level);
+            FormedTypeRows.Add(level, this.formingBody);
             Complete(level, reference);
         }
 
         if (!ReferenceEquals(unwrapped, syntax))
         {
-            FormedTypeRows.Add(unwrapped);
+            FormedTypeRows.Add(unwrapped, this.formingBody);
             Complete(unwrapped, reference);
         }
 
-        FormedTypeRows.Add(syntax);
+        FormedTypeRows.Add(syntax, this.formingBody);
         Complete(syntax, reference);
         return this.BoundContractReference(reference);
     }

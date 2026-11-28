@@ -1,0 +1,5 @@
+// 1,500,000 microseconds for any counter below 2^63; the counter's high bit, unknown to the optimizer, keeps the value a
+// full u64, so the unsigned conversion and the division to seconds call the backend support archive's soft-float routines
+// at run time (IMPL 21.6.7).
+let duration = Time.Duration.init(microseconds: 1500000 + (X86.readTimestamp() & 0x8000000000000000))
+Console.writeLine("\(duration.seconds)")

@@ -371,7 +371,7 @@ public sealed partial class Binding
                 // SPEC 10.5: selection precedes bodies. Complete only this candidate; a body or capture failure
                 // never retries another overload, and its inferred result never supplies outer signature evidence.
                 var waitingOperations = evaluation.OperationsOf(winnerIndex);
-                if (!this.CompleteWaiting(ref evaluation, winnerIndex, completedWaiting, waitingContexts))
+                if (!this.CompleteAtSelectedParameters(ref evaluation, winnerIndex, completedWaiting, waitingContexts))
                 {
                     // SPEC 10.8: a completed waiting part fills no outer slot, so the solution is selection's; no judgment reads a failed
                     // part's Type, since a part without an AdaptedType is not fitted (JudgeCallFit) and a failed one rests (PartFailed).

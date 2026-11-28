@@ -59,13 +59,12 @@ public class ArchitectureRulesTest
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|" +
         "BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|" +
         "EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|" +
-        "ImplementationStorage|ClosureDefinition|ClosureAsCreated|ArithmeticStorage|ComparisonStorage|ComparisonActive|CreationStorage|" +
-        "AdaptationStorage";
+        "ClosureDefinition|ClosureAsCreated|ArithmeticStorage|ComparisonStorage|ComparisonActive|CreationStorage|AdaptationStorage";
 
     // R6-check H14 (D7): a read or write of a Koto semantic slot, as a member access or as a property pattern's name, nested or not (a
     // static `BoundType.X` argument is neither).
     private const string SemanticSlotReads = @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:" + SemanticSlots + @")(?:\.\w+)*\s*:";
-    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=5;" +
+    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=7;Koto/Expressions/BinaryKoto.cs=5;" +
         "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;" +
         "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=3";
 
@@ -112,16 +111,24 @@ public class ArchitectureRulesTest
     private const string DeletedByR8InSources =
         @"\bBodylessWitnes[s]\b|\bLegacyRo[w]\b|\bBuiltinForma[t]\b|\bFormattin[g]Rows\b|\bForma[t](?:Buffer|Finish|Segment)\b";
 
+    // R7-O1 c (RP6; DECISIONS R7-M51, R7-M66, R7-M95, R7-M120): the body judge's members R7-O1 deleted, its pending list and its
+    // Origin relation slot, and the two names c replaced (FormCallRelation, ConstrainsRegions); no source or test names one, comments
+    // included. A letter in brackets keeps the pattern from matching its source.
+    private const string DeletedByO1 =
+        @"\b(?:RecordOriginFitFailur[e]|OriginFitSearc[h]|OriginFitMod[e]|OriginRelationFail[s]|RecordOriginChain[s]|IsTwinRecor[d]|" +
+        @"pendingRelation[s]|(?:Add|Leave|Judge|Route)PendingRelatio[n]s?|HasCallRelatio[n]|JudgeCallPositio[n]|" +
+        @"RecordFurtherOriginRecor[d]|originRelation[s]|BodyChai[n])\b";
+
     // PLAN G609 (InterfaceEnumerationsStayAtTheirSites): the compiler's cold interface enumerations, by top-level type and method.
     private const string InterfaceEnumerationSites = "DeclarationContainerKoto.TryParsePropertyOrFunction=1;DeclarationContainerKoto.WriteAsBlockItem=2;" +
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding
-    // is R7-N5's (B7c's left in W-359, ImplTable's in B8a, TyCtxt's in B8b), MirBody and MirBuilder the Middle's, DiagnosticOwner the
-    // Diagnostics owner's, HoverBuilder and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands
-    // second takes the merged counts.
-    private const string NodeKeyedTableSites = "Binding=1;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
+    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, three owners: MirBody
+    // and MirBuilder the Middle's, DiagnosticOwner the Diagnostics owner's, HoverBuilder and CodeContext PLAN G1069's; Binding's count,
+    // R7-N5's, reached 0 in R7-E4 E4e (its last table, `ownedConversions`), so Binding has no row. Each lowering edits its own count, so
+    // whichever of two units lands second takes the merged counts.
+    private const string NodeKeyedTableSites = "CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
 
     // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -195,7 +202,6 @@ public class ArchitectureRulesTest
         "Binding.BoundContracts.cs:BoundContractReference=2 declared",
         "Binding.BoundContracts.cs:SubstituteRequirementContract=1 unchanged",
         "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",
-        "Binding.CallRelations.cs:JudgeCallFit=1 sufficient",
         "Binding.CallSelection.Candidates.cs:InferExpectedResult=1 unchanged",
         "Binding.CallSelection.Candidates.cs:TryCandidateCore=1 unchanged",
         "Binding.CallSlots.cs:FittedPattern=1 unchanged",
@@ -268,7 +274,6 @@ public class ArchitectureRulesTest
         "Binding.Conversions.cs:IsNeverValue=1 kind",
         "Binding.Conversions.cs:IsRuntimeRecordType=3 kind",
         "Binding.Conversions.cs:ResultNeverEvidence=2 kind",
-        "Binding.Diagnostics.Conversions.cs:ReportOwnedConversion=1 record",
         "Binding.Diagnostics.Operators.cs:ReportOperatorOperand=1 kind",
         "Binding.Diagnostics.cs:FailedCallableClause=1 record",
         "Binding.Diagnostics.cs:SharedObjectAuthorityMismatch=1 record",
@@ -348,8 +353,8 @@ public class ArchitectureRulesTest
         "Binding.PairCases.cs:CaseType=2 unchanged",
         "Binding.PairCases.cs:PairSlotCondition=1 key",
         "Binding.ParameterShapes.cs:SameBinding=1 sufficient",
-        "Binding.Patterns.cs:AcquireSubject=1 kind",
         "Binding.Patterns.cs:BindPattern=1 kind",
+        "Binding.Patterns.cs:BorrowsInPlace=1 kind",
         "Binding.Patterns.cs:CalculateMatchCoverage=1 kind",
         "Binding.Patterns.cs:ResolvePatternCase=1 declared",
         "Binding.Patterns.cs:TryPatternLiteral=3 kind",
@@ -501,6 +506,9 @@ public class ArchitectureRulesTest
     [InlineData("Source references to R8's deleted components", "src", "*.cs", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
     [InlineData("Project references to R8's deleted components", "src/Kimi", "*.csproj", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
     [InlineData("Test references to R8's deleted components", "tests", "*.cs", DeletedByR8, 0)]
+    // R7-O1 c (RP6): the same for R7-O1's deleted body judge and the names c replaced.
+    [InlineData("Compiler references to R7-O1's deleted body judge", "src/Kimi", "*.cs", DeletedByO1, 0)]
+    [InlineData("Test references to R7-O1's deleted body judge", "tests", "*.cs", DeletedByO1, 0)]
     // R7-I2 (RP6): a slot frame is private to InferCtxt (the type system admits no unlogged write); SlotSolution's trial copies of
     // its frame (PerCallCallables' stand-ins) fall to 0 with PLAN G988 (R7-I2 c keeps the copy: in place it moves constructors).
     [InlineData("SlotSolution's trial copies of a frame", "src/Kimi/Compiler/Binding", "Binding.ArgumentKinds*.cs", @"\btypeScratch\.Rent\(", 1)]
@@ -648,12 +656,14 @@ public class ArchitectureRulesTest
     [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\b(?:ClassForm|NormalizedForm)\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=5;Binding/Binding.Contracts.Expansion.cs=2;Binding/Binding.Contracts.cs=1;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.MemberLookup.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
-    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
-    // (ii): three of `Binding.LocalOrigins.cs`'s are InferLocalOrigins' `let` branch, which reads the replacements, publishes each
-    // region's value and replaces the replacement with the region before it sets the declaration's state: formation, as the rule names.
+    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. R7-O2 A4-L:
+    // `Binding.LocalOrigins.cs`'s are the initializer's and the annotation's formation alone, which give the omitted slots regions and
+    // set the declarations' state (30 -> 12: SolveLocalBounds, the `let` branch's publish loop and the `Inferred` side table went); a
+    // `let` region's value is published by FixDeclaredRegions (Binding.LocalRegions.cs), which reads the read members `Relations` and
+    // `SubstitutionPairs`, so that file has no row.
     // PLAN G1369: `Binding.OriginDeclarations.Failures.cs` lost the dead first-failure copy (5 -> 4); `Binding.OriginDeclarations.cs`'s
     // SubstituteOriginEqualities reads the completed relations and counts a local's fixed regions (FixedRegions; 29 -> 28).
-    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=4;Binding/Binding.OriginDeclarations.cs=28;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=12;Binding/Binding.OriginDeclarations.Failures.cs=4;Binding/Binding.OriginDeclarations.cs=28;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
     // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
     // number is reached, its holder and a member returning it included:
@@ -700,6 +710,14 @@ public class ArchitectureRulesTest
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
     // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
     [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
+    // R7-O1 c (RP6; DECISIONS R7-M66, R7-M120, R7-M123): Binding judges no body relation, so the relation judge is read only by OJ1, the
+    // declaration frame (JudgeDeclarationPosition's two directions, JudgeOriginObligation's two), OJ3, Owned's static check
+    // (RefutedStatic), and OJ4, a Callable comparison (the walk's OriginFailure, ComparedRegionLimit, LeavesBodyRows), besides its
+    // declaration and its meet recursion; and Binding constructs an Origin relation record only at V5 (the declaration judge's two), V6
+    // (an Unstated end; its other direction, in the same conditional, is target-typed), V7 (a holder place) and the Owned record (OJ3's
+    // judged `origin outlives static`, R7-M123). A further site fails here until its row is reviewed.
+    [InlineData("The relation judge's call sites (OJ1, OJ3, OJ4)", "src/Kimi/Compiler/Binding", @"\bJudgeOriginRelation\(", "Binding.OriginClauses.cs=2;Binding.OriginProof.cs=6;Binding.OwnedConversions.cs=1;Binding.TypeRelations.Walk.cs=1")]
+    [InlineData("Binding's Origin relation records (V5, V6, V7)", "src/Kimi/Compiler", @"\bnew OriginRelationFact\(", "Binding/Binding.Obligations.cs=1;Binding/Binding.OriginClauses.cs=2;Binding/Binding.OwnedConversions.cs=1;Binding/Binding.RawOrigins.Holder.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
@@ -868,7 +886,7 @@ public class ArchitectureRulesTest
     // a constructed Kimi generic type is read through its fields. A class with reference equality (BindingSymbol, BoundType) is its own
     // identity and a SourceRef key a node's value identity, no node; a BCL struct's internals never count. Not seen: a node in a BCL key's
     // generic arguments (KeyValuePair, Tuple) or a node-keyed collection held as a value or an element; review reads those. Counted by
-    // top-level type (NodeKeyedTableSites); each batch lowers its type's count, and R7-N5's exit is Binding's types at 0.
+    // top-level type (NodeKeyedTableSites); each batch lowers its type's count, and R7-N5's exit, Binding's types at 0, was reached by R7-E4 E4e.
     [Theory]
     [InlineData("Kimi", NodeKeyedTableSites)]
     public void NodeKeyedTablesStayAtTheirSites(string prefix, string sites)

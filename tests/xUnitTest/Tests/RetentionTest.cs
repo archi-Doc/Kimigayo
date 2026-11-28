@@ -369,20 +369,22 @@ public sealed partial class RetentionTest
 
     // Binding's bound counts entries, 32 of them, a Dictionary level counting two (the owner's O-47 (b)). A Tuple level is one, so dev's edge
     // stands: n = 32 keeps the conflict, n = 33 is past it. A Dictionary level is two, so n = 16 keeps the conflict and n = 17 to 32 are past it.
+    // Past it f's input fold is undecided, so f's contract is the Limit, recorded at the call (PLAN G408): never acceptance (SPEC 23.1.1).
+    // make's hold walk has no bound (G408B-9 R1), so its result's positions decide make's contract exactly.
     [Theory]
     [InlineData("Dictionary<i32, ", ">", 16, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("Dictionary<i32, ", ">", 17, "")]
-    [InlineData("Dictionary<i32, ", ">", 32, "")]
-    [InlineData("Dictionary<i32, ", ">", 33, "")]
+    [InlineData("Dictionary<i32, ", ">", 17, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
+    [InlineData("Dictionary<i32, ", ">", 32, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
+    [InlineData("Dictionary<i32, ", ">", 33, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
     [InlineData("(i32, ", ")", 32, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("(i32, ", ")", 33, "")]
+    [InlineData("(i32, ", ")", 33, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
     public void TheBoundCountsEntries(string open, string close, int levels, string records)
         => Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels))));
 
-    // PLAN G571 (SPEC 15.6.4): the walks that stop at the bound enter a part at the shallowest depth it is met at (Enters), so what lies
-    // below it does not depend on the route that meets it first: the input fold's (`Store`, StoreUse) and the hold fit's (`Through`,
-    // ThroughUse). Each Field is P at its depth: `long` 30 Tuple levels down, where P's borrow lies past the bound, `mid` 20 and `short`
-    // 0, within it; Field order decides nothing. Each valid twin writes nothing while the borrow is used.
+    // PLAN G571 (SPEC 15.6.4): what lies below a part does not depend on the route that meets it first: the input fold, which stops at the
+    // bound, enters a part at the shallowest depth it is met at (Enters; `Store`, StoreUse), and the hold fit, which has none (G408B-9 R1),
+    // enters each part once (`Through`, ThroughUse). Each Field is P at its depth: `long` 30 Tuple levels down, where P's borrow lies past
+    // the bound, `mid` 20 and `short` 0, within it; Field order decides nothing. Each valid twin writes nothing while the borrow is used.
     [Theory]
     [InlineData("long short", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
     [InlineData("short long", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
@@ -420,11 +422,11 @@ public sealed partial class RetentionTest
     }
 
     // The recorded limit (the owner's O-47 and O-49 (a); PLAN G408's class; the Front's, Binding's `StorageBound`): a storage nest past 32 entries,
-    // however few Dictionaries it holds: one under 31 others is enough. These invalid programs are newly accepted, each with no Language record, a
-    // limit and no contract: the 32-entry twin of each keeps the conflict.
+    // however few Dictionaries it holds: one under 31 others is enough. Each invalid program gets the limit at f's call, never acceptance
+    // (G408-B); the 32-entry twin of each keeps the conflict.
     [Theory]
-    [InlineData(1, 31, "")]
-    [InlineData(16, 1, "")]
+    [InlineData(1, 31, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
+    [InlineData(16, 1, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
     [InlineData(1, 30, "ComparisonLoanConflict_Kd x = 3")]
     [InlineData(16, 0, "ComparisonLoanConflict_Kd x = 3")]
     public void AMixedNestPastTheBoundIsTheRecordedLimit(int dictionaries, int tuples, string records)
@@ -432,6 +434,107 @@ public sealed partial class RetentionTest
         var leaf = string.Concat(Enumerable.Repeat("(i32, ", tuples)) + "ref/i32 during q" + new string(')', tuples);
         Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat("Dictionary<i32, ", dictionaries)) + leaf + new string('>', dictionaries)));
     }
+
+    // SPEC 15.6.4 (G408B-6, G408B-17): `ref/P during q` can hold neither x nor a borrow formed through it, so slot never carries x's Loan
+    // and both twins are valid (pr32Ok, pr32OwnOk). The handed-callable walk (TyCtxt.Handed) meets struct P at part 33 over make's result
+    // and over f's input and leaves its stored parts past HandedBound; they are i32, so no part it left can carry a Loan or an address, and
+    // both calls keep dev's acceptance (departing from G408B-9 R3's pinned Limit).
+    [Theory]
+    [InlineData("    let k = slot.a\n    x = 3\n")]
+    [InlineData("    x = 3\n    let k = slot.a\n")]
+    public void AStructPastTheHandedBoundHoldingNoCallableIsAccepted(string tail)
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 32)) + "ref/P during q" + new string(')', 32);
+        Assert.Equal(string.Empty, MirBorrowsTest.Records(
+            "struct P\n    public var a: i32\n    public init(a: i32)\n        self.a = a\n" +
+            "struct W {s}\n    public var a: ref/P during s\n    public init(a: ref/P during s)\n        self.a = a\n" +
+            $"func make(x: ref/i32 during q) -> {nest} => $abort(\"x\")\nfunc f(dst: uniq/(W during q), d: {nest}) => ()\n" +
+            "func g()\n    var x = 1\n    var pr = P.init(a: 1)\n    var slot = W.init(a: pr@ref)\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n" +
+            tail + "public func main() => ()\n"));
+    }
+
+    // SPEC 15.6.4, 15.6.6 (G408B-9 R1, R4 (i)): zz's result may retain d's Loan of x in its `ref/i16` part, its i64 `depth` Tuple levels
+    // down, so a use of r after `x = 3` conflicts (zz33Bad, accepted by dev: class 1). Each valid twin uses r first, and r's Type has no
+    // destruction that may observe a Loan. Past 32 parts A5's own bound (MirTypes.Bound, R4-M153) records the Limit at `var r` (zz33Ok,
+    // the same program as zzp-zz33Ok, and zz34Ok): resource rows for the Middle's RP17. The Middle's unit beside U-B5 (Destruction and
+    // AnyPart.Deep answering Deep only where they would enter a part's components) is predicted to accept zz33Ok (Q13 class 3) and keep
+    // the limit at zz34Ok.
+    [Theory]
+    [InlineData(32, "    let k = r.0\n    x = 3\n", "")]
+    [InlineData(33, "    let k = r.0\n    x = 3\n", "OwnershipDepthLimit_Kd var r = zz(d@move)")]
+    [InlineData(34, "    let k = r.0\n    x = 3\n", "OwnershipDepthLimit_Kd var r = zz(d@move)")]
+    [InlineData(33, "    x = 3\n    let k = r.0\n", "ComparisonLoanConflict_Kd x = 3")]
+    public void AResultRetainsItsInputsBorrowPastTheBound(int depth, string tail, string records)
+    {
+        var result = "(ref/i16 during q, " + string.Concat(Enumerable.Repeat("(i32, ", depth - 1)) + "i64" + new string(')', depth);
+        Assert.Equal(records, MirBorrowsTest.Records(
+            $"func make(x: ref/i32 during q) -> (ref/i32 during q, i64) => $abort(\"x\")\nfunc zz(d: (ref/i32 during q, i64)) -> {result} => $abort(\"x\")\n" +
+            "func g()\n    var x = 1\n    var d = make(x@ref)\n    var r = zz(d@move)\n" + tail + "public func main() => ()\n"));
+    }
+
+    // SPEC 15.6.4 (G408B-17): zz's result can hold an i64, and d holds one by value 34 entries down, so the result may retain d's own value,
+    // x's Loan included: a use of r after `x = 3` conflicts (zzIn33Bad, invalid, accepted by dev: class 1); the valid twin uses r first
+    // (zzIn33Ok). The input fold meets that i64 only past StorageBound, so its finding's subject is d, which carries `ref/i32`, never the
+    // i64: the call's contract is Deep, its rows beside the part past the bound (the Middle's A5 ruling C1), recorded at the call alone
+    // (C4) in both: twin (b), zzIn33Bad, rejected by the Deep record alone, as its violation lies only in that part; twin (a), zzIn33Ok,
+    // valid, with no decided failure: exactly the call's record and no Language record (an R4-M181 Resource row for the Middle's RP17).
+    [Theory]
+    [InlineData("    x = 3\n    let k = r.0\n")]
+    [InlineData("    let k = r.0\n    x = 3\n")]
+    public void AnInputsPartPastTheBoundIsDecidedForTheWholeInput(string tail)
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 33)) + "i64" + new string(')', 33);
+        var source = $"func make(x: ref/i32 during q) -> (ref/i32 during q, {nest}) => $abort(\"x\")\n" +
+            $"func zz(d: (ref/i32 during q, {nest})) -> (ref/i16 during q, i64) => $abort(\"x\")\n" +
+            "func g()\n    var x = 1\n    var d = make(x@ref)\n    var r = zz(d@move)\n" + tail + "public func main() => ()\n";
+        Assert.StartsWith("deep", Declared(Bind(source), "zz"), StringComparison.Ordinal);
+        Assert.Equal("OwnershipDepthLimit_Kd zz(d@move)", MirBorrowsTest.Records(source));
+    }
+
+    // SPEC 15.6.4, 23.1.2 (the Middle's A5 ruling C5, twin (c)): zz's result `ref/i32 during q` may retain e's own value, x's Loan, a
+    // row decided within the bound, while d's `ref/bool` fits no part of the result within it and its i64 lies 34 entries down, past
+    // StorageBound: the contract is Deep with that row beside the part. Invalid (zzDecidedBad): `x = 3` while r, which holds x's Loan,
+    // lives conflicts, and the call's Deep part is recorded too, two independent records; valid (zzDecidedOk): r is used first, so only
+    // the call's record remains.
+    [Theory]
+    [InlineData("    x = 3\n    let k = r.0\n", "OwnershipDepthLimit_Kd zz(d@move, x@ref); ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("    let k = r.0\n    x = 3\n", "OwnershipDepthLimit_Kd zz(d@move, x@ref)")]
+    public void ADecidedRowBesideADeepPartKeepsItsOwnRecord(string tail, string records)
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 33)) + "i64" + new string(')', 33);
+        var source = $"func make(y: ref/bool during q) -> (ref/bool during q, {nest}) => $abort(\"x\")\n" +
+            $"func zz(d: (ref/bool during q, {nest}), e: ref/i32 during q) -> (ref/i32 during q, i64) => $abort(\"x\")\n" +
+            "func g()\n    var x = 1\n    var y = false\n    var d = make(y@ref)\n    var r = zz(d@move, x@ref)\n" + tail +
+            "public func main() => ()\n";
+        Assert.StartsWith("deep", Declared(Bind(source), "zz"), StringComparison.Ordinal);
+        Assert.Equal(records, MirBorrowsTest.Records(source));
+    }
+
+    // SPEC 15.3.5, 15.6.4, 15.6.6, 23.1.1 (G408B-10, G408B-11): a fit over a growing family, each level a new instance (D0<Box<T>> under
+    // D0<T>): Holds meets it in W's part d before the fit at a (hfam*), Borrows' layer entry in the referent's part before the i32
+    // (bfam*). Each Bad row (invalid) writes x before r's later use, each Ok row (valid) uses r first; both keep dev's records: the
+    // generation limit at the local holding the family and the call's contract as the Limit, never acceptance (probes\rev2\labels.md).
+    [Theory]
+    [InlineData(
+        "struct W {s}\n    public var d: D0<S>\n    public var a: ref/i32 during s\nfunc make(x: ref/i32 during q) -> W during q => $abort(\"x\")\n" +
+        "func g()\n    var x = 1\n    var r = make(x@ref)\n    x = 3\n    let k = r.a\n",
+        "GenerationResourceLimit_Kd var r = make(x@ref); OwnershipDepthLimit_Kd make(x@ref)")]
+    [InlineData(
+        "struct W {s}\n    public var d: D0<S>\n    public var a: ref/i32 during s\nfunc make(x: ref/i32 during q) -> W during q => $abort(\"x\")\n" +
+        "func g()\n    var x = 1\n    var r = make(x@ref)\n    let k = r.a\n    x = 3\n",
+        "GenerationResourceLimit_Kd var r = make(x@ref); OwnershipDepthLimit_Kd make(x@ref)")]
+    [InlineData(
+        "func make(x: uniq/(D0<S>, i32) during q) -> ref/i32 during q => $abort(\"x\")\n" +
+        "func g(v: (D0<S>, i32))\n    var x = v@move\n    var r = make(x@uniq)\n    x.1 = 3\n    let k = r@follow\n",
+        "GenerationResourceLimit_Kd var x = v@move; OwnershipDepthLimit_Kd var x = v@move; OwnershipDepthLimit_Kd make(x@uniq)")]
+    [InlineData(
+        "func make(x: uniq/(D0<S>, i32) during q) -> ref/i32 during q => $abort(\"x\")\n" +
+        "func g(v: (D0<S>, i32))\n    var x = v@move\n    var r = make(x@uniq)\n    let k = r@follow\n    x.1 = 3\n",
+        "GenerationResourceLimit_Kd var x = v@move; OwnershipDepthLimit_Kd var x = v@move; OwnershipDepthLimit_Kd make(x@uniq)")]
+    public void TheFitsOverAGrowingFamilyKeepTheRecordedLimits(string form, string records)
+        => Assert.Equal(records, MirBorrowsTest.Records(
+            "contract C\nstruct Box<T>\n    T is C\n    Self is C\nstruct D0<T>\n    T is C\n    let next: Array<D0<Box<T>>>\nstruct S\n    Self is C\n" +
+            form + "public func main() => ()\n"));
 
     // SPEC 5.2.1, 15.6.4 (G416 review B1): a raw layer's pointee is walked with no key of the layer, so a slot's cap steps only the layer its
     // declaration states there, and a raw pointee below it stays stated by the Type: rule A keeps what a stored value brings (BU-1), and the
@@ -875,6 +978,45 @@ public sealed partial class RetentionTest
     {
         var call = Calls(Bind(source + "\n"), "f").Single();
         Assert.True(keepsY == call.Split(", reached")[0].Contains("1 Value", StringComparison.Ordinal), call);
+    }
+
+    // SPEC 8.2.3 ("All Type checking in the scope treats identical Types as one Type"; the meaning does not depend on the spelling of
+    // premises), 15.6.4 (PLAN G986; a class 1 with MIR's storing gate): a function's declared record, the contract MirBorrows.BeginStoring
+    // reads, takes its own Types as its premises make them, so it is the record of the twin spelling the identified Types alike: y kept
+    // under `T is V` (P1), by a handed `mk: (E) -> U` (Rb) and a writer `set: (uniq/U, E)` (K9's) under `T is U`, inside a nested Type,
+    // through a premise giving a nested form and a second premise, and under a method's `V is T`, its own Type identified with its
+    // enclosing Type's (the scope chain); under `T is raw/u8` the raw layer t's referent holds (MirBorrowsTest.Storing's `direct` form:
+    // untied). The identity an associated Type's requirement supplies (`associate Item is V`) and a premise on a projection keep y alike.
+    // Fail-before on 7c258a4f50: each premised record but the associated Type's kept only `0 Content` (the method's `0 Content, 1 Content`,
+    // the raw row `own {0 Content}, reached {0 Content}`).
+    [Theory]
+    [InlineData("func f<T, V>(slot: uniq/T, y: V) -> ()\n    T is V\n    return", "func f<T>(slot: uniq/T, y: T) -> ()\n    return", "1 Value")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> U) -> ()\n    T is U\n    return", "func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> T) -> ()\n    return", "1 Value, 2 Value")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, set: (uniq/U, E) -> ()) -> ()\n    T is U\n    return", "func f<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) -> ()\n    return", "1 Value, 2 Value")]
+    [InlineData(Box + "func f<T, V>(slot: uniq/B<T>, y: B<V>) -> ()\n    T is V\n    return", Box + "func f<T>(slot: uniq/B<T>, y: B<T>) -> ()\n    return", "1 Value")]
+    [InlineData(Box + "func f<T, V>(slot: uniq/T, y: V) -> ()\n    T is B<V>\n    return", Box + "func f<V>(slot: uniq/B<V>, y: V) -> ()\n    return", "1 Value")]
+    [InlineData("func f<T, U, V>(slot: uniq/T, y: V) -> ()\n    T is U\n    U is V\n    return", "func f<T>(slot: uniq/T, y: T) -> ()\n    return", "1 Value")]
+    [InlineData(Box + "    public func f<V>(self: ref/Self, slot: uniq/T, y: V) -> ()\n        V is T\n        return", Box + "    public func f(self: ref/Self, slot: uniq/T, y: T) -> ()\n        return", "2 Value")]
+    [InlineData("func f<T>(t: uniq/(uniq/T during a))\n    T is raw/u8\n    t@follow@follow = t@follow@raw@raw/u8", "func f(t: uniq/(uniq/(raw/u8) during a))\n    t@follow@follow = t@follow@raw@raw/u8", "untied")]
+    [InlineData("contract HoldsV<V>\n    associate Item is V\nfunc f<I, V>(slot: uniq/I.Item, y: V) -> ()\n    I is HoldsV<V>\n    return", "contract HoldsV<V>\n    associate Item is V\nfunc f<I, V>(slot: uniq/V, y: V) -> ()\n    I is HoldsV<V>\n    return", "1 Value")]
+    [InlineData("contract HasItem\n    associate Item\nfunc f<I, V>(slot: uniq/I.Item, y: V) -> ()\n    I is HasItem\n    I.Item is V\n    return", "contract HasItem\n    associate Item\nfunc f<I>(slot: uniq/I.Item, y: I.Item) -> ()\n    I is HasItem\n    return", "1 Value")]
+    public void AFunctionsDeclaredRecordReadsItsOwnTypesUnderItsPremises(string premised, string spelled, string kept)
+    {
+        var record = Declared(Bind(premised + "\n"), "f");
+        Assert.Equal((Declared(Bind(spelled + "\n"), "f"), true), (record, record.Contains(kept, StringComparison.Ordinal)));
+    }
+
+    // SPEC 8.2.3, 15.6.4 (PLAN G986): a call's record reads its instance in the scope of the definition whose abstract Types it names:
+    // the calling definition's where the Subst brings them (a requirement call under h's `X is Y` keeps y as its spelled twin's does,
+    // `put`'s own `A is B` proven at the call), else the callee's own, where a concrete instance names none and reads alike under either
+    // declaration. Neither moves with G986: they pin the two branches of TyCtxt.Retains' choice.
+    [Theory]
+    [InlineData("contract Put\n    func put<A, B>(self: uniq/Self, slot: uniq/A, y: B)\n        A is B\nfunc h<T, X, Y>(t: uniq/T, slot: uniq/X, y: Y) -> ()\n    T is Put\n    X is Y\n    t.put(slot, y@move)", "contract Put\n    func put<A, B>(self: uniq/Self, slot: uniq/A, y: B)\n        A is B\nfunc h<T, X>(t: uniq/T, slot: uniq/X, y: X) -> ()\n    T is Put\n    t.put(slot, y@move)", "2 Value")]
+    [InlineData("func put<T, V>(slot: uniq/T, y: V) -> ()\n    T is V\n    return\nfunc g(x: uniq/u64, v: u64)\n    put(x, v)", "func put<T>(slot: uniq/T, y: T) -> ()\n    return\nfunc g(x: uniq/u64, v: u64)\n    put(x, v)", "1 Value")]
+    public void ACallReadsItsInstanceInTheScopeOfTheDefinitionWhoseTypesItNames(string premised, string spelled, string kept)
+    {
+        var record = string.Join(" | ", Calls(Bind(premised + "\n"), "put"));
+        Assert.Equal((string.Join(" | ", Calls(Bind(spelled + "\n"), "put")), true), (record, record.Contains(kept, StringComparison.Ordinal)));
     }
 
     // SPEC 15.6.4's abstract-storage sentence (the owner's O-360 (a); PLAN G935, the design review's open point 2; class 1 for a binding
@@ -2453,12 +2595,12 @@ public sealed partial class RetentionTest
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
             .Select(x => c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(c.Binding, x.Node))).ToArray();
 
-    // A retention as the records spell it (DECISIONS R4-M154): the result's kinds and whether it is untied, then per output it writes its
+    // A retention as the records spell it (DECISIONS R4-M154): `deep` for a Deep contract, the result's kinds and whether it is untied, then per output it writes its
     // root's kinds (own) and those past it (reached, every Reached entry joined), each with its pairs (`if {i Value: longer > shorter}`),
     // whether it is untied, and the referent stores; each input with its kinds.
     private static string Show(CallRetention retention)
     {
-        return retention.IsLimit ? "limit" : string.Join(", ", new[] { Kinds(retention.Result.Kinds) is { Length: > 0 } result ? $"result {{{result}}}{Pairs(retention.Result)}" : null, retention.Result.Untied ? "untied" : null }
+        return retention.IsLimit ? "limit" : string.Join(", ", new[] { retention.IsDeep ? "deep" : null, Kinds(retention.Result.Kinds) is { Length: > 0 } result ? $"result {{{result}}}{Pairs(retention.Result)}" : null, retention.Result.Untied ? "untied" : null }
             .Concat(retention.Writes.ToArray().Select(static x => $"store {x.Output}: own {{{Kinds(x.Own.Kinds)}}}{Pairs(x.Own)}, reached {{{Kinds(x.All.Kinds)}}}{Pairs(x.All)}" +
                 (x.Own.Untied ? " untied" : string.Empty)))
             .Concat(retention.ReferentStores.ToArray().Select(static x => $"referent store {x}")).OfType<string>());

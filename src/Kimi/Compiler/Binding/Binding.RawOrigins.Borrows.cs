@@ -33,7 +33,7 @@ namespace Kimi.Compiler;
 //   Check has run, Complete afterwards.
 // - Invariants: an atom's forming Borrow is formed before any Type stating the atom can be read (a typed path, a Field read or a
 //   substitution states the atom only from a Type that carries it), except where the fact is not written yet while a part that states
-//   its atom binds: a call's operations while its waiting Closure parts bind (CompleteWaiting, before the selection completes): the
+//   its atom binds: a call's operations while its waiting Closure parts bind (CompleteAtSelectedParameters, before the selection completes): the
 //   part's inferred return Type is never outer evidence (SPEC 10.5.4), so such a call fails and its operations are never formed (ap3,
 //   ap4, invalid); and a payload's operation while an awaiting payload before it binds (CompletePayloads completes the payloads in
 //   source order: pl4, invalid). A reader there finds no row; every program that reaches it is invalid (the erasure whose retention
@@ -206,10 +206,22 @@ public sealed partial class Binding
     {
         for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
         {
-            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, Acquisition: PatternAcquisition.Borrow, BodySymbol.Type: { } bound })
+            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, Acquisition: PatternAcquisition.Borrow, BodySymbol.Type: { } bound } position)
             {
-                this.RecordBorrow(rows, bound);
+                this.RecordAcquisition(rows, position.Source, bound);
             }
+        }
+    }
+
+    // A by-reference binding's acquisition, formed (BindingBorrows) and counted (PublishedBindings): the reach's Borrow, under the reach's
+    // Origin. A `let` binding's Type states its own region there instead (BindingTypeOf, SPEC 14.8.2), whose published value
+    // (PublishRegionValue) is that Origin.
+    private void RecordAcquisition(Dictionary<BoundOrigin, BorrowList> rows, Koto declaration, BoundType bound)
+    {
+        if (this.BorrowReferent(bound, out var outer, out var exclusive) is { } referent && outer is not null)
+        {
+            var own = ReferenceEquals(outer.Binder, declaration);
+            this.RecordEntry(rows, own && this.Region(outer) is { Value: { } reach } ? reach : outer, referent, exclusive);
         }
     }
 
@@ -390,7 +402,9 @@ public sealed partial class Binding
 
                 break;
             case ForKoto loop:
-                this.PublishedBindings(BoundMatch.Of(this, loop));
+                var iteration = BoundMatch.Of(this, loop);
+                this.RecordBorrow(this.publishedBorrows, iteration?.SubjectBorrow);
+                this.PublishedBindings(iteration);
                 break;
             case MatchKoto match:
                 var plan = BoundMatch.Of(this, match);
@@ -408,7 +422,7 @@ public sealed partial class Binding
             if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, BodySymbol.Type: { } bound } position &&
                 HirAdjust.Of(position.Acquisition, position.AccessMode).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow)
             {
-                this.RecordBorrow(this.publishedBorrows, bound);
+                this.RecordAcquisition(this.publishedBorrows, position.Source, bound);
             }
         }
     }

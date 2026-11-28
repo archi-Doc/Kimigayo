@@ -20,13 +20,12 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 /// <summary>Composes conservative source paths without evaluating constants or Scope Exit cleanup.</summary>
-/// <param name="binding">The Binding that creates it, whose current plans give an invocation's omitted default arguments.</param>
-/// <param name="isNever">Whether an evaluated node has Type Never.</param>
+/// <param name="binding">Supplies Never evidence and the current plans for omitted default arguments.</param>
 /// <param name="isGuess">Whether a read the composition makes at a node is unknown, assumed then not to complete normally: asked only
 /// where it reads the node itself, at a block (its items, which the parser may have supplied) and at an evaluated node (its Never
 /// evidence), never at a form it composes from its parts (PLAN G47).</param>
 /// <param name="memo">The instance's family in a module's NodeColumns, which holds its query memo.</param>
-internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isNever, Func<Koto, bool>? isGuess, StructuralCompletion.Memo memo)
+internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool>? isGuess, StructuralCompletion.Memo memo)
 {
     // The chains of Outward's target ids: cell i - 1 holds a target and the next cell's index plus 1 (0 ends the chain). A chain grows
     // only at its head and never changes once a completion holds it, so completions share tails; Clear empties the cells when it ends
@@ -321,7 +320,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
             }
         }
 
-        if (isNever(node))
+        if (binding.ResultNeverEvidence(node))
         {
             result = result with { Normal = false };
         }

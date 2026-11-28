@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // the Origin it is reached through, which a `during self` layer is read with (ReadHolder) and a typed path states (BindAddress), and
 // the stored Field it is or lies inline in, which the allowlist of a layer reached through no dereference judges (JudgeHolderPlace).
 // Each walks syntax only, every step to a strict descendant, so it has no bound of its own: a published tree's depth is at most
-// SyntaxNesting.Limit (IMPL A.4), and no count of steps or selections changes its answer (D-932).
+// SyntaxNesting.Limit + 2 (IMPL A.4; G144-25: the generated function and its Body), and no count of steps or selections changes its
+// answer (D-932).
 public sealed partial class Binding
 {
     private long rawWalkSteps;

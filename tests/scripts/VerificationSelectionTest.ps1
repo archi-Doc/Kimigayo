@@ -59,13 +59,29 @@ try {
         '<test type="XunitTest.OneTest" method="Run" result="Pass" />' +
         '<test type="XunitTest.OneTest+AllocationTests" method="Storage" result="Fail" />' +
         '<test type="XunitTest.TwoTest" method="Explicit" result="NotRun" /></collection></assembly></assemblies>')
-    $executed = @(Get-KimiExecutedTests $result)
-    $recorded = @(Get-KimiRecordedCases $result | ForEach-Object { "$($_.type).$($_.method)" })
+    $nodes = @(Get-KimiRecordedCases $result)
+    $executed = @(Get-KimiExecutedTests $nodes)
+    $recorded = @($nodes | ForEach-Object { "$($_.type).$($_.method)" })
 }
 finally { Remove-Item -LiteralPath $result }
 Equal $executed @('XunitTest.OneTest.Run', 'XunitTest.OneTest+AllocationTests.Storage')
 Equal $recorded @('XunitTest.OneTest.Run', 'XunitTest.OneTest+AllocationTests.Storage', 'XunitTest.TwoTest.Explicit')
-Equal @(Get-KimiExecutedTests $result) @()
+$skip = ([xml]'<test type="XunitTest.SemanticSnapshotTest" method="RequestedSnapshotMatchesTheBaseline" result="Skip"><reason><![CDATA[semantic comparison not configured]]></reason></test>').DocumentElement
+$previousMode = $env:KIMI_SEMANTIC_SNAPSHOT
+try {
+    $env:KIMI_SEMANTIC_SNAPSHOT = $null
+    Equal @(Get-KimiExecutedTests ($nodes + $skip)) $executed
+    $env:KIMI_SEMANTIC_SNAPSHOT = 'check'
+    Reject { Get-KimiExecutedTests $skip } 'Unexpected skip'
+    $env:KIMI_SEMANTIC_SNAPSHOT = $null
+    $skip.SetAttribute('method', 'AnotherTest')
+    Reject { Get-KimiExecutedTests $skip } 'Unexpected skip'
+    $skip.SetAttribute('method', 'RequestedSnapshotMatchesTheBaseline')
+    $skip.SelectSingleNode('reason').InnerText = 'another reason'
+    Reject { Get-KimiExecutedTests $skip } 'Unexpected skip'
+}
+finally { $env:KIMI_SEMANTIC_SNAPSHOT = $previousMode }
+Equal @(Get-KimiExecutedTests @()) @()
 Equal @(Get-KimiRecordedCases $result) @()
 # Each requested selector executes a test of its own: one that matches only a test left Not Run fails, also beside a
 # selector that executes.

@@ -245,24 +245,37 @@ public class SharedSubjectTest
         Assert.Empty(c.BuildMir().Findings);
     }
 
-    // SPEC 15.1.6: iteration borrows a static Subject Shared. Its entry call still has BU-25's static receiver Borrow limit.
+    // SPEC 15.1.6, 14.6.2: iteration borrows a static Subject Shared into its Subject Place, as a match does, and its entry call's receiver
+    // is that Place, so no static receiver Borrow remains for BU-25's limit (G922 tws). The Subject's Loan is A5's, as a match's is
+    // (BU-25): a write of the static, a call writing it and a write while an escaped item lives conflict with it.
     [Theory]
-    [InlineData("func f()\n    for v in State.values\n        let n: i32 = v@follow", "State.values")]
-    [InlineData("    public func f()\n        for v in (values)\n            let n: i32 = v@follow", "(values)")]
-    public void StaticIterationKeepsItsBorrowedItemAtTheEntryLimit(string body, string subject)
+    [InlineData("func f()\n    for v in State.values\n        let n: i32 = v@follow")]
+    [InlineData("    public func f()\n        for v in (values)\n            let n: i32 = v@follow")]
+    public void StaticIterationBorrowsItsSubjectInPlace(string body)
     {
         var c = MinimalEmissionTest.Analyze(StaticSubjects + body + "\n");
-        var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, subject), (issue.Code, issue.Node.ToString()));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.Equal(SemanticsKind.Ref, Assert.Single(loop.Bindings).TypeOf()!.Semantics);
         Assert.Empty(c.BuildMir().Findings);
     }
 
+    [Theory]
+    [InlineData("func f() -> i32\n    var kept: i32 = 0\n    for v in State.values\n        State.values[1] = 5\n        kept = v@follow\n    return kept")]
+    [InlineData("func bump()\n    State.values[0] = 9\nfunc f() -> i32\n    var kept: i32 = 0\n    for v in State.values\n        bump()\n        kept = v@follow\n    return kept")]
+    [InlineData("func inspect(value: ref/i32) => ()\nfunc f()\n    var y: i32 = 0\n    var keep = y@ref\n    for v in State.values\n        keep = v\n    State.values[0] = 3\n    inspect(keep)")]
+    public void StaticIterationKeepsItsSubjectLoan(string body)
+    {
+        var c = MinimalEmissionTest.Analyze(StaticSubjects + body + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+    }
+
     // SPEC 15.1.6: bare Subjects share their storage even when the static Field itself is writable.
     [Theory]
     [InlineData("func f()\n    match State.opt\n        .Some(let v) => v@follow = 2\n        .None => ()", new[] { DiagnosticCode.SharedPathAccess_Kd })]
-    [InlineData("func f()\n    for v in State.values\n        v@follow = 2", new[] { DiagnosticCode.Unsupported_Kd, DiagnosticCode.SharedPathAccess_Kd })]
+    [InlineData("func f()\n    for v in State.values\n        v@follow = 2", new[] { DiagnosticCode.SharedPathAccess_Kd })]
     public void StaticSubjectsDenyWrites(string body, DiagnosticCode[] codes)
     {
         var c = MinimalEmissionTest.Analyze(StaticSubjects + body + "\n");

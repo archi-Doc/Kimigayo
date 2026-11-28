@@ -18,7 +18,8 @@
 // problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
 // the site (A3's guessed sites, R5-M186), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
 // in BindingReport's kept sides, a Type, or a length where its requirement compares lengths (SPEC 4.3.1), in a capture record its
-// subject and the captured binding's Type (R7-E4 E4b), an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
+// subject and the captured binding's Type (R7-E4 E4b), in an Owned record its subject and the inherited member's Type or Origin
+// (R7-E4 E4e), an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
 // start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept sides,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
@@ -27,7 +28,8 @@
 // a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names, or its code's packed rows
 // (ParameterShapeMismatch_Kd's packs its mode, the other mode and the matching key, a byte each; a selection's candidate its CandidateFlags
 // and two receivers), and above them an ordinal into its party's own parameters, Type parameters or Origin slots (a candidate's receiver
-// parameter, a correlation's slot, E3c-2's Case index, a Callable call's position in its candidates' common signature, a slot case's slot),
+// parameter, a correlation's slot, E3c-2's Case index, a Callable call's position in its candidates' common signature, a slot case's slot,
+// an Owned record's member in its kind's numbering, R7-E4 E4e),
 // or a set of parameter ordinals (a per-call slot's parameters, a mask whose 64 bits are -1L, so no reader tests a Reason's Value for -1;
 // R7-E4 E4c), and a Key fact the conflicting
 // parameter and as its Value an index in BindingReport's kept sides, the Type at which two parameter shapes' matching keys overlap (SPEC
@@ -56,7 +58,7 @@ namespace Kimi.Compiler;
 /// (R4-M97), the declaration of the static Field a Call's or Drop's effects met, by what decided it (R4-M92), an Origin problem's last
 /// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), a problem this one is caused only by (rule W,
 /// R4-M132), or, for Binding, the syntax that shows a mismatch with one of its two sides, the subject with its located part, a failed operator's
-/// operand, judged Type or proposition, a further Origin record (R7-E1), a related location, a stated count, a closed reason, the Type two
+/// operand, judged Type or proposition, an Origin relation the record shows (R7-E1), a related location, a stated count, a closed reason, the Type two
 /// parameter shapes overlap at, the Type a related party stands for (R7-E2) or a candidate's checked part with its expected Type (AF-3b).</summary>
 internal enum ProblemFactKind : byte
 {
@@ -73,7 +75,7 @@ internal enum ProblemFactKind : byte
     Limit, // A storage limit's body: the analyses' byte limit (Value), its limitBytes; a height record's subject: IMPL A.4's height (R7-T1).
     Table, // A storage limit's body: the arena (Value, a MirStorageTable), its table.
     Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value, -1 Binding's); facts' tail.
-    Actual, // Binding: the syntax that shows a mismatch, the side found (Value, an index in BindingReport's kept sides, a Type or length; SPEC 23.3).
+    Actual, // Binding: the syntax that shows a mismatch, the side found (Value, an index in BindingReport's kept sides, a Type, length or Origin; SPEC 23.3).
     Expected, // Binding: the syntax that shows a mismatch, the side required (Value, the same); a per-call slot's S, the call signature required (R7-E4 E4c).
     Span, // Binding: the part of its subject the record is located at (Value, start << 32 | length; SPEC 23.1.1).
     ActualForm, // Binding: as Actual, for a side with no kept value, a form (Value, a MismatchForm row and its count).
@@ -81,7 +83,7 @@ internal enum ProblemFactKind : byte
     Operand, // Binding: the syntax an operator failed at, its operand's Type (Value, an index in BindingReport's kept sides; SPEC 13).
     Terminal, // Binding: the same syntax, the Type the operator judged (Value, the same).
     Constraint, // Binding: the proposition its check needs and could not prove: an operator's requirement, a clause's proposition at a selected call or a range iteration's entry (Value, an index in the kept propositions).
-    OriginRecord, // Binding: the subject, one of its Origin records, the first included (Value, an index in the kept Origin records; SPEC 15.6.1).
+    OriginRecord, // Binding: the subject, an Origin relation the record shows (Value, an index in the kept Origin records; SPEC 15.6.1).
     Related, // Binding: a location the record shows, its own or a related one, or reads (Value, the role's ordinal in its code's row; SPEC 23.3).
     Count, // Binding: the subject, a count its requirement states, such as an arity (Value, the count; in its code's row order).
     Reason, // Binding: the subject, a row of the closed enumeration its requirement names, or its code's packed rows (Value; text the adapter's).

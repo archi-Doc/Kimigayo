@@ -62,6 +62,14 @@ public sealed partial class Binding
         return -1;
     }
 
+    // SPEC 7.7.2, 15.8.2, 15.6.5 (PLAN G922 U1): whether the Closure `owner` that holds a use (its BodyOwner) carries the binding `symbol`
+    // the use's name selects: a use in its body names its own capture (a Capture symbol whose Declaration is `owner`; another Closure's
+    // capture, named in a nested function's or a nested Closure's header, is "any other nested body"), a use in its header, which never
+    // sees its environment, the outer binding a written entry of its list enters. The name limit's one test of carriage (UnmergedSelection).
+    private static bool CarriesBinding(Koto? owner, BindingSymbol? symbol)
+        => (symbol is { Kind: BindingSymbolKind.Capture } && ReferenceEquals(symbol.Declaration, owner)) ||
+            (symbol is not null && owner is FunctionKoto { IsAnonymous: true } closure && CaptureEntryOf(closure, symbol.Name) is not null);
+
     // SPEC 7.7.2 with 9.3 (G812 ruling 182): whether a body at `literal` can capture a binding of `scope`: a name whose first binding
     // visible at the literal (VisibleAt, the lookup's rule) is a runtime binding. It answers for every use in the body: a binding visible
     // at the literal's start is visible at each of them, and one not visible there at none. Read by TypedByHeader.

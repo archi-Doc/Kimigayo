@@ -7,7 +7,8 @@
 //   EnterBody, with the one value of each body (FunctionBody, a default template's, AccessorBody, InitializerBody).
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
 //   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (the index walk's: a Closure's, a named function's
-//   and a local's, IndexNode and DeclareFunction), and the decision-time rule's scope (BindNode's end asks FailedWrittenType for a use
+//   and a local's, IndexNode and DeclareFunction), the frame of a FormedTypes row (FormationFrame, which each producer writes from the
+//   frame it forms the node in, FormedTypeRows), and the decision-time rule's scope (BindNode's end asks FailedWrittenType for a use
 //   bound in a body only, E3e).
 // - The rule for a local (SPEC 15.3.4, 15.3.6; DECISIONS R8-M56): its declaration, its Type's Origin declaration and its initializer are
 //   formed in its declaring body whoever demands them (FormingBodyOf: a use, a capture or a nested header binding them first), so every
@@ -16,9 +17,10 @@
 //   body, a Property's initializer), and a local with none is an InternalInvariant.
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
-//   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed in it, only AddObligation
-//   stamps it, on a relation formed in a body with a nested signature's per-call end (that signature's declaration row, R7-O3 U-O3), and
-//   it is never a MIR key.
+//   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows and ValidateOriginRelations' root walk (the
+//   own clauses of the written Types formed in a declaration frame, AddTypeClauseObligations); nothing is formed in it, only AddObligation
+//   stamps it, on a relation formed in a body with a nested signature's per-call end (that signature's declaration row, R7-O3 U-O3) and on
+//   a root's clause row, and it is never a MIR key.
 // - Prohibitions: no body derived from a scope chain, Use.Parent or syntax.
 
 using Kimi.Compiler.Parsing;
@@ -46,6 +48,20 @@ internal readonly record struct ExecutableBody
 
     /// <summary>Gets a value indicating whether this names a body, not a declaration.</summary>
     internal bool IsBody => this.Definition is not null || this.index > 0;
+}
+
+/// <summary>The frame a FormedTypes row's node was formed in (FormedTypeRows; DECISIONS R7-M80, R4-M101 E1): the kind of the ExecutableBody
+/// its producer formed it in. One byte, so that the default value is no row.</summary>
+internal enum FormationFrame : byte
+{
+    /// <summary>No row: the node does not form its Type.</summary>
+    None,
+
+    /// <summary>Formed with no executable body: a declaration's own syntax (a signature, a declared Type, a declaration clause).</summary>
+    Declaration,
+
+    /// <summary>Formed in an executable body (a local's Type, a Closure's header, an initializer's or a body's expression).</summary>
+    Body,
 }
 
 public sealed partial class Binding

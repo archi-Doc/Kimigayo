@@ -13,7 +13,5 @@ internal sealed class RequirementCalleeKoto(Koto root) : ExpressionKoto(root.Cod
 
     internal CallPlan? RequirementStorage { get; set; }
 
-    internal CallPlan? ImplementationStorage { get; set; }
-
     public override void WriteTo(ref IndentedStringBuilder builder) => builder.Append("<requirement>");
 }

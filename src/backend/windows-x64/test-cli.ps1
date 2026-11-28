@@ -423,13 +423,13 @@ function Copy-LinuxProgram([string] $Name, [string] $Destination) {
 }
 Copy-LinuxProgram 'Hello' $linuxDirectory
 Copy-LinuxProgram 'Ffi' $linuxFfiDirectory
-function Assert-Elf([string] $Directory, [string] $Name) {
-    $image = Join-Path $Directory "bin/x86_64-unknown-linux-musl/$Name.O2"
+function Assert-Elf([string] $Directory, [string] $Target, [string] $Name) {
+    $image = Join-Path $Directory "bin/$Target/$Name.O2"
     $magic = [IO.File]::ReadAllBytes($image)[0..3]
     if (($magic -join ',') -cne '127,69,76,70') { throw "$Name.O2 is not an ELF image" }
 }
 $output = Invoke-Kimi @('build', (Join-Path $linuxDirectory 'Hello.kimiproj'))
-Assert-Elf $linuxDirectory 'Hello'
+Assert-Elf $linuxDirectory 'x86_64-unknown-linux-musl' 'Hello'
 $output = Invoke-Kimi @('run', (Join-Path $linuxDirectory 'Hello.kimiproj')) 1
 if (-not $output.Contains('This form is outside the implemented subset')) { throw "Run did not refuse a target this host does not run: $output" }
 & (Join-Path $ToolchainRoot 'clang.exe') --target=x86_64-unknown-linux-musl -O2 -fno-builtin -fno-stack-protector -c (Join-Path $linuxNative 'codec.c') -o (Join-Path $linuxNative 'codec.o')
@@ -438,9 +438,22 @@ Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'llvm-lib.exe') -Destination (J
 & (Join-Path $linuxNative 'llvm-ar.exe') rcs (Join-Path $linuxNative 'codec.a') (Join-Path $linuxNative 'codec.o')
 if ($LASTEXITCODE -ne 0) { throw 'llvm-ar failed for the Linux foreign supply' }
 $output = Invoke-Kimi @('build', (Join-Path $linuxFfiDirectory 'Ffi.kimiproj'))
-Assert-Elf $linuxFfiDirectory 'Ffi'
+Assert-Elf $linuxFfiDirectory 'x86_64-unknown-linux-musl' 'Ffi'
 $linuxRecord = Get-Content -LiteralPath (Join-Path $linuxFfiDirectory 'bin/x86_64-unknown-linux-musl/Ffi.link.build.json') -Raw | ConvertFrom-Json
 if (($linuxRecord.libraries | Where-Object name -ceq 'codec').sha256 -cne (Get-FileHash (Join-Path $linuxNative 'codec.a')).Hash.ToLowerInvariant()) { throw 'The Linux foreign supply was not linked from codec.a' }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler', 'removed options', 'project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions', 'linux-x64 project builds a static ELF', 'run refuses a target this host does not run', 'linux-x64 foreign static supply') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+# An x86_64-unknown-none project, a Kernel (row 1's Hello.kimi and its COM1 platform, Board.kimi, copied from scripts/run-none-qemu/:
+# the one committed Kernel program, which run-none-qemu.ps1 boots under QEMU), builds the kernel image, a static ELF, and run refuses
+# it as a target this host does not run: the Unsupported_Kd at Kernel.kimiproj, exit 1 (the Tatara plan's B9g, design rows 1 and 13).
+# It builds first here, so the refusal before any build is CommandExecutionTest.RunRefusesATargetThisHostDoesNotRunBeforeAnyBuild's row.
+$kernelDirectory = Join-Path $work 'none x64'
+New-Item -ItemType Directory -Path $kernelDirectory -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $kernelDirectory 'Kernel.kimiproj') -Value 'Targets={"x86_64-unknown-none"}' -Encoding utf8
+foreach ($name in 'Hello.kimi', 'Board.kimi') { Copy-Item -LiteralPath (Join-Path $repo "scripts/run-none-qemu/$name") -Destination $kernelDirectory }
+$output = Invoke-Kimi @('build', (Join-Path $kernelDirectory 'Kernel.kimiproj'))
+Assert-Elf $kernelDirectory 'x86_64-unknown-none' 'Kernel'
+$output = Invoke-Kimi @('run', (Join-Path $kernelDirectory 'Kernel.kimiproj')) 1
+if (-not ($output.Contains('This form is outside the implemented subset') -and $output.Contains('Kernel.kimiproj'))) { throw "Run did not refuse the x86_64-unknown-none target at its project: $output" }
+
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler', 'removed options', 'project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions', 'linux-x64 project builds a static ELF', 'run refuses a target this host does not run', 'linux-x64 foreign static supply', 'x86_64-unknown-none project builds a kernel image', 'run refuses x86_64-unknown-none') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

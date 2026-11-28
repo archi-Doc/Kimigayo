@@ -8,6 +8,14 @@ public sealed partial class Binding
 {
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
 
+    // The layer sites of local annotations whose declarations have not formed their rows yet (SPEC 15.6.1, 15.4.4; R7-O2 A4-L).
+    // - Contract: CompleteOrigins, the one owner of a layer's site rule, appends each site it decides inside a local's annotation, with
+    //   the local, in place of forming the row; that local's declaration (RetainLocalWellFormedness) forms the rows at its own sites, its
+    //   only input, and removes them. A declaration nested in an initializer forms and removes its own first.
+    // - Invariants: a site appears once per completion of its node; no reader but the declaration's step; ResetPass clears it, so an
+    //   entry a demand completed for a declaration that did not bind outlives no pass.
+    private readonly List<(VariableKoto Local, Koto Site)> localLayerSites = new();
+
     internal BoundType SelfType(BindingSymbol symbol)
     {
         // A Self symbol carries its Type (SPEC 9.1: `S<Slot(0), ...>` or the Contract's Self parameter); no Type is headed by it.
@@ -98,6 +106,10 @@ public sealed partial class Binding
     private static bool HasOpenSlot(BoundType type) => type.Kind == BoundTypeKind.Slice ? type.Origin is null
         : type is { Semantics: SemanticsKind.Owner, Symbol.Schema.Origins.Count: 1 } && (type.OriginArguments.Count == 0 || type.OriginArguments[0] is null);
 
+    // SPEC 15.3.1, 15.6.1: whether `type` is a layer whose outer Origin is its own: a borrow, a Slice or a SemanticsApplication. The one
+    // kind test of the Origin branch (CompleteOrigins) and of a layer's rows (RetainLayerOutlives).
+    private static bool IsOriginLayer(BoundType type) => IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication;
+
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)!
             : this.types.Rebuild(type, (BoundType[])type.Components, origin, arguments);
@@ -126,7 +138,7 @@ public sealed partial class Binding
         }
 
         // A written Type parameter here is a pair binder's layer or carries Origin arguments: a slot binding's target is decided above.
-        if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
+        if (IsOriginLayer(type) || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
             {
@@ -178,8 +190,11 @@ public sealed partial class Binding
             // anonymous function's or a Function Type's parameter) forms none: its well-formedness is a premise of that signature (R2) and
             // an obligation of each call (RequireInputPremises), never a relation of the body it is written in (SPEC 15.3.4, 15.6.1).
             // A transparent wrapper returns its inner node's Type, whose well-formedness that node formed: it forms the relation only
-            // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record).
-            if (origin is not null && type.Components.Count != 0 && (supplied || TransparentInner(use) is null) && !this.InactiveOuterOrigin(type, this, use, use, default) &&
+            // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record), and a layer whose wrapper supplies its
+            // outer Origin (none written, SuppressOuter) has none to relate. This is the one site rule of a layer's rows (PLAN G412). A
+            // site inside a local's annotation is published to its declaration, which forms the row over the Type it resolves
+            // (localLayerSites, RetainLocalWellFormedness; R7-O2 A4-L): the declaration moves the time of formation, never its site.
+            if (origin is not null && (supplied || TransparentInner(use) is null) &&
                 context is not { Position: TypePosition.Parameter, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
@@ -190,9 +205,14 @@ public sealed partial class Binding
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
                     (AdtDef.IsStruct(type.SafeReferent) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows
                     : context.Position == TypePosition.Result && AssumesResult(context.Owner) ? OriginDischarge.AssumedResult : OriginDischarge.Judgment;
-                // A written Type's own layer at its use, in no comparison (default), as its retention below.
-                var formation = new UseScope(use);
-                this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation, default)));
+                if (context is { Position: TypePosition.Local, Owner: VariableKoto { TypeKoto: { } local } variable } && IsWithin(use, local))
+                {
+                    this.localLayerSites.Add((variable, use)); // A Local layer's rows are Judgment rows (RetainLocalWellFormedness).
+                }
+                else
+                {
+                    this.RetainLayerOutlives(type, use, discharge);
+                }
             }
         }
         else if (type is { IsPointer: true })
@@ -285,6 +305,46 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 15.6.1: the well-formedness of the completed layer `type` at `use`, a borrow, Slice or SemanticsApplication layer with an outer
+    // Origin and a component, its outer slot active (InactiveOuterOrigin): each Origin its component stores outlives that Origin
+    // (RetainInnerOutlives), in the cases its pair slot exists (PairSlotCondition), discharged as the caller's position takes it. The one
+    // formation of a layer's rows: at the layer's binding (CompleteOrigins), or for a local's annotation at its declaration
+    // (RetainLocalWellFormedness).
+    private void RetainLayerOutlives(BoundType type, Koto use, OriginDischarge discharge)
+    {
+        if (IsOriginLayer(type) && type.Origin is { } origin &&
+            type.Components.Count != 0 && !this.InactiveOuterOrigin(type, this, use, use, default))
+        {
+            // A written Type's own layer at its use, in no comparison (default), as its retention below.
+            var formation = new UseScope(use);
+            this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation, default)));
+        }
+    }
+
+    // SPEC 15.6.1, 15.4.4 (R7-O2 A4-L): `local`'s annotation's layer rows, formed by its declaration (BindVariableCore, after
+    // InferLocalOrigins and before FixDeclaredRegions, which reads them as bounds of its region slots) at each site CompleteOrigins
+    // published for it (localLayerSites, its only input, which it removes), over that node's Type as the declaration left it
+    // (`node.BoundType`, an omitted slot the local's region slot), Judgment rows as every Local layer's. A layer that formed keeps its
+    // rows when the annotation as a whole fails (SPEC 23.1.2); a Function Type's layers are its signature's, at their own positions.
+    private void RetainLocalWellFormedness(VariableKoto local)
+    {
+        var kept = 0;
+        for (var i = 0; i < this.localLayerSites.Count; i++)
+        {
+            var (owner, site) = this.localLayerSites[i];
+            if (!ReferenceEquals(owner, local))
+            {
+                this.localLayerSites[kept++] = (owner, site);
+            }
+            else if (site.BoundType is { } type)
+            {
+                this.RetainLayerOutlives(type, site, OriginDischarge.Judgment);
+            }
+        }
+
+        this.localLayerSites.RemoveRange(kept, this.localLayerSites.Count - kept);
+    }
+
     // The one binding of a written Origin atom: its expression, or the name it was written as. Null when the atom failed (its own record).
     private BoundOrigin? WrittenOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope)
         => annotation.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
@@ -331,14 +391,14 @@ public sealed partial class Binding
         }
     }
 
-    // One query of the requirement fixed point's visit of a declared Type: each distinct part once per polarity (visitedParts' state, one
-    // bit per polarity). A part met again at a polarity repeats its joins and keepers, duplicates only; a join a revisit would have made
-    // after this visit changed a slot the part reads is made when the declaration is visited again (its self-edge, CollectRequirementEdges,
-    // queues it as its own dependent), so the least fixed point is the same (DECISIONS BU-19, PLAN G309).
+    // One query of the requirement fixed point's visit of a declared Type: each distinct part once per polarity and position (visitedParts'
+    // state, one bit per polarity and StoragePosition). A part met again in a state repeats its joins and keepers, duplicates only; a join
+    // a revisit would have made after this visit changed a slot the part reads is made when the declaration is visited again (its
+    // self-edge, CollectRequirementEdges, queues it as its own dependent), so the least fixed point is the same (DECISIONS BU-19, PLAN G309).
     private void AccumulateRequirements(BoundType type, DeclarationSchema schema, int polarity, ref bool changed)
-        => this.RequirementPart(type, schema, polarity, ref changed, this.visitedParts.Begin(this.storageVersion));
+        => this.RequirementPart(type, schema, polarity, StoragePosition.Stored, ref changed, this.visitedParts.Begin(this.storageVersion));
 
-    private void RequirementPart(BoundType type, DeclarationSchema schema, int polarity, ref bool changed, uint query)
+    private void RequirementPart(BoundType type, DeclarationSchema schema, int polarity, StoragePosition position, ref bool changed, uint query)
     {
         // Only Origins and Type Parameter slots contribute; other subtrees cannot change a summary.
         if (!type.CarriesOriginOrSlot)
@@ -372,8 +432,8 @@ public sealed partial class Binding
             // a use of none still counts toward variance.
             var conditional = TryPairLayer(type, out var whole, out var target);
             var loan = IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref;
-            var use = conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, default);
-            this.AccumulateOrigin(origin, schema, polarity, use, ref changed);
+            var use = position == StoragePosition.Signature ? default : conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, default);
+            this.AccumulateOrigin(origin, schema, polarity, use, position, ref changed);
             if (use != default)
             {
                 this.Keep(schema, origin, conditional ? target : this.BorrowReferent(type, out _, out _), null, use.Binders);
@@ -382,8 +442,9 @@ public sealed partial class Binding
 
         if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
         {
-            // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
-            this.AccumulateOrigin(raw, schema, polarity, default, ref changed);
+            // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status. So is
+            // every layer of a stored Function Type's signature, which stores nothing (SPEC 15.2.4, 15.3.5; StoragePosition.Signature).
+            this.AccumulateOrigin(raw, schema, polarity, default, position, ref changed);
         }
 
         // A Type may carry fewer or more arguments than its declaration while a pass is
@@ -397,15 +458,18 @@ public sealed partial class Binding
                 continue;
             }
 
+            // SPEC 15.3.5: the chain through a nested Type's slot bound to the argument reaches a stored signature where the slot's does.
             var sign = source.Variance == OriginVariance.Invariant ? 0 : source.Variance == OriginVariance.Contravariant ? -polarity : polarity;
-            var use = this.NestedUse(source.Requirement, type, schema);
-            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, use, ref changed);
+            var use = position == StoragePosition.Signature ? default : this.NestedUse(source.Requirement, type, schema);
+            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, use, source.InStoredSignature ? StoragePosition.Signature : position, ref changed);
             if (use != default)
             {
                 this.Keep(schema, type.OriginArguments[i], type, source, default);
             }
         }
 
+        // A Function Type's parameters and result are its signature (StoragePosition.Signature).
+        var below = type.Kind == BoundTypeKind.Function ? StoragePosition.Signature : position;
         for (var i = 0; i < type.Components.Count; i++)
         {
             var sign = IsInvariantLayer(type, this, null, default) ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
@@ -420,20 +484,20 @@ public sealed partial class Binding
                 sign = variance == OriginVariance.Invariant ? 0 : variance == OriginVariance.Contravariant ? -polarity : polarity;
             }
 
-            if (this.FirstVisit(type.Components[i], query, (byte)(2 << (sign + 1))))
+            if (this.FirstVisit(type.Components[i], query, (byte)(2 << (sign + 1 + (below == StoragePosition.Signature ? 3 : 0)))))
             {
-                this.RequirementPart(type.Components[i], schema, sign, ref changed, query);
+                this.RequirementPart(type.Components[i], schema, sign, below, ref changed, query);
             }
         }
     }
 
-    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, SlotRequirement use, ref bool changed)
+    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, SlotRequirement use, StoragePosition position, ref bool changed)
     {
         if (origin.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                this.AccumulateOrigin(origin.Operands[i], schema, polarity, use, ref changed);
+                this.AccumulateOrigin(origin.Operands[i], schema, polarity, use, position, ref changed);
             }
 
             return;
@@ -452,6 +516,12 @@ public sealed partial class Binding
             if (combined != parameter.Variance)
             {
                 parameter.Variance = combined;
+                changed = true;
+            }
+
+            if (position == StoragePosition.Signature && !parameter.InStoredSignature)
+            {
+                parameter.InStoredSignature = true;
                 changed = true;
             }
 

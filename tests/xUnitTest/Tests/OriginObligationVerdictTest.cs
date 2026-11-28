@@ -77,10 +77,12 @@ public class OriginObligationVerdictTest
     }
 
     // SPEC 15.3.6, 15.4.4 (DECISIONS BU-85, rule W): an Origin a local's Type omits is inferred when the local binds; when its
-    // initializer fails, the inference is left resting on that failure and adds no record. A valid local leaves none.
+    // initializer fails, the inference is left resting on that failure and adds no record, also a join no source supplies a candidate
+    // to (G103 C: one with a candidate, as `if c => x@ref else => missing`, is typed by it, and the inference is made). A valid local
+    // leaves none.
     [Theory]
     [InlineData("func f()\n    var x = 1\n    let p = x@ref\n    let r: ref/i32 = bogus(p)\n", false)]
-    [InlineData("func f(c: bool)\n    let x = 1\n    let r: ref/i32 = if c => x@ref else => missing\n", false)]
+    [InlineData("func f(c: bool)\n    let r: ref/i32 = if c => missing else => missing2\n", false)]
     [InlineData("func f()\n    let x = 1\n    let r: ref/i32 = x@ref\n", true)]
     public void AnOriginInferenceRestsOnItsLocalsFailure(string source, bool valid)
     {

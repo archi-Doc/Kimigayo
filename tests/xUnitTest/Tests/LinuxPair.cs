@@ -19,32 +19,34 @@ internal static class LinuxPair
     // The C flags of a library member (Archive): no builtins, no stack protector, Microsoft's extensions for selectany.
     private static readonly string[] Flags = ["--target=" + TargetProfile.Linux.Target, "-O2", "-fno-builtin", "-fno-stack-protector", "-fms-extensions", "-c"];
 
-    /// <summary>Publishes a Linux Application pair of the source into directory/out/Hello.ll at the level, its program libraries under
-    /// the Linux key (each <c>native/&lt;input&gt;</c>, static unless the kind says otherwise).</summary>
+    /// <summary>Publishes an Application pair of the source for an ELF row (linux-x64, or none-x64: Tatara B9f) into
+    /// directory/out/Hello.ll at the level, its program libraries under the row's key (each <c>native/&lt;input&gt;</c>, static unless the
+    /// kind says otherwise).</summary>
+    /// <param name="row">The target row.</param>
     /// <param name="directory">The project's directory.</param>
     /// <param name="source">main.kimi's text.</param>
     /// <param name="level">O0 or O2.</param>
     /// <param name="libraries">Each program library's name, Kind and input file under native/.</param>
     /// <returns>The pair's paths.</returns>
-    internal static ArtifactPaths Publish(string directory, string source, string level, params (string Name, string Kind, string Input)[] libraries)
+    internal static ArtifactPaths Publish(TargetProfile row, string directory, string source, string level, params (string Name, string Kind, string Input)[] libraries)
     {
         var c = Compilation.CreateForTest();
         var settings = c.Project.ProjectFile;
-        settings.NativeLibraries[TargetProfile.Linux.Target] = new();
+        settings.NativeLibraries[row.Target] = new();
         foreach (var (name, kind, input) in libraries)
         {
-            settings.NativeLibraries[TargetProfile.Linux.Target][name] = new() { Kind = kind, Input = "native/" + input };
+            settings.NativeLibraries[row.Target][name] = new() { Kind = kind, Input = "native/" + input };
         }
 
         settings.Optimization = level;
-        Assert.True(c.Prepare(TargetProfile.Linux.Target));
+        Assert.True(c.Prepare(row.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         c.Project.Directory = directory;
         c.Project.Name = "Hello";
-        var paths = ArtifactPaths.Create(Path.Combine(directory, "out", "Hello.ll"), level, TargetProfile.Linux);
+        var paths = ArtifactPaths.Create(Path.Combine(directory, "out", "Hello.ll"), level, row);
         Assert.True(EmissionArtifacts.Publish(c, paths), MinimalEmissionTest.Describe(c));
         return paths;
     }
@@ -130,8 +132,9 @@ internal static class LinuxPair
 }
 
 // §6.1's managed reading of a static ELF executable (Tatara B7b1; shared since B7b7): ELF64 little-endian; the header's type, machine and
-// entry, each program header's type and flags, and .symtab's symbols with their values.
-internal sealed record ElfFile(int Type, int Machine, ulong Entry, (uint Type, uint Flags)[] Segments, Dictionary<string, ulong> Symbols)
+// entry, each program header's type, flags, file offset, virtual address, file and memory sizes and alignment (B9f: the kernel image's
+// layout), and .symtab's symbols with their values.
+internal sealed record ElfFile(int Type, int Machine, ulong Entry, (uint Type, uint Flags, ulong Offset, ulong Address, ulong FileSize, ulong MemorySize, ulong Align)[] Segments, Dictionary<string, ulong> Symbols)
 {
     internal static ElfFile Read(string path)
     {
@@ -141,7 +144,8 @@ internal sealed record ElfFile(int Type, int Machine, ulong Entry, (uint Type, u
         uint U32(int at) => BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(at));
         ulong U64(int at) => BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(at));
         var (programs, programSize, sections, sectionSize) = ((int)U64(32), U16(54), (int)U64(40), U16(58));
-        var segments = Enumerable.Range(0, U16(56)).Select(i => (U32(programs + (i * programSize)), U32(programs + (i * programSize) + 4))).ToArray();
+        var segments = Enumerable.Range(0, U16(56)).Select(i => programs + (i * programSize)).Select(
+            x => (U32(x), U32(x + 4), U64(x + 8), U64(x + 16), U64(x + 32), U64(x + 40), U64(x + 48))).ToArray();
         var symbols = new Dictionary<string, ulong>();
         for (var header = sections; header < sections + (U16(60) * sectionSize); header += sectionSize)
         {

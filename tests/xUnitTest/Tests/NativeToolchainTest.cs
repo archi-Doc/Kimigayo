@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Reflection.PortableExecutable;
 using System.Runtime.Versioning;
@@ -44,6 +45,7 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public void NativeInputSnapshotDoesNotFollowChangesToTheOriginal()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows); // The hold's read-only sharing is Windows'.
         var input = Path.Combine(this.directory, "input.lib");
         File.WriteAllText(input, "first");
         var staged = Stage(out var hash);
@@ -76,35 +78,49 @@ public sealed class NativeToolchainTest : IDisposable
     // start, libc.a library, crtn.o end), and the catalog's providedSymbols are c's symbols. Each file's SHA-256 is its catalog's, and each
     // embedded resource has that SHA-256 and is the file committed beside the catalog, so a build stages the adopted bytes. musl's notice,
     // which the compiler carries as Kimi.Linux.COPYRIGHT, is the tarball's COPYRIGHT: the catalog's copyrightSha256, which build-musl.ps1
-    // checks in the extracted tarball.
+    // checks in the extracted tarball. The none-x64 row's kimi_backend (the Tatara plan's B9e, IMPL 21.6.7): compiler-rt's
+    // soft-float archive, one file at the library place, its catalog's providedSymbols the supply's symbols, and compiler-rt's licence,
+    // carried as Kimi.None.LICENSE-compiler-rt.txt, the tarball's LICENSE.TXT (the catalog's licenseSha256, build-compiler-rt.ps1's
+    // check). Each catalog's linkerScript is its row's script (Scripts takes every catalog's; none-x64's kernel.ld, its embedded bytes
+    // the committed file; the Tatara plan's B9f, T's ruling 167). Fail-before (B9e): no none record.
     [Fact]
     public void EachCompilerSupplyIsTheCatalogsCommittedFile()
     {
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64"));
-        var linux = Path.Combine(directory, "../linux-x64");
-        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "profile.json")));
-        using var musl = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(linux, "profile.json")));
+        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(CatalogFolder(TargetProfile.Windows), "profile.json")));
+        using var musl = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(CatalogFolder(TargetProfile.Linux), "profile.json")));
+        using var none = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(CatalogFolder(TargetProfile.None), "profile.json")));
         Assert.Equal(
             [
                 $"windows-x64-v1 kernel32 kernel32.lib library {catalog.RootElement.GetProperty("kernel32").GetProperty("sha256").GetString()}",
                 $"windows-x64-v1 kimi_backend kimi_backend_windows_x64_v1.lib library {catalog.RootElement.GetProperty("artifactSha256").GetString()}",
                 .. musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"linux-x64-v1 c {x.GetProperty("name").GetString()} {x.GetProperty("place").GetString()} {x.GetProperty("sha256").GetString()}"),
+                .. none.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"none-x64-v1 kimi_backend {x.GetProperty("name").GetString()} {x.GetProperty("place").GetString()} {x.GetProperty("sha256").GetString()}"),
             ],
             ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"{x.Row.Name} {x.Supply.Name} {f.Name} {f.Place.ToString().ToLowerInvariant()} {f.Sha256}")));
         Assert.Equal(["crt1.o Start", "crti.o Start", "libc.a Library", "crtn.o End"], Assert.Single(ToolchainIdentity.Supplies, static x => x.Row == TargetProfile.Linux).Files.Select(static x => $"{x.Name} {x.Place}"));
         Assert.Equal(TargetProfile.Linux.Supply("c")!.Symbols, musl.RootElement.GetProperty("providedSymbols").EnumerateArray().Select(static x => x.GetString()));
+        Assert.Equal(["kimi_backend_none_x64_v1.a Library"], Assert.Single(ToolchainIdentity.Supplies, static x => x.Row == TargetProfile.None).Files.Select(static x => $"{x.Name} {x.Place}"));
+        Assert.Equal(
+            [.. CatalogScript(TargetProfile.Linux, musl), .. CatalogScript(TargetProfile.None, none)],
+            ToolchainIdentity.Scripts.Select(static x => $"{x.Row.Name} {x.File.Name} {x.File.Sha256}"));
+        AssertCommitted(ToolchainIdentity.Script(TargetProfile.None)!.Open(), ToolchainIdentity.Script(TargetProfile.None)!.Sha256, Path.Combine(CatalogFolder(TargetProfile.None), "kernel.ld"));
+        Assert.Equal(TargetProfile.None.Supply("kimi_backend")?.Symbols ?? [], none.RootElement.GetProperty("providedSymbols").EnumerateArray().Select(static x => x.GetString()));
         foreach (var supply in ToolchainIdentity.Supplies)
         {
             foreach (var file in supply.Files)
             {
-                AssertCommitted(file.Open(), file.Sha256, Path.Combine(supply.Row == TargetProfile.Linux ? linux : directory, file.Name));
+                AssertCommitted(file.Open(), file.Sha256, Path.Combine(CatalogFolder(supply.Row), file.Name));
             }
         }
 
         AssertCommitted(
             typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.Linux.COPYRIGHT")!,
             musl.RootElement.GetProperty("musl").GetProperty("copyrightSha256").GetString()!,
-            Path.Combine(linux, "COPYRIGHT"));
+            Path.Combine(CatalogFolder(TargetProfile.Linux), "COPYRIGHT"));
+        AssertCommitted(
+            typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.None.LICENSE-compiler-rt.txt")!,
+            none.RootElement.GetProperty("compilerRt").GetProperty("licenseSha256").GetString()!,
+            Path.Combine(CatalogFolder(TargetProfile.None), "LICENSE-compiler-rt.txt"));
 
         static void AssertCommitted(Stream stream, string sha256, string file)
         {
@@ -117,6 +133,10 @@ public sealed class NativeToolchainTest : IDisposable
             Assert.Equal(sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
             Assert.Equal(File.ReadAllBytes(file), bytes.ToArray());
         }
+
+        // A catalog's linkerScript, if it names one, in Scripts' form.
+        static string[] CatalogScript(TargetProfile row, JsonDocument catalog) => catalog.RootElement.TryGetProperty("linkerScript", out var script) ?
+            [$"{row.Name} {script.GetProperty("name").GetString()} {script.GetProperty("sha256").GetString()}"] : [];
     }
 
     // SupplyFacts (PLAN G1374; design §2, §3, §7 T1): each compiler supply file carries Tatara's inspection of its bytes, read at
@@ -132,7 +152,7 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public void EachCompilerSupplysFactsAreItsInspection()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var write = Environment.GetEnvironmentVariable("KIMI_SUPPLY_FACTS") == "write";
         var messages = new List<string>();
         var context = TataraExecutorTest.Context with { Report = (_, message) => messages.Add(message) };
@@ -140,7 +160,7 @@ public sealed class NativeToolchainTest : IDisposable
         {
             foreach (var file in supply.Files)
             {
-                var path = Path.Combine(Repository.Root, "src", "backend", supply.Row == TargetProfile.Linux ? "linux-x64" : "windows-x64", file.Name);
+                var path = Path.Combine(CatalogFolder(supply.Row), file.Name);
                 var inspection = Tatara.Instance.InspectTexts(context, path);
                 Assert.Empty(messages);
                 using var fresh = new MemoryStream();
@@ -197,8 +217,8 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData(false)]
     public void ACompilerSupplysFactsAreItsCatalogs(bool catalogHash)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var libc = Assert.Single(ToolchainIdentity.Of(TargetProfile.Linux.Supply("c"))!.Files, static x => x.Name == "libc.a");
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var libc = Assert.Single(ToolchainIdentity.Of(TargetProfile.Linux, "c")!.Files, static x => x.Name == "libc.a");
         var copy = Path.Combine(this.directory, "libc.a");
         File.WriteAllText(copy, "not an archive");
         var hash = catalogHash ? libc.Sha256 : ArtifactFiles.Hash(copy);
@@ -219,20 +239,22 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // T's ruling 79 (a): the Linux record's reader places each file Start, Library or End, its one read of a place; a missing or other
-    // place is the toolchain's InvalidDataException naming the file. Fail-before: an unknown place read (on 0e7a59618 any string did,
-    // and the ELF writer left such a file off its line).
+    // place is the toolchain's InvalidDataException naming the file, script among them (a linkerScript's place is its member's, T's
+    // ruling 167). Fail-before: an unknown place read (on 0e7a59618 any string did, and the ELF writer left such a file off its line);
+    // on c012d62c54 a file placed script read as the script's place.
     [Theory]
     [InlineData("\"begin\"")]
     [InlineData("\"Start\"")]
+    [InlineData("\"script\"")]
     [InlineData(null)]
     public void ACatalogFileOutsideThePlacesIsRefused(string? place)
     {
         using var valid = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\", \"place\": \"start\"}");
-        Assert.Equal(SupplyPlace.Start, ToolchainIdentity.ReadFile(valid.RootElement).Place);
+        Assert.Equal(SupplyPlace.Start, ToolchainIdentity.ReadFile(valid.RootElement, "Linux").Place);
         using var file = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\"" + (place is null ? string.Empty : ", \"place\": " + place) + "}");
         Assert.Equal(
             "The embedded native supply catalog's file 'crt1.o' has no place on an ELF link line (start, library or end).",
-            Assert.Throws<InvalidDataException>(() => ToolchainIdentity.ReadFile(file.RootElement)).Message);
+            Assert.Throws<InvalidDataException>(() => ToolchainIdentity.ReadFile(file.RootElement, "Linux")).Message);
     }
 
     // The invalidation is the record's incomplete state: its status and the compiler's and LLVM's versions, and no member more (PLAN
@@ -306,7 +328,7 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public async Task TheRuntimesImportsAreTheManifests()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = this.Hello("Hello");
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
@@ -354,7 +376,7 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public void VerificationIsASelfCheckOfWhatTheCompilerCarries()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var report = Path.Combine(this.directory, "evidence", "toolchain.json");
         var lines = new List<string>();
         NativeToolchain.Verify(report, (severity, line) => lines.Add($"{severity}: {line}"), TestContext.Current.CancellationToken);
@@ -363,6 +385,7 @@ public sealed class NativeToolchainTest : IDisposable
             [
                 $"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}",
                 .. ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"Information: {x.Row.Name} {x.Supply.Name} {f.Name}: {f.Sha256} (the catalog's), facts matched")),
+                "Information: none-x64-v1 linker script kernel.ld: " + ToolchainIdentity.Script(TargetProfile.None)!.Sha256 + " (the catalog's)",
             ];
         Assert.Equal(expected, lines);
         using var record = JsonDocument.Parse(File.ReadAllText(report));
@@ -384,7 +407,8 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // A supply whose embedded bytes are not its row's SHA-256 (only a defective build of Kimi carries one) is the toolchain's failure,
-    // its statement kept in the report's supplies, with its facts unchecked (factsMatched false; SupplyFacts, design §7).
+    // its statement kept in the report's supplies, with its facts unchecked (factsMatched false; SupplyFacts, design §7); so is a row's
+    // linker script, through the same compare (T's ruling 167).
     [Fact]
     public void VerificationRejectsASupplyThatIsNotItsCatalogsBytes()
     {
@@ -402,6 +426,9 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(
             $"c linux-x64-v1 libc.a {c.Files[2].Sha256} false false",
             $"{supplies[1]!["name"]} {supplies[1]!["row"]} {supplies[1]!["file"]} {supplies[1]!["sha256"]} {supplies[1]!["hashMatched"]} {supplies[1]!["factsMatched"]}");
+        error = Assert.Throws<InvalidDataException>(() => NativeToolchain.VerifyScript(TargetProfile.None, ToolchainIdentity.Script(TargetProfile.None)! with { Sha256 = new string('0', 64) }));
+        Assert.Equal("The compiler's none-x64-v1 linker script kernel.ld does not match its catalog SHA-256.", error.Message);
+        Assert.True(NativeToolchain.IsToolchainFailure(error));
     }
 
     [Fact]
@@ -460,15 +487,16 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Executable));
     }
 
-    // IMPL 20.3: a build records its one selected target's output; several selected targets or one without a row (the Tatara plan's
-    // B7b8: Unsupported), a staged row (none-x64) included, fail before the output's paths, so no record is written under any bin\
-    // directory. Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete")
-    // whatever target was selected.
+    // IMPL 20.3: a build records its one selected target's output, under bin\<target>\; several selected targets or one without a row
+    // (the Tatara plan's B7b8: Unsupported) fail before the output's paths, so no record is written under any bin\ directory.
+    // Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete") whatever
+    // target was selected; the x86_64-unknown-none row (the Tatara plan's B9g; B9b's membership line, removed with TargetProfile.Staged
+    // as planned) wrote no record.
     [Theory]
     [InlineData("", false)]
     [InlineData("aarch64-pc-windows-msvc", false)]
     [InlineData("x86_64-unknown-linux-gnu", false)]
-    [InlineData("x86_64-unknown-none", false)]
+    [InlineData("x86_64-unknown-none", true)]
     [InlineData("x86_64-pc-windows-msvc", true)]
     public async Task LibraryBuildRequiresOneSelectedSupportedTarget(string selected, bool accepted)
     {
@@ -484,7 +512,7 @@ public sealed class NativeToolchainTest : IDisposable
             return;
         }
 
-        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project, TargetProfile.Windows).Record));
+        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project, TargetProfile.Find(selected)!).Record));
         Assert.Equal("checked", record.RootElement.GetProperty("status").GetString());
         Assert.Equal(selected, record.RootElement.GetProperty("target").GetString());
     }
@@ -541,7 +569,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("earlier", "A.kimi", "A.kimi", "")]
     public async Task ARunWithoutBuildRunsOnlyTheBuildOfItsInput(string how, string built, string run, string? recorded)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var settings = $"Targets={{\"{TargetProfile.Windows.Target}\"}}";
         File.WriteAllText(Path.Combine(this.directory, "A.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
         File.WriteAllText(Path.Combine(this.directory, "A.kimiproj"), settings);
@@ -712,7 +740,7 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public async Task AFailingBuiltReportFaultsTheBuildAndLeavesNoSuccessfulRecord()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var (_, _, v1) = await this.BuildHello();
         this.console.LineAction = ("Built: ", DiagnosticContractTest.DiagnosticConsole.Fail);
         var project = this.Hello("Hi");
@@ -735,7 +763,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("executable")]
     public async Task AFailureAtTheCommitPublishesNoExecutable(string point)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var (_, paths, v1) = await this.BuildHello();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         FileStream? held = null;
@@ -783,7 +811,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("manifest", "release")]
     public async Task ABuildWaitsForTheLockOfItsRecord(string build, string action)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var (project, paths, v1) = await this.BuildHello();
         var record = File.ReadAllText(paths.Record);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -824,7 +852,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("lock read-only")]
     public async Task ABuildThatCannotBeginNamesItsRecordWhichKeepsItsLastState(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var (_, paths, v1) = await this.BuildHello();
         var record = File.ReadAllText(paths.Record);
         var file = row == "lock read-only" ? Path.ChangeExtension(paths.Record, ".lock") : paths.Record;
@@ -862,7 +890,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("another output")]
     public async Task ABuildWaitsForNoLockButItsHeldOne(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = this.Hello("Hello");
         var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
         var output = Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!).FullName;
@@ -891,7 +919,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("O0")]
     public async Task AnEmitDuringABuildOfItsOutputFails(string optimization)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var token = TestContext.Current.CancellationToken;
         var project = this.Hello("Checked");
         project.ProjectFile.Optimization = optimization;
@@ -929,7 +957,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("Y.O2", "Y")]
     public async Task AManifestNamingAnotherIrFailsAtThePathCheck(string output, string copy)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var token = TestContext.Current.CancellationToken;
         var project = this.Hello("Hello");
         project.ProjectFile.OutputPath = "out/" + output + ".ll";
@@ -959,7 +987,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("Hello.LL", "Hello.link.json")]
     public async Task AManifestNamingItsIrInAnotherCaseBuilds(string ir, string manifest)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var token = TestContext.Current.CancellationToken;
         var project = this.Hello("Hello");
         project.ProjectFile.OutputPath = "out/" + ir;
@@ -985,7 +1013,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("default library")]
     public async Task TheObjectInspectionJudgesNoUnwindEntry(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var token = TestContext.Current.CancellationToken;
         var project = row == "leaf" ? this.Main("func forever(a: ref/string) -> Never\n    loop => ()\nlet a = (\"held\", 0)\nforever(a.0)\n") : this.Hello("Hello");
         var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
@@ -1027,8 +1055,8 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public async Task ALinuxObjectNamingADefaultLibraryFailsBeforeTheLink()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var paths = LinuxPair.Publish(this.directory, "::Kimi.Console.writeLine(\"Hello\")", "O0");
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var paths = LinuxPair.Publish(TargetProfile.Linux, this.directory, "::Kimi.Console.writeLine(\"Hello\")", "O0");
         File.AppendAllText(paths.Ir, "\n!llvm.dependent-libraries = !{!9000}\n!9000 = !{!\"m\"}\n");
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
         manifest["irSha256"] = ArtifactFiles.Hash(paths.Ir);
@@ -1043,7 +1071,7 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public async Task AManifestWithoutACompilerSupplyFailsNamingIt()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = this.Hello("Hello");
         Assert.True(await project.Generate(TestContext.Current.CancellationToken), this.console.Text);
         var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
@@ -1067,7 +1095,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("LINK")]
     public async Task TheLinkReadsNoLinkerVariable(string variable)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var (_, _, v1) = await this.BuildHello();
         await FreshProcess.RunExplicit(typeof(NativeToolchainTest), nameof(NativeToolchainTest.HelloUnderALinkerVariable), (variable, "/filealign:4096"), (ExpectedExecutable, v1));
     }
@@ -1090,7 +1118,7 @@ public sealed class NativeToolchainTest : IDisposable
     [SupportedOSPlatform("windows")]
     public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var (project, paths, v1) = await this.BuildHello();
         var staged = Windows64Supplies().Select(x => (x.Supply.Name, Path: Path.Combine(paths.Native, x.Files[0].Sha256 + ".lib"), x.Files[0].Sha256)).ToArray();
         string libraries;
@@ -1135,7 +1163,7 @@ public sealed class NativeToolchainTest : IDisposable
     [SupportedOSPlatform("windows")]
     public async Task AProgramsSupplyIsCopiedBeforeItIsHashed()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = await this.Codec("codec", true);
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         var folder = ArtifactPaths.Create(project, TargetProfile.Windows).Native;
@@ -1165,7 +1193,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("kimi_backend", false, true)]
     public async Task ACompilerSupplysHashAssertionIsChecked(string name, bool adopted, bool reused)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = this.Create();
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
@@ -1209,7 +1237,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("lock", false)]
     public async Task AStagedLibraryIsHeldFromItsCheckThroughTheLink(string change, bool later)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var token = TestContext.Current.CancellationToken;
         var project = this.Hello("Held");
         project.ProjectFile.Optimization = "O0";
@@ -1297,7 +1325,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("O2", "ll")]
     public async Task AnIntermediateIsHeldFromItsCreationThroughItsLastRead(string level, string file)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var token = TestContext.Current.CancellationToken;
         var changed = this.Hello("Changed");
         changed.ProjectFile.Optimization = level;
@@ -1368,7 +1396,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("codec", true)]
     public async Task ASuppliedMemoryFunctionIsADuplicateOfTheModules(string name, bool weak)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = await this.Codec(name, weak);
         var built = await project.Build(TestContext.Current.CancellationToken);
         if (weak)
@@ -1429,7 +1457,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("33", "alpha", "O2", "'lc_helper': defined by the libraries alpha and codec.")]
     public async Task AnAmbiguousDependencyFailsBeforeTheLink(string row, string name, string level, string line)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         await this.AssertFailsBeforeTheLink(await this.Dependency(row, name, level), "Ambiguous native symbol " + line);
     }
 
@@ -1460,7 +1488,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("k11lcb", "lcfg", "Native library 'lcfg' holds LLVM bitcode that the link would load, which is not supported.\nNative library 'lcfg' is declared import, but the link would load code from it for '_load_config_used'.")]
     public async Task AnInputInconsistentWithItsKindFailsBeforeTheLink(string row, string name, string lines)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         await this.AssertFailsBeforeTheLink(await this.Dependency(row, name, "O2"), lines);
     }
 
@@ -1487,7 +1515,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("35wp", "alpha", "Native library 'alpha' holds LLVM bitcode that the link would load, which is not supported.\nNative function 'alpha_g' is imported from alpha, which does not define 'alpha_g'; zeta defines 'alpha_g'.")]
     public async Task AnUnsupportedLibraryFailsBeforeTheLink(string row, string name, string lines)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         await this.AssertFailsBeforeTheLink(await this.Dependency(row, name, "O2"), lines);
     }
 
@@ -1504,7 +1532,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("k12", false)]
     public async Task AnInputConsistentWithItsKindBuilds(string row, bool runs)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = await this.Dependency(row, "codec", "O2");
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         Assert.True(File.Exists(ArtifactPaths.Create(project, TargetProfile.Windows).Executable));
@@ -1524,7 +1552,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("k7m", "Native library 'codec' is declared import, but its input is a bare import member, not a library.")]
     public async Task AShortImportFileFailsBeforeTheLink(string row, string line)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         await this.AssertFailsBeforeTheLink(await this.Dependency(row, "codec", "O2"), line);
     }
 
@@ -1550,7 +1578,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("p24b", "codec", "O2", "Native function 'codec_add' is imported from codec, which does not define 'codec_add'.")]
     public async Task AnImportItsLibraryDoesNotDefineFailsBeforeTheLink(string row, string name, string level, string lines)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         await this.AssertFailsBeforeTheLink(await this.Dependency(row, name, level), lines);
     }
 
@@ -1577,7 +1605,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("35t")]
     public async Task AnUnambiguousDependencyBuilds(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = await this.Dependency(row, "alpha", "O2");
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
@@ -1586,17 +1614,19 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // T's ruling 79 (c), design §3.11: the ELF line on both start paths, from the catalog's places: the libc-free path's -e and the
-    // row's entry before its one input, the object; the C path's files around the object, crt1.o crti.o <obj> <program libraries> libc.a
-    // crtn.o, and no -e (crt1.o defines _start).
+    // row's entry before its one input, the object; a row's script after -e, -T and --orphan-handling=error (the Tatara plan's B9f, T's
+    // rulings 152 and 159); the C path's files around the object, crt1.o crti.o <obj> <program libraries> libc.a crtn.o, and no -e
+    // (crt1.o defines _start).
     [Fact]
     public void TheElfLinePlacesItsInputsAroundTheObject()
     {
         string[] head = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", "Hello.elf"];
-        Assert.Equal([.. head, "-e", TargetProfile.Linux.EntrySymbol, "Hello.obj"], NativeToolchain.ElfLine(TargetProfile.Linux.EntrySymbol, "Hello.obj", [], "Hello.elf"));
+        Assert.Equal([.. head, "-e", TargetProfile.Linux.EntrySymbol, "Hello.obj"], NativeToolchain.ElfLine(TargetProfile.Linux.EntrySymbol, null, "Hello.obj", [], "Hello.elf"));
+        Assert.Equal([.. head, "-e", TargetProfile.None.EntrySymbol, "-T", "kernel.ld", "--orphan-handling=error", "Hello.obj"], NativeToolchain.ElfLine(TargetProfile.None.EntrySymbol, "kernel.ld", "Hello.obj", [], "Hello.elf"));
         var libraries = new List<NativeToolchain.StagedLibrary>();
         try
         {
-            foreach (var file in ToolchainIdentity.Of(TargetProfile.Linux.Supply("c"))!.Files)
+            foreach (var file in ToolchainIdentity.Of(TargetProfile.Linux, "c")!.Files)
             {
                 libraries.Add(new("c", "static", file.Sha256, File.Create(Path.Combine(this.directory, file.Name)), file));
             }
@@ -1604,7 +1634,7 @@ public sealed class NativeToolchainTest : IDisposable
             libraries.Add(new("codec", "static", "0", File.Create(Path.Combine(this.directory, "codec.a")), null));
             string[] inputs = ["crt1.o", "crti.o", "codec.a", "libc.a", "crtn.o"];
             var staged = inputs.Select(x => Path.Combine(this.directory, x)).ToArray();
-            Assert.Equal([.. head, staged[0], staged[1], "Hello.obj", .. staged[2..]], NativeToolchain.ElfLine("main", "Hello.obj", libraries, "Hello.elf"));
+            Assert.Equal([.. head, staged[0], staged[1], "Hello.obj", .. staged[2..]], NativeToolchain.ElfLine("main", null, "Hello.obj", libraries, "Hello.elf"));
         }
         finally
         {
@@ -1627,8 +1657,9 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("Ffi", "O2")]
     public async Task ALinuxPairBuildsAStaticElf(string program, string level)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var paths = await this.LinuxProgram(program, level);
+        // Guard (Tatara B9f): a hosted record has no linkerScript member.
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var paths = await this.ElfProgram(program, level);
         await LinuxPair.Build(paths);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         string[] names = [.. LinkManifest.Items(manifest.RootElement, "libraries").Select(static x => LinkManifest.Text(x, "libraries.name"))];
@@ -1636,33 +1667,106 @@ public sealed class NativeToolchainTest : IDisposable
         ElfFile.Read(paths.Executable).AssertStatic(program == "Ffi" ? "_start" : TargetProfile.Linux.EntrySymbol);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("linked", record.RootElement.GetProperty("status").GetString());
+        Assert.False(record.RootElement.TryGetProperty("linkerScript", out _));
         Assert.Equal(
             program == "Ffi" ? ["c .o", "c .o", "c .a", "c .o", "codec .a"] : [],
             record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x => $"{x.GetProperty("name").GetString()} {Path.GetExtension(x.GetProperty("path").GetString())}"));
+    }
+
+    // The Tatara plan's B9f (design §3.7, §6.1; IMPL 20.3.2, 21.6.1-21.6.2; decision 31; valid): Kernel's none pair, built by build
+    // --Manifest through the row's linker script, is the kernel image: ET_EXEC for EM_X86_64 entered at __kimi_start, at or above
+    // 0xFFFFFFFF80000000; exactly three PT_LOADs (so no PT_INTERP, PT_DYNAMIC or PT_GNU_STACK), R+X, R and R+W in that order, each
+    // aligned 0x1000; Limine's five requests in the R+W segment in the order start marker, base revision, HHDM, memory map, end marker
+    // (row 17), the start marker's and the base revision's first words at their symbols' file offsets (Limine's tag present). The record
+    // (design §5 row 21's valid half): a hosted record's members with linkerScript after libraries, staged before the link; it names no
+    // undefined object symbol (Kernel uses no float), and linkerScript the staged copy (<hash>.ld beside the libraries', its path redacted
+    // as theirs are) with the catalog's hash.
+    [Theory]
+    [InlineData("O0")]
+    [InlineData("O2")]
+    public async Task AKernelPairBuildsTheScriptsImage(string level)
+    {
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var paths = await this.ElfProgram("Kernel", level);
+        await LinuxPair.Build(paths);
+        var elf = ElfFile.Read(paths.Executable);
+        Assert.Equal((2, 62), (elf.Type, elf.Machine));
+        Assert.Equal(elf.Symbols[TargetProfile.None.EntrySymbol], elf.Entry);
+        Assert.True(elf.Entry >= 0xFFFFFFFF80000000, $"0x{elf.Entry:x}");
+        Assert.Equal([(1u, 5u, 0x1000ul), (1u, 4u, 0x1000ul), (1u, 6u, 0x1000ul)], elf.Segments.Select(static x => (x.Type, x.Flags, x.Align)));
+        var data = elf.Segments[2];
+        ulong[] requests = [.. new[] { "start", "base_revision", "hhdm", "memmap", "end" }.Select(x => elf.Symbols["__kimi_limine_" + x])];
+        Assert.Equal(requests.Order(), requests);
+        Assert.All(requests, x => Assert.InRange(x, data.Address, data.Address + data.MemorySize - 1));
+        var bytes = File.ReadAllBytes(paths.Executable);
+        Assert.Equal(
+            [0xf6b8f4b39de7d1aeUL, 0xf9562b2d5c95a6c8UL],
+            requests[..2].Select(x => BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan((int)(data.Offset + (x - data.Address))))));
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal(
+            "status,compilerVersion,llvmVersion,input,tools,irSha256,optimization,libraries,linkerScript,executable,executableSha256,objectUndefinedSymbols",
+            string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
+        Assert.Equal("linked", record.RootElement.GetProperty("status").GetString());
+        Assert.Equal(string.Empty, record.RootElement.GetProperty("objectUndefinedSymbols").GetString());
+        var sha256 = ToolchainIdentity.Script(TargetProfile.None)!.Sha256;
+        var staged = Path.Combine(paths.Native, sha256 + ".ld");
+        Assert.Equal(
+            NativeToolchain.Redact(staged, Path.GetDirectoryName(paths.Manifest)!) + " " + sha256,
+            $"{record.RootElement.GetProperty("linkerScript").GetProperty("path").GetString()} {record.RootElement.GetProperty("linkerScript").GetProperty("sha256").GetString()}");
+        Assert.Equal(sha256, ArtifactFiles.Hash(staged));
+    }
+
+    // Design §5 row 10's ELF half (the Tatara plan's decision 33, IMPL 21.6.7; valid): Kernel writing a measured Stopwatch's seconds
+    // (TataraExecutorTest.KernelSeconds, whose object leaves the u64 conversion and __divdf3 undefined: __floatundidf at O0, __floatdidf at
+    // O2, T's ruling 150 (4)) links both from the row's kimi_backend, last on the line: the record's undefined object symbols are those
+    // two, the ELF defines each in its text segment, and the archive's members are linked by need: __addsf3, which nothing references,
+    // is absent.
+    [Theory]
+    [InlineData("O0", "__floatundidf")]
+    [InlineData("O2", "__floatdidf")]
+    public async Task AKernelPairLinksTheBackendsMembersByNeed(string level, string conversion)
+    {
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var paths = await this.ElfProgram("Seconds", level);
+        await LinuxPair.Build(paths);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("linked", record.RootElement.GetProperty("status").GetString());
+        Assert.Equal(
+            ["__divdf3 U 0 0", conversion + " U 0 0"],
+            record.RootElement.GetProperty("objectUndefinedSymbols").GetString()!.Split('\n').Order(StringComparer.Ordinal));
+        var elf = ElfFile.Read(paths.Executable);
+        Assert.All(new[] { "__divdf3", conversion }, x => Assert.InRange(elf.Symbols[x], elf.Segments[0].Address, elf.Segments[0].Address + elf.Segments[0].MemorySize - 1));
+        Assert.False(elf.Symbols.ContainsKey("__addsf3"));
     }
 
     // The Tatara plan's B7b7 (design §3.11, §6.1): Linux pairs whose head, entry or object the row does not take fail before any link:
     // another relocation model (the fixed-field text), Ffi's entry edited to main with c removed and Hello's __kimi_start with c listed
     // (the profile text, per row; O8), an object calling bcmp, which no declaration names (the IR edited, its hash rewritten), and Ffi's c
     // removed with its entry edited to the row's __kimi_start, which its object does not define (Inspect's entry check, T's ruling 79;
-    // ld.lld only warns of an undefined -e entry: on 0e7a59618 it built, artifacts\tatara\b7b7\b7b7c\probe-twin-0e7a59618.txt). Two
-    // builds of each pair in two folders give equal executables.
+    // ld.lld only warns of an undefined -e entry: on 0e7a59618 it built, artifacts\tatara\b7b7\b7b7c\probe-twin-0e7a59618.txt). Design
+    // §5 row 21 (the Tatara plan's B9f; IMPL 20.3.2; invalid): Kernel's none pair with another code model fails at the none row's fixed
+    // head in the same text. Each leaves no executable and the record incomplete (no success record; the CLI's exit 1 for a failed
+    // build --Manifest is CommandExecutionTest's manifest row).
     [Theory]
-    [InlineData("relocation", "'codegen.relocationModel' is not this compiler's")]
-    [InlineData("main", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
-    [InlineData("start", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
-    [InlineData("bcmp", "Unsupported actual object dependency: bcmp U 0 0")]
-    [InlineData("entry", "The object does not define the manifest's entry '__kimi_start' as an external function.")]
-    public async Task ALinuxPairTheRowDoesNotTakeFails(string edit, string failure)
+    [InlineData("Ffi", "relocation", "'codegen.relocationModel' is not this compiler's")]
+    [InlineData("Ffi", "main", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
+    [InlineData("Hello", "start", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
+    [InlineData("Ffi", "bcmp", "Unsupported actual object dependency: bcmp U 0 0")]
+    [InlineData("Ffi", "entry", "The object does not define the manifest's entry '__kimi_start' as an external function.")]
+    [InlineData("Kernel", "code model", "The link manifest's 'codegen.codeModel' is not this compiler's. Re-emit the manifest.")]
+    public async Task AnElfPairTheRowDoesNotTakeFails(string program, string edit, string failure)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var paths = await this.LinuxProgram(edit == "start" ? "Hello" : "Ffi", "O2");
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var paths = await this.ElfProgram(program, "O2");
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
         var libraries = manifest["libraries"]!.AsArray();
         switch (edit)
         {
             case "relocation":
                 manifest["codegen"]!["relocationModel"] = "pic";
+                break;
+            case "code model":
+                manifest["codegen"]!["codeModel"] = "small";
                 break;
             case "main" or "entry":
                 libraries.Remove(libraries.Single(static x => x!["name"]!.GetValue<string>() == "c"));
@@ -1687,24 +1791,29 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => LinuxPair.Build(paths));
         Assert.Contains(failure, error.Message, StringComparison.Ordinal);
         Assert.False(File.Exists(paths.Executable));
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
     }
 
-    // §6.1: two builds of Hello's and Ffi's Linux pairs, each emitted and built in its own folder, give equal ELF bytes, at O0 and O2 (the
-    // Tatara plan's B7b8, C-560 N8: an ELF STT_FILE symbol is the source's base name, so no folder enters the bytes at O0 either).
+    // §6.1: two builds of Hello's and Ffi's Linux pairs and of Kernel's none pair (the Tatara plan's B9f, design §3.7: the script's image),
+    // each emitted and built in its own folder, give equal ELF bytes, at O0 and O2 (B7b8, C-560 N8: an ELF STT_FILE symbol is the source's
+    // base name, so no folder enters the bytes at O0 either; T-M8).
     [Theory]
     [InlineData("Hello", "O0")]
     [InlineData("Hello", "O2")]
     [InlineData("Ffi", "O0")]
     [InlineData("Ffi", "O2")]
-    public async Task LinuxBuildsInTwoFoldersAreEqual(string program, string level)
+    [InlineData("Kernel", "O0")]
+    [InlineData("Kernel", "O2")]
+    public async Task ElfBuildsInTwoFoldersAreEqual(string program, string level)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var first = await this.LinuxProgram(program, level);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
+        var first = await this.ElfProgram(program, level);
         await LinuxPair.Build(first);
         var other = new NativeToolchainTest();
         try
         {
-            var second = await other.LinuxProgram(program, level);
+            var second = await other.ElfProgram(program, level);
             await LinuxPair.Build(second);
             Assert.Equal(File.ReadAllBytes(first.Executable), File.ReadAllBytes(second.Executable));
         }
@@ -1734,7 +1843,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("L35", "codec", "Native library 'codec' holds LLVM bitcode that the link would load, which is not supported.")]
     public async Task ALinuxDependencyFailsBeforeTheLink(string row, string name, string lines)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var paths = await this.LinuxDependency(row, name);
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => LinuxPair.Build(paths));
         Assert.Equal(lines, error.Message);
@@ -1758,7 +1867,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("L32t")]
     public async Task AnUnambiguousLinuxDependencyBuilds(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var paths = await this.LinuxDependency(row, "alpha");
         await LinuxPair.Build(paths);
         ElfFile.Read(paths.Executable).AssertStatic("_start");
@@ -1770,10 +1879,10 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public async Task ALinuxLibrarysStrongMemcpyIsADuplicate()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         const string Copy = "void *memcpy(void *d, const void *s, unsigned long long n) { char *x = d; const char *y = s; while (n--) *x++ = *y++; return d; }\n";
         await LinuxPair.Archive(this.directory, "codec", "rcs", ("needed", "int codec_add(int a, int b) { return a + b; }\n" + Copy), ("other", "void *memset(void *d, int c, unsigned long long n) { char *x = d; while (n--) *x++ = (char)c; return d; }\n"));
-        var paths = LinuxPair.Publish(this.directory, LinuxSource([("codec", "codec_add")]), "O2", ("codec", "static", "codec.a"));
+        var paths = LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxSource([("codec", "codec_add")]), "O2", ("codec", "static", "codec.a"));
         var error = await Assert.ThrowsAsync<IOException>(() => LinuxPair.Build(paths));
         Assert.StartsWith("Tatara failed: link\n", error.Message, StringComparison.Ordinal);
         Assert.Contains("duplicate symbol: memcpy", error.Message, StringComparison.Ordinal);
@@ -1789,12 +1898,12 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("windows")]
     public async Task AThinArchiveFailsAtStaging(string row)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         const string Text = "Native library 'codec' is a thin archive; its members are files outside the staged copy. Supply an archive that contains its members.";
         if (row == "linux")
         {
             await LinuxPair.Archive(this.directory, "codec", "rcsT", ("m1", "int codec_add(void) { return 3; }\n"));
-            var paths = LinuxPair.Publish(this.directory, LinuxSource([("codec", "codec_add")]), "O2", ("codec", "static", "codec.a"));
+            var paths = LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxSource([("codec", "codec_add")]), "O2", ("codec", "static", "codec.a"));
             Assert.Equal(Text, (await Assert.ThrowsAsync<InvalidDataException>(() => LinuxPair.Build(paths))).Message);
             Assert.False(File.Exists(paths.Object));
             Assert.False(File.Exists(paths.Executable));
@@ -1820,7 +1929,7 @@ public sealed class NativeToolchainTest : IDisposable
     [Fact]
     public async Task ASecondBuildReusesItsInputsFacts()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var project = await this.Dependency("10", "alpha", "O2");
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         var hash = ArtifactFiles.Hash(Path.Combine(this.directory, "native", "codec.lib"));
@@ -1890,7 +1999,7 @@ public sealed class NativeToolchainTest : IDisposable
     public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
     {
         var supply = origin is "toolchain's message" or "toolchain";
-        Assert.SkipUnless(OperatingSystem.IsWindows() || !supply, Windows);
+        Assert.SkipUnless(Repository.NativeBuilds || !supply, Repository.NoNativeBuilds);
         this.console.LineAction = failingLine is null ? null : (failingLine, DiagnosticContractTest.DiagnosticConsole.Fail);
         var project = this.Hello("Hello");
         if (origin == "project checks")
@@ -1966,6 +2075,9 @@ public sealed class NativeToolchainTest : IDisposable
 
     // windows-x64's compiler supplies (kernel32, kimi_backend), one file each.
     private static IEnumerable<CompilerSupply> Windows64Supplies() => ToolchainIdentity.Supplies.Where(static x => x.Row == TargetProfile.Windows);
+
+    // A row's committed catalog folder: src/backend/<the row's name less its version>.
+    private static string CatalogFolder(TargetProfile row) => Path.Combine(Repository.Root, "src", "backend", row.Name[..row.Name.LastIndexOf('-')]);
 
     // A Linux program with an import of each (library, symbol) as int name(void), which writes "ok" (LinuxPair's source form).
     private static string LinuxSource((string Library, string Symbol)[] imports)
@@ -2391,18 +2503,24 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
-    // Design §5 row 21's Linux programs as pairs at the level, from their committed sources (tests/linux-elf, B7b9): Hello (libc-free)
-    // and Ffi, whose static codec.a's one member defines codec_add(int, short) and codec_pid, which calls musl's getpid (the C path;
-    // Kind's row 21).
-    private async Task<ArtifactPaths> LinuxProgram(string program, string level)
+    // The ELF rows' programs as pairs at the level. B7b's design §5 row 21's Linux programs, from their committed sources (tests/linux-elf,
+    // B7b9): Hello (libc-free) and Ffi, whose static codec.a's one member defines codec_add(int, short) and codec_pid, which calls musl's
+    // getpid (the C path; Kind's row 21). The none row's (the Tatara plan's B9f): Kernel, the owner question's Hello.kimi and Board.kimi,
+    // and Seconds, Kernel writing a measured Stopwatch's seconds (B9's design §5 row 10).
+    private async Task<ArtifactPaths> ElfProgram(string program, string level)
     {
-        if (program == "Hello")
+        switch (program)
         {
-            return LinuxPair.Publish(this.directory, LinuxPair.Program("Hello", "Hello.kimi"), level);
+            case "Hello":
+                return LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxPair.Program("Hello", "Hello.kimi"), level);
+            case "Kernel":
+                return LinuxPair.Publish(TargetProfile.None, this.directory, KernelSources.Hello + KernelSources.Board + KernelSources.BoardTerminate, level);
+            case "Seconds":
+                return LinuxPair.Publish(TargetProfile.None, this.directory, TataraExecutorTest.KernelSeconds, level);
+            default:
+                await LinuxPair.Archive(this.directory, "codec", "rcs", ("m1", LinuxPair.Program("Ffi", "native", "codec.c")));
+                return LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxPair.Program("Ffi", "Ffi.kimi"), level, ("codec", "static", "codec.a"));
         }
-
-        await LinuxPair.Archive(this.directory, "codec", "rcs", ("m1", LinuxPair.Program("Ffi", "native", "codec.c")));
-        return LinuxPair.Publish(this.directory, LinuxPair.Program("Ffi", "Ffi.kimi"), level, ("codec", "static", "codec.a"));
     }
 
     // LinkAmbiguity's and Kind's L rows (Dependency's Linux counterpart; labels copied from the designs) as pairs at O2: name is the row's
@@ -2468,7 +2586,7 @@ public sealed class NativeToolchainTest : IDisposable
                 throw new ArgumentOutOfRangeException(nameof(row));
         }
 
-        return LinuxPair.Publish(this.directory, LinuxSource(imports), "O2", [.. libraries.Select(static x => (x, "static", x + ".a"))]);
+        return LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxSource(imports), "O2", [.. libraries.Select(static x => (x, "static", x + ".a"))]);
     }
 
     // native/<library>.lib, a linked image (design §1 row 22; Kind's row 14): a DLL linked by lld-link from a clang object, its COFF

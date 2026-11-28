@@ -97,7 +97,7 @@ internal sealed partial class InstanceCollector
     private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType self)
     {
         var contract = TyCtxt.Contract(requirement);
-        var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, self, contract.Type!));
+        var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, self, contract.Type!), null);
         return this.Formed(target.Cause, item, subject, subject) ? this.Requirement(program, item, subject, requirement, target) : -1;
     }
 
@@ -264,7 +264,7 @@ internal sealed partial class InstanceCollector
             var (part, type) = (node.Parts[i], self.Components[i]);
             if (part.Kind == ComparisonKind.Composite)
             {
-                var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, type, contract.Type!));
+                var target = this.types.Witness(requirement, contract, this.types.Synthesized(requirement, type, contract.Type!), null);
                 this.Target(item, this.Formed(target.Cause, item, site, site) ? this.Comparing(item, site, target, part.Type, key.Body, key.Variant) : -1);
             }
             else if (part.Kind == ComparisonKind.Witness)

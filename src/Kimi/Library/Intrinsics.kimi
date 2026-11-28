@@ -51,6 +51,9 @@ public group Intrinsics
     public func clone<s/T>(value: ref/(s/T)) -> s/T
         s is rc or arc
     #Unsupported
+    public func clone<s/T>(value: ref/Weak<s/T>) -> Weak<s/T>
+        s is rc or arc
+    #Unsupported
     public func downgrade<s/T>(value: ref/(s/T)) -> Weak<s/T>
         s is rc or arc
     #Unsupported

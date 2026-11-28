@@ -167,8 +167,9 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
 /// <see cref="Place"/> a Call's destination or the dropped Place, <see cref="CheckTarget"/> the block only the checks reach
 /// (-1: none), and <see cref="Places"/> whether a Call is a construction's insertion, not a call of the program: each operand a Move of
 /// a whole temp it transfers into the construction, the first the construction's exclusive borrow, formed in the Call's block
-/// (<see cref="MirBody.Construction"/>; a Dictionary literal entry's placeEntry; PLAN G442). A new block's terminator is a
-/// Goto without a target until it is terminated.</summary>
+/// (<see cref="MirBody.Construction"/>; a Dictionary literal entry's placeEntry; PLAN G442). <see cref="Offset"/> is a Drop's location
+/// in its source's document where that is a written declaration's start, not its syntax's (a parameter destroyed at its function's
+/// exit, SPEC 22.5.1), else -1. A new block's terminator is a Goto without a target until it is terminated.</summary>
 internal readonly record struct MirTerminator(
     MirTerminatorKind Kind,
     SourceInfo Source,
@@ -179,7 +180,8 @@ internal readonly record struct MirTerminator(
     int Start = 0,
     int Count = 0,
     MirCallee Callee = default,
-    bool Places = false)
+    bool Places = false,
+    int Offset = -1)
 {
     internal static MirTerminator Goto(int target, SourceInfo source, int check = -1) => new(MirTerminatorKind.Goto, source, target, check);
 
@@ -198,7 +200,8 @@ internal readonly record struct MirTerminator(
         SourceInfo source)
         => new(MirTerminatorKind.Call, source, target, Place: destination, Start: start, Count: count, Callee: callee);
 
-    internal static MirTerminator Drop(MirPlace place, int target, SourceInfo source) => new(MirTerminatorKind.Drop, source, target, Place: place);
+    internal static MirTerminator Drop(MirPlace place, int target, SourceInfo source, int offset = -1)
+        => new(MirTerminatorKind.Drop, source, target, Place: place, Offset: offset);
 
     internal static MirTerminator Return(SourceInfo source) => new(MirTerminatorKind.Return, source);
 

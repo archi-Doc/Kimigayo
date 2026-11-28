@@ -15,15 +15,21 @@ namespace Kimi.Command;
 // error, so check --Format json writes no document (SPEC 23.3), and exit 1; the action receives the options and the inputs.
 internal static class CommandExecution
 {
-    internal static async Task<int> Execute(Kimigayo kimigayo, string command, string[] arguments, Func<KimiOptions, string[], Task<int>> action)
+    // Option errors are written before a command opens its inputs, including the language server's protocol streams.
+    internal static bool TryReadOptions(string command, string[] arguments, out Dictionary<string, string> values, out List<string> inputs)
     {
-        var values = KimiOptions.Read(command, arguments, out var inputs, out var errors);
+        values = KimiOptions.Read(command, arguments, out inputs, out var errors);
         foreach (var error in errors)
         {
             Console.Error.WriteLine(error);
         }
 
-        if (errors.Count != 0)
+        return errors.Count == 0;
+    }
+
+    internal static async Task<int> Execute(Kimigayo kimigayo, string command, string[] arguments, Func<KimiOptions, string[], Task<int>> action)
+    {
+        if (!TryReadOptions(command, arguments, out var values, out var inputs))
         {
             return 1;
         }

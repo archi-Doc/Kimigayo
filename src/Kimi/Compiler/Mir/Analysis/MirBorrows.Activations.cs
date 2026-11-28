@@ -82,7 +82,7 @@ internal sealed partial class MirBorrows
 
         var held = state[slot];
         this.Work += this.Count(held);
-        foreach (var element in this.ElementsOf(held))
+        foreach (var (element, _) in this.ElementsOf(held))
         {
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Mode: MirRefKind.TwoPhaseUniq } loan && loan.Holder == slot)
             {
@@ -128,7 +128,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += this.Count(held);
-        foreach (var element in this.ElementsOf(held))
+        foreach (var (element, _) in this.ElementsOf(held))
         {
             var index = element - this.loanBase;
             if (index >= 0 && index < this.loanCount && UniqueIn(this.loans[index], slot) && this.throughRoots.ContainsKey(this.loans[index].Root))
@@ -154,7 +154,7 @@ internal sealed partial class MirBorrows
         this.throughRoots.Clear();
         this.throughCount = 0;
         this.Work += this.Count(held);
-        foreach (var element in this.ElementsOf(held))
+        foreach (var (element, _) in this.ElementsOf(held))
         {
             var index = element - this.loanBase;
             if (index >= 0 && index < this.loanCount && UniqueIn(this.loans[index], slot))

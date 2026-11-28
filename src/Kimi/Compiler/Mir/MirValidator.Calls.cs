@@ -118,7 +118,10 @@ internal sealed partial class MirValidator
                     (ReferenceEquals(declaration, types.Abort) || declaration.Definition.Id != (IntrinsicId)callee.Arg):
                     this.Report(MirViolation.Callee); // A3 E14: its function is the library declaration of a compiler function it serves, none for $abort (SPEC 17.4).
                     break;
-                case MirCalleeKind.Intrinsic when row.Arity >= 0 && row.Arity != call.Count:
+                case MirCalleeKind.Intrinsic when row.Arity < 0 && callee.Symbol is null:
+                    this.Report(MirViolation.Callee); // An arity -1 row's call has its declaration's shape (MirDescriptor), so it names one.
+                    break;
+                case MirCalleeKind.Intrinsic when (row.Arity >= 0 ? row.Arity : this.Declared(callee.Symbol!)) != call.Count:
                     this.Report(MirViolation.Arity);
                     break;
                 case MirCalleeKind.Intrinsic when row.Diverges && call.Target >= 0:
@@ -154,6 +157,13 @@ internal sealed partial class MirValidator
             }
 
             return true;
+        }
+
+        // The parameter count of the declaration whose shape an arity -1 row's call has (MirDescriptor).
+        private readonly int Declared(BindingSymbol declaration)
+        {
+            _ = types.Signature(declaration, null, -1, out var count);
+            return count;
         }
 
         // A Places Call (PLAN G442; the owner's O-97 (a)): a construction's insertion, a Fn callee each of whose operands is a Move of a

@@ -81,14 +81,15 @@ public sealed partial class HirFormsTest
     // selection) is an Error node that keeps every operand its form evaluates on every path, one Binding did not resolve or an Error too,
     // but `and`'s right operand, which it evaluates only when the left holds (SPEC 13.4), and a construct without a Type (a selection's
     // `if` index), which stay replaced; a construct, an assignment and a labeled do Binding left unresolved keep their Ops (fail-before:
-    // the first five kept their forms' Ops).
+    // the first five kept their forms' Ops). A join with a failed source rests without a Type only where no source supplies a candidate
+    // (G103 C: one that does is typed by it, so `v[if c => i else => missing]` and `if c => 1 else => missing` resolve).
     [Theory]
     [InlineData("func f(x: i32) -> i32\n    return x + missing\n", "x + missing", "Error", "x missing")]
     [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", "Error", "c")]
     [InlineData("func f(x: i32) -> bool\n    return x is Missing\n", "x is Missing", "Error", "x")]
     [InlineData("func f(values: [3 of i32], r: Range<isize>) -> i32 => values[r]\n", "values[r]", "Error", "values r")]
-    [InlineData("func f(c: bool, v: [3 of i32], i: isize) -> i32\n    return v[if c => i else => missing]\n", "v[if", "Error", "v")]
-    [InlineData("func f(c: bool) -> i32\n    return if c => 1 else => missing\n", "if c => 1", "If", null)]
+    [InlineData("func f(c: bool, v: [3 of i32]) -> i32\n    return v[if c => missing else => missing2]\n", "v[if", "Error", "v")]
+    [InlineData("func f(c: bool) -> i32\n    return if c => missing else => missing2\n", "if c => missing", "If", null)]
     [InlineData("func f()\n    var y: i32 = 0\n    y = missing\n", "y = missing", "Assign", null)]
     [InlineData("func f() -> i32\n    return label l: do\n        exit to l missing\n", "label l: do", "Group", null)]
     public void AnOperationBindingDidNotResolveIsAnError(string source, string text, string op, string? kept)
@@ -298,7 +299,8 @@ public sealed partial class HirFormsTest
     // form. No record rests on the target an invalid transfer lacks: the operand's TypeMismatch_Kd, the discarded selection's own (r15) and
     // an enclosing join's at another source (r4's `2`) go. The operand's own records stay (TransferRequired_Kd at `yield xs`, as row 9
     // gives it), and so does the fallthrough the Dependent construct hid (FunctionFallthrough_Kd, SPEC 14.9.3's example). A valid labeled
-    // yield to a discarded selection keeps its TypeMismatch_Kd (SPEC 14.7), and its Unit twin is valid. Fail-before: the first six rows'
+    // yield to a discarded selection keeps its TypeMismatch_Kd (SPEC 14.7), the selection typed by its `else`'s Unit candidate (G103 C;
+    // p4's was null), and its Unit twin is valid. Fail-before: the first six rows'
     // constructs were Unresolved or `()` and Completes, with a TypeMismatch_Kd at each operand that is not Unit. SPEC 10.5.4 (DECISIONS
     // BU-109): an anonymous function's single-item body keeps the context fixed before it, so a result inferred as Unit leaves it in
     // Value Context (r21, r23, t5: valid; fail-before: row 10 at each yield beside its non-null row, and r23's `if` Diverges), while Unit
@@ -317,7 +319,7 @@ public sealed partial class HirFormsTest
     [InlineData("func r19(a: i32) -> Array<i32>\n    let xs: Array<i32> = [1, 2]\n    if a > 0\n        yield xs\n    else\n        ()\n    return xs\n", "if a > 0: () Completes", "TransferRequired_Kd 4:15, TransferRequired_Kd 7:12, UnlabeledYieldTarget_Kd 4:9")]
     [InlineData("func r19c(a: i32) -> Array<i32>\n    let xs: Array<i32> = [1, 2]\n    loop\n        yield xs\n", "loop: Never Diverges", "InvalidJumpTarget_Kd 4:9, TransferRequired_Kd 4:15")]
     [InlineData("func p12(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        ()\n", "if a > 0: () Completes", "FunctionFallthrough_Kd 2:5, UnlabeledYieldTarget_Kd 3:9")]
-    [InlineData("func p4(a: i32)\n    label s: if a > 0\n        yield to s 1\n    else\n        ()\n", "if a > 0: null Completes", "TypeMismatch_Kd 3:20")]
+    [InlineData("func p4(a: i32)\n    label s: if a > 0\n        yield to s 1\n    else\n        ()\n", "if a > 0: () Completes", "TypeMismatch_Kd 3:20")]
     [InlineData("func p5(a: i32)\n    label s: if a > 0\n        yield to s ()\n    else\n        ()\n", "if a > 0: () Completes", "")]
     [InlineData("func r21(c: bool)\n    let g = func [c] () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "")]
     [InlineData("func r23(c: bool)\n    let g = func [c] () => if c => yield () else => yield ()\n    g()\n", "if c => yield (): () Completes", "")]
@@ -406,7 +408,8 @@ public sealed partial class HirFormsTest
     // if's first condition; `or`'s right operand, a construct without a Type (PLAN G121) and a closure Binding left unbound for the failed
     // call (an Error without causes of its own), also in parentheses, and a part without a Type that is no Error (a noinit under a failed
     // declaration Type) and a function's name, whose value its consumer's erasure forms, stay replaced (G147 ruling 5's rows 1, 2 and 4:
-    // kept, the first two were InternalInvariant_Kd, the last Unsupported_Kd).
+    // kept, the first two were InternalInvariant_Kd, the last Unsupported_Kd); a construct without a Type is a join no source supplies a
+    // candidate to (G103 C: `if c => missing else => x` is typed by x, so its `let` resolves).
     // Fail-before: every row but `x + missing2`'s and `y + missing`'s kept nothing.
     [Theory]
     [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "let z", "k2(x, missing)")]
@@ -425,7 +428,7 @@ public sealed partial class HirFormsTest
     [InlineData(K + "func f(c: bool) -> i32\n    var x: i32\n    let z: i32 = if k(x) == 1\n        require c else => ()\n    else\n        ()\n    return 1\n", "if k(x)", "k(x) == 1")]
     [InlineData(K + "func f() -> bool\n    var x: i32\n    let b = k(x) == 1 and missing\n    return true\n", "k(x) == 1 and", "k(x) == 1")]
     [InlineData(K + "func f() -> bool\n    var x: i32\n    let b = missing or k(x) == 1\n    return true\n", "missing or", "missing")]
-    [InlineData("func f(c: bool) -> i32\n    var x: i32\n    let v = if c => missing else => x\n    return 1\n", "let v", "")]
+    [InlineData("func f(c: bool) -> i32\n    let v = if c => missing else => missing2\n    return 1\n", "let v", "")]
     [InlineData("func f()\n    missing(func (v: i32) -> i32 => v)\n", "missing(", "")]
     [InlineData("func k(g: (i32) -> i32) -> i32\n    return 0\nfunc f() -> i32\n    return k((func [] (o: bool) => 0))\n", "k((", "")]
     [InlineData(

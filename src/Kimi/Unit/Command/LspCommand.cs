@@ -27,6 +27,12 @@ public class LspCommand : ISimpleCommand<LspCommand.Options>
 
     public async Task Execute(LspCommand.Options option, string[] args, CancellationToken cancellationToken)
     {
+        if (!CommandExecution.TryReadOptions(Name, args, out _, out _))
+        {
+            Environment.ExitCode = 1;
+            return;
+        }
+
         if (option.DebugWait)
         {
             try

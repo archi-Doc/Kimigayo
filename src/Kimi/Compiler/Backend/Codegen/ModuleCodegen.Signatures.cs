@@ -45,7 +45,8 @@ internal sealed partial class ModuleCodegen
     /// <summary>Gets the signature of a body item from its own body (IMPL 21.3.1; DECISIONS R5-M89), the one its definition and every call of
     /// it write: under the internal convention, its result Type local 0's and its parameters its Arg locals' in slot order
     /// (FunctionCodegen.ArgumentPosition), in the item's instance, a caller-location library function's flag included (SPEC 22.5.1), an
-    /// out-of-line library function's (KimiLibraryCatalog.KeepsOutOfLine: its definition's <c>noinline</c>), a
+    /// out-of-line library function's (KimiLibraryCatalog.KeepsOutOfLine: its definition's <c>noinline</c>), a platform witness's
+    /// (PlatformMember, over the Write's witnesses), a
     /// Closure body's environment Abi's [environment] (ConcreteClosure, SPEC 7.7.3; DECISIONS R5-M102), not a parameter slot; named
     /// <c>__kimi_f</c> with its index, computed once per Write and the previous one while it still matches.</summary>
     /// <param name="item">The item, a body item of a kind the frame writes.</param>
@@ -71,8 +72,10 @@ internal sealed partial class ModuleCodegen
         // (SPEC 8.13.3).
         var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
         var located = KimiLibraryCatalog.RequiresCallerLocation(this.types.Original(body.Key.Decl));
+        // A platform witness's body brackets its every run (IMPL 21.6.3), a fact of this definition, read by no call.
         var flags = (located ? Abi.Flags.CallerLocation : Abi.Flags.None) | (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None) |
-            (KimiLibraryCatalog.KeepsOutOfLine(body.Key.Decl) ? Abi.Flags.OutOfLine : Abi.Flags.None);
+            (KimiLibraryCatalog.KeepsOutOfLine(body.Key.Decl) ? Abi.Flags.OutOfLine : Abi.Flags.None) |
+            (Array.IndexOf(this.witnesses, item) >= 0 ? Abi.Flags.PlatformMember : Abi.Flags.None);
         return this.Define(item, FunctionPrefix, flags, result, this.parameters.AsSpan(0, count));
     }
 

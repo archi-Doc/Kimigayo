@@ -19,7 +19,8 @@ namespace Kimi.Compiler;
 // RequireConstraintInFrame after it); a site frame (BeginConsultation(element) around a pass element whose reads explain no outcome,
 // DropConsultation after it; where none is open, OpenQuerySite's at a judgment's proof query or at a pass element that forms Types
 // outside a proof, PLAN G651 a1, a2). A node's range has three writers: EndConsultation (a frame's reads), ConsultedFor (a check's one
-// read inside a frame) and RecordRead (a check's one read outside any frame). The range rule (SPEC 23.1.2) holds for a frame's reads:
+// read inside a frame) and RecordRead (a check's one read: inside its node's unheld frame, a read of that frame; the range until the
+// frame's end). The range rule (SPEC 23.1.2) holds for a frame's reads:
 // a check's reads explain only a failure first written by that check, so a failure first written inside a frame, its own proof's write
 // at the use included, takes the frame's reads, never a later check's one read in it (the proof's named cause, which the outcome's check
 // reads: ConsultedFor); a failure the node held when the check began (an earlier check's record: a declaration's validation before the
@@ -449,10 +450,17 @@ public sealed partial class Binding
         return parent;
     }
 
-    // SPEC 23.1.2: a check run outside any frame records its one read as the node's prerequisite range, the range EndConsultation writes
-    // for a frame's reads: CompleteDependent's cause and each Place it rests, RestOnRepeatedSet's set, a failed base rule's part.
+    // SPEC 23.1.2: a check's one read (CompleteDependent's cause and each Place it rests, RestOnRepeatedSet's set, a failed base rule's
+    // part) is its node's prerequisite range. Inside the node's own frame, unless the frame is held, it is also a read of that frame, taken
+    // unfiltered as Fail's: the frame's end replaces the range with the frame's reads, which hold it. The range is written in either case,
+    // for the readers inside the frame (a temporary's rest in BindAndAdaptNode, a conformance's use in CheckConformance).
     private void RecordRead(Koto node, Koto read)
     {
+        if (ReferenceEquals(node, this.consultationNode) && !this.consultationHeld)
+        {
+            this.consulted.Add(read);
+        }
+
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
         this.prerequisiteStore.Add(read);
     }

@@ -1495,6 +1495,20 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   (`shapeJudgments` is a pass memo keyed by `SourceRef`s; DECISIONS BU-220's R7-N5 B7 line); §5.1's N5 row's exit reads
   ArchitectureRulesTest's `NodeKeyedTablesStayAtTheirSites`, which replaced the line regex, at 0 for Binding's types. No SPEC or
   IMPL text. Nothing frozen.
+- Revision 121 (2026-11-26, plan §14; the Middle's D row, R7-P5's census on dev 0ed650c96): §5.1's P5 row splits into P5a (A4
+  reads `TyCtxt.Witness`; the legacy comparison composition, E7 and A4's Limit class with Z7's M5 and M6) and P5b (the materializer
+  and the standard Property witness bridges), both before P3; P6 and P11 need P5b; §4.2's chain and gate, §4.3, §5.6's hold row and
+  the Z7 row follow. P5's "after H11b" (R5-M182, R4-13: A-12 does not land before H11) is read as §4.2's gate, R7-E1 and H11b-0,
+  both landed, with H11b's remainder (O1 H1-H2). No SPEC or IMPL text. Nothing frozen.
+- Revision 122 (2026-11-27, plan §14; the Middle's D-1330, R7-O1 c+f's landing): §5.0's O1 row marks c done (Q-818) and
+  keeps f with its reason (DECISIONS R7-M120). No SPEC or IMPL text. Nothing frozen.
+- Revision 123 (2026-11-28, plan §14; the Middle's D-1356 item 5, R7-O2 A4-L's landing in W-392): §5.1's O2 row drops
+  "through I2's OriginVar" (O-442 (a), R7-M89), reads "`SolveLocalBounds` goes" (a declaration-time candidate stays,
+  `FixDeclaredRegions`'), marks A4-L landed (R7-M128) and A4-P dropped (SPEC 14.8.3, 14.6.2), and depends on A1+A2, O1 H
+  and G230 (A) (landed) for I2 and O1. No SPEC or IMPL text. Nothing frozen.
+- Revision 124 (2026-11-28, plan §14; the owner's O-553 (b), K's question with the R7 census on dev c76f8d461): §3.1 moves
+  R7-P6, P3, P7-P11 and T3 to the Back and C5, C7 and C9 to the Middle (after its own units); §5.1's rows carry (B) or (M);
+  the revision 96 paragraph's Front list drops them. No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1

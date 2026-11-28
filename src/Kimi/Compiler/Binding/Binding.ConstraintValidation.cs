@@ -896,8 +896,9 @@ public sealed partial class Binding
     // first failure and drops them (the slot's drop). Its callers: RequireConstraint's Refuted arm, FailUnprovenConstraint's fact-less
     // branch, FailConstraint's record and a requirement's named cause (Constraints.Requirements), Enums', Specializations' and
     // FailIterationSubject's outcomes, FunctionReferences' fact-less pending proof and its Error without a held cause, a Pattern Type's
-    // check and recheck (Patterns) and a construction's late Type formation (Enums; R7-E3 E3c-2). FailClauseRecord records always (E2-5b);
-    // FailUnprovenConstraint's Callable branch and FailCallableSelection keep `callableConstraints` until R7-E4.
+    // check and recheck (Patterns), a construction's late Type formation (Enums; R7-E3 E3c-2), the Owned conversion's record (RecordOwned)
+    // and the Callable Origin-only record of FailUnprovenConstraint's Callable branch and FailCallableSelection (RecordCallableConstraint;
+    // R7-E4 E4e). FailClauseRecord records always (E2-5b).
     [Transitional("R7", Reason = "Records only at a use without a failure, so the use keeps its first failure (E2-5a's drop: a Refuted constraint may rest on the use's own rejected registration, probe c2; FailIterationSubject's iterable that already failed, RangeDiagnosticTest's `missing..3`), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private BoundType? RecordConstraint(Koto use, ConstraintProof proof, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
         => this.RecordedFailure(use) == BindingFailure.None
@@ -984,8 +985,7 @@ public sealed partial class Binding
         }
 
         var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
-        var record = new CallableConstraintFact(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, use));
-        return this.FailExplained(CallableConstraintRows.Family, use, BindingFailure.UnprovenConstraint, record, unresolved);
+        return this.RecordCallableConstraint(use, new(clause, fact.Proposition, this.ContractFact(at, fact.Failure, use)), unresolved);
     }
 
     // A proof of a proposition from `site` (QuerySite; PLAN G651 a1), settled where it is no longer combined (EndProof).

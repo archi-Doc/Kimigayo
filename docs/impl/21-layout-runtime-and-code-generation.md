@@ -105,7 +105,9 @@ At every call into and return from foreign code, the floating-point control stat
 
 On linux-x64 an import uses the System V x86-64 C calling convention (LLVM `ccc`) with no `inreg`, `byval` or `sret`; the borrow, `Option` and Unit rules above apply. An `i8` or `i16` parameter or result is sign-extended, and a `u8` or `u16` one zero-extended, to 32 bits (`signext`, `zeroext`), as C compilers for that ABI expect. Each call extends by the Types of the import it calls, so two imports of one symbol that differ only in an 8- or 16-bit Type's signedness share one external declaration and each extend by their own Types. The floating-point control state at every foreign call is the same as on windows-x64.
 
-The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, and names starting with `__kimi_` or `llvm.`, are reserved. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library (one reserved supply, or one native logical name of one Kotonoha, [§20.4](20-compilation-configuration.md#204-native-libraries)). Signatures agree when their parameters and results agree in physical form: integer Types of one width count as equal, as do all pointers. On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
+On x86_64-unknown-none an import uses the same System V x86-64 C calling convention (LLVM `ccc`) under the profile's ABI ([§21.6.7](#2167-native-imports-and-backend-support)), with no `inreg`, `byval` or `sret`; the borrow, `Option` and Unit rules above apply. Every function of the module disables MMX, SSE and AVX and enables soft float, so a floating-point argument or result passes as an integer of its size holding its bits: the first `f64` argument in `rdi`, the second in `rsi`, the result in `rax`. Generated code reads or writes no floating-point register at a foreign call. No floating-point control state crosses the call: generated code and `kimi_backend` read and write none, and `kimi_backend`'s routines round to nearest even (compiler-rt's generic `fp_mode.c` in B9e's pinned source, DECISIONS T-M58).
+
+The names `_fltused`, `__chkstk`, `main`, `memcmp`, `memcpy`, `memmove` and `memset`, the names x86_64-unknown-none's `kimi_backend` defines ([§21.6.7](#2167-native-imports-and-backend-support)), and names starting with `__kimi_` or `llvm.`, are reserved on every target. A `#LibraryImport` of a reserved name is an error at native resolution, and so are imports of one external symbol that disagree in signature or providing library (one reserved supply, or one native logical name of one Kotonoha, [§20.4](20-compilation-configuration.md#204-native-libraries)). Signatures agree when their parameters and results agree in physical form: integer Types of one width count as equal, as do all pointers. On every target an import is also compared with each profile's runtime import of its symbol ([§21.4.7](#2147-native-imports-and-backend-support)): `#LibraryImport("codec", "GetLastError")` is an error for linux-x64 too.
 
 ```kimi
 group Native
@@ -156,7 +158,7 @@ The Kimi Kotonoha this compiler provides ([§22.1](../spec/22-core-execution-and
 | Attribute | Identifies |
 | --- | --- |
 | `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1; a published operation ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects), [§22.10.1](../spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter)); an internal declaration the compiler calls, lays out or links; or an internal function whose calls the compiler writes as a form, never as a call (below). Each Name is declared once |
-| `#Intrinsic("Name")`, `#Intrinsic("Fail", "Code")` | a function whose definition the compiler generates; a `Fail` intrinsic Aborts with the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) |
+| `#Intrinsic("Name")`, `#Intrinsic("Family", "Member")` | a function whose definition the compiler generates; the family form's second argument names its case: for `Fail`, the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) with which it Aborts; for `Instruction`, the instruction of a row of [§21.6.8](#2168-machine-instructions)'s table by its AT&T mnemonic (`rdtsc`, `inb`), a control register's read or write by `rdcr` or `wrcr` and the register's number (`rdcr3`), and `sti` directly followed by `hlt` by `stihlt` |
 | `#CallerLocation` | a function whose failures report the invoking user expression ([§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location)), which its private ABI carries |
 | `#Unsupported` | a declaration whose every use this implementation reports as Unsupported at the use ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) |
 
@@ -261,8 +263,97 @@ An x86_64-unknown-none Application is a static ELF executable for `x86_64-unknow
 
 ### 21.6.1. Target
 
-The x86_64-unknown-none runtime targets `x86_64-unknown-none` with the baseline x86-64 CPU without MMX or SSE; `f32` and `f64` operations call the backend support archive's routines (soft float). Code is generated for the kernel code model and a static ELF executable linked at 0xFFFFFFFF80000000. Generated functions use no red zone and no stack check or probe: stack exhaustion is undefined behavior ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)'s freestanding exception). Unwind tables are as on linux-x64 ([§21.5.1](#2151-target)).
+The x86_64-unknown-none runtime targets `x86_64-unknown-none` with the baseline x86-64 CPU without MMX or SSE; `f32` and `f64` addition, subtraction, multiplication, division, comparisons and conversions call the backend support archive's routines (soft float). Code is generated for the kernel code model and a static ELF executable linked at 0xFFFFFFFF80000000. Generated functions use no red zone and no stack check or probe: stack exhaustion is undefined behavior ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)'s freestanding exception). Unwind tables are as on linux-x64 ([§21.5.1](#2151-target)).
+
+### 21.6.2. Entry and boot
+
+The executable follows the Limine boot protocol, base revision 6 (Limine's `PROTOCOL.md` at limine-protocol commit c5a7f597a,
+implemented by Limine v11.2.1): it carries the base-revision tag and the higher-half direct map and memory map requests, and its entry is
+`__kimi_start`, which expects 64-bit mode with the image mapped as linked and `.bss` zeroed, on the stack the loader provides (at least
+64 KiB), which the entry realigns. If the loader did not accept the revision or left either request unanswered, the processor halts with
+interrupts disabled before `start`. Otherwise `Boot.directMapOffset` is the direct map's offset, and `Boot.regions` points to
+`regionCount` pointers, each to one entry of the loader's memory map, a `Boot.Region` whose `address`, `length` and `kind` are the
+entry's `base`, `length` and `type` as Limine numbers them. The stack, the loader's page tables and its responses, the memory map's
+entries included, lie in bootloader-reclaimable memory: a platform must not return them from `mapPages` or otherwise reuse them while
+the program runs. The loader leaves the interrupt descriptor table undefined: until the program installs one, the effect of a processor
+exception is undefined.
+
+### 21.6.3. The platform
+
+The runtime calls the program's platform members with these meanings:
+
+- `mapPages(bytes)`: the start of a run of at least `bytes` bytes (the runtime passes a multiple of 4,096), 4,096-aligned, readable and
+  writable, which nothing else uses until `releasePages` releases it; null, a result below 64 KiB and a result not 4,096-aligned are a
+  failed allocation, and the runtime does not release such a result.
+- `releasePages(run, bytes)` and `write(stream, text)`: 0 is a success; −1 a failure without a code; any other result a failure whose
+  code, when it is positive, the Abort report prints as ` (platform=N)`; a negative code prints no number. `releasePages` receives a
+  whole run that `mapPages(bytes)` returned, with the same `bytes`; `write` returns 0 only after writing every byte of `text`.
+- `clock()`: monotonic nanoseconds; a negative result is a failure.
+- `terminate(status)`: never returns.
+
+While a member runs, an allocation, the runtime's call of a member for `Console` output or a clock read, and an Abort halt the
+processor with interrupts disabled, without a report; a release (whose run may reach `releasePages`) and a member's own call of
+another member are ordinary.
+
+The runtime keeps the platform value that `start` returns, called once before the startup body with the loader's `Boot`
+([§21.6.2](#2162-entry-and-boot)), in storage of the platform struct's layout, which is not a static slot and is never destroyed
+([§22.4.5](../spec/22-core-execution-and-foreign-functions.md#2245-platform)); every other member is called on that value, as its
+`self`. `write`'s `text` is the bytes the runtime writes, as a `Text.Utf8Slice`.
+
+### 21.6.4. Memory
+
+Allocation follows [§21.4.3](#2143-memory) over the runs that the platform's `mapPages` maps and its `releasePages` releases
+([§21.6.3](#2163-the-platform)).
+
+### 21.6.5. Console output and elapsed time
+
+`Console.writeLine` ([§22.7](../spec/22-core-execution-and-foreign-functions.md#227-console-output)) writes with the platform's
+`write` to stream 1. An Abort writes the report of [§21.4.2](#2142-process-entry-and-exit) with `write` to stream 2, with
+` (platform=N)` in place of ` (win32=N)`, and then calls `terminate(1)`; a failed write truncates the report. `Time.Stopwatch`
+([§22.8.2](../spec/22-core-execution-and-foreign-functions.md#2282-stopwatch)) reads the platform's `clock` as a counter of
+nanoseconds, with frequency 10^9; its failure is a clock failure (`KIMI_E_CLOCK`,
+[§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes)).
 
 ### 21.6.6. Integer addresses
 
 On x86_64-unknown-none, a raw pointer converted from an integer address reaches the memory or device at that address, with the provenance and authority the program's platform documents ([§5.5](../spec/05-raw-pointers-and-unsafe-memory.md#55-integer-addresses)). Every value a read of a device location of an integer Type gives is an initialized value of that Type, within that provenance. The guarantee names the storage an access reaches and the values placed within it; it does not fix the number or order of accesses ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)'s volatile accesses do).
+
+### 21.6.7. Native imports and backend support
+
+The runtime imports no function and the profile has no C library: the runtime's platform operations call the program's platform ([§21.6.3](#2163-the-platform)). The runtime defines `memcmp`, `memcpy`, `memmove` and `memset`, which generated code may call ([§21.2](#212-foreign-function-abi) reserves the names), and a module defines no `_fltused`. The profile's backend support archive ([§21.6.1](#2161-target)) is `kimi_backend` ([§20.4](20-compilation-configuration.md#204-native-libraries)), a static library built from compiler-rt 22.1.8's soft-float builtins for the profile's ABI (soft float, no red zone, the kernel code model), with no MMX, SSE or x87 instruction. It defines only the routines that generated floating-point operations call, the comparison routines their members define beside them, and the rounding-mode and inexact-flag helpers their members call: `__adddf3`, `__addsf3`, `__subdf3`, `__subsf3`, `__muldf3`, `__mulsf3`, `__divdf3`, `__divsf3`, `__cmpdf2`, `__cmpsf2`, `__eqdf2`, `__eqsf2`, `__nedf2`, `__nesf2`, `__ltdf2`, `__ltsf2`, `__ledf2`, `__lesf2`, `__gtdf2`, `__gtsf2`, `__gedf2`, `__gesf2`, `__unorddf2`, `__unordsf2`, `__extendsfdf2`, `__truncdfsf2`, `__fixdfsi`, `__fixdfdi`, `__fixsfsi`, `__fixsfdi`, `__fixunsdfsi`, `__fixunsdfdi`, `__fixunssfsi`, `__fixunssfdi`, `__floatsidf`, `__floatdidf`, `__floatsisf`, `__floatdisf`, `__floatunsidf`, `__floatundidf`, `__floatunsisf`, `__floatundisf`, `__fe_getround` and `__fe_raise_inexact`. `kimi_backend` is linked by need: the link loads a member only when a file it loads whole, or a member it has already loaded, references a routine the member defines. A program's static library must be compiled for the same ABI. The executable is linked through a linker script the compiler carries, and a project cannot supply one: it is laid out from [§21.6.1](#2161-target)'s address in three 4,096-aligned loadable segments, code (readable and executable), read-only data (readable) and writable data (readable and writable), and its writable data holds [§21.6.2](#2162-entry-and-boot)'s base-revision tag and requests between Limine's start and end markers.
+
+### 21.6.8. Machine instructions
+
+The group `Kimi.X86` declares x86-64 processor instructions as functions ([§22.1](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). It is declared where the Condition `arch == "x86_64"` holds ([§19.2.1](../spec/19-compile-time-directives.md#1921-built-in-conditions)): `pause`, `readTimestamp` and `cpuid`, with the struct `CpuidResult` that `cpuid` returns, wherever `X86` is declared, since those functions also run in user mode; the other functions, privileged, only where `os == "none"` also holds, since each faults in user mode. Elsewhere `X86` declares no such function. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other function's call (a compiler barrier, not a processor fence).
+
+| Function | Instruction | Safety |
+| --- | --- | --- |
+| `pause()` | `pause`, the spin-wait hint | safe |
+| `readTimestamp() -> u64` | `rdtsc`, the time-stamp counter | safe |
+| `cpuid(leaf: u32, subleaf: u32) -> CpuidResult` | `cpuid`, the processor's identification and feature information for `leaf` and `subleaf`; `CpuidResult` is a `#Layout("C")` Copy struct of `eax`, `ebx`, `ecx` and `edx: u32` | safe |
+| `halt()` | `hlt` | safe |
+| `disableInterrupts()` | `cli` | safe |
+| `enableInterrupts()` | `sti` | safe |
+| `readPort8(port: u16) -> u8`, `readPort16(port: u16) -> u16`, `readPort32(port: u16) -> u32` | `in` of one, two or four bytes | `unsafe` |
+| `writePort8(port: u16, value: u8)`, `writePort16(port: u16, value: u16)`, `writePort32(port: u16, value: u32)` | `out` of one, two or four bytes | `unsafe` |
+| `enableInterruptsAndHalt()` | `sti` directly followed by `hlt` | safe |
+| `readCr0() -> u64`, `readCr2() -> u64`, `readCr3() -> u64`, `readCr4() -> u64` | `mov` from a control register | safe |
+| `writeCr0(value: u64)`, `writeCr3(value: u64)`, `writeCr4(value: u64)` | `mov` to a control register | `unsafe` |
+| `loadInterruptTable(descriptor: raw/u8)`, `loadDescriptorTable(descriptor: raw/u8)` | `lidt`, `lgdt` from the 10-byte limit and base at `descriptor` | `unsafe` |
+| `loadTaskRegister(selector: u16)` | `ltr` | `unsafe` |
+| `invalidatePage(address: raw/())` | `invlpg` of the page that holds `address` | `unsafe` |
+| `readMsr(index: u32) -> u64`, `writeMsr(index: u32, value: u64)` | `rdmsr`, `wrmsr` of the model-specific register `index` | `unsafe` |
+
+A function is `unsafe` exactly when it accesses a device or changes the processor's address translation, descriptor tables or model-specific state; the others change no storage. `readMsr` is `unsafe` since a model-specific register's read may change the state it reports. `enableInterruptsAndHalt` is the idle wait: with interrupts disabled at the call, `sti` holds them off for one more instruction, so one pending at the call ends the `hlt` instead of running before it, which `enableInterrupts()` followed by `halt()` does not guarantee. `loadInterruptTable` and `loadDescriptorTable` read the storage their operand addresses and `invalidatePage` accesses none at its; none of them stores through its operand, and no other function has a raw operand. Each `- safety:` item of an `unsafe` function other than a port function is its caller's obligation: `loadInterruptTable`'s and `loadDescriptorTable`'s, that the 10 bytes at `descriptor` are live and the table they name stays live and unchanged while the processor may use it; `loadTaskRegister`'s, that `selector` names an available task-state segment descriptor and the segment stays live and unchanged while the processor may use it; `invalidatePage`'s, that the translation that follows keeps the program's storage within the program's platform contract; `writeCr3`'s, that the page tables at `value` stay live while the processor uses them and each translation they give, including after a later edit and its invalidation, keeps the program's storage within that contract; `writeCr0`'s and `writeCr4`'s, that the mode or extensions that follow keep the program's storage and execution within that contract; and `readMsr`'s and `writeMsr`'s, that `index` names a model-specific register the processor implements and, for `writeMsr`, that the state that follows keeps the program's storage and execution within that contract ([§21.6.6](#2166-integer-addresses)). A port function's `- safety:` item is its caller's obligation: the device at `port` may change any storage it can reach, and the caller keeps that storage within the program's platform contract ([§21.6.6](#2166-integer-addresses)). Calling an `X86` function is an environment effect ([§8.11.2](../spec/08-generics-constraints-and-contracts.md#8112-confined)): it accesses processor state outside the program. A `confined` implementation calls none of them, `pause`, `readTimestamp` and `cpuid` included.
+
+### 21.6.9. Interrupt entries
+
+`Kimi.X86` declares, wherever it is declared ([§21.6.8](#2168-machine-instructions)), the frame the processor pushes on an interrupt in 64-bit mode and the two Contracts of interrupt handler Types. They execute nothing, so they are not under `os == "none"`.
+
+| Declaration | Meaning |
+| --- | --- |
+| `#Layout("C") public struct InterruptFrame`, `Self is Copy`, with `public let` `ip`, `cs`, `flags`, `sp`, `ss: u64` | The frame as it lies in memory from its lowest address: 40 bytes, alignment 8, the Fields at offsets 0, 8, 16, 24 and 32 ([§21.1.2](#2112-layout-modes)). The Fields hold the interrupted code's `rip`, `cs`, `rflags`, `rsp` and `ss`. It declares no constructor and has no implicit one ([§6.3.6](../spec/06-declarations-and-containers.md#636-implicit-constructor)), so a program never constructs one. |
+| `public contract InterruptHandler` with `func handle(frame: ref/InterruptFrame)` | The Contract of a handler for a vector without an error code. |
+| `public contract ErrorCodeHandler` with `func handle(frame: ref/InterruptFrame, code: u64)` | The Contract of a handler for a vector that pushes an error code, which `code` receives. |
+
+A handler Type conforms to them by the ordinary rules ([§8.6.3](../spec/08-generics-constraints-and-contracts.md#863-implementation-matching)). The interrupt entries, which call a handler's `handle` with the frame, and the rules `handle` must meet are not yet implemented.

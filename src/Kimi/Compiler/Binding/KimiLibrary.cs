@@ -409,8 +409,9 @@ public sealed partial class KimiLibrary
 
     // IMPL 21.3.4: how a call of a library declaration is served: a lang item whose catalog entry is a Form row by the MIR form the
     // builder writes (DispositionKind.Form; its declaration is bodyless), else its `#Intrinsic` read from the syntax by the Attribute's
-    // Kind: `#Intrinsic("Name")` the IntrinsicId member of that Name, `#Intrinsic("Fail", "Code")` Fail with its SPEC 22.5.2 code; Body
-    // without one. Another argument list or a Name that is no IntrinsicId member is a defect of the compiler build, whose embedded library
+    // Kind: `#Intrinsic("Name")` the IntrinsicId member of that Name, the family form `#Intrinsic("Family", "Member")` a family's id
+    // (IntrinsicDisposition.TakesMember) with its member, Fail's being its SPEC 22.5.2 code; Body without one. Another argument list, a
+    // Name that is no IntrinsicId member or a member on a non-family id is a defect of the compiler build, whose embedded library
     // KimiLibraryShapeTest checks.
     private static IntrinsicDisposition DefinitionOf(Koto declaration, KimiDeclarationId? item)
     {
@@ -424,19 +425,19 @@ public sealed partial class KimiLibrary
             return default;
         }
 
-        // Unlabeled string literals: the Name, then Fail's code.
-        var (name, code) = attribute.Operand is InvocationKoto call && call.GetArgumentLabel(0) is null ? call.ArgumentNodes switch
+        // Unlabeled string literals: the Name, then a family's member.
+        var (name, member) = attribute.Operand is InvocationKoto call && call.GetArgumentLabel(0) is null ? call.ArgumentNodes switch
         {
             [StringLiteralKoto only] => (only.Literal, null),
             [StringLiteralKoto first, StringLiteralKoto second] when call.GetArgumentLabel(1) is null => (first.Literal, second.Literal),
             _ => (string.Empty, (string?)null),
         } : (string.Empty, null);
-        if (!Enum.TryParse<IntrinsicId>(name, out var id) || id.ToString() != name || id == IntrinsicId.None || (id == IntrinsicId.Fail) != (code is not null))
+        if (!Enum.TryParse<IntrinsicId>(name, out var id) || id.ToString() != name || id == IntrinsicId.None || IntrinsicDisposition.TakesMember(id) != (member is not null))
         {
             throw new InvalidOperationException($"The embedded Kimi library's #Intrinsic at {attribute.Span} names no intrinsic (InternalInvariant).");
         }
 
-        return new(DispositionKind.Intrinsic, id, code);
+        return new(DispositionKind.Intrinsic, id, member);
     }
 
     // The declaration container a library declaration is declared in: its parent, or the container of the conditional conformance

@@ -5,7 +5,9 @@
 // Responsibility: the parameter order [environment] [ret] a0..an [context] [location, location_length]; under the internal convention
 // each parameter's kind (a string reference SharedReference, a slot Type OwnedSlot, else Value), the omission of zero-sized parameters,
 // the result slot (a slot Type of nonzero size, or a constructor's or destructor's) and the result Type (void for a slot Type, Unit or
-// Never); the definition's out-of-line attribute (Flags.OutOfLine, `noinline`, which no call reads); under a C convention of
+// Never); the definition's out-of-line and inline attributes (Flags.OutOfLine, `noinline`; Flags.Inline, `alwaysinline`, an
+// InstructionRows routine's; no call reads them); a platform witness's body, whose every run the none layer's enter and leave bracket
+// (Flags.PlatformMember, which no call reads; IMPL 21.6.3); under a C convention of
 // #LibraryImport (SPEC 22.6, IMPL 21.2; IsC: Windows x64's C, System V x86-64's SystemV) each parameter is a Value of its argument Type,
 // nothing is omitted and the result is never a slot, and under SystemV an 8- or 16-bit integer parameter or result carries its
 // extension by the Type's signedness (`signext`, `zeroext`; AbiParameter.Extension, FunctionAbi.ResultExtension).
@@ -15,8 +17,9 @@
 // string reference (IsSharedString) are this component's own Type rules, read by no other phase (R7-T2).
 // Outputs: Of, a FunctionAbi without a name (empty), which its definition names (FunctionAbi.Named: ModuleCodegen its items, an
 // import its external symbol); Matches, whether an existing FunctionAbi is that signature, so a caller reuses it without allocating;
-// HasResultSlot and ResultType, the internal convention's result rules over a record; Recorded, the flags a FunctionAbi keeps as given
-// (FunctionAbi.Flags), which Matches compares as one value.
+// HasResultSlot and ResultType, the internal convention's result rules over a record; Ret, the result slot's one parameter record (an
+// InstructionRows routine's first); Recorded, the flags a FunctionAbi keeps as given (FunctionAbi.Flags), which Matches compares as one
+// value.
 // Invariants: Of is a function of its inputs; Matches(Of(x), x) holds and allocates nothing.
 // Must not gate or map a Layout outcome other than Ok, flags under C or a C parameter without an argument representation (broken
 // contracts, which throw), read syntax, Origins, HIR or MIR, name a function, keep state or use LINQ.
@@ -31,7 +34,7 @@ internal static class Abi
 {
     /// <summary>The flags a signature records as given (<see cref="FunctionAbi.Flags"/>), compared as one value by <see cref="Matches"/>;
     /// it records the others by their effect (a slot, parameters).</summary>
-    internal const Flags Recorded = Flags.CallerLocation | Flags.OutOfLine;
+    internal const Flags Recorded = Flags.CallerLocation | Flags.OutOfLine | Flags.Inline | Flags.PlatformMember;
 
     /// <summary>A function's calling convention.</summary>
     internal enum Convention : byte
@@ -68,9 +71,17 @@ internal static class Abi
 
         /// <summary>A definition the optimizer keeps out of line (<c>noinline</c>; KimiLibraryCatalog.KeepsOutOfLine); calls are unchanged.</summary>
         OutOfLine = 16,
+
+        /// <summary>A definition the optimizer always inlines (<c>alwaysinline</c>; an InstructionRows routine's); calls are unchanged.</summary>
+        Inline = 32,
+
+        /// <summary>A platform witness's body, whose every run the none layer's enter and leave bracket (IMPL 21.6.3; FunctionCodegen's
+        /// frame); calls are unchanged.</summary>
+        PlatformMember = 64,
     }
 
-    private static AbiParameter Ret => new("ptr", "ret", AbiParameterKind.ResultSlot);
+    /// <summary>Gets the result slot parameter, the one record of it: <see cref="Of"/>'s, and an InstructionRows routine's first.</summary>
+    internal static AbiParameter Ret => new("ptr", "ret", AbiParameterKind.ResultSlot);
 
     private static AbiParameter Context => new("ptr", "context", AbiParameterKind.Context);
 

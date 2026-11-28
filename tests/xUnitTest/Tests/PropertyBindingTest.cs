@@ -141,7 +141,7 @@ public partial class PropertyBindingTest
         "public func readb<T>(t: T) -> bool\n    T is HasX\n    return t.x\n";
 
     // Accessors of another Type whose receiver Type is missing, or with an access or receiver-shape error of their own, and one inside a
-    // failed declaration context (PLAN G322).
+    // failed declaration context.
     private const string AccessWrongGetter = ClosedField + "        public get() -> i64\n            return 1\n" + ClosedInit;
     private const string ShapeWrongGetter = ClosedField + "        get(self: uniq/Self) -> i64\n            return 1\n" + ClosedInit;
     private const string UnformedPart = "struct NC\n    public var a: i32\n    drop => ()\nstruct W<T>\n    T is Copy\n    public var t: T\n";
@@ -589,9 +589,11 @@ public partial class PropertyBindingTest
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += \"a\"", "TypeMismatch_Kd get() -> i64;NonNumericOperand_Kd h.x += \"a\"")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x = true", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x = true")]
-    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1", "UnresolvedBinding_Kd Missing")]
-    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "UnresolvedBinding_Kd Missing;TypeMismatch_Kd let v: bool = h.x")]
-    [InlineData(MissingReceiverSetter, "var h = HW.init(x: 3)\n    let n: i32 = 3\n    h.x = n\n    h.x += 1", "UnresolvedBinding_Kd Missing")]
+    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1", "TypeMismatch_Kd get(self: ref/Missing) -> i64;UnresolvedBinding_Kd Missing")]
+    [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd get(self: ref/Missing) -> i64;UnresolvedBinding_Kd Missing;TypeMismatch_Kd let v: bool = h.x")]
+    [InlineData(MissingReceiverSetter, "var h = HW.init(x: 3)\n    let n: i32 = 3\n    h.x = n\n    h.x += 1", "TypeMismatch_Kd set(self: uniq/Missing, value: i64) -> ();UnresolvedBinding_Kd Missing")]
+    [InlineData(ClosedField + "        get(self: ref/Missing) -> i32\n            return 1\n" + ClosedInit, "", "UnresolvedBinding_Kd Missing")]
+    [InlineData(ClosedField + "        get(self: uniq/Self) -> Missing\n            return 1\n" + ClosedInit, "", "AccessorReceiverShape_Kd get(self: uniq/Self) -> Missing;UnresolvedBinding_Kd Missing")]
     [InlineData(AccessWrongGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1\n    let v: bool = h.x", "InaccessibleBinding_Kd public get() -> i64;TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(ShapeWrongGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1\n    let v: bool = h.x", "AccessorReceiverShape_Kd get(self: uniq/Self) -> i64;TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(UnformedGetter, "var h = HW.init(x: 3)\n    h.x += 4\n    let v: i32 = h.x", UnformedGetterRecords)]
@@ -606,7 +608,7 @@ public partial class PropertyBindingTest
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
     }
 
-    // SPEC 11.3, 23.1.2 (PLAN G322): ValidateAccessor judges an accessor's Type before its declaration context, so inside a failed
+    // SPEC 11.3, 23.1.2: ValidateAccessor judges an accessor's Type before its declaration context, so inside a failed
     // context the accessor reports its own TypeMismatch_Kd; a use that accepts the Property's Type adds none, one that rejects it keeps
     // its own (before, only the latter).
     [Theory]
@@ -718,10 +720,11 @@ public partial class PropertyBindingTest
     [InlineData(NonCopyP + PosGetter + Run + "    return match w.pos.o\n        .Some(let n) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
     [InlineData(NonCopyP + PosGetter + Run + "    return match (w.pos.o)\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
     [InlineData(NonCopyP + PosGetter + Run + "    return match ((w.pos.o))\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
-    // open: G1076 (`try` and `for` over a Place built on the use)
+    // open: G1076 (`try` over a Place built on the use)
     [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try w.pos.o\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.o")]
     [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try (w.pos.o)\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.o")]
-    [InlineData(NonCopyP + PosGetter + "func look(v: ref/i32) -> () => ()\nfunc run(w: uniq/W)\n    for v in (w.pos.items) => look(v)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.items")]
+    // G922 tws: a `for` Subject is acquired by the match's rule (SPEC 15.1.6), so a Place built on the use rests as `match (w.pos.o)` does
+    [InlineData(NonCopyP + PosGetter + "func look(v: ref/i32) -> () => ()\nfunc run(w: uniq/W)\n    for v in (w.pos.items) => look(v)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage")]
     [InlineData(NonCopyP + OwnedR + ArrayGetter + RunWithLocal + "    var total = 0\n    for v in w.fa\n        total += take(a@move)\n    return total\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage; MovedPlace_Kd a")]
     [InlineData(NonCopyP + OwnedR + ArrayGetter + "func run(w: uniq/W, a: R)\n    for v in w.fa\n        let b = a\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage; TransferRequired_Kd a")]
     [InlineData(NonCopyP + OwnedR + TupleGetter + RunWithLocal + "    return match (w.t.1)\n        .Some(let n) => n\n        .None => take(a@move) + take(a@move)\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage; MovedPlace_Kd a")]

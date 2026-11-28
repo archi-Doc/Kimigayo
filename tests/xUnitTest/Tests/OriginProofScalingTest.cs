@@ -99,6 +99,37 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(rows[2].WrittenEdges <= (4 * rows[1].WrittenEdges) + (4 * rows[2].Layers) && rows[2].Environments <= 2 * rows[1].Environments, string.Join(' ', rows));
     }
 
+    // SPEC 15.3.6, 15.6.1 (R7-O2 A4-L; its implementation review's C1): one `let` of a Tuple of n `View<T>{r_i}` slots, each fit to its own
+    // x_i, with the local clauses `origin r_{i+1}.source outlives r_i.source` written in reverse order, so each slot's upper bounds name
+    // the next slot: r_i is x_i and every later x. Each size is valid. The candidate walks' steps (CandidateSteps, two per slot), the
+    // proof's worklist insertions and the term walks grow linearly at n = 16 to 128 (asserted; the time is printed); the chain has no
+    // reading cycle, so no reach walk runs.
+    [Fact]
+    public void ALetsChainOfOmittedSlotsGrowsLinearly()
+    {
+        var rows = new[] { 16, 32, 64, 128 }.Select(static n =>
+        {
+            var source = new StringBuilder("struct View<T> {source}\n    public let data: ref/T during source\nfunc f<T>(");
+            source.AppendJoin(", ", Enumerable.Range(0, n).Select(static i => $"x{i}: View<T>"));
+            source.Append(") -> ()\n    let t: (").AppendJoin(", ", Enumerable.Range(0, n).Select(static i => $"View<T>{{r{i}}}"));
+            source.Append(") = (").AppendJoin(", ", Enumerable.Range(0, n).Select(static i => $"x{i}@move")).Append(")\n");
+            for (var i = n - 2; i >= 0; i--)
+            {
+                source.Append(CultureInfo.InvariantCulture, $"        origin r{i + 1}.source outlives r{i}.source\n");
+            }
+
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var c = Carried(source.Append("public func main() => ()\n").ToString());
+            var metrics = CarriedMetrics(c);
+            return (Slots: n, Walks: (long)c.Binding.TermWalkWork, Steps: metrics.CandidateSteps, metrics.Insertions, Ms: watch.ElapsedMilliseconds);
+        }).ToArray();
+        output.WriteLine($"slots 16, 32, 64, 128: {string.Join(' ', rows)}");
+        foreach (var work in new[] { rows.Select(static x => x.Walks).ToArray(), rows.Select(static x => x.Steps).ToArray(), rows.Select(static x => x.Insertions).ToArray() })
+        {
+            Assert.True(MirBorrowsTest.Grows(work[..3], 2.5) && MirBorrowsTest.Grows(work[1..], 2.5), string.Join(' ', rows));
+        }
+    }
+
     // PLAN G492-a (ii), the owner's O-426 (a): a diamond chain of 40 `var` definitions (x{i} and y{i} each bounded by x{i-1} and y{i-1},
     // so each solved value is a meet of the two regions one level up) read through a Closure: A5's split of a failed source (df, invalid:
     // `p outlives q` is Unknown, one record; SPEC 15.6.5) and the retention of a Closure call whose contract names x{N} (dr, valid) read

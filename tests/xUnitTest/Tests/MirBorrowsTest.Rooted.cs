@@ -941,12 +941,12 @@ public sealed partial class MirBorrowsTest
             Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]));
     }
 
-    // ALimitIsUnsupportedAndADerivedEffectReportsNothing on rooted bodies (AGENTS Diagnostics; R4-M10, R4-M91, R4-M92): A4's Deep (Lim's
+    // ADeepEffectIsTheDepthLimitAndADerivedEffectReportsNothing on rooted bodies (AGENTS Diagnostics; R4-M10, R4-M91, R4-M92): A4's Deep (Lim's
     // destruction past the walk's bound) is the depth limit where a live mutable-static Loan would be met (e12a; the owner's 「G272: (1)」,
     // R4-M153), nothing where none is (e12b), Unknown beside it decides (e12c); a dependent of an error reports nothing by itself (e13a), a
     // key beside it stays checked (e13b).
     [Fact]
-    public void ALimitIsUnsupportedAndADerivedEffectReportsNothingRooted()
+    public void ADeepEffectIsTheDepthLimitAndADerivedEffectReportsNothingRooted()
     {
         Assert.Equal(
             ["e12a: Lim.run() OwnershipDepthLimit_Kd", "e12c: both(g@move)"],

@@ -100,7 +100,6 @@ public sealed partial class Binding
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
         this.resultContexts = new(this);
-        this.callableConstraints = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
         this.memberSelections = new(this);

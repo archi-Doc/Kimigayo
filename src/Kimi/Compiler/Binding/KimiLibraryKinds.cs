@@ -99,6 +99,7 @@ internal enum IntrinsicId : byte
     VolatileRead, // Volatile access (SPEC 5.6).
     VolatileWrite,
     MonotonicClock, // SPEC 22.8.2, IMPL 21.5.5 (the Tatara plan's decision 25): the platform layer's monotonic clock.
+    Instruction, // A machine instruction, its member a row of the Backend's InstructionRows (IMPL 21.6).
 }
 
 /// <summary>What a function without a MIR body is (SPEC 8.11.2, 22.1, 22.6; TyCtxt.Bodyless), Binding's one category of it, which A4
@@ -135,7 +136,7 @@ internal enum BodylessKind : byte
 internal enum DispositionKind : byte
 {
     Body, // A Kimigayo body, the declaration's own.
-    Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.2 code.
+    Intrinsic, // An IntrinsicId; a family's id (IntrinsicDisposition.TakesMember) carries its member, Fail its SPEC 22.5.2 code.
     Shim, // A built-in witness (equality, comparison, arithmetic), whose body the backend generates for its instance.
     Form, // A call the builder writes as a MIR form, never a Call: its catalog entry's Form row (KimiLibraryCatalog.Entry).
 }
@@ -144,9 +145,13 @@ internal enum DispositionKind : byte
 /// declaration's `#Intrinsic` (IMPL 21.3.4), a built-in target's Shim, a cataloged lang item's Form, otherwise its Body.</summary>
 /// <param name="Kind">How the call is served.</param>
 /// <param name="Id">The intrinsic of an Intrinsic disposition.</param>
-/// <param name="Code">The SPEC 22.5.2 code of <see cref="IntrinsicId.Fail"/>.</param>
-internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Code = null)
+/// <param name="Member">A family's member, the case its second `#Intrinsic` argument names: <see cref="IntrinsicId.Fail"/>'s SPEC 22.5.2
+/// code, <see cref="IntrinsicId.Instruction"/>'s row of the Backend's InstructionRows.</param>
+internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Member = null)
 {
+    // IMPL 21.3.4's family form `#Intrinsic("Family", "Member")`: whether an id is a family, whose declarations each name its member.
+    internal static bool TakesMember(IntrinsicId id) => id is IntrinsicId.Fail or IntrinsicId.Instruction;
+
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether an intrinsic's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
     // (the source as a Take), an in-place destruction and a volatile write at `storage`; a Dictionary entry's placement is the

@@ -489,7 +489,7 @@ public class ConditionalConformanceBindingTest
     // the base clause fails, and the Base's own valid conformance keeps no record (it had one before C2).
     [Theory]
     [InlineData("    origin y outlives x\n", "clean")]
-    [InlineData("", "1*InvalidTypeFormation_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData("", "1*InvalidTypeFormation_Kd 1*UnprovenOriginRelation_Kd")] // the base clause's record is the judge's at the base node (the Hold, H12; DECISIONS Q13, counted by code)
     public void AnInheritedConformancesBridgeIsComparedUnderTheDerivedTypesPremises(string premise, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +

@@ -98,10 +98,10 @@ public sealed partial class Binding
     // is always a fixed binding (OpenConstructionSlot; SPEC 9.7.1), so `s/V` over one is `s/(its binding)` on every path and is
     // classified as its binding is, whether the pattern holds the slot (a constructor's, a Case's) or has it substituted (a
     // method's): never as a slot being inferred; explicit Type arguments or a construction Type that fix the own slots fix the
-    // binder too. Any other target (`s/(ref/i32)`, `s/(t/i32)`, `s/Option<U>`, another pair's target, a caller's Type parameter)
-    // has its own layer, structure or slot: that application is formed under the binder its exact sources fixed, a parameter Type
-    // its argument fits (FittedPattern) and is then compared with (SourcedLayer), never evidence, so an owner binding of the outer
-    // layer is no layer, even above a reference.
+    // binder too. Any other target (`s/(ref/i32)`, `s/(t/i32)`, `s/Option<U>`, another pair's target, alone as `U` of `t/U` too: an
+    // abstract leaf, never a closed one, PLAN G1266; a caller's Type parameter) has its own layer, structure or slot: that application
+    // is formed under the binder its exact sources fixed, a parameter Type its argument fits (FittedPattern) and is then compared with
+    // (SourcedLayer), never evidence, so an owner binding of the outer layer is no layer, even above a reference.
     private static bool IsExactSource(BoundType application, Koto function, SlotFrame frame)
     {
         var target = application.Components[0];
@@ -116,7 +116,7 @@ public sealed partial class Binding
                 ? binding : target;
         }
 
-        return target is { Components.Count: 0, ContainsParameter: false };
+        return target is { Components.Count: 0, ContainsParameter: false, HasAbstractPart: false };
     }
 
     // SPEC 10.8: whether an application is an exact source (IsExactSource) of a binder whose sources gave selector evidence, which

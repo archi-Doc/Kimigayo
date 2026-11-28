@@ -200,9 +200,8 @@ public partial class SyntaxIdTest
     // family's program, which reports its failure at each Bind; R7-N5's: PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; EffectBoundRejections, a misplaced effect item; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
     // under a holed annotation;
-    // B2a-2's ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's CallableConstraints, a
-    // callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); B2b-1's UniqIndexing, a Dictionary's
-    // user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
+    // B2a-2's ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B2b-1's UniqIndexing, a
+    // Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter;
     // B1b-2's MemberSelections, a stored Field read and a method call, InferredConstructionTargets, a generic struct's construction
     // without its Type arguments, and QualificationStops, an instance member named without `self`; D-986's FormReads, the kept operands
     // `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query memos written in a Bind: the
@@ -244,7 +243,6 @@ public partial class SyntaxIdTest
     [InlineData("ReachedThroughBorrow", "struct S1\n    internal var x: Array<i32>\nstruct S2\n    internal var x: Array<S1>\nfunc f(s: S2) -> i32 => s.x[0].x[0]\n")]
     [InlineData("JudgedOccurrences", "struct Box<T>\n    T is Copy\n    public init() => ()\nfunc f(b: Box<i32>) => ()\n")]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
-    [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
     [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
     [InlineData("MemberSelections", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]

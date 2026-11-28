@@ -168,7 +168,7 @@ public sealed partial class Binding
             return this.BindBinaryFromRight(binary, scope, expected);
         }
 
-        var context = ComparisonOperator(kind) || assignment ? null : expected;
+        var context = Parser.IsComparison(kind) || assignment ? null : expected;
         if (kind is KotoKind.And or KotoKind.Or)
         {
             context = BoundType.Boolean;
@@ -238,7 +238,7 @@ public sealed partial class Binding
         var right = this.ReadReferent(binary.Right, this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : null));
         var decision = right is null ? default : this.OperatorApplicabilityOf(binary, null, right, scope);
         var context = ReferenceEquals(decision.ExpectedOperand, binary.Left) ? decision.Counterpart : null;
-        if (right is null && !ComparisonOperator(binary.Akind))
+        if (right is null && !Parser.IsComparison(binary.Akind))
         {
             context = expected;
         }
@@ -348,7 +348,7 @@ public sealed partial class Binding
             left = fitted;
         }
 
-        if (ComparisonOperator(operation))
+        if (Parser.IsComparison(operation))
         {
             return this.CompleteComparison(binary, left, right, scope, decision);
         }

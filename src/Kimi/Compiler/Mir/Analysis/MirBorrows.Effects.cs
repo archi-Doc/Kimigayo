@@ -14,12 +14,11 @@ namespace Kimi.Compiler.Mir;
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
 //   root (shallow, SPEC 15.6.2); its first conflict at the location its body owns (D11), coded by Code (row 1: a reservation the call does
 //   not activate) with the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
-// - A4's Limit or Deep, where a candidate a write would meet is met by no key: the Join of a write key's decided answer and A4's
-//   (MirEffects.Outcome), a limit record at the location where it is undecided (MirBorrows.Reports' Limit: a located Unsupported_Kd for
-//   Limit, OwnershipDepthLimit_Kd for Deep);
+// - A4's Deep, where a candidate a write would meet is met by no key: the Join of a write key's decided answer and A4's
+//   (MirEffects.Outcome), a limit record at the location where it is undecided (MirBorrows.Reports' Limit: OwnershipDepthLimit_Kd);
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
-//   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Limit or
-//   Deep without them, that answer's limit record;
+//   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Deep
+//   without them, its limit record;
 // - the initialization proof (SPEC 15.6.4, af6410d81: a slot a site may first-access is proved initialized there exactly when every path to
 //   the site passes a Borrow of it; 22.4.4: per slot): P, the statics with one slot that MirBorrows.Passes finds passed, are proved, and
 //   every decision on a root reads the row with P's initializations left out (MirEffects.Keys' excluded), from Spread's row where no
@@ -65,10 +64,10 @@ internal sealed partial class MirBorrows
         return Bit(row, 2 * field) ? ProblemFactKind.EffectRead : null;
     }
 
-    // Whether a key row and classes have what a decision on the Field A4 numbers f reads: its read or write key, Unknown, Limit or Deep.
+    // Whether a key row and classes have what a decision on the Field A4 numbers f reads: its read or write key, Unknown or Deep.
     // Where Spread's row has none, the row with P's initializations left out, a subset of it, has none either (Row).
     private static bool Touches(ReadOnlySpan<ulong> row, byte classes, int field)
-        => Bit(row, 2 * field) || Bit(row, (2 * field) + 1) || (classes & (MirEffects.Unknown | MirEffects.Limit | MirEffects.Deep)) != 0;
+        => Bit(row, 2 * field) || Bit(row, (2 * field) + 1) || (classes & (MirEffects.Unknown | MirEffects.Deep)) != 0;
 
     // The conflicts relation's row of an effect decided so: a read key reads, a write key and Unknown write.
     private static AccessKind EffectRow(ProblemFactKind? fact) => fact == ProblemFactKind.EffectRead ? AccessKind.EffectRead : AccessKind.EffectWrite;
@@ -168,7 +167,7 @@ internal sealed partial class MirBorrows
     }
 
     // R3 (SPEC 16.4 with 16.3.1, 16.3.3): the destruction of a mutable static's old value holds an exclusive Loan on it until it completes, so
-    // its own effects on that static conflict, a read key, a write key or Unknown; with Limit or Deep alone it is not classified. Inside an
+    // its own effects on that static conflict, a read key, a write key or Unknown; with Deep alone it is not classified. Inside an
     // inline default copy it is its template's (D11: no Loan takes part). It reads the row with P's initializations left out (Row).
     private void Destroying(MirLocation at, int taking, int destroyed, ReadOnlySpan<ulong> row, byte classes)
     {
@@ -182,7 +181,7 @@ internal sealed partial class MirBorrows
         row = this.Row(at, taking, field, row, ref classes);
         if (Decided(row, classes, field) is null)
         {
-            this.Limit(this.Subject(at), MirEffects.Outcome(classes, EffectRule.Confined)); // No key and no Unknown: A4's Limit or Deep, if any.
+            this.Limit(this.Subject(at), MirEffects.Outcome(classes, EffectRule.Confined)); // No key and no Unknown: A4's Deep, if any.
         }
         else if (this.Covered(this.Source(at).Scope, -1, -1))
         {
@@ -218,14 +217,14 @@ internal sealed partial class MirBorrows
     }
 
     // The row a decision on the Field A4 numbers f reads at the location in the view (SPEC 15.6.4): the row with P's initializations left
-    // out, P and Q formed first (Proof). It is Spread's row where no initializer of P may make, in a view, f's read or write key, Unknown,
-    // Limit or Deep (Rests), since a kind no such summary has is reached from the site along a path that enters no initializer of P; else
+    // out, P and Q formed first (Proof). It is Spread's row where no initializer of P may make, in a view, f's read or write key, Unknown
+    // or Deep (Rests), since a kind no such summary has is reached from the site along a path that enters no initializer of P; else
     // A4's excluded query, once per location and view and copied (A4's scratch is the next query's). Q's initializations stay in it until
     // P42's key.
     private ReadOnlySpan<ulong> Row(MirLocation at, int taking, int field, ReadOnlySpan<ulong> row, scoped ref byte classes)
     {
         this.Proof(at, taking);
-        if (!this.Rests(CollectionsMarshal.AsSpan(this.proved), field, 3, MirEffects.Unknown | MirEffects.Limit | MirEffects.Deep))
+        if (!this.Rests(CollectionsMarshal.AsSpan(this.proved), field, 3, MirEffects.Unknown | MirEffects.Deep))
         {
             return row;
         }

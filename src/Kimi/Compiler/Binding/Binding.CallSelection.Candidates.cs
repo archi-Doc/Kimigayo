@@ -27,6 +27,7 @@ public sealed partial class Binding
         var unformedMark = this.unformedWrites;
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         var wholesMark = this.wholes.Count;
+        var ownTypesMark = this.ownTypes.Count;
         try
         {
             var state = this.TryCandidateCore(ref solution, expected, operations, ref row);
@@ -58,6 +59,7 @@ public sealed partial class Binding
         finally
         {
             this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
+            this.ownTypes.RemoveRange(ownTypesMark, this.ownTypes.Count - ownTypesMark);
             this.CloseTrial(enclosing);
             (this.acquisitionFailure, this.activeRequirementContract) = (savedAcquisition, savedContract);
         }
@@ -930,6 +932,7 @@ public sealed partial class Binding
         var call = solution.Call;
         var function = solution.Function;
         var wholes = this.wholes.Count;
+        var ownTypes = this.ownTypes.Count;
         solution.LeaveUnbound(ref left);
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
@@ -944,12 +947,37 @@ public sealed partial class Binding
             }
 
             var mark = this.unformedWrites;
+            var gathered = this.ownTypes.Count;
             if (solution.Pattern(parameter) is { } latePattern && !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true) &&
                 this.UnformedPart(ref solution, parameter, i, this.FormsNone(parameter, mark)) is not true)
             {
                 return false;
             }
+
+            for (var p = gathered; p < this.ownTypes.Count; p++)
+            {
+                this.ownTypes[p] = (this.ownTypes[p].Pattern, this.ownTypes[p].Part, i);
+            }
         }
+
+        // SPEC 10.5.1 bullet 2 (OwnTypeSteps' order): the nested calls' own Types the walk gathered; one that fails through its own
+        // pattern's formation is judged as its argument is (UnformedPart).
+        for (var p = ownTypes; p < this.ownTypes.Count; p++)
+        {
+            var mark = this.unformedWrites;
+            if (solution.InferGathered(p, out var i))
+            {
+                continue;
+            }
+
+            var parameter = function.Parameters[solution.Mapping[i]].Type.BoundType!;
+            if (this.UnformedPart(ref solution, parameter, i, this.FormsNone(parameter, mark)) is not true)
+            {
+                return false;
+            }
+        }
+
+        this.ownTypes.RemoveRange(ownTypes, this.ownTypes.Count - ownTypes);
 
         // SPEC 10.8, 10.2.1: the defaults bind what no evidence bound (the owner's O-343 (a), O-347 (a)); an input formed only now is
         // inferred now, and the wholes the defaults or it give are bound (SettleSources).

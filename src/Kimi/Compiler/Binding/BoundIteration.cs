@@ -16,6 +16,11 @@ internal sealed class BoundIteration
         var name = new IdentifierNameKoto(ref reader, new(TokenKind.Identifier, new Kimi.Diagnostics.SourceSpan(source.Span.Start, 0)), "$for.iterator");
         this.Iterator = new FieldKoto(ref reader, new(TokenKind.Var, name.Span), name, null, null) { Parent = source };
         this.Receiver = new IdentifierNameKoto(source, "$for.iterator");
+
+        // SPEC 15.1.6, 14.6.2: the Subject Place of a Subject borrowed in place, the entry call's input (Binding.BindIterationSubject).
+        var subject = new IdentifierNameKoto(ref reader, new(TokenKind.Identifier, new Kimi.Diagnostics.SourceSpan(source.Span.Start, 0)), "$for.subject");
+        this.SubjectDeclaration = new FieldKoto(ref reader, new(TokenKind.Let, subject.Span), subject, null, null) { Parent = source };
+        this.Subject = new IdentifierNameKoto(source, "$for.subject");
         this.Next = new InvocationKoto(source, new MemberAccessKoto(source, this.Receiver, new IdentifierNameKoto(source, "next")), []);
         var some = new IdentifierNameKoto(source, "$for.some");
         var none = new IdentifierNameKoto(source, "$for.none");
@@ -30,6 +35,10 @@ internal sealed class BoundIteration
     internal BindingScope Scope { get; }
 
     internal IdentifierNameKoto Receiver { get; }
+
+    internal FieldKoto SubjectDeclaration { get; }
+
+    internal IdentifierNameKoto Subject { get; }
 
     internal InvocationKoto Next { get; }
 

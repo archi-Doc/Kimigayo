@@ -200,7 +200,8 @@ public partial class TypeDagScalingTest
 
     // R4 (BU's B1 form): a closed associated projection's resolution writes H's part as a Tuple DAG of 2^n positions from O(n) text, so
     // the written Type is shared too: each level is one key with its written Type in H, in Own mode (a uniq reference to H decides at its
-    // `loan` Field first). The raw leaves reach Binding's raw-Origin walks of that chain, linear since PLAN G309.
+    // `loan` Field first). The raw leaves reach Binding's raw-Origin walks of that chain, linear since PLAN G309, and every leaf the
+    // declaration judge's clause walk at x's root (AddTypeClauseObligations), each distinct part once per root (DECISIONS BU-19).
     [Theory]
     [InlineData("i32", 12, "True None", 12)]
     [InlineData("i32", 40, "True Deep", 33)]

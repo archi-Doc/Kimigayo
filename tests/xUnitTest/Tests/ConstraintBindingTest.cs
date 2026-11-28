@@ -767,7 +767,7 @@ public class ConstraintBindingTest
         Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf());
     }
 
-    // SPEC 11.6 (DECISIONS: G1220; G1220-1 C9, C10): an inferred Property whose initializer's typing needs a fact (Copy, Owned, layout)
+    // SPEC 11.6 (DECISIONS BU-267; G1220-1 C9, C10): an inferred Property whose initializer's typing needs a fact (Copy, Owned, layout)
     // about a Type that contains it is CyclicBinding_Kd at its declaration: the request demands the headers of the stored Properties its
     // Type contains, through a field, a Case payload, a Tuple component, a fixed-array element, an unused Type argument, a base, a
     // conditional opt-in's premise under its own kind (c5, a5, k1, q2: SPEC 8.8.2) or Option, and through another inferred Property (p1,

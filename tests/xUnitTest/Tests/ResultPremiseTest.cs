@@ -592,7 +592,7 @@ public partial class ResultPremiseTest
     [InlineData(ClauseType + "struct H {q}\n    origin q outlives static\n    public let f: () -> Option<T during q>\n\n")] // a Field with the clause
     [InlineData(ClauseType + "struct H {q}\n    public let f: (Option<T during q>) -> i32\n    public init(f: (Option<T during q>) -> i32) => self.f = f@move\n\n")] // c1f: a Field's nested input is that signature's premise (SPEC 15.3.2, 15.6.1; PLAN G464: dev's UnprovenConstraint_Kd at the Field, an acceptance move)
     [InlineData(ClauseType + "struct H {q}\n    public let g: (Option<T during q>) -> Option<T during q>\n    public init(g: (Option<T during q>) -> Option<T during q>) => self.g = g@move\n\n")] // c1fr: and its nested result is judged under it (SPEC 15.3.4; PLAN G464, an acceptance move)
-    [InlineData(ClauseType + "struct H {q}\n    public let g: () -> Option<T during q>\n    public init(g: () -> Option<T during q>) => self.g = g@move\n\n", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven")] // c1fi: each written nested result keeps its record, the Field's and the init parameter's; the Field's UnprovenConstraint_Kd, which restated the first, goes (PLAN G464; DECISIONS Q13, rule W)
+    [InlineData(ClauseType + "struct H {q}\n    public let g: () -> Option<T during q>\n    public init(g: () -> Option<T during q>) => self.g = g@move\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven")] // c1fi: each written nested result keeps its record, the Field's and the init parameter's; the Field's UnprovenConstraint_Kd, which restated the first, goes (PLAN G464; DECISIONS Q13, rule W); the Field's names H's Origin as written there (the Hold, H19; Q13 Text)
     [InlineData("struct S {q}\n    origin q outlives static\n    public let f: () -> Option<S during q>\n\n    public init(f: () -> Option<S during q>) => self.f = f@move\n\n")] // a Field returning its own Type
     [InlineData("func f(u0: ref/((ref/i32) -> i32)) -> ref/((ref/i32) -> i32) during u0\n    return u0\n\n")] // f_sig_res_ok: a borrow layer holding a Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1; none here)
     [InlineData("struct S {a}\n    public let call: ref/((ref/i32) -> i32) during a\n\n")] // f_fld_ok: as f_sig_res_ok in a Field
@@ -660,7 +660,7 @@ public partial class ResultPremiseTest
             DiagnosticCorpus.Check(loc).Diagnostics.Select(x => $"{x.Code}|{Text(loc, x.Span)}|{x.Label}"));
         var field = ClauseType + "struct H {q}\n    public let f: () -> Option<T during q>\n\n" + Main;
         Assert.Equal(
-            [Unproven + "Option<T during q>|requires self.q outlives static, which is not proven"],
+            [Unproven + "Option<T during q>|requires q outlives static, which is not proven"],
             DiagnosticCorpus.Check(field).Diagnostics.Select(x => $"{x.Code}|{Text(field, x.Span)}|{x.Label}"));
     }
 

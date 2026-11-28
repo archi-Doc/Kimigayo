@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
-// Environment, Unknown, Limit, Derived, Deep (R4-M153) and Static, and atoms over the definition's abstract Types (Drop(T), a call through
+// Environment, Unknown, Derived, Deep (R4-M153) and Static, and atoms over the definition's abstract Types (Drop(T), a call through
 // a Callable input T with the signature the call selected) — and
 // the obligations Binding publishes, each judged under its rule (TyCtxt.EffectObligations; EffectRule: `confined`, SPEC 22.4.5's StaticFree).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
@@ -10,11 +10,10 @@
 // ContinueLibrary or BeginProgram, in the step that closes the body's A2 entry in A2's store of that segment), TyCtxt's
 // obligations and callee facts, the Callable signature each call through a Callable value selected (SPEC 8.10, 8.11.4: a value call's
 // CallPlan.DeclaredSignature, the Value callee's TypeToken; a published row's Callable input's one signature, TyCtxt.CallsSignature),
-// TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
-// DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12), and the root
-// range.
+// TyCtxt.Comparison for a tuple operator's call and a comparison shim's requirement (its distinct leaves; DECISIONS R5-M166), TyCtxt.Witness
+// for what a requirement on a Self that is not abstract runs (A-12, R7-P5a), and the root range.
 // Output: Run's result, whether its round was clean; IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport for the obligations whose subject is in the root
+// UnsatisfiedEffectBound_Kd and OwnershipDepthLimit_Kd through MirReport for the obligations whose subject is in the root
 // range (the library's are the library check's, PLAN G951 E3), added by a clean round only; and for A5 the per-node summaries and a site's
 // key row and classes per view (Keys, Field). A broken contract has one form per place (Broken): one Local meets at a call (a function
 // without a body Binding gives no category, a comparison leaf with no answer) is InternalInvariant_Kd at the call through MirReport, its
@@ -39,7 +38,8 @@
 // allocates nothing.
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, select a call's Callable signature again, report a failure
 // that only an Opaque site or a callee
-// Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
+// Binding rejected causes (derived, R4-M10), read a body with a validator finding (Views: derived, R5-M183), or write a local fact
+// in the solve (Item, AddEdge and AddKey are Local's; the solve runs a requirement by Require and keeps an atom by AddAtom).
 
 using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -56,9 +56,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 {
     /// <summary>A class of a summary: an effect that cannot be classified, which may access any key (SPEC 15.6.4).</summary>
     internal const byte Unknown = 2;
-
-    /// <summary>A class of a summary: an effect this implementation cannot classify yet (a located <c>Unsupported_Kd</c>).</summary>
-    internal const byte Limit = 4;
 
     /// <summary>A class of a summary: an effect only an Opaque site, a callee whose definition rests on a recorded error (Binding rejected
     /// it or the parser recorded its Body missing: TyCtxt.Bodyless's Dependent), a body with a validator finding or a broken contract
@@ -88,7 +85,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
 
-    private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
+    private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison's distinct nodes, Leaves' own.
+    private readonly List<ComparisonNode> leaves = []; // The leaves a comparison runs (Leaves), a stack.
     private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
     private readonly MirReach reach = new(); // The blocks a body with a case branch reaches under the view (Local).
     private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while the segment holds.
@@ -98,7 +96,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private (MirReport Problems, SourceRef Subject, int Body, ulong Views) site; // The call Local reads (Terminator), where Broken records.
 
     /// <summary>Gets the one answer of classes under a rule (DECISIONS R4-M153): the Join of their outcomes, a class that fails the rule
-    /// (<see cref="Failing"/>) decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep, for every rule. A4's obligations record
+    /// (<see cref="Failing"/>) decided and <see cref="Deep"/> Deep, for every rule. A4's obligations record
     /// by it under their row's rule, and A5's unknown-effect Loan conflict (SPEC 15.6.4) under Confined, whose classes Keys and Summary
     /// mask, so only Unknown decides there.</summary>
     /// <param name="classes">Classes of a summary or a site.</param>
@@ -107,7 +105,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     internal static MirOutcome Outcome(byte classes, EffectRule rule)
     {
         var decided = (classes & Failing[(int)rule]) != 0 ? MirOutcome.Decided : MirOutcome.None;
-        return decided.Join((classes & Limit) != 0 ? MirOutcome.Limit : MirOutcome.None).Join((classes & Deep) != 0 ? MirOutcome.Deep : MirOutcome.None);
+        return decided.Join((classes & Deep) != 0 ? MirOutcome.Deep : MirOutcome.None);
     }
 
     // The classes that fail an obligation, by its rule (the one table, EffectRule's order): Confined an Environment or Unknown effect (SPEC
@@ -210,7 +208,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
     // destroys (A4's, and A5's MirBorrows.Destructions'): the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance,
-    // DECISIONS R4-M139), Rejected storage included; null where it is past Binding's storage bound (a Limit verdict, or a formation that
+    // DECISIONS R4-M139), Rejected storage included; null where it is past Binding's storage bound (a storage Limit verdict, or a formation that
     // does not complete), which A4 reads as Deep (Item, Process; R4-M153).
     internal BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
     {
@@ -271,16 +269,14 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee is { Kind: MirCalleeKind.Requirement, Arg: not 0 })
         {
-            var contract = TyCtxt.Contract(callee.Symbol!);
-            this.compared.Clear();
-            this.Compared(program, body, contract, types.Comparison(contract, callee.Subst!.Self!, operators: true)); // The builder's root.
+            this.Compared(program, body, TyCtxt.Contract(callee.Symbol!), callee.Subst!);
         }
         else if (callee is { Kind: MirCalleeKind.Requirement, Subst: { Self: { } written } subst } && cases.Type(written) is var self &&
             (callee.Symbol!.Definition.Kind != DispositionKind.Body || !self.IsAbstract))
         {
             // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference at the call's
             // own Types and lengths (SPEC 8.6.3): the item keeps the call's substitution in the view, here alone its Self and its
-            // reference taking their case Types.
+            // reference taking their case Types, without the Origins A4 never reads (InView).
             var reference = subst.Declaring is { } declaring ? cases.Type(declaring) : null;
             this.Item(self, Requires, callee.Symbol, callee.Contract, types.InView(subst, self, reference));
         }
@@ -381,39 +377,77 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return Derived;
     }
 
-    // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs, once per distinct node of its Self's comparison under source
-    // operators (the validator checked it composes), what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf
-    // the requirement under the caller's premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf and a
-    // Composite's own node nothing. A None leaf, no answer, is a broken contract at the call (Broken; the collector records it as
-    // InternalInvariant_Kd at the item), never a silent empty summary.
-    private void Compared(MirProgram program, MirBody body, BindingSymbol contract, ComparisonNode node)
+    // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs its Self's comparison under source operators (the validator
+    // checked it composes; the builder's root) at the call's entry (Leaves): a Witness leaf its witness (Function), a Requirement leaf on
+    // a part that is not abstract the requirement on it (a local input, Require, as the Terminator's closed Self makes one) and a None
+    // leaf, no answer, a broken contract at the call (Broken; the collector records it as InternalInvariant_Kd at the item), never a
+    // silent empty summary.
+    private void Compared(MirProgram program, MirBody body, BindingSymbol contract, Subst call)
     {
-        if (!this.compared.Add(node))
+        var start = this.Leaves(types.Comparison(contract, call.Self!, operators: true), contract, body.Key.Decl, call);
+        for (var i = start; i < this.leaves.Count; i++)
         {
-            return;
-        }
-
-        foreach (var part in node.Parts)
-        {
-            this.Compared(program, body, contract, part);
-        }
-
-        switch (node.Kind)
-        {
-            case ComparisonKind.Composite or ComparisonKind.Builtin:
-                break;
-            case ComparisonKind.Witness:
-                this.Function(program, new(MirCalleeKind.Fn, node.Target, node.Subst));
-                break;
-            case ComparisonKind.Requirement:
-                this.found |= Discharged(types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true, node.Target);
-                break;
-            case ComparisonKind.None:
+            var leaf = this.leaves[i];
+            if (leaf.Kind == ComparisonKind.None)
+            {
                 this.found |= this.Broken();
-                break;
-            default:
-                throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");
+            }
+            else if (leaf.Kind == ComparisonKind.Requirement)
+            {
+                this.Item(leaf.Type, Requires, leaf.Target, contract);
+            }
+            else
+            {
+                this.Function(program, new(MirCalleeKind.Fn, leaf.Target, leaf.Subst));
+            }
         }
+
+        this.leaves.RemoveRange(start, this.leaves.Count - start);
+    }
+
+    // SPEC 13.4, 8.11.3, 4.9.6, 8.6.1 (DECISIONS R5-M166, R7-P5a): the one per-leaf rule of a comparison's run, a tuple operator's call's
+    // (Compared) and a comparison shim's requirement's (Shim), once per distinct node of the composition: a Builtin leaf and a Composite's
+    // own node run nothing; a Requirement leaf (a part with an abstract part) runs the requirement on that part at the whole comparison's
+    // entry: on an abstract part, for a call the body writes (`call` given), the bound the premises of `definition` declare, else Unknown
+    // (X2: no known concrete callee; its operands are shared borrows, so it destroys nothing), decided here. The others are pushed on
+    // `leaves` from the returned start for the caller to run in its place's form: a Witness leaf its witness at its instance, a None leaf,
+    // no answer, a broken contract (Broken at Local's call, Unsited in the solve), and any other Requirement leaf that requirement (Require:
+    // a part that is not abstract, `Box<A>`, runs what its witness runs under the premises, 8.6.1, as a Self with an abstract part does; an
+    // abstract part of a row's or an atom's an atom for the callers). The nodes are collected before any is run, since a part's requirement
+    // may compose another shim's.
+    private int Leaves(ComparisonNode root, BindingSymbol contract, BindingSymbol? definition, Subst? call)
+    {
+        var start = this.leaves.Count;
+        this.compared.Clear();
+        _ = this.compared.Add(root);
+        this.leaves.Add(root);
+        for (var i = start; i < this.leaves.Count; i++)
+        {
+            foreach (var part in this.leaves[i].Parts)
+            {
+                if (this.compared.Add(part))
+                {
+                    this.leaves.Add(part);
+                }
+            }
+        }
+
+        var end = start;
+        for (var i = start; i < this.leaves.Count; i++)
+        {
+            var leaf = this.leaves[i];
+            if (leaf is { Kind: ComparisonKind.Requirement, Type.IsAbstract: true } && call is not null)
+            {
+                this.found |= Discharged(types.DispatchBounds(definition, leaf.Target!, leaf.Type, contract) == true, leaf.Target);
+            }
+            else if (leaf.Kind is ComparisonKind.Witness or ComparisonKind.Requirement or ComparisonKind.None)
+            {
+                this.leaves[end++] = leaf;
+            }
+        }
+
+        this.leaves.RemoveRange(end, this.leaves.Count - end);
+        return start;
     }
 
     // R4-M6a: what a Drop destroys in the view, by A2's verdict group (MirDropTable: what a group destroys). One only the checks reach runs

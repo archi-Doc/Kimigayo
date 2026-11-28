@@ -664,12 +664,12 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["State.pair.0@ref Unsupported_Kd", "State.pair.0@ref Unsupported_Kd"], c.Binding.Issues.Select(static x => $"{x.Node} {x.Code}"));
     }
 
-    // AGENTS Diagnostics, R4-M10 (A4's classes, R4-M91; ALimitIsUnsupportedAndADerivedEffectReportsNothingRooted): a call A4 does not
-    // classify (Limit) is the located Unsupported_Kd where a live mutable-static Loan would be met, and a callee's dependent of an error
-    // (Derived) reports nothing by itself. R4-M90 PQ-1: the Loans here are receivers' on a static, Binding's Unsupported_Kd until P42, so
-    // neither a Limit nor a key beside a Derived effect meets one.
+    // AGENTS Diagnostics, R4-M10 (A4's classes, R4-M91; ADeepEffectIsTheDepthLimitAndADerivedEffectReportsNothingRooted): A4's Deep
+    // (Lim's destruction past the walk's bound, R4-M153) is the depth limit where a live mutable-static Loan would be met, and a callee's
+    // dependent of an error (Derived) reports nothing by itself. R4-M90 PQ-1: the Loans here are receivers' on a static, Binding's
+    // Unsupported_Kd until P42, so neither Deep nor a key beside a Derived effect meets one.
     [Fact]
-    public void ALimitIsUnsupportedAndADerivedEffectReportsNothing()
+    public void ADeepEffectIsTheDepthLimitAndADerivedEffectReportsNothing()
     {
         Assert.Empty(
             Effects(

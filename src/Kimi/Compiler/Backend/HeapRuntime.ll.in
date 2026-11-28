@@ -22,7 +22,7 @@ declare i1 @llvm.expect.i1(i1, i1)
 ; Zero bytes take the smallest block, so every result is a fresh start.
 {{__kimi_heap_allocate}}
 entry:
-  %size = add i64 %bytes, 16
+{{allocation_calls}}  %size = add i64 %bytes, 16
   %small = icmp ule i64 %size, 262144
   %small_likely = call i1 @llvm.expect.i1(i1 %small, i1 true)
   br i1 %small_likely, label %class, label %large

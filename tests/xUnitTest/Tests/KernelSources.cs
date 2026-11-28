@@ -58,4 +58,20 @@ internal static class KernelSources
         """;
 
     internal const string BoardTerminate = "    public func terminate(self: uniq/Self, status: i32) -> Never\n        loop => ()\n";
+
+    // A platform without fields (SPEC 22.4.5): its value is zero-sized, each member a one-line body.
+    internal const string FieldlessBoard = """
+        struct Board
+            Self is Copy
+            Self is Platform
+
+            init() => ()
+
+            public func start(boot: Boot) -> Self => Board.init()
+            public func mapPages(self: uniq/Self, bytes: isize) -> raw/u8 => null
+            public func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64 => 0
+            public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64 => 0
+            public func clock(self: uniq/Self) -> i64 => 0
+
+        """ + BoardTerminate;
 }

@@ -54,6 +54,8 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
     /// <summary>Gets the source keyword for this accessor.</summary>
     public string AccessorText => this.AccessorKind == PropertyAccessorKind.Get ? TokenKind.Get.ToText() : TokenKind.Set.ToText();
 
+    internal (SourceSpan Receiver, SourceSpan Value) ParameterNames { get; init; }
+
     /// <summary>Initializes a new instance of the <see cref="PropertyAccessorKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete accessor span.</param>

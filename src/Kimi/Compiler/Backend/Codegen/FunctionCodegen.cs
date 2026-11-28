@@ -2,12 +2,13 @@
 
 // FunctionCodegen (R5 package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS R5-M65), MIR code generation: the LLVM definition of one body
 // item of the checked set from its validated, analyzed MIR body in the item's instance (a StaticInit item's with its static's slot), of
-// one DropGlue item by its Type's row, of one ClosureErasure or ItemAdapter item or of one Builtin or PropertyWitness item. Every MIR
-// form of an accepted program has its row; a form the backend does not generate is the capability table's gap at check (DECISIONS
-// R5-M146). Each concern file (Files) owns its rows, in its header or at its writer: the forms it
-// writes and the DECISIONS entries behind them. This file dispatches each statement, rvalue and terminator to its row, writes the unconditional
-// branch (a CaseSwitch's: the side the item's view selects) and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead
-// and EndBorrow generate nothing (package C 3.9).
+// one DropGlue item by its Type's row, of one ClosureErasure or ItemAdapter item or of one Builtin or PropertyWitness item; and, in a
+// function the module frame writes (its entry, a platform adapter), the frame-function writers: its begin, a text slot, the root's call
+// and an adapter's end (.Calls.cs: BeginFrameFunction, WriteTextSlot, WriteEntryCall, End). Every MIR form of an accepted program has its
+// row; a form the backend does not generate is the capability table's gap at check (DECISIONS R5-M146). Each concern file (Files) owns its
+// rows, in its header or at its writer: the forms it writes and the DECISIONS entries behind them. This file dispatches each statement,
+// rvalue and terminator to its row, writes the unconditional branch (a CaseSwitch's: the side the item's view selects) and the SwitchInt,
+// and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
 // exactness (A2, R4-M6a, R4-M102: an inexact body reaching Write is a broken contract); the compilation's Layout and runtime location texts;

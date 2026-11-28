@@ -73,6 +73,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     private List<Koto>? kotoList;
 
+    private List<Koto>? source;
+
     private List<DeclarationContainerKoto>? nestedContainers;
 
     /// <summary>Gets nested declarations in insertion order without allocating a snapshot.</summary>
@@ -375,6 +377,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         this.AttributeChain = null;
         this.HasIncompatibleBindingHeader = false;
         this.kotoList?.Clear();
+        this.source = null;
         this.NestedContainerTable?.Clear();
         this.nestedContainers?.Clear();
         this.genericArguments?.Clear();
@@ -527,12 +530,25 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="range">The container's source span.</param>
     /// <returns>The detached container.</returns>
     /// <remarks>It shares this container's generic parameters, so its members are parsed under this header, such as a member's
-    /// Constraint on the declaring Type's parameters (SPEC 7.5): excluded members (SPEC 19.4) and a conditional conformance's block (SPEC 8.8.1).</remarks>
+    /// Constraint on the declaring Type's parameters (SPEC 7.5): excluded members (SPEC 19.4; <see cref="ExcludedOwner{TContainer}"/>)
+    /// and a conditional conformance's block (SPEC 8.8.1).</remarks>
     internal DeclarationContainerKoto CreateDetached(CodeContext codeContext, SourceSpan range)
     {
         var detached = CreateStandalone(codeContext, this.TokenKind, default, range, string.Empty);
         detached.genericArguments = this.genericArguments;
         return detached;
+    }
+
+    /// <summary>Moves the parts a detached container (<see cref="CreateDetached"/>) parsed to the marker of the directive whose excluded
+    /// syntax they are (SPEC 19.4): its Origin relations, then its children in ChildSlots order. The shared generic parameters stay
+    /// the list container's, and its lookup of nested containers stays, so later excluded members of the list merge as before.</summary>
+    /// <param name="marker">The directive's marker.</param>
+    private void MoveDetachedPartsTo(CompileTimeSwitchKoto marker)
+    {
+        marker.MoveToSource(((IOriginClauseOwner)this).OriginClauses);
+        marker.MoveToSource(this.typeConstraints);
+        marker.MoveToSource(this.kotoList);
+        marker.MoveToSource(this.nestedContainers);
     }
 
     internal void WriteAsBlockItem(ref IndentedStringBuilder builder)
@@ -618,7 +634,30 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 parseTypeConstraints,
                 parseDeclarationContainers,
                 parseTypeConstraints && this.typeConstraints is not { Count: > 0 } && OriginClauses.Get(this).Count == 0));
-        Parser.ParseItems(ref reader, ref list);
+        Parser.ParseItemList(ref reader, ref list, out var markers);
+        this.AdoptSource(markers);
+    }
+
+    /// <summary>Adopts the markers of one item list's directives (SPEC 19.4) into the source slot; a merged container's fragments add
+    /// theirs in order.</summary>
+    /// <param name="markers">The markers, or <see langword="null"/>.</param>
+    private protected void AdoptSource(List<Koto>? markers)
+    {
+        if (markers is null)
+        {
+            return;
+        }
+
+        if (this.source is null)
+        {
+            this.source = markers;
+        }
+        else
+        {
+            this.source.AddRange(markers);
+        }
+
+        this.Adopt(markers);
     }
 
     /// <summary>Consumes the opening block token when the caller left it for the Declaration Container parser.</summary>
@@ -836,6 +875,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         slots.List(this.genericArguments);
         slots.List(this.typeConstraints);
         slots.List(this.kotoList);
+        slots.Source(this.source);
 
         // A nested container is replaced where its lookup by name exists, by one that declares no second container of its name and
         // arity; the lookup is then rebuilt.
@@ -1067,16 +1107,19 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         items.AddRange(temporary.TypeConstraints);
         items.AddRange(temporary.Members);
         items.AddRange(temporary.NestedDeclarationContainers);
-        return new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd)), items)
+        var block = new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd)), items)
         {
             DeclarationContext = this.TokenKind,
         };
+        block.AdoptSource(temporary.source);
+        return block;
     }
 
-    /// <summary>The owner of a member or root list's excluded syntax (SPEC 19.4): one detached container of the list container's kind, which
-    /// shares its generic parameters (<see cref="CreateDetached"/>), so excluded syntax registers nothing in the container but keeps source
-    /// order. It is created at the first exclusion the list enters outside excluded syntax and used while inside it; a list that starts inside
-    /// excluded syntax keeps its container, which is already the excluded syntax's own.</summary>
+    /// <summary>The parse-time host of a member or root list's excluded syntax (SPEC 19.4): one detached container of the list
+    /// container's kind, which shares its generic parameters (<see cref="CreateDetached"/>), so excluded syntax registers nothing in the
+    /// container but keeps source order. It is created at the list's first excluded item; after each excluded item its parts move to the
+    /// directive's marker (<see cref="TokenReader.ExcludingMarker"/>), so it never enters the tree. A list that starts inside excluded
+    /// syntax keeps its container, which is already the excluded syntax's own.</summary>
     /// <typeparam name="TContainer">The container's type.</typeparam>
     /// <param name="container">The list's container.</param>
     private protected struct ExcludedOwner<TContainer>(TContainer container)
@@ -1087,21 +1130,21 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         /// <summary>Gets the list's container, which receives its selected syntax.</summary>
         public readonly TContainer Container => container;
 
-        /// <summary>Prepares the owner before the list enters excluded syntax.</summary>
-        /// <param name="reader">The token reader, before the excluded syntax.</param>
-        public void Enter(ref TokenReader reader)
+        /// <summary>Gets the container that parses the item at the reader.</summary>
+        /// <param name="reader">The token reader at the item.</param>
+        /// <returns>The detached container inside a directive's excluded syntax, otherwise the list's container.</returns>
+        public TContainer Of(ref TokenReader reader)
+            => reader.ExcludingMarker is null ? container : (this.detached ??= (TContainer)container.CreateDetached(reader.CodeContext, container.Span));
+
+        /// <summary>Moves the parts of the item just parsed in a directive's excluded syntax to the directive's marker.</summary>
+        /// <param name="reader">The token reader after the item.</param>
+        public readonly void Release(ref TokenReader reader)
         {
-            if (!reader.InExcludedSyntax)
+            if (reader.ExcludingMarker is { } marker)
             {
-                this.detached ??= (TContainer)container.CreateDetached(reader.CodeContext, container.Span);
+                this.detached!.MoveDetachedPartsTo(marker);
             }
         }
-
-        /// <summary>Gets the container that receives the item at the reader.</summary>
-        /// <param name="reader">The token reader at the item.</param>
-        /// <returns>The detached container inside excluded syntax the list entered, otherwise the list's container.</returns>
-        public readonly TContainer Of(ref TokenReader reader)
-            => reader.InExcludedSyntax && this.detached is { } detached ? detached : container;
     }
 
     /// <summary>The members of one Declaration Container body (SPEC F.6.1, F.6.2); excluded syntax goes to its
@@ -1116,13 +1159,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         public readonly bool RequiresItem => false;
 
-        public void EnterExcluded(ref TokenReader reader)
-            => this.owner.Enter(ref reader);
-
         public void ParseItem(ref TokenReader reader)
-            => this.owner.Of(ref reader).ParseMemberItem(ref reader, ref this.state);
+        {
+            this.owner.Of(ref reader).ParseMemberItem(ref reader, ref this.state);
+            this.owner.Release(ref reader);
+        }
 
-        // A #switch keeps its marker only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the container.
+        // A #switch is an item only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the container.
         public readonly void AddUnselected(ref TokenReader reader, Koto unselected)
             => this.owner.Container.AddLast(unselected);
     }

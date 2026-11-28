@@ -60,11 +60,20 @@ public partial class TypeDagScalingTest
     [InlineData(30)]
     [InlineData(120)]
     public void APremiseChainFailsWithinTheFixpoint(int n)
+        => Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(PremiseChainSource(n)));
+
+    // R7-C2c2 c2-5b2's perf fix (F's CC-66 B2; ContractSolver W6, W7): the chain above reads its failed premises, each read final, so
+    // the view's identity table is Final and memoized, a read joining the limit its build wrote. Its work is the fixpoint's rounds
+    // times the chain (each of the n rounds fails a premise, so the view's serial moves and the table is built once more over the
+    // chain): quadratic, so doubling n at most quadruples it. Read Provisional, the table was rebuilt at every read as well, each
+    // build reading every premise, and doubling n multiplied the work by 14.
+    [Fact]
+    public void AFailedPremiseChainsTableIsBuiltOncePerRound()
     {
-        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
-        var chain = string.Concat(Enumerable.Range(1, n).Reverse().Select(static k => $"    T{k} is T{k - 1}.(K).X\n"));
-        var source = $"contract K\n    associate X\nfunc f<{parameters}>(t: ref/T0) -> i32\n    T0 is i32\n    T0 is K\n" + chain + "    return 0\n";
-        Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source + "public func main() -> ()\n    return\n"));
+        var (small, large) = (Work(30), Work(60));
+        Assert.True(large <= 4 * small, $"{small} at 30, {large} at 60");
+
+        static int Work(int n) => MinimalEmissionTest.Analyze(PremiseChainSource(n)).Binding.IdentityClassWork;
     }
 
     // R7-C3 b (F's V2a2/C3b ruling 3 C3; SPEC 8.6.1, 8.9.1): a Type with n conformances to one Contract declaration, `C<K0>` to `C<Kn-1>`,
@@ -405,6 +414,15 @@ public partial class TypeDagScalingTest
         };
 
         return $"func f<{parameters}>(v: T0) -> i32\n" + string.Concat(premises) + "    return 0\npublic func main() -> ()\n    return\n";
+    }
+
+    // A chain of n premises `Tk is T{k-1}.(K).X` over a failed root, `T0 is i32` beside `T0 is K` (APremiseChainFailsWithinTheFixpoint).
+    private static string PremiseChainSource(int n)
+    {
+        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
+        var chain = string.Concat(Enumerable.Range(1, n).Reverse().Select(static k => $"    T{k} is T{k - 1}.(K).X\n"));
+        return $"contract K\n    associate X\nfunc f<{parameters}>(t: ref/T0) -> i32\n    T0 is i32\n    T0 is K\n" + chain + "    return 0\n" +
+            "public func main() -> ()\n    return\n";
     }
 
     private static string GroundChainSource(int n)

@@ -69,6 +69,21 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 15.6.4, DECISIONS R4-M181 (G408B-15, G408B-16): a chain of 40 stored structs passes HandedBound with (dch40f) or without
+    // (dch40) a callable at its end, and both programs are valid and accepted, as on dev. The erasure's Retains of the Closure holding C1
+    // returns `()`, and dch40f's `() -> ()` has no `during` clause, so by SPEC no storage of it holds an Origin or a Loan: no holder the
+    // rows name can carry one (HolderCarries), no retention verdict reads the part past the bound, and R4-M181's limit, located where a
+    // check rests on the guard, does not apply. Guard rows (every record, Binding's and A5's).
+    [Theory]
+    [InlineData("    let v: i32\n")]
+    [InlineData("    let f: () -> ()\n")]
+    public void AStoredChainPastTheHandedBoundWhereNoHolderCarriesIsAccepted(string last)
+    {
+        var source = string.Concat(Enumerable.Range(1, 39).Select(static i => $"struct C{i}\n    let n: C{i + 1}\n")) + "struct C40\n" + last +
+            "func inspect(a: C1) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n";
+        Assert.Equal("clean", DiagnosticCorpus.RecordProfile(source));
+    }
+
     // SPEC 15.3.5 Fixed points, 8.3.3 (R7-C2e2 e2-5a, Revision 2's chain row): a chain of N declarations, each storing a constrained
     // instance of the next (S<D(i+1)>, S needing its argument Owned), open or closed into a ring of Owned works, is formed once per
     // declaration: the capability evaluations per added declaration stay flat from N = 16 to 256 and the coinductive steps do not grow
@@ -107,7 +122,7 @@ public partial class TypeDagScalingTest
         Assert.True(counts[0].Steps == counts[2].Steps, text);
     }
 
-    // SPEC 11.6 (DECISIONS: G1220; G1220-1 C11): the header walk visits each Type once per request, so its visits per
+    // SPEC 11.6 (DECISIONS BU-267; G1220-1 C11): the header walk visits each Type once per request, so its visits per
     // added declaration stay flat: an inferred Property requesting Owned and Copy of a chain of N stored declarations (chain), N
     // Properties each requesting one 32-deep chain (fan), and N inferred Properties each typed through the next's header (nested, SPEC
     // 11.6's demand of another header, f2's twin). Each program is valid: no request's Type contains its Property.

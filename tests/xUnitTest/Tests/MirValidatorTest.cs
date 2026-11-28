@@ -64,6 +64,19 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 22.5.1 (PLAN G1017): only a Drop carries an offset of its document, -1 or a position; a Drop below -1 and a Return at 0 break it.
+    [Theory]
+    [InlineData("Drop", -2)]
+    [InlineData("Return", 0)]
+    public void OnlyADropIsLocatedAtAnOffset(string kind, int offset)
+    {
+        var body = Build(null);
+        var index = Array.FindIndex(body.Blocks.ToArray(), x => x.Terminator.Kind == Enum.Parse<MirTerminatorKind>(kind));
+        ref var block = ref Unsafe.AsRef(in body.Blocks[index]);
+        block.Terminator = block.Terminator with { Offset = offset };
+        Assert.Equal(MirViolation.Operation, Assert.Single(Validate(body)).Rule);
+    }
+
     // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
     // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its undecided uses', is
     // an undecided use's (MirDescriptors.IsUndecided, G191 N1; DECISIONS Z17).
@@ -120,7 +133,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // A3 E14: an intrinsic serving a library declaration takes its parameters first, so its row's arity covers them, and the operand its
-    // row says the result retains is one the builder adds beyond them (RawSlice's backing).
+    // row says the result retains is one the builder adds beyond them (RawSlice's backing); a family's row of arity -1 takes each
+    // declaration's shape, which the validator reads (Instruction's alone, design C2).
     [Fact]
     public void AnIntrinsicsRowCoversItsDeclaration()
     {
@@ -131,10 +145,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         foreach (var (row, declaration) in declared)
         {
             _ = c.Types.Signature(declaration!, null, -1, out var count);
-            Assert.True(count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity)), declaration!.Name);
+            Assert.True(
+                (row.Arity < 0 && declaration!.Definition.Id == IntrinsicId.Instruction) ||
+                (count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity))),
+                declaration!.Name);
         }
 
         Assert.Equal([IntrinsicId.RawSlice], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Retained: >= 0 }));
+        Assert.Equal([IntrinsicId.Instruction], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Arity: < 0 }));
     }
 
     // SPEC 17.4 (A3 E14): the compiler-only $abort is no library declaration, so an Abort call names none; one naming $abort's symbol is
@@ -149,6 +167,26 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var callee = body.Blocks[abort].Terminator.Callee with { Symbol = named ? Fixture.Value.Compilation.Library.Abort : null };
         Unsafe.AsRef(in body.Blocks[abort]).Terminator = body.Blocks[abort].Terminator with { Callee = callee, Source = Broken };
         Assert.Equal(named ? [(MirViolation.Callee, Broken.Syntax)] : [], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // IMPL 21.6 (the Tatara plan's decisions 36-43; design C-457 4.3): the Instruction family's row has arity -1, the declaration a call
+    // names giving its shape, so a call naming none is a Callee finding at the call, and one with an operand beyond the declaration's an
+    // Arity finding there.
+    [Theory]
+    [InlineData("declaration", "Callee")]
+    [InlineData("operand", "Arity")]
+    public void AnInstructionCallHasItsDeclarationsShape(string broken, string rule)
+    {
+        var c = MirBuildTest.Compile("func stamp() -> u64 => X86.readTimestamp()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "stamp");
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.Instruction } });
+        var terminator = body.Blocks[call].Terminator;
+        Unsafe.AsRef(in body.Blocks[call]).Terminator = broken == "declaration"
+            ? terminator with { Callee = terminator.Callee with { Symbol = null }, Source = Broken }
+            : terminator with { Start = AddOperands(body, [MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)))]), Count = 1, Source = Broken };
+        Assert.Equal([(Enum.Parse<MirViolation>(rule), Broken.Syntax)], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // An rvalue's operands before its Place, the index locals of a Place before it, a destination last; static accesses, pair cases,

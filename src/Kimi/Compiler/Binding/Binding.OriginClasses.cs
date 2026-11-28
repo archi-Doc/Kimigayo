@@ -3,8 +3,8 @@
 // SPEC 15.6.5's classes of an Origin in a body B, as Binding's judge and the C1-F4 view read them: fixed by the contract (FixedOrigin), fixed
 // in B (FixedIn), a region B judges through its sources (RegionIn), an enclosing body's region B reads as its value (CarriedRegion, from
 // the capture formation's fact, in turn through the regions' values), an Origin B judges through the sources the region graph records
-// (SourcesIn) or may bound (BoundableIn), a finite Origin local to B (BodyLocalIn), a relation A5 judges as a row (BodyChain, 2a0-D D1;
-// RegionChain), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom). They share one rule, the
+// (SourcesIn) or may bound (BoundableIn), a finite Origin local to B (BodyLocalIn), a relation that takes part in region inference
+// (ConstrainsRegions, RegionChain), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom). They share one rule, the
 // view's row 6 (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an
 // enclosing body formed, are fixed; in a Closure k's body and the bodies nested in it, that row also fixes k's receiver Origin ρ (SPEC
 // 15.6.5: a receiver Origin), and until k is classified ρ and k's environment atoms are pending, neither fixed nor finite (DECISIONS
@@ -15,8 +15,9 @@
 // - Inputs: an Origin as the caller has it at its use, and the body that formed the relation (an obligation's Body, or the forming body
 //   while binding; no body after binding); the formation context (BoundOrigin.Body, BindingSymbol.DeclaringBody, Binding.ExecutableBodies.cs)
 //   and whether a Closure is classified (BoundClosure.Classified).
-// - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the records (Binding.OriginFits.cs,
-//   Binding.OriginClauses.cs, Binding.CallRelations.cs) and the view (Binding.OriginRows.Atoms.cs, ClassifyAtom).
+// - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the row former (FormBodyRelation,
+//   Binding.Obligations.cs), the declaration judge's records (Binding.OriginClauses.cs) and the view (Binding.OriginRows.Atoms.cs,
+//   ClassifyAtom).
 // - Invariants: each class is decided here once, by one predicate that every reader shares; only SourcesIn and CarriedRegion read state,
 //   the region graph's, and the capture formation's with the regions' values (RegionValue), CarriedRegion's walk formed once per Closure
 //   per region-graph version once no body is being bound (BoundClosure.Walk, its one memo), and while a body is bound its admission over
@@ -99,7 +100,7 @@ public sealed partial class Binding
 
     // SPEC 15.8.2, 15.6.5 (DECISIONS R4-M126 P5): a Closure's receiver Origin ρ or an environment binding's own atom while the Closure
     // is not classified: its receiver mode, which resolves them (Binding.OriginProof's OriginAtUse), is not known yet, so it is neither
-    // fixed nor finite and a relation naming it waits for the classification (Binding.OriginProof's pending relations).
+    // fixed nor finite and a relation naming it is a row like any other (ConstrainsRegions; DECISIONS R7-M66).
     internal static bool PendingAtom(BoundOrigin atom)
         => ReceiverAtom(atom) && atom.Binder is Parsing.FunctionKoto { ClosureStorage: { Classified: false } };
 
@@ -117,10 +118,11 @@ public sealed partial class Binding
     internal static bool BoundableIn(BoundOrigin origin, ExecutableBody body)
         => (IsLocalRegion(origin) || origin.Kind is OriginKind.Projection or OriginKind.Anchor or OriginKind.Intersection) && !EnclosingAtom(origin, body);
 
-    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation is a body chain, a row A5 judges, when one of its ends, as the caller has it at its use,
-    // is not fixed in `body` (an Unbound end counts), or when it is a region chain; any other fixed-fixed relation is Binding's to judge
-    // (A3 §7, until R7).
-    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body)
+    // SPEC 15.6.5: whether a relation in `body` takes part in region inference: an end, as the caller has it, not fixed in `body` (finite,
+    // an inferred region, a pending atom, or Unbound, whose chains A5 judges through it, R4-M118) or a region at either end (RegionChain);
+    // it is a row whatever the premises answer, and any other relation is between fixed Origins, decided by the premises alone (SPEC
+    // 15.6.1).
+    internal static bool ConstrainsRegions(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body)
         => !FixedIn(longer, body) || !FixedIn(shorter, body) || RegionChain(longer, shorter, body);
 
     // SPEC 15.3.6, 15.6.5: a relation in `body` with a local region at either end, an enclosing body's, fixed there, included: the region's

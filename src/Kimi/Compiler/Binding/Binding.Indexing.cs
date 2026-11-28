@@ -498,7 +498,7 @@ public sealed partial class Binding
     {
         if (attribute.Kind == AttributeKind.Test)
         {
-            if (attribute.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(this.compilation, testOwner) && TestDefinition.IsValidSyntax(testOwner))
+            if (TestDefinition.MarkedFunction(attribute) is { } testOwner && TestDefinition.IsIncluded(this.compilation, testOwner) && TestDefinition.IsValidSyntax(testOwner))
             {
                 attribute.BoundType = BoundType.Unit;
                 attribute.BindingState = BindingState.Resolved;
@@ -597,7 +597,7 @@ public sealed partial class Binding
 
         var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
         if (node is AttributeKoto { Kind: AttributeKind.Test } attribute &&
-            (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
+            TestDefinition.MarkedFunction(attribute) is null)
         {
             marker = attribute;
         }

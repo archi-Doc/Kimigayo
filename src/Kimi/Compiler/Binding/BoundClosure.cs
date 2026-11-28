@@ -9,9 +9,10 @@
 // - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, InfersResult and the resets), Binding.Captures
 //   (Storage and Carried), Binding.ClosureReceivers (the receiver facts), Binding.Indexing (the pass's reset, ResetPass). The evaluating
 //   body is the literal's symbol's (BindingSymbol.DeclaringBody, written by the index walk, DECISIONS BU-258's rule).
-// - Outputs: InfersResult for Binding's discard rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
-//   reader (value calls, candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a
-//   view of one admitted case, that case's
+// - Outputs: InfersResult for Binding's static readers, the discard rule (Binding.DiscardsFunctionBody) and the header typing of a
+//   Property's frame (Binding.TypedByHeader; DECISIONS BU-275); Receiver for acquisition and every receiver reader (value calls,
+//   candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a view of one admitted
+//   case, that case's
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
 //   case Type, else Shared.
 // - Access (DECISIONS R5-M63 (1), R4-M152, R5-M193; agreed with BU, the Binding owner): two accessors with two meanings, so each
@@ -60,7 +61,7 @@ public sealed class BoundClosure
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
 
     // Whether this binding published the definition (Binding.PublishClosure, on both of its paths; cleared where BindClosure clears the
-    // Signature): the one gate of Of. Not Classified, which is set before JudgePendingRelations and PublishedResult, where the
+    // Signature): the one gate of Of. Not Classified, which is set before PublishedResult, where the
     // EnvironmentType is still the preliminary one that TyCtxt.ClosureEnvironment would read (DECISIONS R5-M63 (1) as amended).
     internal bool Published { get; set; }
 

@@ -362,19 +362,6 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (syntax is not null)
-        {
-            // Header failures leave the operation unavailable, not a disproven receiver or conformance.
-            var missing = accessor.Receiver is null ? syntax.ReceiverType : null;
-            missing ??= accessor.Kind == PropertyAccessorKind.Set && accessor.Input is null ? syntax.ValueType : null;
-            missing ??= accessor.Result is null ? syntax.ReturnType : null;
-            if (missing is not null)
-            {
-                this.CompleteDependent(syntax, missing);
-                return ConstraintProof.Error;
-            }
-        }
-
         // SPEC 11.3, 11.4, 23.1.2: the accessor's own checks read neither its declaration context nor a formation proof, so they run
         // before both and report beside their failures: its access, its receiver's Type and shape, then the Type a use takes, the
         // Property's. One node holds one failure, so a mismatch beside another of them goes unreported.
@@ -387,7 +374,7 @@ public sealed partial class Binding
         }
 
         var owner = property.Symbol.Scope.Owner;
-        if (!accessor.IsStandard)
+        if (!accessor.IsStandard && (syntax?.ReceiverType is null || accessor.Receiver is not null))
         {
             if (owner is StructKoto or ContractKoto
                 ? !this.IsReceiverType(accessor.Receiver, owner.BoundSymbol!)
@@ -404,10 +391,23 @@ public sealed partial class Binding
                 this.Record(syntax!, BindingFailure.AccessorReceiverShape, []);
                 return ConstraintProof.Error;
             }
+        }
 
-            if (this.AccessorTypeMismatch(accessor))
+        if (!accessor.IsStandard && this.AccessorTypeMismatch(accessor))
+        {
+            this.RecordTypeMismatch(syntax!, syntax!, UsedType(accessor)!, accessor.Property.Type!);
+            return ConstraintProof.Error;
+        }
+
+        if (syntax is not null)
+        {
+            // Header failures leave the operation unavailable, not a disproven receiver or conformance.
+            var missing = accessor.Receiver is null ? syntax.ReceiverType : null;
+            missing ??= accessor.Kind == PropertyAccessorKind.Set && accessor.Input is null ? syntax.ValueType : null;
+            missing ??= accessor.Result is null ? syntax.ReturnType : null;
+            if (missing is not null)
             {
-                this.RecordTypeMismatch(syntax!, syntax!, UsedType(accessor)!, accessor.Property.Type!);
+                this.CompleteDependent(syntax, missing);
                 return ConstraintProof.Error;
             }
         }
