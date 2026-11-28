@@ -1,6 +1,7 @@
 #if arch == "x86_64"
-    /// x86-64 processor instructions (IMPL 21.6). Each function executes its instruction once, in program order with every memory
-    /// access and every other function (a compiler barrier), and every function is an environment effect (SPEC 8.11.2).
+    /// x86-64 processor instructions (IMPL 21.6). Every function except `entry` and `errorCodeEntry` executes its instruction once,
+    /// in program order with every memory access and every other function (a compiler barrier), and is an environment effect
+    /// (SPEC 8.11.2).
     public group X86
         /// Hints to the processor that the caller spins in a wait loop (`pause`).
         #Intrinsic("Instruction", "pause")
@@ -160,10 +161,10 @@
 
             /// Returns the code address of `H`'s interrupt entry, for a gate of the interrupt descriptor table.
             ///
-            /// - safety: Whenever the entry runs, `H.handle` meets IMPL 21.6's handler rules: it does not allocate, write to
-            ///   Console, Abort on purpose, or start or wait for a task; it accesses only static storage Initialized before
-            ///   interrupts were enabled; and it shares storage with the code it interrupts only through volatile accesses on both
-            ///   sides or while that code has interrupts disabled.
+            /// - safety: Whenever the entry runs, `H.handle` meets IMPL 21.6's handler rules: it does not allocate or release
+            ///   storage, write to Console, Abort on purpose, or start or wait for a task; it accesses only static storage
+            ///   Initialized before interrupts were enabled; and it shares storage with the code it interrupts only through
+            ///   volatile accesses on both sides or while that code has interrupts disabled.
             #Intrinsic("InterruptEntry", "plain")
             public unsafe func entry<H>() -> usize
                 H is InterruptHandler
@@ -171,9 +172,10 @@
             /// Returns the code address of `H`'s interrupt entry for a vector that pushes an error code (8, 10-14, 17, 21, 29,
             /// 30), for a gate of the interrupt descriptor table.
             ///
-            /// - safety: As for `entry`, `H.handle` meets IMPL 21.6's handler rules whenever the entry runs: no allocation, Console
-            ///   write, deliberate Abort or task; only static storage Initialized before interrupts were enabled; storage shared
-            ///   with the interrupted code only through volatile accesses on both sides or while that code has interrupts disabled.
+            /// - safety: As for `entry`, `H.handle` meets IMPL 21.6's handler rules whenever the entry runs: no allocation or
+            ///   release, Console write, deliberate Abort or task; only static storage Initialized before interrupts were enabled;
+            ///   storage shared with the interrupted code only through volatile accesses on both sides or while that code has
+            ///   interrupts disabled.
             #Intrinsic("InterruptEntry", "code")
             public unsafe func errorCodeEntry<H>() -> usize
                 H is ErrorCodeHandler

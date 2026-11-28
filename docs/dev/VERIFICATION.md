@@ -17,7 +17,7 @@ covers `profile.json`, `setup.ps1`, the backend's sources and builders (`src/bac
 `kernel32.ps1`) and `src/Tatara`, so a change to any of them reruns setup, which must reproduce the committed libraries.
 Explicit toolchain verification checks cached installations too.
 The archive fetch is one composite action, `.github/actions/llvm-archive`, which publishes the extracted root as its output:
-the Windows job runs it on a toolchain-cache miss, the `kimi` job on every run. A red `kimi` job is the Tatara session's to
+the Windows job runs it on a toolchain-cache miss, the `kimi` job on every run. A red `kimi` job is the Back's to
 answer; a break from a `src/Tatara`-only change is found at the next `main` push, not in its window. The job checks the
 runner's SDK (setup-dotnet 10.0.x), not a local one.
 Update the archive version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
