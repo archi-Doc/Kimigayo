@@ -17,7 +17,7 @@ namespace Kimi.Compiler.Mir;
 // Outputs: the holder's markers. A pun: {Φ_E, Φ_W}. An undecided write (the layout, a length that is no constant, or a layer with no
 // stated-Origin answer decides what it covers) may be a pun: {Φ_E, Φ_W, Φ_M}, its Φ_E and Φ_W rested, and a read or a
 // retention through a pointer holding Φ_M rests each as-written target it reaches (Through, the one through-entry rule; DECISIONS
-// R4-M2xx). A gather tags each rested entry it finds apart (MirBorrows.Candidates), and what it reaches only through one, the holders it names and their stores
+// R4-M252). A gather tags each rested entry it finds apart (MirBorrows.Candidates), and what it reaches only through one, the holders it names and their stores
 // (MirBorrows.CheckSets' read keys, PLAN G775), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject
 // (R4-M153's path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid
 // row, or an address formed past a raw Deref through a component step to no part TyCtxt.Leading places at its base's address (Step,
@@ -244,7 +244,7 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The through-entry rule (DECISIONS R4-M2xx): the tier of a read's or a retention's reach of the target `entry` names through a
+    // The through-entry rule (DECISIONS R4-M252): the tier of a read's or a retention's reach of the target `entry` names through a
     // pointer, given whether that pointer holds Φ_M (`pointerHoldsMaybe`, the datum each caller states by its owner's one query: the
     // read value's MirLoanSets.Contains; σ(h)'s at a step past a holder h, MirBorrows.States' Holds over h's parts; Content, Chain and W
     // alike): rested where the entry rests, or where the pointer holds Φ_M and the entry names an as-written target; an entry that names

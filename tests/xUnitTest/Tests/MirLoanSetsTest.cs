@@ -8,7 +8,7 @@ namespace XunitTest;
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
 /// have one id, 0 is the empty set, Add (of an element or a run), Union (of two or of any number, R4-M138), Remove and Range keep the set
 /// laws and repeat through their memos (a run's Add through its result), and the storage is pooled; each element has a tier, the decided
-/// one winning where both meet, every operation matching by element, and Rest and At give a set's rested tier (R4-M2xx).</summary>
+/// one winning where both meet, every operation matching by element, and Rest and At give a set's rested tier (R4-M252).</summary>
 public sealed class MirLoanSetsTest
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
@@ -270,7 +270,7 @@ public sealed class MirLoanSetsTest
         Assert.Equal([0, 3, 64, 70, 5_000], Ids(sets, result));
     }
 
-    // DECISIONS R4-M2xx: where both tiers of an element meet, the decided one wins: Add of an element or of a run, and Union of two or of
+    // DECISIONS R4-M252: where both tiers of an element meet, the decided one wins: Add of an element or of a run, and Union of two or of
     // any number; a rested element added to a decided one stays decided.
     [Fact]
     public void TheDecidedTierWins()
@@ -288,7 +288,7 @@ public sealed class MirLoanSetsTest
         Assert.Equal([(1, true), (5, false), (8, false)], Tiered(sets, sets.Add(rested, Decided(5, 8))));
     }
 
-    // DECISIONS R4-M2xx: every set operation matches by element, so a removed element removes both tiers: Contains reads either tier, and
+    // DECISIONS R4-M252: every set operation matches by element, so a removed element removes both tiers: Contains reads either tier, and
     // Remove (through Without, or Apart for sets that share no element) and a Range's removal take an element at whichever tier it has.
     [Fact]
     public void RemovalMatchesByElement()
@@ -303,7 +303,7 @@ public sealed class MirLoanSetsTest
         Assert.Equal([(5, true)], Tiered(sets, sets.Remove(sets.Rest(Of(sets, 3, 4, 5)), sets.Range(3, 2))));
     }
 
-    // DECISIONS R4-M2xx: Rest gives every element rested, memoized by the set (the rested set its own Rest), and At gives a set at the
+    // DECISIONS R4-M252: Rest gives every element rested, memoized by the set (the rested set its own Rest), and At gives a set at the
     // tier of the entry it is reached by.
     [Fact]
     public void RestAndAtTakeTheEntrysTier()
@@ -320,7 +320,7 @@ public sealed class MirLoanSetsTest
         Assert.Equal(rest, sets.At(rest, new TieredElement(0, false)));
     }
 
-    // DECISIONS R4-M2xx: a tiered element is one word, 2·element + rested, so an element must be below 2^30; one that is not is an
+    // DECISIONS R4-M252: a tiered element is one word, 2·element + rested, so an element must be below 2^30; one that is not is an
     // internal invariant, never a set.
     [Fact]
     public void AnElementAt2To30IsAnInternalInvariant()
@@ -331,7 +331,7 @@ public sealed class MirLoanSetsTest
         Assert.Throws<InvalidOperationException>(() => new TieredElement(-1, false));
     }
 
-    // R4-M2xx with V16: a warm Rest and At allocate nothing: the Rest memo keeps its storage across Clear.
+    // R4-M252 with V16: a warm Rest and At allocate nothing: the Rest memo keeps its storage across Clear.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRestAllocatesNothing()

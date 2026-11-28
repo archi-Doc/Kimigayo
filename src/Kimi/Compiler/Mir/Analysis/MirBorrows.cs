@@ -36,7 +36,7 @@
 // - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
 // - the storing rule, its must-facts (Own, Past, the landing fact) and its producer: MirBorrows.Storing (PLAN G581);
-// - the pun rule, its marker Δ and its undecided writes (Φ_M and the rested entries they leave, MirLoanSets' tier, DECISIONS R4-M2xx;
+// - the pun rule, its marker Δ and its undecided writes (Φ_M and the rested entries they leave, MirLoanSets' tier, DECISIONS R4-M252;
 //   a located Unsupported_Kd at the check that rests on one):
 //   MirBorrows.Puns, with its judgement over Types (MirBorrows.PunTypes) and its Place keys (MirBorrows.PunKeys; PLAN G667b, G667c).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), that is exposed
@@ -90,7 +90,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private const int Built = 5; // The element of the marker Φ_B, in write slots only: the body stored a value of its own there (MirBorrows.Holders' StoredThrough; R4-M250).
     private const int Markers = 6; // The element of local 0's marker, after Φ_E to Φ_B: local L's is Markers + L, which its role decides (Marker).
 
-    // Φ_E's own entry, decided: the tier O-60 gives E's first reach, where no entry reached E (MirBorrows.Reach; DECISIONS R4-M2xx).
+    // Φ_E's own entry, decided: the tier O-60 gives E's first reach, where no entry reached E (MirBorrows.Reach; DECISIONS R4-M252).
     private static readonly TieredElement EscapedDecided = new(Escaped, false);
 
     private readonly MirLoanSets sets = new();

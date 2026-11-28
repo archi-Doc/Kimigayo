@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Mir;
 // content, the holders a call's store through it writes (W, whose first step alone is Referents), and the guard, MirTypes.HoldsLoans'
 // MirWrites of the Type a holder's state is read at; its chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain row's
 // measure), the least fixed point of a read from it, each holder read once per closure and tier. Every reach is at the tier of the
-// entry that names its holder (MirBorrows.Puns' Through; DECISIONS R4-M2xx): a rested entry's holder is read rested, and read again
+// entry that names its holder (MirBorrows.Puns' Through; DECISIONS R4-M252): a rested entry's holder is read rested, and read again
 // where a decided entry reaches it; Chain and W read σ(h)'s Φ_M by its parts (MirBorrows.States' Holds), never forming σ(h). W is one walk over state parts: each part of a reached holder's state is
 // read once per walk and tier at its reading, the guard of the holder's own root Type (Read; Through and Named take one step from a
 // state; W's own mark by walk, MirBorrows.States' walkedBy, two-field like steppedBy, which no read moves), each holder taking the
@@ -50,7 +50,7 @@ internal sealed partial class MirBorrows
     // E there), past another holder, or both; whether at the first step by an element the reading Type does not designate (ViaPun); and
     // whether a step of it at a reading key was left out, its guard Deep (ViaDeep; ReadAt); and whether it was read on at a reading key, a
     // node of the walk (ViaKey; Node), which the declared step's kept clause reads (DeclaredUnowned); and whether a decided entry reached
-    // it (ViaDecided, DECISIONS R4-M2xx): the tier of its receipt (MirBorrows.Calls' Deliver), at which the walk reads on past it. A step's
+    // it (ViaDecided, DECISIONS R4-M252): the tier of its receipt (MirBorrows.Calls' Deliver), at which the walk reads on past it. A step's
     // `via` carries its tier the same way: the first step and an entry-less route of a declared or Type fact are decided (KeepResult).
     private const byte ViaRoot = 1;
     private const byte ViaPast = 2;
@@ -61,7 +61,7 @@ internal sealed partial class MirBorrows
 
     // refs(S) (Refs): each holder with its root local (-1 for E) and the mode of the Loan or address naming it, none for E where S carries
     // Φ_E or no direct Loan.
-    // Each with the entry that names it, whose tier the holder's receipt takes (DECISIONS R4-M2xx; EscapedDecided for O-60's E).
+    // Each with the entry that names it, whose tier the holder's receipt takes (DECISIONS R4-M252; EscapedDecided for O-60's E).
     private readonly List<(int Holder, int Root, MirRefKind? Mode, TieredElement By)> refs = [];
     private readonly List<int> targets = []; // The holders a call's store writes (W).
     private readonly List<int> targetRoots = []; // The targets' root locals, -1 for E (the Type a holder's state is read at).
@@ -74,7 +74,7 @@ internal sealed partial class MirBorrows
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, MirHolding> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     // W's reading nodes: a holder (with its root local) read on at a reading Type's key, and the way past it at Through's read tier of
-    // the entry that reached it (ViaPast, ViaDecided; DECISIONS R4-M2xx), which its read-on and the call's own pointer take (OwnPointer).
+    // the entry that reached it (ViaPast, ViaDecided; DECISIONS R4-M252), which its read-on and the call's own pointer take (OwnPointer).
     private readonly List<(int Slot, int Root, BoundType Type, int Key, byte Via)> nodes = [];
     // The walk's nodes by (slot, key) and its state parts read at a key by (part, key), each read once per tier with steppedBy's cover
     // (Reads): a decided read covers a rested one.
@@ -88,7 +88,7 @@ internal sealed partial class MirBorrows
     private int[] queuedBy = []; // By holder: the closure that queued it.
     private int[] partlyBy = []; // By holder: the closure that reached it through a part or E (rule W's read-through clause).
     private int[] writableBy = []; // By holder: the closure that reached it through no shared Loan (Φ_W's strip).
-    // By holder: the entry that reached it in queuedBy's closure, a decided one where any did (Queued; DECISIONS R4-M2xx), at whose tier
+    // By holder: the entry that reached it in queuedBy's closure, a decided one where any did (Queued; DECISIONS R4-M252), at whose tier
     // Chain reads its state.
     private TieredElement[] reachedBy = [];
     private bool partsWritable; // Whether a part read through no shared Loan carries Φ_W (Parts), which the parts' union then keeps.
@@ -129,11 +129,11 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // The way a step's entry reaches a holder: the step's (`via`, its tier ViaDecided), rested where the entry rests (DECISIONS R4-M2xx).
+    // The way a step's entry reaches a holder: the step's (`via`, its tier ViaDecided), rested where the entry rests (DECISIONS R4-M252).
     private static byte Reached(byte via, TieredElement by) => by.Rested ? (byte)(via & ~ViaDecided) : via;
 
     // Whether the walk reads a node or a node part at the tier `via` carries for the first time, marking it: a decided read covers a
-    // rested one (MirBorrows.States' two-field cover at the walk's one level; DECISIONS R4-M2xx), so each is read at most twice per walk.
+    // rested one (MirBorrows.States' two-field cover at the walk's one level; DECISIONS R4-M252), so each is read at most twice per walk.
     private static bool Reads(Dictionary<(int Id, int Key), byte> seen, (int Id, int Key) at, byte via)
     {
         ref var tier = ref CollectionsMarshal.GetValueRefOrAddDefault(seen, at, out var exists);
@@ -147,7 +147,7 @@ internal sealed partial class MirBorrows
     }
 
     // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan, each read through
-    // rule W's clause (Parts) at the tier Through gives the entry naming it (E at its own Φ_E entry's; DECISIONS R4-M2xx), a shared
+    // rule W's clause (Parts) at the tier Through gives the entry naming it (E at its own Φ_E entry's; DECISIONS R4-M252), a shared
     // Loan's holder and E for a set carrying Φ_E without Φ_W read-only (E for a set with neither Φ_E nor a direct Loan is O-60's reach,
     // writable and decided as at W's first step: R4-M183), each distinct Shared set once per tier, joined by one n-ary union
     // (PartsUnion); memoized at the location.
@@ -194,7 +194,7 @@ internal sealed partial class MirBorrows
     // per closure, so a pointer cycle ends, again where a reach of it is the first through no shared Loan or the first by a decided entry
     // (Queued; a Shared set read once per closure at each of the two levels and tiers, the writable one and the decided one covering the
     // others, MirBorrows.States' two-field marks), and read through rule W's clause at the tier of the entry that reached it (reachedBy;
-    // DECISIONS R4-M2xx) as a whole value only where every reach of it was one, read-only where none was through no shared Loan (Parts);
+    // DECISIONS R4-M252) as a whole value only where every reach of it was one, read-only where none was through no shared Loan (Parts);
     // the states are joined by one n-ary union (PartsUnion); memoized at the location.
     private int Chain(ulong[] state, int set)
     {
@@ -271,7 +271,7 @@ internal sealed partial class MirBorrows
     }
 
     // A holder Chain reads, once per closure and again where a reach of it is the first through no shared Loan, or the first by a decided
-    // entry (reachedBy, DECISIONS R4-M2xx), and whether a reach of it was through a part or through E, and one through no shared Loan
+    // entry (reachedBy, DECISIONS R4-M252), and whether a reach of it was through a part or through E, and one through no shared Loan
     // (may-facts, joined): so a holder is queued at most 3 times per closure.
     private void Queued(int holder, bool whole, bool writable, TieredElement by)
     {
@@ -313,7 +313,7 @@ internal sealed partial class MirBorrows
     // Rule W's read-through clause (SPEC 15.6.5): a read through a reference to a holder's whole value is a Copy of its state, through one
     // to a part of it, or through E, not (Indirect, MirBorrows.Causes); into the parts an n-ary union joins: its Placed set, and its
     // Shared set where the walk (Step) has not read it at that level and tier (Indirect distributes over the parts' union), each at the
-    // tier of the entry `by` that reached the holder (MirLoanSets.At; DECISIONS R4-M2xx); and whether a read of a holder reached through
+    // tier of the entry `by` that reached the holder (MirLoanSets.At; DECISIONS R4-M252); and whether a read of a holder reached through
     // no shared Loan (`writable`) carries Φ_W.
     private void Parts(ulong held, bool whole, bool writable, TieredElement by)
     {
@@ -617,7 +617,7 @@ internal sealed partial class MirBorrows
     // be stored through a row (their guard steps) and the pointer may have no provenance (MirBorrows.PunTypes' NoProvenance, not None: a
     // byte of the Place may be an `owner` Scalar's or one that a punned write may not change, a reference's, a handle's), whatever else
     // the holder carries; at the first step (Punned) and past a holder (ReadPart) alike, at the read tier of the entry the punned read is
-    // through (`via`, an entry-less route; DECISIONS R4-M2xx). A call composes, so its "may" is exact.
+    // through (`via`, an entry-less route; DECISIONS R4-M252). A call composes, so its "may" is exact.
     private void Unowned((MirWrites Guard, BoundType? Record) rows, BoundType place, byte via)
     {
         if (this.walkComposes && rows.Guard is MirWrites.Through or MirWrites.Named && this.NoProvenance(place) != Extent.None)
@@ -822,7 +822,7 @@ internal sealed partial class MirBorrows
     // A node's read-on at the guard of its key's Type (ReadAt): each state part at each layer of the key the walked Type expression writes,
     // a raw layer without an Origin or an exclusive borrow (ReadPart; at a key that keeps the declared step too, beside that step: the two
     // meet a part idempotently, Written and nodeParts), and the call's own pointer at its raw layers without an Origin (OwnPointer), each
-    // at the node's tier (limit (a): the call's own pointer takes it, not each entry's; DECISIONS R4-M2xx).
+    // at the node's tier (limit (a): the call's own pointer takes it, not each entry's; DECISIONS R4-M252).
     private void ReadLayers(ulong[] state, (int Slot, int Root, BoundType Type, int Key, byte Via) node, MirWrites guard, bool readOn, OutputRetention output)
     {
         if (guard is not (MirWrites.Through or MirWrites.Named))
@@ -948,7 +948,7 @@ internal sealed partial class MirBorrows
     // address of storage the body does not own, a parameter's referent's, is E's in A5's value, which does not tell it from a pointer of
     // unknown provenance). Where the call composes, each holder the pun rule's entries of the part name (PunEntry, the store rule's
     // selection: no own-step entry, never E) may afterwards hold the call's own pointer (OwnWrite). At the tier of the step that reached
-    // the part (`via`; DECISIONS R4-M2xx).
+    // the part (`via`; DECISIONS R4-M252).
     private void HiddenCarried(int part, int key, byte via)
     {
         if (part == 0 || !Reads(this.nodeParts, (part, -2 - key), via))
@@ -1044,7 +1044,7 @@ internal sealed partial class MirBorrows
     // layer (none: the layer reads nothing there). Past a holder
     // an element's Position is not known (R4-M198's Position is the argument value's; U5's per-element markers), so every row of its
     // Place's leading chain may be designated. Each entry at the node's tier (a receipt at its own, ViaDecided; a holder read on, and
-    // storage the body does not own, at Through's read tier through σ(h), by whether it holds Φ_M, `pointerHoldsMaybe`; DECISIONS R4-M2xx).
+    // storage the body does not own, at Through's read tier through σ(h), by whether it holds Φ_M, `pointerHoldsMaybe`; DECISIONS R4-M252).
     private void ReadPart(int part, in (int Slot, int Root, BoundType Type, int Key, byte Via) node, bool pointerHoldsMaybe, int layer, bool readOn, OutputRetention output)
     {
         var facts = this.punKeys[node.Key];
@@ -1110,7 +1110,7 @@ internal sealed partial class MirBorrows
     // no Type there: what the call stores takes the layer's record (the A5 value redesign's rule 5), Binding's entry being the bound: at an
     // Its layer the Reached entry of its pointee (Written's place, Received; a kept pointee's kept entry), at an Any layer the output's All
     // (Written with no place). E is reached at the tier `via` carries: its node's (ReadLayers; limit (a)), KeepResult's decided one
-    // (DECISIONS R4-M2xx).
+    // (DECISIONS R4-M252).
     private void OwnPointer(int key, OutputRetention output, byte via)
     {
         var facts = this.punKeys[key];
@@ -1210,7 +1210,7 @@ internal sealed partial class MirBorrows
     // ReadDeclared's). A value that may refer to storage the body does not own carries Φ_E and Φ_W where it is formed (an untied result
     // or store, an integer's pointer and E's own content at entry; a parameter carries Φ_W only where the holding walk answers Writable,
     // Initial) and where content or chain reaches E for a set with neither Φ_E nor a direct Loan (O-60, R4-M183), so a set naming
-    // nothing writes nothing. Each holder at its entry's tier within the step's (`via`, ViaDecided: a receipt; DECISIONS R4-M2xx).
+    // nothing writes nothing. Each holder at its entry's tier within the step's (`via`, ViaDecided: a receipt; DECISIONS R4-M252).
     private void Write(int set, byte via)
     {
         this.Work += this.sets.Count(set);

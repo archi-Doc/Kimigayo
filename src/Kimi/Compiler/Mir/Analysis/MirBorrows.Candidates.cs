@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Mir;
 // found, its tag (MirBorrows.OwnSteps). What the drop tier finds is tagged apart (DECISIONS R4-M153): a candidate's Dropped tags, a
 // marker's drop stamp and an own-step entry's drop tag, each with the drop-live holder as via. A rested entry, and what the gather
 // reaches only through one (its read key's tier, MirBorrows.CheckSets), is tagged apart too, at the Limit tier (R4-M198's undecided
-// class, PLAN G775; DECISIONS R4-M2xx: the tier is the entry's). Which check sets hold a candidate is Tags.Takes, any tier's, and its
+// class, PLAN G775; DECISIONS R4-M252: the tier is the entry's). Which check sets hold a candidate is Tags.Takes, any tier's, and its
 // Outcome there decided by its own tags, else Limit by the rested ones, else Deep by the drop tier's; the passes and the closure are the
 // gather's (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
@@ -36,7 +36,7 @@ internal sealed partial class MirBorrows
     private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
 
     // An entry's tier in a read at the read key's tier `at` (Limit for a holder reached only through a rested entry, else the pass's;
-    // MirBorrows.CheckSets' TierOf): Limit where the entry rests (DECISIONS R4-M2xx), else `at`.
+    // MirBorrows.CheckSets' TierOf): Limit where the entry rests (DECISIONS R4-M252), else `at`.
     private static MirOutcome TierAt(TieredElement entry, MirOutcome at) => entry.Rested ? MirOutcome.Limit : at;
 
     // A state found in a holder (-1: a transit value, a state of one part) by the pass at the read key's tier `at`: its elements, in
@@ -175,7 +175,7 @@ internal sealed partial class MirBorrows
         internal readonly bool Takes(int taking) => !this.Outcome(taking).IsNone;
 
         // What it is to a check set (R4-M153): decided where its own tags take it, a Limit where only those of rested entries do
-        // (TierAt; DECISIONS R4-M2xx), Deep where only the drop tier's do, else none.
+        // (TierAt; DECISIONS R4-M252), Deep where only the drop tier's do, else none.
         internal readonly MirOutcome Outcome(int taking)
         {
             var undecided = this.rested.Takes(taking) ? MirOutcome.Limit : this.dropped.Takes(taking) ? MirOutcome.Deep : MirOutcome.None;

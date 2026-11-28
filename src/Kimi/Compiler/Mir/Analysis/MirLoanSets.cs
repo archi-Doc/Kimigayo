@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns interned immutable Loan sets: Add (an element or an ascending run), Union (of two or of any number), Remove, Range; the only Loan-set
-// form in Mir (design A3 §6.1; DECISIONS R4-M53), and each element's tier, decided or rested (DECISIONS R4-M2xx, PLAN G599 (b)).
+// form in Mir (design A3 §6.1; DECISIONS R4-M53), and each element's tier, decided or rested (DECISIONS R4-M252, PLAN G599 (b)).
 // Input: the elements, the Loan and marker ids A5 numbers, each below 2^30, and in a second namespace the storing rule's must-set elements (Own,
 // Past; MirBorrows.Storing), whose sets are never joined with the first's. Output: each set as a node id, 0 the empty set; Add, Union and Remove
 // (a \ b) of sets, a set with an ascending run added (interned in one pass, R4-M132, G263) and the set of a Range of consecutive elements as
@@ -24,7 +24,7 @@ using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A Loan-set element with its tier (DECISIONS R4-M2xx): decided, or rested by the owner of an undecided fact; one word,
+/// <summary>A Loan-set element with its tier (DECISIONS R4-M252): decided, or rested by the owner of an undecided fact; one word,
 /// 2·element + rested, so a set's words ascend by element and an element's decided word precedes its rested one.</summary>
 /// <param name="element">The element, below 2^30.</param>
 /// <param name="rested">Whether it rests.</param>
