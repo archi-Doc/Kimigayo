@@ -8,13 +8,16 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The callee's own Type slot a part of a Type names itself, -1 for none: directly, as the selector of an `s/U` application or
-    // adaptation, or as the target projection of a pair slot (the one owner of the own-slot kinds).
+    // adaptation, or as the target projection of a pair slot (the one owner of the own-slot kinds). With MentionsSlots, its input is a
+    // Type of the callee's declaration (a parameter pattern, S, or a key of a reading in ConstraintScope(callee)), never a Type of the
+    // call's scope, whose caller may be the callee or share its Container's slots (G1406-68).
     private static int OwnSlot(BoundType type, Koto function)
         => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection &&
             type.Symbol is { } symbol ? ContainerSlot(function, symbol) : -1;
 
-    // Whether `type` names one of the callee's slots in `slots`: a Type slot directly, as the selector of an `s/U` application or as the
-    // target projection of a pair slot, or a length slot in a fixed array's length.
+    // Whether `type`, a Type of the callee's declaration (OwnSlot's input), names one of the callee's slots in `slots`: a Type slot
+    // directly, as the selector of an `s/U` application or as the target projection of a pair slot, or a length slot in a fixed array's
+    // length.
     private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots)
     {
         if (slots.IsEmpty)
@@ -208,10 +211,12 @@ public sealed partial class Binding
     // binding failed (RestSlots), the call rests on such a part instead (SPEC 23.1.2; DECISIONS U1.6h-1): its record is that part's.
     // Otherwise the record names the first slot that does not rest (`boundary`): a slot at a failed part's position is no independent fact.
     // The record is the selection's (RecordSelection), so a call that already failed keeps its first failure. Where the candidate's
-    // callable evidence missed a known call signature over a Limited reading (`read`, its row's CallableRead), the slot that signature
-    // could bind is the limit's instead (ReadIdentityLimit; SPEC 8.3.3, G1406-65 12a (ii)), unless the reading is cut over a Constraint
-    // that needs a slot the call leaves unbound, which is not judged (CutNamesSlots; SPEC 10.8, G1406-66: p4-inferred, t1).
-    private BoundType? FailUnboundSlots(in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, IdentityClasses? read)
+    // callable evidence missed a call signature over a Limited reading (its row's two, InferCallableSignatures), the slot that
+    // signature could bind is the limit's instead (ReadIdentityLimit; SPEC 8.3.3, G1406-65 12a (ii)): the argument's known call
+    // signature's (`callableRead`, the call's scope, which crosses only the caller's Constraints), else S's (`requiredRead`, the
+    // callee's scope) unless it is cut over a Constraint that needs a slot the call leaves unbound, which is not judged (CutNamesSlots;
+    // SPEC 10.8, G1406-66: p4-inferred, t1; G1406-68: r2, a recursive call, reads the first).
+    private BoundType? FailUnboundSlots(in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, IdentityClasses? callableRead, IdentityClasses? requiredRead)
     {
         var (call, selected, scope, self, declaringType) = (solution.Call, solution.Function, solution.Scope, solution.Self, solution.DeclaringType);
         var slots = solution.Types;
@@ -222,7 +227,8 @@ public sealed partial class Binding
         try
         {
             this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref boundary);
-            var limit = read is { Limited: true } && !this.CutNamesSlots(read, CallSlotOwner(selected), boundary) ? read : null;
+            var limit = callableRead is { Limited: true } ? callableRead
+                : requiredRead is { Limited: true } && !this.CutNamesSlots(requiredRead, CallSlotOwner(selected), boundary) ? requiredRead : null;
             Koto? failed = null;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {

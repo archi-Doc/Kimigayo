@@ -430,9 +430,12 @@ public sealed partial class Binding
         // whatever the others give, so the call defers unranked (ClassifySelection, SolveSelected).
         internal bool Deferred { get; set; }
 
-        // SPEC 10.8, 8.3.3 (G1406-65 12a (ii)): the Limited reading of a known call signature its callable evidence did not find
-        // (InferCallableSignatures), which the selected call's unbound-slot record reads (FailUnboundSlots).
+        // SPEC 10.8, 8.3.3 (G1406-65 12a (ii), G1406-68): the Limited readings of the call signatures its callable evidence did not
+        // find (InferCallableSignatures), which the selected call's unbound-slot record reads (FailUnboundSlots): CallableRead the
+        // argument's known call signature, in the call's scope; RequiredRead S, in the callee's (SPEC 10.5.2).
         internal IdentityClasses? CallableRead { get; set; }
+
+        internal IdentityClasses? RequiredRead { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

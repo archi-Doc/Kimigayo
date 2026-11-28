@@ -490,8 +490,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // G1406-66 (SPEC 10.8, 8.3.3): whether the Limited reading `classes` (ReadingOf's table) is cut over a Constraint that needs one of
-    // `function`'s slots in `slots`: a Limited closure of its closure set (identityReadings' range) is keyed by a Type naming such a slot.
+    // G1406-66 (SPEC 10.8, 8.3.3): whether the Limited reading `classes` (ReadingOf's table; S's, in the callee's scope, G1406-68) is
+    // cut over a Constraint that needs one of `function`'s slots in `slots`: a Limited closure of its closure set (identityReadings'
+    // range) is keyed by a Type naming such a slot.
     // A Constraint needing an unbound slot is not judged, so a cut over it answers no judgment of the call.
     private bool CutNamesSlots(IdentityClasses classes, Koto function, SlotSet slots)
     {

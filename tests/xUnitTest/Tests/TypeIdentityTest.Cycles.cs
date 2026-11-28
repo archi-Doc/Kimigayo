@@ -368,6 +368,9 @@ public partial class TypeIdentityTest
     private const string Gq =
         "contract Pq\n    associate Next is Pq\n    associate Up is PrimitiveInteger\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\n";
 
+    // Pq of stride 1 (Called's form).
+    private const string PqStride1 = "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Up\n";
+
     private const string PqNeeds =
         "func needIO<X>(x: ref/X)\n    X is Inner or Other\n    return\nfunc needOI<X>(x: ref/X)\n    X is Other or Inner\n" +
         "    return\nfunc needB<X>(x: ref/X)\n    X is Other\n    X is Inner\n    return\n";
@@ -543,6 +546,14 @@ public partial class TypeIdentityTest
         // the bound, X = i32, accepted.
         { "t1", Called("func need<U, X, T>(u: ref/U, t: ref/T) -> i32\n    T is Pq\n    U is T.(Pq).Up\n" + Up(40, "Callable<() -> X>") + "    return 0\n", "x: ref/T.(Pq).Up, t: ref/T) -> i32", "    T.(Pq).Up is Callable<() -> i32>\n    return need(x, t)\n"), "AnalysisLimit_Kd" },
         { "t1b", Called("func need<U, X, T>(u: ref/U, t: ref/T) -> i32\n    T is Pq\n    U is T.(Pq).Up\n" + Up(1, "Callable<() -> X>") + "    return 0\n", "x: ref/T.(Pq).Up, t: ref/T) -> i32", "    T.(Pq).Up is Callable<() -> i32>\n    return need(x, t)\n"), string.Empty },
+        // G1406-68 (SPEC 10.5.2, 10.8, 8.3.3): the callee's T is bound only through S = `() -> T` against x's known call signature,
+        // T.(Pq).Up's, identical to T.Next^40.Up's only past the round bound, so "T unbound" rests on the cut: the limit at the call.
+        // r2 calls f itself and r2c Box's constructor from Box's Type function (a constructor's slots are its structure's, 10.8.1), so
+        // the caller's T is the callee's by symbol; r2n calls a separate g, and r2m's g also carries the premise over its own A.
+        { "r2", PqStride1 + "func f<T, U>(u: ref/U, x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    U is Callable<() -> T>\n" + Up(40, "Callable<() -> T>") + "    return f(x, x)\npublic func main() => ()\n", "AnalysisLimit_Kd" },
+        { "r2n", PqStride1 + "func g<A, U>(u: ref/U, x: ref/A.(Pq).Up) -> i32\n    A is Pq\n    U is Callable<() -> A>\n    return 0\nfunc f<T, V>(v: ref/V, x: ref/T.(Pq).Up) -> i32\n    T is Pq\n" + Up(40, "Callable<() -> T>") + "    return g(x, x)\npublic func main() => ()\n", "AnalysisLimit_Kd" },
+        { "r2m", PqStride1 + "func g<A, U>(u: ref/U, x: ref/A.(Pq).Up) -> i32\n    A is Pq\n    U is Callable<() -> A>\n    A" + Next(40) + ".(Pq).Up is Callable<() -> A>\n    return 0\nfunc f<T, V>(v: ref/V, x: ref/T.(Pq).Up) -> i32\n    T is Pq\n" + Up(40, "Callable<() -> T>") + "    return g(x, x)\npublic func main() => ()\n", "AnalysisLimit_Kd" },
+        { "r2c", PqStride1 + "struct Box<T, U>\n    T is Pq\n    U is Callable<() -> T>\n" + Up(40, "Callable<() -> T>") + "    init(u: ref/U, x: ref/T.(Pq).Up) => ()\n    func make(x: ref/T.(Pq).Up) -> i32\n        let b = Box.init(x, x)\n        return 0\npublic func main() => ()\n", "AnalysisLimit_Kd" },
         { "d1v-na", Pq + "func need<U, T>() -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>() -> i32\n    T is Pq\n    return need<Option<T.(Pq).Up>, T>()\npublic func main() => ()\n", string.Empty },
         { "d1v-np", Pq + "func need<U, T>(u: ref/Option<T.(Pq).Up>) -> i32\n    T is Pq\n    U is Option<T.(Pq).Up>\n    return 0\nfunc f<T>(o: ref/Option<T.(Pq).Up>) -> i32\n    T is Pq\n    return need<Option<T.(Pq).Up>, T>(o)\npublic func main() => ()\n", string.Empty },
         { "p2-na", Pq + "func need<U, T>() -> i32\n    T is Pq\n    U is T.(Pq).Up\n    return 0\nfunc f<T>() -> i32\n    T is Pq\n    return need<T.(Pq).Up, T>()\npublic func main() => ()\n", string.Empty },
@@ -784,8 +795,7 @@ public partial class TypeIdentityTest
 
     // Pq of stride 1, the declarations before `f<T>`, f's signature after `(` and the rest of f after `T is Pq`.
     private static string Called(string declarations, string signature, string rest)
-        => "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self" + Next(1) + ".(Pq).Up\n" + declarations +
-            $"func f<T>({signature}\n    T is Pq\n" + rest + "public func main() => ()\n";
+        => PqStride1 + declarations + $"func f<T>({signature}\n    T is Pq\n" + rest + "public func main() => ()\n";
 
     private static string PqProgram(int stride, string declarations, int x, string parameters, string premise, string body)
         => "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self" + Next(stride) + ".(Pq).Up\n" +

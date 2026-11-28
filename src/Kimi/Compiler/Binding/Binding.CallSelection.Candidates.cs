@@ -498,10 +498,10 @@ public sealed partial class Binding
                 }
             }
 
-            IdentityClasses? callableRead = null;
+            IdentityClasses? callableRead = null, requiredRead = null;
             var inferred = this.SettleSources(ref solution, ref waiting, ref sourced, wholes, late: false) &&
-                solution.InferCallableSignatures(operations, out callableRead);
-            row.CallableRead = callableRead;
+                solution.InferCallableSignatures(operations, out callableRead, out requiredRead);
+            (row.CallableRead, row.RequiredRead) = (callableRead, requiredRead);
             if (!inferred)
             {
                 return CandidateApplicability.Inapplicable;
