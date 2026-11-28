@@ -898,6 +898,24 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]))}]");
     }
 
+    // SPEC 15.6.6, 16.3.2, 15.1.6 (PLAN G220): a Drop observes only what its group destroys (A2's walk, MirDropTable.Destroyed, as A4
+    // reads it). S's drop writes through its r, so destroying an S observes y's Loan. A case-tested Subject's `.None` arm destroys no S
+    // (a5Dropping), nor does an Open group whose S was moved out, leaving an i32 (a5Partial): `y = 2` there is valid. A `_` that keeps
+    // the S in the Subject destroys it at the arm's exit, after `y = 2` while y's Loan is live (iA5Dropping, iA5Partial).
+    [Theory]
+    [InlineData("a5Dropping", "S", "S.init(y@uniq)", "        .Some(let s) => return 0\n        .None\n            y = 2\n            return y\n", "")]
+    [InlineData("iA5Dropping", "S", "S.init(y@uniq)", "        .Some(_)\n            y = 2\n            return y\n        .None => return 0\n", "iA5Dropping: y = 2")]
+    [InlineData("a5Partial", "(S, i32)", "(S.init(y@uniq), 3)", "        .Some((let s, _))\n            consume(s@move)\n            y = 2\n            return y\n        .None => return 0\n", "")]
+    [InlineData("iA5Partial", "(S, i32)", "(S.init(y@uniq), 3)", "        .Some((_, let n))\n            y = 2\n            return y + n\n        .None => return 0\n", "iA5Partial: y = 2")]
+    public void ADropObservesOnlyWhatItsGroupDestroys(string form, string item, string made, string arms, string expected)
+    {
+        var c = MirBuildTest.Compile(
+            "struct S {a}\n    let r: uniq/i32 during a\n    public init(r: uniq/i32 during a) => self.r = r@move\n    drop\n        self.r@follow = 0\n" +
+            $"func consume<T>(value: T) => ()\nfunc {form}(flag: bool) -> i32\n    var y = 1\n    let o: Option<{item}> = if flag\n" +
+            $"        yield .Some({made})\n    else => .None\n    match o@move\n{arms}");
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), LoanCodes))}]");
+    }
+
     // SPEC 4.1, 15.6.6 (R8-X1 U3): a destruction that observes no Origin adds no requirement. Pair has no drop, and a `[0 of Guard]` it
     // holds destroys nothing, as its own Field (a5obs), in a Tuple (atup), an Option (aopt) or a Field's struct (awrap): no Guard's drop
     // observes a at pr's end, so x's Loan ends with pr's last use and `x = 2` is valid. A Guard's drop observes a there (one element:

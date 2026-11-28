@@ -3,9 +3,9 @@
 // A2's statement of what destroying a value destroys, in destruction order (PLAN G702; SPEC 16.3.2, 15.1.3, 8.15.3; DECISIONS R4-M6a,
 // R8-M23): a level, the direct parts of a Type as move paths name them in the order MirTypes.LevelPart states (the one statement of
 // SPEC 16.3.2's order of a level, a Type fact), composed for both of its uses: a drop group's walk (Destroyed), the level with the
-// group's rows, and a level no row governs (Level), a glue function's. A4 reads each destroyed part's Type; the Backend maps each
+// group's rows, and a level no row governs (Level), a glue function's. A4 and A5 read each destroyed part's Type; the Backend maps each
 // step to drop glue (DropGlue.Destroyed, DropGlue.Level) and states no order of its own.
-// Input: a row of a body's drop table and the row's Type in the reader's view of it (the view's case Type for A4, an instance's closed
+// Input: a row of a body's drop table and the row's Type in the reader's view of it (the view's case Type for A4 and A5, an instance's closed
 // Type for the Backend), or a Type alone; the reader's TyCtxt, whose instances' stored Types the walk reads, never kept.
 // Output: the steps in destruction order, each part named by its move-path step from its
 // level's Type with the Type MirBody.SelectsPart gives it, under its governing row or, without one, its parent's own bit.
@@ -19,7 +19,7 @@
 // trusts it and checks nothing); every Run has an element (First <= Last): a fixed array's level has one, since a `[0 of T]` destroys
 // nothing (MirTypes.Parts, SPEC 4.1: no glue function's level) and no Move Path names an element of it (no Open row).
 // Must not: state the order of a level's parts (MirTypes.LevelPart); decide a verdict (A2's rows state it; this walk and the readers
-// of a group's first row, FunctionCodegen.Drops and A5's Elides, read it), whether a part needs a drop (MirTypes.MayNeedDrop, the
+// of a group's first row, FunctionCodegen.Drops and A5's Storing's Elides, read it), whether a part needs a drop (MirTypes.MayNeedDrop, the
 // reader's), or a part's glue, position or layout, a declared destructor, a collection's elements or a handle's payload (the Backend's).
 
 #pragma warning disable SA1402 // The step and its kind belong to the walk.

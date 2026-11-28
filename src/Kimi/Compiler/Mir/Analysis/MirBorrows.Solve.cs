@@ -37,6 +37,7 @@ internal sealed partial class MirBorrows
         this.maybeSet = this.sets.Add(this.sets.Rest(this.escapedSet), Maybe);
         this.builtSet = this.sets.Add(0, Built);
         this.Loans();
+        this.Droppings();
         this.Addresses();
         this.Receivers();
         this.BeginStoring();

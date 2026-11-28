@@ -8,13 +8,17 @@ namespace Kimi.Compiler.Mir;
 // what it does (KindOf, MirBorrows.Checks' AccessKind) and with the check set it takes, and a Call's or Drop's effect access after them
 // (MirBorrows.Effects); every write also goes to R26-access before the borrowed-root filter (MirBorrows.Defaults). Its classifier KindOf is
 // also read by MirBorrows.OwnSteps' MayDepart, Dropping by MirBorrows.Holders (drop slots), Dropping and Destruction by MirBorrows.Liveness
-// and MirBorrows.Activations, and Dropping by MirBorrows.Destructions' receivers.
+// and MirBorrows.Activations, and Dropping and its Types (Droppings, one walk per Drop and view) by MirBorrows.Destructions' receivers and
+// stores.
 // Must not compare an access with a Loan (MirBorrows.Checks) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     private readonly Dictionary<BoundType, byte> entered = new(ReferenceEqualityComparer.Instance); // Observation's scratch.
     private readonly Dictionary<BoundType, MirOutcome> destructions = new(ReferenceEqualityComparer.Instance); // Destruction's, by case Type.
+    private readonly List<MirDropStep> dropSteps = []; // MirDropTable.Destroyed's steps of the Drop being read (Droppings).
+    private readonly List<BoundType> droppedTypes = []; // The Types the view's Drops destroy whole, each Drop's range once (droppings).
     private (BindingSymbol? Definition, ulong Version) destructionsOf; // The definition and program version the destructions are for.
+    private (AccessKind Kind, int Start, int Count)[] droppings = []; // By block: how its Drop destroys its Place, its droppedTypes.
     private Access[] accesses = [];
     private int accessCount;
 
@@ -31,7 +35,7 @@ internal sealed partial class MirBorrows
 
         if ((access & MirAccess.DropUse) != 0)
         {
-            return this.Dropping(at.Block, place);
+            return this.Dropping(at.Block);
         }
 
         if ((access & MirAccess.Writes) != 0)
@@ -52,16 +56,72 @@ internal sealed partial class MirBorrows
         return (access & MirAccess.Reads) != 0 ? AccessKind.Read : null;
     }
 
-    // How a Drop under the view destroys its Place (A3 5's access, R4-M6): observing what it holds where its case Type observes and A2 keeps
-    // some of it (a group that is not Elide, or none), else shallowly.
-    private AccessKind Dropping(int block, MirPlace place)
+    // How a block's Drop under the view destroys its Place (A3 5's access, R4-M6), as Droppings found it.
+    private AccessKind Dropping(int block) => this.droppings[block].Kind;
+
+    // How each of the view's Drops destroys its Place (pre-pass, before the addresses, whose own-step departures read it): by what A2's
+    // group destroys (MirDropTable.Destroyed, as A4's Dropped reads it; SPEC 16.3.2: only the remaining parts), shallowly where no part
+    // is destroyed whole (an Elide group), else as the strongest destruction among the Types destroyed whole: unclassified, then
+    // observing (Destruction). Each Drop lists those Types once (droppedTypes, for its stores: Destroyed); a Drop without a row (a body
+    // over the analyses' arena limit, R4-M15a) destroys its Place's case Type. Each Drop is read under its own site, as its readers' sites
+    // were, so a refusal the walk forms keeps the Drop's statement.
+    private void Droppings()
     {
-        if (this.program.Drops.Elides(this.body.Ordinal, block, this.view))
+        MirDataflow.Grow(ref this.droppings, this.body.Blocks.Length);
+        this.droppedTypes.Clear();
+        for (var block = 0; block < this.body.Blocks.Length; block++)
         {
-            return AccessKind.Destroy;
+            if (this.body.Blocks[block].Terminator is not { Kind: MirTerminatorKind.Drop, Place: var place })
+            {
+                continue;
+            }
+
+            var site = this.OpenAt(this.Location(block, this.body.Blocks[block].Count));
+            var (start, type, kind) = (this.droppedTypes.Count, cases.TypeOf(place), AccessKind.Destroy);
+            var group = this.program.Drops.Group(this.body.Ordinal, block, this.view);
+            if (group < 0)
+            {
+                this.droppedTypes.Add(type);
+            }
+            else
+            {
+                this.program.Drops.Destroyed(types, this.body.Ordinal, group, type, this.dropSteps);
+                foreach (var step in this.dropSteps)
+                {
+                    if (step.Kind is MirDropStepKind.Whole or MirDropStepKind.Run && !this.DropsType(start, step.Type))
+                    {
+                        this.droppedTypes.Add(step.Type);
+                    }
+                }
+
+                this.dropSteps.Clear();
+            }
+
+            for (var i = start; i < this.droppedTypes.Count && kind != AccessKind.Unclassified; i++)
+            {
+                var destruction = this.Destruction(this.droppedTypes[i]);
+                kind = destruction == AccessKind.Destroy ? kind : destruction;
+            }
+
+            this.droppings[block] = (kind, start, this.droppedTypes.Count - start);
+            types.CloseSite(site);
         }
 
-        return this.Destruction(cases.TypeOf(place));
+        this.Work += this.body.Blocks.Length + this.droppedTypes.Count;
+    }
+
+    // Whether the Drop whose Types start at start already lists a Type: a fixed array's several Runs of one element Type read alike.
+    private bool DropsType(int start, BoundType type)
+    {
+        for (var i = start; i < this.droppedTypes.Count; i++)
+        {
+            if (ReferenceEquals(this.droppedTypes[i], type))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // How destroying a value of a case Type accesses it, read off the walks' answer (MirTypes.Observation): observing where decided or Limit,

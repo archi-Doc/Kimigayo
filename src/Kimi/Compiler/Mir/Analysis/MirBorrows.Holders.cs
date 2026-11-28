@@ -655,7 +655,7 @@ internal sealed partial class MirBorrows
         for (var b = 0; b < this.body.Blocks.Length; b++)
         {
             if (this.body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: >= 0 and var root } place } && this.slots[root] == -2 &&
-                this.Dropping(b, place) == AccessKind.Unclassified)
+                this.Dropping(b) == AccessKind.Unclassified)
             {
                 if (!deep)
                 {

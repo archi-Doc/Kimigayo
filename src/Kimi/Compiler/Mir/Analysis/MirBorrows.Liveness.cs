@@ -183,7 +183,7 @@ internal sealed partial class MirBorrows
             }
             else if ((access & MirAccess.DropUse) != 0)
             {
-                owner.Dropped(place.Root, owner.Dropping(this.block, place));
+                owner.Dropped(place.Root, owner.Dropping(this.block));
             }
             else if ((access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows)) != 0)
             {
