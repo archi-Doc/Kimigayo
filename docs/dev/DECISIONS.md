@@ -3768,6 +3768,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     becomes Unbound at a call" (a value call publishes its Closure's call result atom as it is).
   - Superseded in part by R4-M246 (Z4-M, 2026-11-25): departure (iii), PD13's located `Unsupported_Kd`: a by-case Closure call
     acquires its callee in each case as the case admits (a case branch), and the hold's condition is `MirValidator`'s row (4).
+  - Superseded in part by BU-280 (envr, 2026-11-26), on the Rule's sentence "Once a Closure is classified, `OriginAtUse` resolves
+    its environment atoms to ρ under a borrowed receiver and ρ to `static` under `owner/Self`".
+    - The resolution is now the receiver resolution's row over (Binder, Classify result), composed after `SuppliedAtUse` (R4-M133);
+      `CompletedOrigin` keeps the deferred row.
+    - Each Borrow of an environment binding has its own atom.
+    - Two premises no longer hold:
+      - that every reading passes through `OriginAtUse`, since a published `let` value bypassed it (om1sd);
+      - that one atom per binding can serve as each Borrow's Origin (om1c).
+    - The pending state before classification is unchanged.
 - **R4-M127 A default's copy is decided before it is written** (2026-10-25; PLAN G245's unit U1) SPEC 7.2.3, 23.1.1, 23.1.2.
   - Cause: `MirBuilder.Inline` wrote a copy before it knew whether the call's substitution instantiates it. A null `TyCtxt.Apply` or
     `Compose` kept the template's own Type or callee substitution (`applied ?? type`, `composed ?? Subst`), then a trailing
@@ -4998,6 +5007,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded in part by R7-M66 (D-944): P9's "its call result atom the call's Unbound atom, R4-M118's second source". P9 images
     only the call receiver ρ, and the G280 cascade at the argument (h1's and d3's Owned `UnprovenConstraint_Kd`) is gone.
     Then superseded by R7-M101 (B1): the call result atom is imaged as the call's own result region.
+  - Superseded in part by BU-280 (envr, 2026-11-28, Revision 2), on P9's sentence "`PlaceOrigin` names a Closure literal's own
+    temporary by its ClosureValueSlot, the atom that is ρ in the literal's body".
+    - A Closure literal's own temporary is now `ClosureTemporarySlot`'s atom: binder the literal, role Place. Like any temporary,
+      it is a root of the body that evaluates it. ρ (`ClosureValueSlot`) names only the call receiver, in the Closure's contract
+      and body.
+    - These still hold:
+      - slot 0 would be the literal's parameter 0;
+      - a call on the literal needs no row of its own, because `ReceiverImage`'s fallback is this atom and P9 substitutes ρ by it;
+      - a Borrow of the literal kept past its statement is the Loan conflict (rck).
+    - This premise no longer holds: that sharing ρ's atom is harmless because ρ is resolved only inside its Closure
+      (`ReceiverAtUse`). BU-280's Closure row reads every occurrence of ρ alike. Under `owner/Self` it would read the literal's
+      temporary as `static` in its evaluating body, which accepts rc3, rc4 and rcn.
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
   (superseded in part by R4-M157: the holding walk's key, and R4-M57; and by R7-M125: the call's verdict joins CallRetention's Deep) (2026-10-28; G272's design-first candidate, design 2; the owner's
   「G272: (1)」 and 「G272 要件: (a)」) SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis
@@ -9873,7 +9894,8 @@ resumed by R4-M86 (2026-10-20).
   `uniq`, `objref`, `objuniq`, a pair layer by its admitted cases) is contained in each from its last dereference outward up to and
   including the first shared one, every one when none is shared (SPEC 15.6.3); its own Origin is an inferred region (15.6.5), which
   Binding names by the meet of those Origins, fixed, finite or inferred (`Binding.Meet`'s Intersection); one reached through no layer
-  by its root's atom (bu18). Owner: `Binding.PlaceOrigins`, one walk `ContainedOrigin` over `NextPathStep` (PlaceAuthority's one
+  by its root's atom (bu18), which for a local or parameter root is that Borrow's own
+  (BU-279: `BoundOrigin.BorrowRoot`). Owner: `Binding.PlaceOrigins`, one walk `ContainedOrigin` over `NextPathStep` (PlaceAuthority's one
   enumeration of a path's steps, which PathAuthority walks too; `MeetStep`): a follow dereferences its operand's outer layer, a member
   or a borrowed element every layer of its receiver's own Type (`MeetLayers`, which `SharedReferenceThroughLayers` reads too; its step
   `MeetLayer` is a Pattern position's in `SelectLayers` as well), a pair follow its slot by its admitted cases, each going on unless
@@ -9918,8 +9940,8 @@ resumed by R4-M86 (2026-10-20).
   Subject Place, valued at this name, so containment still comes from the one name and Binding adds no containment row); MirOrigins skipping a containment edge whose head is
   Binding's name (R4's STOP option (B): a symptom fix that keeps `leak` accepted); judging containment for Refuted only until G226
   (STOP (C), temporary); A's generalized `ErasedTypes` column and a Reborrow-only column (OQ-2: a closed column of a due file, two
-  rules for a Ref's Type in one function). Open: R4's C3 (a Borrow through a capture is not met with the Closure's call receiver, SPEC
-  15.6.3; G227); A's residuals (a finite source through a `var` slot inside a meet, now Binding's Refuted for the probed forms; an
+  rules for a Ref's Type in one function). R4's C3 is closed by BU-280 (G227). A Borrow of or through an environment binding reads as
+  ρ under a borrowed receiver at every reading (om1c, om1sd). Open: A's residuals (a finite source through a `var` slot inside a meet, now Binding's Refuted for the probed forms; an
   inferred element Origin whose receiver Loan no pipeline carries, `t2`/`t3`/LocalInputs); a discarded bare Reborrow (`_ = h.link`, and
   a bare Place alone in Discard Context, SPEC 14.2) has no consumer Type: `MirBuilder.Discard`'s temporary takes the Place's stored
   Type through HIR Meaning, and a Place alone is read through Into's by-case Ref of its stored Type, so A5 on R4's held 2a-1b judges a
@@ -16804,7 +16826,8 @@ resumed by R4-M86 (2026-10-20).
     generated function) by `(module root, document)`, where the module is the one that holds those items now (AST2's current
     module), so a document whose items lie in two modules (after AST2's attachment at a generated function's `Body`, or one
     `SourceDocument` object parsed into two modules through the public `Kotonoha.AddSource`, `AddSources` or `CodeContext.Parse`)
-    has a scope in each; an Origin by its owner node and slot; a conformance by its Type symbol; a composite key's entries are a row
+    has a scope in each; an Origin by its owner node (a Borrow's root occurrence, else its binder: BU-279) and
+    its kind, slot and whether it names one Borrow; a conformance by its Type symbol; a composite key's entries are a row
     of the family's composite column at its first id, entries with an ordered key sorted and found by binary search (`KeyedRow`), an
     identity-keyed row scanned. A per-pass list whose library entries are read later is a `LayerList<T>`: the program pass's part,
     then the library's, through one enumerator; the driver hands each pass its part, so no step tests which pass runs, and a program
@@ -19953,6 +19976,108 @@ resumed by R4-M86 (2026-10-20).
     - a region with no value (it moves body judgments to A5);
     - regions for value Subjects (their producer owns the Origin);
     - a side input to the entry call's selection, or an AdaptedType rewrite, in place of `$for.subject` (the Middle's C2).
+- **BU-279 Each Borrow anchored in a local or parameter root has its own finite Origin: `BoundOrigin.BorrowRoot` (PLAN G922
+  tms)** (2026-11-27; Front, Binding place Origins; Major; design `artifacts\units\g922\design-tms.md` Revision 1 (R1.1-R1.8), its
+  independent review `review-tms-rev1.md`, F's rulings G922-7, G922-10, G922-12, G922-15 and G922-19; the A5 corpus oracle
+  `a5-oracle-unit.sh f-g922tmsa` (base 6d926fec0 + tms 6bcec41b3: 1,764 of 1,764 rows, 0 differences); the Middle's RP17 consent M's board line of 11-28 20:12 (CONSENT WITH CONDITIONS C1-C3)) SPEC 15.3.6, 15.6.5. Refines BU-220 (the owner-keyed interner's owner and row key)
+  and BU-27 (a Borrow reached through no layer).
+  - **Cause.** A Borrow that dereferences nothing was named by its root declaration's atom (binder, Projection, slot) at every site:
+    `PlaceOrigin`'s root branch, `SlotOrigin`, `MeetStep`'s root step and `PathStep.Candidate`. So every Borrow of one Place was one
+    atom T, and a Closure reading two such Borrows' regions as fixed Origins proved `T outlives T`: tml, ml7 and tms (`let a = t@ref`,
+    `let b = t@ref`, `func [a, b] (x: ref/i64 during a) -> ref/i64 during b => x`) were accepted.
+  - **Rule.** `BoundOrigin` gains `BorrowRoot`, the root occurrence of the one Borrow a Place atom names. `PlaceAtom(binder, slot,
+    root)` (`Binding.PlaceOrigins`) is the one form of such an atom, at all five sites (the four above and a capture entry's slot
+    Borrow, `Binding.Captures`). It sets BorrowRoot when the root's symbol is a Local or a Parameter (a constructor's or destructor's
+    `self` and an owned method receiver among them). The atom keeps its declaration binder, so every binder reader is unchanged by
+    construction (RoleOf, RootOf, DeclaredBy, RootKind, R5's LocalPlaceType, CallableProofs, the display). Identity-keyed readers get
+    one entry per Borrow: Meet's dedup, the raw Borrow rows, MirOrigins, A5's ledger and BorrowSource (O-M2: each Borrow's own span).
+  - **Interner (BU-220).** A row's owner is `BorrowRoot ?? Binder`, and its key (AtomKey) is `(Kind, Slot, HasBorrowRoot)`. With the
+    owner, that is the atom's whole identity (G922-19): a row holds its owner's own atoms (owner == binder) and the atoms naming a
+    Borrow rooted at it (binder == that root's declaration). `Interned` checks that identity; openOrigins, PairCases and the helper
+    lookup pass false, so there is one key shape. `CompareOrigins` compares `BorrowRoot ?? Binder`, and the binder last, so Meet's
+    order, the TypeIdentity order and the declaration tie-break stay total (G922-15 C1; wmeet).
+  - **Not sited**, each with its owner: a capture entry (its root, the `t` of `[t@ref]`, stays unsited; envr's row), accessor `storage`, PatternCandidate,
+    HelperOrigin, ReceiverOrigin and `during self` (they name the receiver, not a Borrow), temporaries and static sites (their node is
+    already the binder).
+  - **Removes** design-tms section 2's `BorrowedPlace` and its reader edits, and with them the open family of readers that could
+    forget it.
+  - **Moves (Q13).** Class 1, invalid programs newly rejected with `UnprovenOriginRelation_Kd` at C's `x` (25): tml, ml7, tms, rparts,
+    runiq, rloop, rloopm, rgen, rpar, in2, dr2, rent, wsame, wdeep, wrev, wuniqr, wuniqd, wloop2, wmix, wpars, wgenp, wrecv, win2s,
+    wdr2s, wrentr. Unchanged: the valid rloopv, rgenv, rgenf, rparv, in2v, dr2v, stlv, sti, om1s, wmeet, win2d, rrp, rrl, rrs (accepted);
+    om1sd, inw, drw, sfm, sfl, stv, stv32, stv1 and ml5 at dev's records. MirDumpTest's goldens do not move. Counted by code (Q13):
+    an already-rejected program gains `UnprovenOriginRelation_Kd` at a second Borrow of one root, the second Borrow's own failure
+    (SPEC 23.1.2): mA3 (`artifacts\units\g922\review-tms-impl\p\t_mA3`), +1 at 7:16; the Session's snapshot adds 0.
+  - **The whole suite's moves** (G922-28, commit `28547fa557`; labels `artifacts\units\g922\tms-suite\labels.md`). An acceptance
+    move into BU-156's interim (PLAN G443): the valid g586h7 (`let j = if c => (y, u@ref) else => (2, u@ref)`) is the located
+    `Unsupported_Kd` at its late source, its two Borrows of `u` differing in Origins alone
+    (ALateSourceDifferingInOriginsAloneIsUnsupportedUntilG443; the Middle's RP17 consents). Class 3: the valid mixedAtom and t11s are
+    accepted, no longer reaching Z6's named limit R6.1, R6.8 (b2) (SPEC 15.6.4 item 1). Counted by code (Q13, class 4): r05_n and k3
+    gain `UnsatisfiedOriginRelation_Kd` at the second Borrow of one local, +1 each (SPEC 23.1.2). Representation and record selection,
+    no verdict (SPEC 15.6.5): TyCtxtTest's row1 atoms (12 rows), FitStore's second w atom marked, merge-two-paths-v's cause order
+    (`<- q; r` to `<- r; q`), EachCause's shared list (merge-two-paths-v) and OwnershipJoinTest's nested meet (3
+    operands).
+  - **(A)'s moves** (the owner's O-548 (A), F's ruling G922-37; commit 6bcec41b34, the merge of dev 6d926fec0; labels in
+    `artifacts\units\g922\state-tms.md` "TMS (A) RESTART HERE"). Class 2, named, valid programs rejected until PLAN G1459: two Borrows
+    of one local, each its own finite Origin (SPEC 15.6.5), related by an identity Constraint or a Type's own clause over a
+    body-formed Origin, which is still judged over fixed Origins with no region fact: ort (`f(v@ref, v@ref)` under
+    `T is ref/i32 during a`, `UnprovenConstraint_Kd` at the call, as `f(v@ref, w@ref)` on dev; OriginRedesignTest), nf (the former
+    NestedField script, at each `init`; GenericStorageEmissionTest.PairFieldsKeepTheirChecks), loc (LocalOriginClauseTest's former
+    field line `Pair.init(V<i32>.init(two@ref), two@ref).sum()`, at the call and at its receiver) and c3s (`S.init(k@ref, k@ref)`
+    under S's `origin a outlives b`), the last two in LocalOriginClauseTest.TwoBorrowsOfOneLocalUnderATypeClauseWaitForG1459. The
+    two native tests keep their valid programs, output and generated code over input Origins: NestedField forms both instances in
+    `build(x: ref/i32, w: ref/(ref/i64 during x) during x)`, and the field line runs in `field(p: ref/i32)`. Class 1, invalid
+    programs newly rejected: outer (the `tms` row above) and cl2 (a Closure forming `S.init(a, b)` from two captured Borrows of one
+    local, whose regions it reads as two fixed Origins: `UnprovenConstraint_Kd` at the call; ClosureEnvironmentOriginTest).
+  - **Cost.** OriginProofScalingTest+AllocationTests (n Borrows of one local met into one `var` read by a Closure, against n locals
+    borrowed once each; k = 1 and 8) holds G922-15 C5's gate on first-Bind bytes: at each doubling the one-local form grows by no
+    more than the baseline, it is at most the baseline at each n, and it is at most 3x per doubling (G922-25). Meet is already
+    quadratic on the baseline; the k-way meet is PLAN G1527.
+  - **Rejected:** occurrence binders read through `BorrowedPlace` (RoleOf would class parameters and receivers as Place, and RootKind
+    immutable static and instance storage as Finite; five readers would need edits); a nested-body limit (inexact: ms1 and ml1 carry
+    the same atom); a new `OriginKind` (vocabulary); minting at the carried candidate (a reader making the owner's fact); the row key
+    `(Kind, Slot)` under the owner `BorrowRoot ?? Binder` (a ReadsReferent temporary and a sited Borrow of its source would share one
+    atom silently, G922-19).
+  - **Open:** stl, stl32 and wstl1 (PLAN G1526, a region with no candidate read in a Closure, outside this rule); capture roots
+    (envr; program `artifacts\units\g922\review-tms-impl\p\t_cE1`, two capture entries `[t@ref]` of one local related as one Origin,
+    invalid by SPEC 15.6.5 and still accepted); a mutable static `storage` (P42); Meet's quadratic cost on the baseline (PLAN G1527).
+  - Superseded in part by BU-280 (envr, 2026-11-26).
+    - Capture roots and explicit capture entries are sited through the same helper. An entry is sited at its Closure literal.
+    - The invariant reads "one atom per Borrow of a local, parameter or capture root".
+    - The key is G922-19's spelled `(Kind, Slot, Binder, HasBorrowRoot)`, because a literal owns entries of several binders.
+- **BU-280 An environment binding's Borrow has its own Origin, resolved by the receiver resolution once its Closure is classified**
+  (F, 2026-11-26, G922-11, G922-21 and G922-43; supersedes in part R4-M126 P5 and the tms entry's capture-root clause; unit envr)
+  - **Atoms.** Under SPEC 15.6.5, 15.6.3 and 7.7.3, every Borrow rooted in a local, parameter or capture binding has its own finite
+    atom. Its `BoundOrigin.BorrowRoot` is the root occurrence; for an explicit capture entry, that is its Closure literal.
+    `Binding.PlaceOrigins` forms the atom through its one helper, keyed `(Kind, Slot, Binder, HasBorrowRoot)` within the owner
+    `BorrowRoot ?? Binder`.
+  - **The Closure row.** envr's row is the receiver resolution's row over (Binder, Classify result), composed after `SuppliedAtUse`
+    (R4-M133; G922-43): `OriginAtUse` is `ResolveReceiver` over `SuppliedAtUse`, and `ResolveReceiver` reads the row per atom, in
+    place of its ClosureValue arm and the walk over the use's parents. `CompletedOrigin` keeps only the deferred row (R7-O2 O2-F).
+    For a receiver atom whose Closure c is classified:
+    - under a borrowed receiver, an environment atom reads as ρ (`ClosureValueSlot`'s atom);
+    - under `owner/Self`, ρ reads as `static`;
+    - a meet reads operand by operand.
+
+    The rule keeps no census and no per-Closure list, and DeferredDefaultRows keeps its shape.
+  - **Readings.** A judging reader reads the receiver resolution over `CompletedOrigin`: `OriginAtUse`, the region graph's bounds as
+    stored, `RegionValue`'s results, `StaticOrigin` and a Closure's published result. The readers before the resolution read
+    `CompletedOrigin` alone, as before: `SuppliedAtUse` and its parts, the view's atoms and hover. A record's Supplier
+    (`RowSupplier`) returns the part as supplied whose receiver resolution holds the end, so a record still shows the supplying
+    Borrow (R4-M133). Classify moves `regionVersion` once per Closure. That drops the
+    Sources, Solution and Walk caches and ValueIn's memo, which were formed before the verdict.
+  - **The literal's temporary.** A Closure literal's own temporary is `ClosureTemporarySlot`'s atom: binder the literal, role
+    Place, rooted in its evaluating body. So no Closure row reads a temporary, and ρ names only the call receiver (R4-M152,
+    superseded in part).
+  - **Reasons.**
+    - One atom per binding cannot be each Borrow's own Origin: om1c was accepted, because `a outlives b` became `E_t outlives E_t`.
+    - Values published before classification, a `let` region's value among them, bypassed resolution at use: om1sd was rejected.
+  - **Removes.** `ReceiverAtUse` and its walk over the use's parents, the three-argument `ResolveReceiver` (its ClosureValue arm is
+    now the Closure row, read by the one-argument `ResolveReceiver(BoundOrigin)`), `SuppliedPart`'s `at` parameter,
+    their 12 call sites (`VisitWaiting` among them), the `receiver` parameters of `ClosureResults`, and ValueIn's completion leaf.
+  - **Rejected.**
+    - Classifying before naming, which takes two bindings per body (2^d with nesting).
+    - A computed case in CompletedOrigin, which would be one more case.
+    - Resolution at each use, as P5 had it.
 - **BU-271 The declaration judge owns the Origin clauses of every written Type formed in a declaration frame (hold-b, Hold class 1)**
   (2026-11-26; M's ruling on hold-b Revision 3; F's consent as R7-M80's owner) SPEC 15.3.3, 15.3.4, 15.6.1, 23.1.2.
   - Rule: the FormedTypes row of a node records the frame its producer formed it in (`FormationFrame`: Declaration or Body; None = no
