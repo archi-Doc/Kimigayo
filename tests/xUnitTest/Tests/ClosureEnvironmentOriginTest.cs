@@ -610,6 +610,36 @@ public class ClosureEnvironmentOriginTest
     public void EachBorrowOfALocalOrParameterRootHasItsOwnOrigin(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
+    // SPEC 3.6, 7.7.3, 15.6.5, 15.8.2 (PLAN G922 envr Revision 2; DECISIONS BU-17's pattern; labels from SPEC before the runs,
+    // design-envr-r2 and review-envr-r2): a Closure literal's own temporary is a Place of the body that evaluates it, apart from its
+    // call receiver ρ, so a Borrow of the literal, a literal argument's implicit Borrow and a Shared call's receiver Borrow are
+    // body-local. Unsatisfied where such a Borrow reaches the returned value, directly, through a projection's result (rc3, rc4, rc3s;
+    // a Tuple temporary alike, rc3t), from a named Closure (rcl), in a nested body (rcn, rcns, nt), through one shared Origin (ar1) or
+    // into `during static` (st2, where the environment holds no Origin; st1 beside its `p`'s Unproven record, ruling G922-42's N2); a
+    // Loan conflict where it outlives the statement (rck, and rcse and nt beside their Unsatisfied records; G922-42 as amended). Valid
+    // when the result does not depend on it (rcc) or it ends within the statement (rcsw, rcsi, sh1, cs1).
+    [Theory]
+    [InlineData("rc3", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let s = (p, p)\n    return proj((func [s@move] () => s@move)@ref, p)\n\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: return proj((func [s@move] () => s@move)@ref, p)")]
+    [InlineData("rc4", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let s = (p, p)\n    return proj(func [s@move] () => s@move, p)\n\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: return proj(func [s@move] () => s@move, p)")]
+    [InlineData("rc3s", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let s = (p, p)\n    return proj((func [s@move] () => 0)@ref, p)\n\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: return proj((func [s@move] () => 0)@ref, p)")]
+    [InlineData("rc3t", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let s = (p, p)\n    return proj((s, 0)@ref, p)\n\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: return proj((s, 0)@ref, p)")]
+    [InlineData("rcc", "func outer(p: ref/i64) -> ref/i64 during p\n    let s = (p, p)\n    let t = (func [s@move] () => s@move)()\n    return t.0\nConsole.writeLine(\"ok\")\n", "")]
+    [InlineData("rcl", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let s = (p, p)\n    let k = func [s@move] () => s@move\n    return proj(k@ref, p)\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: return proj(k@ref, p)")]
+    [InlineData("rcsw", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc use(x: ref/i64) -> i32\n    return 0\n\nfunc outer(p: ref/i64) -> i32\n    let s = (p, p)\n    return use(proj((func [s] () => 0)@ref, p))\nConsole.writeLine(\"ok\")\n", "")]
+    [InlineData("rcn", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> i32\n    let s = (p, p)\n    let h = func [s@move, p] () => proj((func [s@move] () => s@move)@ref, p)\n    return 0\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: let h = func [s@move, p] () => proj((func [s@move] () => s@move)@ref, p)")]
+    [InlineData("rcns", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> i32\n    let s = (p, p)\n    let h = func [s@move, p] () => proj((func [p] () => 0)@ref, p)\n    return 0\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: let h = func [s@move, p] () => proj((func [p] () => 0)@ref, p)")]
+    [InlineData("rcse", "func outer(p: ref/i64) -> ref/i64 during p\n    let s: i64 = 1\n    return (func [s] () => s@ref)()\nConsole.writeLine(\"ok\")\n", "ComparisonLoanConflict_Kd: return (func [s] () => s@ref)() | UnsatisfiedOriginRelation_Kd: return (func [s] () => s@ref)()")]
+    [InlineData("rcsi", "func use(x: ref/i64) -> i32\n    return 0\n\nfunc outer(p: ref/i64) -> i32\n    let s: i64 = 1\n    return use((func [s] () => s@ref)())\nConsole.writeLine(\"ok\")\n", "")]
+    [InlineData("rck", "func outer(p: ref/i64) -> i32\n    let r = (func [p] () => 0)@ref\n    return r()\nConsole.writeLine(\"ok\")\n", "ComparisonLoanConflict_Kd: let r = (func [p] () => 0)@ref")]
+    [InlineData("ar1", "func same<T>(x: ref/T during a, y: ref/i64 during a) -> ref/i64 during a\n    return y\n\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let s = (p, p)\n    return same(func [s@move] () => s@move, p)\n\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: return same(func [s@move] () => s@move, p)")]
+    [InlineData("st1", "func keep<T>(x: ref/T during static) -> i32\n    return 0\n\nfunc outer(p: ref/i64) -> i32\n    let s = (p, p)\n    return keep(func [s@move] () => s@move)\n\nConsole.writeLine(\"ok\")\n", "UnprovenOriginRelation_Kd: return keep(func [s@move] () => s@move) | UnsatisfiedOriginRelation_Kd: return keep(func [s@move] () => s@move)")]
+    [InlineData("st2", "func keep<T>(x: ref/T during static) -> i32\n    return 0\n\nfunc outer() -> i32\n    let s = (1, 2)\n    return keep(func [s@move] () => s@move)\n\nConsole.writeLine(\"ok\")\n", "UnsatisfiedOriginRelation_Kd: return keep(func [s@move] () => s@move)")]
+    [InlineData("nt", "func outer(p: ref/i64) -> i32\n    let s = (p, p)\n    let h = func [s@move] () => (func [s@move] () => s@move)@ref\n    return 0\n\nConsole.writeLine(\"ok\")\n", "ComparisonLoanConflict_Kd: let h = func [s@move] () => (func [s@move] () => s@move)@ref | UnsatisfiedOriginRelation_Kd: let h = func [s@move] () => (func [s@move] () => s@move)@ref")]
+    [InlineData("sh1", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> i64\n    let s = (p, p)\n    return proj((func [s@ref] () => 0)@ref, p)@follow\n\nConsole.writeLine(\"ok\")\n", "")]
+    [InlineData("cs1", "func proj<T>(x: ref/T, y: ref/i64) -> ref/i64 during x\n    origin y outlives x\n    return y\n\nfunc outer(p: ref/i64) -> i64\n    let s = (p, p)\n    return proj((func [s@move] () => s@move)@ref, p)@follow\n\nConsole.writeLine(\"ok\")\n", "")]
+    public void AClosureLiteralsTemporaryIsAPlaceOfItsEvaluatingBody(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
     // SPEC 23.1 (DECISIONS BU-28): an enclosing local's region is shown as that local's omitted Origin, never by its atom's kind.
     [Fact]
     public void AnEnclosingRegionIsNamedByItsLocal()
@@ -1021,6 +1051,18 @@ public class ClosureEnvironmentOriginTest
         Assert.StartsWith(related, From(Assert.Single(error.Related!).Span), StringComparison.Ordinal);
 
         string From(SourceSpan? span) => span is { } value ? source[value.Start..] : string.Empty;
+    }
+
+    // SPEC 23.1, 3.6 (PLAN G922 envr Revision 2, ruling G922-42 C1): a call's receiver Borrow of a Closure literal's own temporary is
+    // shown by the literal's text and related at the call, since no Borrow node supplies it; it was the closure's call receiver,
+    // related at the literal (class 4).
+    [Fact]
+    public void ACallOfALiteralShowsItsReceiverBorrowByTheLiteral()
+    {
+        var source = "func outer(p: ref/i64) -> ref/i64 during p\n    let s: i64 = 1\n    return (func [s] () => s@ref)()\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == Unsatisfied);
+        Assert.Equal("requires the borrow func [s]() => s@ref outlives p, which is false", error.Label);
+        Assert.StartsWith("(func [s] () => s@ref)()", source[Assert.Single(error.Related!).Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 23.1, 15.6.5 (DECISIONS R4-M133, the owner's revised rule): a record shows and relates the Borrow that supplied its end, found

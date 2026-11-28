@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 // referent of a stored reference (ReferentOrigin, PathReborrowOrigin), through the one containment walk over a path's steps
 // (ContainedOrigin, MeetLayers) and a root's containment (EnvironmentContainment); the binder and Projection slot naming a Place's own
 // atom (PlaceOriginSource, PlaceOriginBinder, PlaceOriginSlot, SymbolOriginSlot, CandidateOriginBinder), that atom (PlaceAtom) and the
-// reserved Projection slots (EnvironmentSlot, CallResultSlot, ClosureValueSlot, HelperSlot, ReceiverSlot).
+// reserved Projection slots (EnvironmentSlot, CallResultSlot, ClosureValueSlot, HelperSlot, ReceiverSlot, ClosureTemporarySlot).
 // - Inputs: the bound syntax and its path steps (NextPathStep), the recorded adaptations and pair-layer facts, the helper borrow
 //   (HelperOrigin), the indexer calls.
 // - Outputs: Origins interned through OriginAtom and Meet, which adaptations, written Borrows, Subjects, in-place reads and the Origin
@@ -54,8 +54,9 @@ public sealed partial class Binding
     // The Projection slot of a closure's call result, a display end only (SPEC 23.1).
     internal const int CallResultSlot = -1;
 
-    // The Projection slot that names a closure literal's own temporary value, the receiver of a call on that literal, and in the
-    // Closure's body its call receiver's Origin ρ (SPEC 15.8.2; EnvironmentContainment).
+    // The Projection slot of a Closure's call receiver's Origin ρ, in its contract and body (SPEC 15.8.2; EnvironmentContainment); a
+    // call on the literal substitutes it by the receiver acquisition's image (ReceiverImage). Never the literal's own temporary
+    // (ClosureTemporarySlot).
     internal const int ClosureValueSlot = int.MinValue;
 
     // The Projection slot of the helper borrow, a Borrow of the whole destruction receiver (SPEC 16.3.1, Binding.HelperOrigin). Its binder
@@ -67,6 +68,12 @@ public sealed partial class Binding
     // constructor or destructor, never a closure, and every reader of a closure's slots reads their role (RoleOf).
     internal const int ReceiverSlot = int.MinValue + 2;
 
+    // The Projection slot of a Closure literal's own temporary value (SPEC 3.6, 15.6.5; DECISIONS BU-17's pattern: a reserved slot whose
+    // one binder kind its role reads): a Place of the body that evaluates the literal, as any temporary (RoleOf), apart from ρ, so no
+    // Closure's receiver rule reads it. Its binder is always the literal, which owns no other unsited atom at this slot (parameters 0
+    // and up, CallResultSlot, EnvironmentSlot and the three slots above).
+    internal const int ClosureTemporarySlot = int.MinValue + 3;
+
     // The Projection slot that names a binding's own Place.
     internal static int SymbolOriginSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.Capture ? EnvironmentSlot(symbol.Slot) : symbol.Slot;
 
@@ -74,12 +81,13 @@ public sealed partial class Binding
     // but never their storage lifetime. Reuse the name node as the candidate's identity.
     internal static Koto CandidateOriginBinder(BindingSymbol candidate) => ((SyntaxFormKoto)candidate.Declaration).Operands[0];
 
-    // A Closure literal's own temporary is its ClosureValueSlot (SPEC 15.8.2; DECISIONS R4-M152); any other temporary's slot is 0.
+    // A Closure literal's own temporary is its ClosureTemporarySlot (SPEC 3.6; slot 0 would be its parameter 0, DECISIONS R4-M152); any
+    // other temporary's slot is 0.
     internal static int PlaceOriginSlot(Koto source)
     {
         if (source is FunctionKoto { IsAnonymous: true })
         {
-            return ClosureValueSlot;
+            return ClosureTemporarySlot;
         }
 
         return source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
