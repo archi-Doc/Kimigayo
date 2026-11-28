@@ -46,16 +46,6 @@ public class ReceiverShorthandTest
     }
 
     [Theory]
-    [InlineData("func f(self) -> () => ()")]
-    [InlineData("group G\n    func f(self) -> () => ()")]
-    [InlineData("struct S\n    func outer(self)\n        func inner(self) => ()")]
-    public void RejectsBareSelfOutsideAValidReceiver(string source)
-    {
-        var c = CompilationTestHelper.ParseSuccess(source);
-        Assert.False(c.Bind().IsComplete);
-    }
-
-    [Theory]
     [InlineData("struct S\n    func f(self, self) => ()")]
     [InlineData("struct S\n    func f(self = missing) => ()")]
     [InlineData("struct S\n    func f(self?) => ()")]

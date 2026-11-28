@@ -32,7 +32,7 @@ public static partial class Parser
     internal enum FunctionForm
     {
         /// <summary>FunctionHeader (F.6.3), of a FunctionDefinition or a BodilessFunctionDeclaration: a Name, GenericParameters and
-        /// ParameterList&lt;Parameter&gt;.</summary>
+        /// ParameterList&lt;Parameter&gt;. A local's, a group's, a rootgroup's or the source root's function has no receiver (SPEC 7.3.1).</summary>
         Function,
 
         /// <summary>A FunctionHeader (F.6.3) directly in a struct or enum, its conditional conformance Blocks included: the Function
@@ -459,8 +459,10 @@ public static partial class Parser
             return false;
         }
 
-        // ReceiverShorthand: every production but AnonymousParameter has it, and a constructor has no receiver (SPEC 7.3).
-        var allowsReceiverShorthand = form is not (FunctionForm.Expression or FunctionForm.Constructor) && externalName == "self" && internalName == "self";
+        // ReceiverShorthand: only a header with a receiver has it (SPEC 7.3.1), so a bare `self` elsewhere lacks its Type; a constructor
+        // has none (SPEC 7.3) and an Override reads F.6.3's OverrideDeclaration, which admits it whatever the host (6.4.1 judges that).
+        var allowsReceiverShorthand = form is (FunctionForm.Member or FunctionForm.Override or FunctionForm.Requirement or FunctionForm.Specialization) &&
+            externalName == "self" && internalName == "self";
         Koto parameterType;
         if (reader.TryConsume(TokenKind.Colon))
         {
