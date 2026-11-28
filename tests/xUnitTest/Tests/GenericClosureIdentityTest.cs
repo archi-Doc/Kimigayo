@@ -226,7 +226,7 @@ public class GenericClosureIdentityTest
         Assert.Equal(("UnprovenConstraint_Kd", at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
-    // SPEC 3.2.1, 23.1 (DECISIONS BU-60, BU-222, R7-M<next>): one definition's nested Types in two instances differ only in the instance
+    // SPEC 3.2.1, 23.1 (DECISIONS BU-60, BU-222, R7-M135): one definition's nested Types in two instances differ only in the instance
     // they hold, so a mismatch shows it: a Closure whose signature names T, one whose signature does not, a held function's Item and a
     // nested Type's Closure; a Closure read in its own Type's frame holds none and shows none.
     [Theory]

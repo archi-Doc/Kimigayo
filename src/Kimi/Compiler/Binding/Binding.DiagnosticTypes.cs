@@ -119,7 +119,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 3.2.1, 6.1.3 (DECISIONS BU-60, R7-M<next>): a nested definition's Type, a Closure Type or the Item of a function declared
+        // SPEC 3.2.1, 6.1.3 (DECISIONS BU-60, R7-M135): a nested definition's Type, a Closure Type or the Item of a function declared
         // in a body, is one per Type instance it holds, so it shows that instance after its form, as `closure (T) -> T in Box<i32>`
         // (DIAGNOSTICS: a mismatch's Types keep their differing parts); a context a function's instance made, and none, add nothing.
         // Here, not in the Closure arm: a held Item has the Closure's fact (BU-222), so that arm alone would need a copy in the Item arm.
