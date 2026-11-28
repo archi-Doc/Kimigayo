@@ -1905,3 +1905,25 @@ with only its status sentence replaced. Every item now has a disposition:
 - Links: the frozen `Changes/2026-10-07 G65 Fixed Origin Loan Retention Implementation Plan.md` and `Changes/2026-10-16 Complete
   Polonius A5 Plan.md` name the plan as before; this file's earlier entries keep their `Proposals/` path, read at the commit before
   this move. No SPEC or IMPL text changes.
+
+## 2026-11-28 — Tatara implementation plan closed
+
+The owner's instruction (K's dialog, 2026-11-28), verbatim: 「Tataraは完了しました。」 and 「Tatara関連のProposalsをChangesに移動して下さい。
+B8 は O-479 で保留のままで結構です。」 `Changes/2026-11-19 Tatara Implementation Plan.md`: 取り込み済み (closed 2026-11-28), moved from
+`Proposals/` with only its status sentence replaced. It is the only Tatara proposal. Every item now has a disposition:
+
+- §5, stage A (A1–A4): implemented (DECISIONS T-M3–T-M6); every native build runs through Tatara.
+- §7, stage B: B5, B6, B7, B9 and B10 implemented, each after its owner question (DECISIONS T-M7–T-M65; PLAN's Tatara item states
+  each stage's evidence). B8 (the Linux host) is not implemented and stays deferred under the owner's O-479 (2026-11-21), as PLAN's
+  Tatara item states; its preparation stays in `artifacts\handoff\tatara\units\B8\`.
+- §6 (updating LLVM): its rules have held since stage A (DECISIONS T-M3); a version update stays one unit of its own.
+- §8, later candidates: 1 closed by its measurement (no unit); 2 no unit (O-381 (b) stands); 3 S1 and D1 adopted (DECISIONS T-M35,
+  T-M39), the rest stopped; 4 (each external declaration naming its supplier) is no Tatara unit and stays with PLAN T1; 5 (NV2) U1
+  adopted (DECISIONS T-M40), the rest closed by the owner on 2026-11-24.
+- §2 to §4 and §9 to §11: the decisions are recorded in DECISIONS T-M1, T-M2 and the stage entries; every question in §11 is
+  answered.
+- SPEC and IMPL took the plan's rules through each stage's own explicit revision, recorded under the 2026-11-19 entry. This closure
+  changes no SPEC or IMPL text.
+- Links: COMPILER_ARCHITECTURE (the sessions paragraph and the Tatara row of the stage ledger, which now reads Complete), DECISIONS
+  (the Tatara entries' preface) and PLAN's Tatara item point at `draft/Changes/`. This file's earlier entries keep their
+  `Proposals/` path, read at the commit before this move.

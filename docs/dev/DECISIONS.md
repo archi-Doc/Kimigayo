@@ -35054,8 +35054,9 @@ Closure row of `MirCases.Branch`).
 
 ## Tatara (adopted 2026-11-19)
 
-Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
-holds the owner's decisions 1–17). Units of the Tatara lane record their entries here as T-M*.
+Entries of the [Tatara Implementation Plan](../../draft/Changes/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
+holds the owner's decisions 1–17). Units of the Tatara lane recorded their entries here as T-M1–T-M66; the Back's later Build and Tatara entries take the
+current plan's prefix (R7-M* during R7).
 
 - **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
   「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
@@ -35074,6 +35075,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     its units; seats 1+1. AGENTS (Roles), WORKFLOW (Sessions) and COMPILER_ARCHITECTURE (the sessions paragraph, the stage ledger)
     name it from the plan's adopting commit.
   - Amends R9-M6 (`src/Kimi/Build` was the Middle's) and R7-M4 (P13 was the Back's).
+  - Superseded in part by T-M66: from 2026-11-28 the Back plans P13 and `src/Tatara`; the Middle's review stays.
 - **T-M3 The Tatara component is `src/Tatara`: a C ABI over LLVM and LLD, built from the pinned archive** (Tatara, 2026-11-20; the
   plan's unit A1a; Major; design review C-420).
   - `src/Tatara` (`tatara.h` the ABI and contract, `tatara.cpp`, `build.ps1`) is P13's native part. It is not C#, `Kimi.csproj` does
@@ -37416,3 +37418,13 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Rejected** (design §6.3-§6.4): a user Attribute `#Interrupt` with a function-address form (`AttributeKind` 8 of 8); a
     calling-convention word; `Address` generalized (its check is the reserve's ABI); a second call writer or call text in the thunk;
     `@__kimi_entry.<H>` names.
+- **T-M66 The Back plans `src/Kimi/Build` and `src/Tatara`; the Tatara session ends** (owner, 2026-11-28; O-557 (b))
+  - Rule: Tatara is complete (the owner, 2026-11-28; the plan closed in `draft/Changes`), so the restart creates no Tatara session, and
+    the Back session plans and implements P13 (`src/Kimi/Build`) and `src/Tatara`; the Middle still reviews their units. AGENTS
+    (Roles), WORKFLOW (Sessions, the planning session and a window's size per area), VERIFICATION (the `kimi` job),
+    COMPILER_ARCHITECTURE (the sessions paragraph, the Tatara row of the stage ledger) and PLAN (the stages and sessions items,
+    the open issues' owners) name the Back; G1452, whose cause lies in `MirEffects.Solve`, is the Middle's. B8 stays deferred (O-479); when
+    scheduled, it is the Back's unit.
+  - Supersedes in part T-M2's session rule: its reason, a session for the plan's stages, ended with the plan. T-M2's Middle review
+    stays. Rejected: (a) the Middle (K's recommendation: `src/Kimi/Build` was the Middle's before the plan, and the Middle reviewed
+    every Tatara unit); the owner chose the Back, whose code generation and link lie next to Build.
