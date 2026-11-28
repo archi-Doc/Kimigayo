@@ -593,7 +593,7 @@ func keep(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
 
 func punnedRef(y: uniq/i32)
     let w = y@follow@ref
-    let z: i32 = 0
+    let z: i32 = 0                                 // Error at the end of z's storage: keep may have stored t's bytes, which carry z's Loan, where they outlive z.
     let t = z@ref
     keep(t@raw@raw/(raw/(raw/u8)), w@raw@raw/u8)   // *slot reads t's bytes, which no raw pointer wrote.
     // y@follow = 5                                 // Error: keep may store value in storage the body does not own.

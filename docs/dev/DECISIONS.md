@@ -6636,6 +6636,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     removed.
   - Amended by R4-M247 (G1106, 2026-11-25): at `StoreWrite` and `CallWrite` the judge's verdict is composed by `PlacedAt` (its
     partly stated arm stays undecided); `PunAt` composes the may-write sites (`OwnWrite`, `UnknownWrite`).
+  - Superseded in part by R4-M252 (PLAN G599 (b)): Φ_U and the set-level limit are gone; the tier is per entry, so a decided
+    conflict beside a rested store is decided and a read through a Φ_M pointer rests only the entries it reads through.
 - **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
   one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
   gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
@@ -6667,6 +6669,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     where the values land in storage the body does not own); not following a Φ_U set's Loans and addresses (unsound:
     dEscBesideRestedBad); a deferred rested tier as the drop tier's (Limit reads arise in every pass with pass-specific tags, and
     the Based-only gathers would each need it); a tier recomputed from a cut read (B4: order-dependent records).
+  - Superseded in part by R4-M252 (PLAN G599 (b)): ReadTier and the set-level clause of the record selection are gone; a gather
+    tags each entry at its own tier, and a holder only a rested entry names is read under its Limit key.
 - **R4-M200 R26-borrow reads its Loans' tier** (2026-11-12; Middle, A5; Minor; PLAN G793; the Middle's Q13 ruling) SPEC 7.2.3,
   23.1.1; extends R4-M198's undecided class to R26-borrow; amends R4-M98 D3 and D4 (2) and R4-M199's "Not covered"; removes PLAN
   G793 and R26-borrow from the readers that do not read the tier.
@@ -6739,6 +6743,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a second gather to place the record (the replay's entries at E already name the operation); the site record only where
     no store exists (B7: it loses the result's failure); the result's fact by the closure from the result's holder (it finds what a
     store put in storage the body does not own: twoLoansBad); a requirement `DefaultArgumentStore` (N22).
+  - Superseded in part by R4-M252 (PLAN G599 (b)): "a store that rests (Φ_U, Φ_M) places none" becomes "a store places its
+    decided entries" (restBeside: DefaultArgumentBorrow_Kd added at 12:15; restStoreOnly: moved there from the site).
 - **R4-M204 A5's step rule reads a nonnull Option's Some payload as Leading's one step** (2026-11-14; the A5 value redesign's unit
   U2; the owner's O-209; G808 design review N4; Middle, A5; Major, 0 moves; implementation review ACCEPT WITH NOTES). IMPL 21.1.2,
   21.1.3; SPEC 4.1, 5.3; BU-195, R4-M198.
@@ -8638,6 +8644,36 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirDropTest.APremisedPartIsJudgedAsItsPremiseMakesIt`). The storage key has no distinguishing row (its mutant passes
     every test): it reads the premise so the check has one order with the gate's Type. Cost: `check` medians, dev 6d926fec09 / head,
     Milestone25 1.948 / 1.888 s, Milestone37 1.894 / 1.925 s (five runs each, alternating); the O2 IR of a called V row is identical.
+- **R4-M252 A5's tier is per entry** (2026-11-28; Middle, A5; Major, records only; PLAN G599 (b), G1301 U2) SPEC 5.5, 5.7, 15.6
+  Holders, 15.6.4, 7.2.3, 23.1.2; supersedes in part R4-M198's set-level limit, R4-M199's set-level clause and R4-M203's limit.
+  - Rule: a MirLoanSets element carries a tier, decided or rested; the decided one dominates, and every set operation matches by
+    element. A read or a retention through an entry rests where the entry rests or where the pointer (the read value; σ(h) past a
+    holder h) holds Φ_M; a receipt rests only where its entry does. An entry that names E keeps its own tier; an entry-less route
+    takes the tier of the step that reached it; OwnPointer's write takes its node's tier. Pun's and PunRead's undecided Φ_E and
+    Φ_W are rested. A gather tags each entry at its own tier. A holder built by a call keeps E's decided Φ_E entry, so a store
+    through a part of it is decided past the pun (SPEC 15.6 Holders, 15.6.4).
+  - Owners: the encoding and the join, MirLoanSets; what rests, the owner of each undecided fact through `MirLoanSets.Rest`
+    (`MirBorrows.Puns.Through`, U2's Layered); propagation, its producers; the verdict, the gather. Through reads the datum
+    "the pointer holds Φ_M" each caller states (a read value's `MirLoanSets.Contains`); Chain and W read σ(h)'s Φ_M by its parts
+    (`MirBorrows.States.Holds`), never forming σ(h).
+  - Kept named limits: limit (a), OwnPointer's write takes its node's tier (keepU, keepB, keepS, G732; closureMixedRests and
+    closurePtrBad, G736 in R4-M199); a read through a punned holder's as-written target rests (G1 (pun part), PLAN G1513); O-205
+    (a)'s undecided write over a Tuple holding a pointer and non-pointers adds Φ_E rested (absDropThenCallRests,
+    absCallThenStoreRests, as absOnTupleCallRests); a call through a Φ_M pointer that may retain a Loan in storage the body does not
+    own rests (chainPastMCallRests, I by 15.6.4); the own-step Warning and Activations' scans.
+  - Moves (Q13, all on I programs): replaced U -> ComparisonLoanConflict_Kd: eDecidedBesideRestedBad, dEscBesideRestedBad,
+    dClosureEscBesideBad, rLaterWriteEscBad, rLaterWriteBad, cutHhFirstBad, cutHolderFirstBad, cutHolderLastBad, cutTwoViasBad,
+    escBesideRestedBad, borrowedTupleRests, storeThenCallBad, eJoinBad, absOtherSourceRests (`(*bq)@move`'s decided entry),
+    walkOrderRests (OwnPointer at its decided node), and the call-built holders' 17 records (14 rows and 3 second records):
+    kLayoutFieldRests, kOptCastRests, kOptMatchRests, optOptCastRests, sharedKOptRests, sharedEnumRests and sharedOptOptRests (each
+    of these three in two theories), hEnumMatch, fieldPunBad, unknownMixedBad, placedUnstatedFirstBad, and the second records of the
+    last three (fieldPunBad's `var spare`, unknownMixedBad's and placedUnstatedFirstBad's `var slot`: the holder's Loan's other end,
+    decided as in viaCarriedMixedBad); added: restBeside (DefaultArgumentBorrow_Kd); moved: restStoreOnly (U ->
+    DefaultArgumentBorrow_Kd at the store). Cost: the slot stays 8 B; Rest runs in every body's setup (`MirBorrows.Solve`'s
+    maybeSet), so its memo, an int per set id, is a cold allocation at the first body, 0 B warm (design.md §4).
+  - Rejected: a third slot part (R4-M160); Π; Φ_U beside the tier; Φ_M resting a decided Φ_E or a receipt (every verdict an
+    as-written receipt gives holds through E in the punned layout); a walk-level rest; OwnPointer's write at the tier of the
+    step that formed its key (it carries G1 into a call's record, the owner's to settle).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -20933,8 +20969,7 @@ structure is recorded here by the unit that first implements it.
 - **R5-M36 Closure contexts as `Subst`** (2026-10-18; plan K2 (A5P-C1); under R5-M18; amended by R5-M162) `BoundType.ClosureContext`
   is the `Subst` of the instance that closed the closure. `CloseClosureTypes(type, instance)` sets it to exactly the substitution
   `Binding.InstantiateStorageType(type, subst)` instantiates under, its conforming Self included (PLAN G142, closed: `TyCtxt.Apply`
-  passes its substitution whole; the CallPlan form instantiates under `TyCtxt.StorageSubst(call)`, the Self-less substitution the
-  old paths have always applied), so one instance's closures share it, and interning replaces the never-cleared list of synthetic
+  passes its substitution whole), so one instance's closures share it, and interning replaces the never-cleared list of synthetic
   CallPlans and its linear scan; the closure's result in the instance stays the failure check, while the CallPlan's ReturnType, a
   function of the rest, is dropped. `SubstOfClosure` reads the field, `ClosureSignature` is `Apply(signature, context)`, and Hover
   identifies a context by `SubstIdentity` (`Checking/Hover/HoverBuilder.Substitutions.cs`): its binder and every binding. The
@@ -20943,21 +20978,18 @@ structure is recorded here by the unit that first implements it.
     old
     generator keys a closure's instance by. There is one per (closure symbol, context), as the old scan gave, so two closures of one
     instance keep two (X10). It is kept with the function item contexts until an edit (`ResetCallContexts`; G7 inlines it).
-  - Temporary structure, removed at R7: `[Transitional("R7")] TyCtxt.StorageSubst(call)`, a second substitution per call beside
-    `SubstOf`, which the CallPlan form `Binding.InstantiateStorageType(type, call)` instantiates under. It goes when that form's
-    readers
-    apply `SubstOf` instead: the old generator's (Emission) at G7, the old analyses' (`Analysis/Ownership*`) at R6-check and
-    Binding's
-    own (requirement instantiation under `SelectedRequirements`, forwarded calls, formatting implementations, and the effect-bound
-    summary unless R6-check deletes it with the old effect checks) with R7's CallPlan pipeline.
+  - Temporary structure `[Transitional("R7")] TyCtxt.StorageSubst(call)`, a second, Self-less substitution per call beside `SubstOf`:
+    its readers went at G7 (Emission), R6-check H10b (the old analyses), R6-check H11a (Binding's forwarded calls, R5-M192), R7-P5a
+    (the legacy comparison composition) and R7-P5b (Binding's requirement instantiation); R7-P6 deleted it, its test reads applying
+    `SubstOf` (one interned `Subst` wherever the call has no Self, bound Contract reference or base implementation).
   - Rejected: a memo per Subst (two closures of one instance would share one CallPlan: wrong code); a memo cleared per pass (each
     warm
     rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (a fact outside R7's shape); a comparer
     modulo Origins (D1's Design B).
   - Amended by R5-M162 (G7): `Binding.ClosureCall` and its memo are deleted with their readers, `ResetCallContexts` is inlined, and
     `TyCtxt.StorageSubst`'s Emission readers are gone (its old-analysis and Binding readers stay until R6-check and R7).
-  - Amended by R7-M127 (R7-P5b): Binding's last reader, requirement instantiation, went with the materializer. Only tests read
-    `TyCtxt.StorageSubst`, and R7-P6 re-points them to `SubstOf` (its Transitional reason).
+  - Amended by R7-M127 (R7-P5b): Binding's last reader, requirement instantiation, went with the materializer. R7-P6 then deleted
+    it (the Temporary structure line).
 - **R5-M37 `Layout` per compilation: memo, bounds and outcomes** (2026-10-18; plan P7c, full process; supersedes R5-M19's static
   `Layout.Of`, and R5-M29's rejected per-compilation instance, its records "shared by every Type, compilation and thread" and its
   Limit "neither"; its outcome list and precedence superseded by R5-M52)

@@ -1506,6 +1506,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   "through I2's OriginVar" (O-442 (a), R7-M89), reads "`SolveLocalBounds` goes" (a declaration-time candidate stays,
   `FixDeclaredRegions`'), marks A4-L landed (R7-M128) and A4-P dropped (SPEC 14.8.3, 14.6.2), and depends on A1+A2, O1 H
   and G230 (A) (landed) for I2 and O1. No SPEC or IMPL text. Nothing frozen.
+- Revision 124 (2026-11-28, plan §14; the owner's O-553 (b), K's question with the R7 census on dev c76f8d461): §3.1 moves
+  R7-P6, P3, P7-P11 and T3 to the Back and C5, C7 and C9 to the Middle (after its own units); §5.1's rows carry (B) or (M);
+  the revision 96 paragraph's Front list drops them. No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
