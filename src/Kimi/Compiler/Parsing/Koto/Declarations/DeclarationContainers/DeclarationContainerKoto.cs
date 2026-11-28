@@ -137,6 +137,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     private DeclarationContainerKoto? nextArity;
 
+    // The container a detached container parses for (CreateDetached), or null.
+    private DeclarationContainerKoto? detachedFrom;
+
     private bool hasBindingHeader;
 
     private int fragmentOrdinal;
@@ -536,7 +539,25 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         var detached = CreateStandalone(codeContext, this.TokenKind, default, range, string.Empty);
         detached.genericArguments = this.genericArguments;
+        detached.detachedFrom = this;
         return detached;
+    }
+
+    /// <summary>Gets the container that declares the items this container parses (SPEC 9.4.1): this container, or for a detached one
+    /// (<see cref="CreateDetached"/>) the container it parses for, followed to the first that is not detached. That is an excluded item's
+    /// list container or a conditional conformance's owner, never a detached host, which has no Name or Parent.</summary>
+    internal DeclarationContainerKoto Declaring
+    {
+        get
+        {
+            var container = this;
+            while (container.detachedFrom is { } from)
+            {
+                container = from;
+            }
+
+            return container;
+        }
     }
 
     /// <summary>Moves the parts a detached container (<see cref="CreateDetached"/>) parsed to the marker of the directive whose excluded
@@ -739,7 +760,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             var constructor = Parser.ParseFuncDeclaration(ref reader, Parser.FunctionForm.Constructor);
             if (constructor is not null)
             {
-                constructor.DeclaringContainer = this;
+                constructor.DeclaringContainer = this.Declaring;
                 constructor.Parse(ref reader);
                 this.AddLast(constructor);
             }
@@ -837,7 +858,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return true;
         }
 
-        functionKoto.DeclaringContainer = this;
+        functionKoto.DeclaringContainer = this.Declaring;
         if (form == Parser.FunctionForm.Requirement)
         {
             Parser.ParseRequirementBody(ref reader, functionKoto);
