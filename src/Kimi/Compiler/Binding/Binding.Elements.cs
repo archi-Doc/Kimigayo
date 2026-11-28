@@ -16,6 +16,37 @@ public sealed partial class Binding
         var receiver = this.BindNode(source.Left, scope);
         if (source is IndexKoto)
         {
+            if (receiver is { IsPointer: true })
+            {
+                // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.
+                // A key that is not an isize, including a range or `^x`, is reported at the key; the access rests on it.
+                var offset = this.RequireType(source.Right, scope, BoundType.ISize);
+                return offset is not null && this.FitsType(offset, BoundType.ISize) &&
+                    KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto)
+                    ? Complete(source, receiver!.Components[0]) : this.CompleteDependent(source, source.Right);
+            }
+
+            if (receiver is not null && this.TryBindKeyedSelection((IndexKoto)source, scope, receiver, out var keyed))
+            {
+                return keyed; // SPEC 4.7: a range, ResolvedRange or resolved position key.
+            }
+
+            // SPEC 4.7.1: the key of a sequence below is an integer of any Type or a written `^x`, already bound; ownership
+            // converts it to an isize element position within the element access's bounds check.
+            if (receiver?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array } && source.Right is not RangeKoto)
+            {
+                // SPEC 4.7.1: the element Place keeps its stored complete Type.
+                return Complete(source, receiver!.Components[0].Components[0]);
+            }
+
+            if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
+            {
+                return Complete(source, receiver.Components[0]); // SPEC 4.8.2: the shared element Place.
+            }
+
+            // SPEC 3.4.3: the receiver's terminal below every ref, uniq and qualifying pair layer (LayersTerminal after the operand's
+            // premises), decided once for the selections below.
+            var terminal = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
             var dictionary = receiver?.SafeReferent is { Kind: BoundTypeKind.Dictionary } referent ? referent : receiver;
             if (dictionary?.Kind == BoundTypeKind.Dictionary)
             {
@@ -48,37 +79,8 @@ public sealed partial class Binding
                 return view;
             }
 
-            if (receiver is { IsPointer: true })
-            {
-                // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.
-                // A key that is not an isize, including a range or `^x`, is reported at the key; the access rests on it.
-                var offset = this.RequireType(source.Right, scope, BoundType.ISize);
-                return offset is not null && this.FitsType(offset, BoundType.ISize) &&
-                    KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto)
-                    ? Complete(source, receiver!.Components[0]) : this.CompleteDependent(source, source.Right);
-            }
-
-            if (receiver is not null && this.TryBindKeyedSelection((IndexKoto)source, scope, receiver, out var keyed))
-            {
-                return keyed; // SPEC 4.7: a range, ResolvedRange or resolved position key.
-            }
-
-            // SPEC 4.7.1: the key of a sequence below is an integer of any Type or a written `^x`, already bound; ownership
-            // converts it to an isize element position within the element access's bounds check.
-            if (receiver?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array } && source.Right is not RangeKoto)
-            {
-                // SPEC 4.7.1: the element Place keeps its stored complete Type.
-                return Complete(source, receiver!.Components[0].Components[0]);
-            }
-
-            if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
-            {
-                return Complete(source, receiver.Components[0]); // SPEC 4.8.2: the shared element Place.
-            }
-
             // SPEC 3.4.3, 4.7.1: a concrete sequence, through every layer, is indexed by position and never through an Indexable
             // conformance (Array states one for generic use); one these arms do not reach yet is the limit below.
-            var terminal = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
             if (!IsSequence(terminal) && this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
             {
                 return indexed; // SPEC 4.7.1: a user Indexable conformance.
