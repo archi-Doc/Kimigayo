@@ -772,7 +772,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R3-4** R3 budget: superseded by Q5 (2026-10-16); full text: 4fb6fcdb1.
 - **R3-5** A built-in form without an intrinsic row gets an interim row mapping it to an existing compiler function or
   legacy helper, each with its R8 disposition.
-- **R3-6** `MirDefKey` is keyed by `BindingSymbol` until R7's declaration table.
+- **R3-6** `MirDefKey` is keyed by `BindingSymbol` until R7's declaration table. Superseded in part by R7-M138 (the owner's
+  O-558 (c); R7-V3 retired): "until R7's declaration table" is dropped; the key stays `BindingSymbol`.
 - **R3-7** `Problem(Code, SourceRef Subject)` stays minimal until R6.
 - **R3-8** Default expansion stops at 65,536 MIR statements per expanded body with the Resource code
   `DefaultExpansionLimit_Kd` (IMPL §21.3.2, plan §16-10). Amended by R4-M176 (PLAN G427 U2): one body budget for default and defer
@@ -31589,6 +31590,22 @@ Closure row of `MirCases.Branch`).
     Closure, and moved by PLAN G300's opening); the Closure arm alone (the held Item would need a second copy in the Item arm);
     the holder before the signature (two Types of one definition already differ in their last ` in H`; the suffix follows
     ` during `'s precedent); no Origins in Hover's held part (a mode carried down that part's subtree).
+- **R7-M138 `MirDefKey` stays keyed by `BindingSymbol`; R7-V3 retires with no code change** (2026-11-28; Middle, R7-V3; no code
+  change; the owner's O-558 (c) 「O-558 は (c)」; design `artifacts/units/r7-v3/design.md` §2; plan revision 127) Supersedes R3-6's
+  "until R7's declaration table".
+  - Rule: `MirDefKey(BindingSymbol? Decl, MirBodyKind Kind, int Index)` names a definition by its `BindingSymbol`, and no later
+    table replaces the symbol: neither a `SourceRef` key nor a `DeclId`. Records, acceptance and generated code are unchanged.
+  - Reason R3-6's "until R7's declaration table" no longer holds: it awaited a table numbering definitions densely per module,
+    and no R7 unit delivers one (V2's `ImplTable` is keyed by the conforming Type and the Contract, `FnSig` is a view, `DeclQuery`
+    keys by the symbol; the plan left the numbering to V3 itself). `BindingSymbol` is already a stable in-memory declaration
+    identity (BindingModel), kept across passes, and BU-220 stores a symbol's rows densely by its declaration's `SyntaxId`. MIR's
+    callees (`MirCallee.Symbol`, `.Contract`), its statics (`MirStatic.Symbol`) and Binding's `ExecutableBody` all name a
+    definition by the symbol, so a second identity in `MirDefKey` alone would give MIR two representations of one definition
+    identity, converted at each site that builds a key, and would remove nothing.
+  - Rejected: (a) the declaration's `SourceRef` as the key (Parsing's dense id per module; `MirCallee` and `MirStatic` follow, and
+    each read of a symbol fact looks the symbol up again); (b) a new Binding `DeclId` over a definition table (a new component and
+    vocabulary entry). Both share one scope, every MIR form that holds a symbol: if MIR should stop holding `BindingSymbol`, that
+    is a separate plan item, not V3.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
