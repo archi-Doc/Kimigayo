@@ -179,10 +179,11 @@ internal static class RuntimeAbi
 
     // x86_64-unknown-none's bracket of a platform member's run, outside PlatformRoutines (IMPL 21.6.3): FunctionCodegen calls the enter at
     // the head of a member's body and passes its value to the leave directly above each `ret`; the value is the layer's own, which no
-    // compiler code reads.
-    internal static readonly FunctionAbi PlatformEnter = new("__kimi_platform_enter", "i8", []);
+    // compiler code reads: one i64 word, RFLAGS's low 32 bits as the enter read them before it disabled interrupts (bits 0-31) and the
+    // busy flag's value (bit 32), which the leave restores, the flag first, then RFLAGS from bits 0-31 alone (T's ruling 193 (a), T-M65).
+    internal static readonly FunctionAbi PlatformEnter = new("__kimi_platform_enter", "i64", []);
 
-    internal static readonly FunctionAbi PlatformLeave = new("__kimi_platform_leave", Unit.ComputationType, [new("i8", "saved")]);
+    internal static readonly FunctionAbi PlatformLeave = new("__kimi_platform_leave", Unit.ComputationType, [new("i64", "saved")]);
 
     internal static readonly FunctionAbi StartBody = new("__kimi_start_body", Unit.ComputationType, []) { NoReturn = true };
 

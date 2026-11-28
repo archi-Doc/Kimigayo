@@ -49,8 +49,7 @@ internal sealed partial class FunctionCodegen
 
     /// <summary>Writes a call of a root from the function the frame began (BeginFrameFunction; IMPL 21.4.2; DECISIONS R5-M89), the one
     /// member through which the frame calls a root (the module entry's call of its startup root, a test entry's of a case's root, a
-    /// platform adapter's of its witness; an interrupt thunk's call of its handler is to reuse it): through the one call writer, in that
-    /// function's spelling context.</summary>
+    /// platform adapter's of its witness): through the one call writer, in that function's spelling context.</summary>
     /// <param name="routine">The root's signature.</param>
     /// <param name="arguments">The call's arguments, one per parameter of the root's signature.</param>
     /// <returns>The call's value, or null for a void result.</returns>
@@ -166,10 +165,11 @@ internal sealed partial class FunctionCodegen
         return new Run(signature, function is not null && VTableDef.SlotOf(function) >= 0 ? function : null);
     }
 
-    // SPEC 6.4.6, 8.6.3: the call of a witness's body a function writes itself around (BodyRun's run: a comparison shim's Witness leaf),
-    // each parameter by its kind: the result slot the slot given, a location parameter the site given, any other the input at its logical
-    // index; the call of the callee value its slot, if any, makes (EntryOf); its value into `result` (none for a void callee). False, with
-    // InternalInvariant_Kd, for a parameter the caller does not supply (a witness's signature is its requirement's).
+    // SPEC 6.4.6, 8.6.3: the call of a target's run a function writes itself around (Witness's run: a comparison shim's leaf, an interrupt
+    // entry's thunk's handler, FunctionCodegen.Entries; a body, a shim or an import by its C signature), each parameter by its kind: the
+    // result slot the slot given, a location parameter the site given, any other the input at its logical index; the call of the callee
+    // value its slot, if any, makes (EntryOf); its value into `result` (none for a void callee). False, with InternalInvariant_Kd, for a
+    // parameter the caller does not supply (a witness's signature is its requirement's).
     private bool CallWitness(Run run, ReadOnlySpan<Value> inputs, Value? slot, Site? site, out Value? result)
     {
         result = null;

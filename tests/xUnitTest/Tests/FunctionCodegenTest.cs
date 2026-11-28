@@ -2086,6 +2086,44 @@ public sealed partial class FunctionCodegenTest
         Assert.Contains(Assert.Single(ir.Functions, x => x.Instructions.Contains(call)).Instructions, x => x.Shape == "getelementptr i8, ptr %, i64 4" && x.Operands[0] == slot);
     }
 
+    // IMPL 21.6 (OSF3b's rows 12 and 13; design C-457 §6.4, T's ruling 196 (3)): an entry call's result is its InterruptEntry item's thunk's
+    // code address, and the thunk is an x86_intrcc function taking the frame by value (X86.InterruptFrame's storage) and, for an
+    // ErrorCodeHandler's entry, the error code, that realigns the stack and whose one call runs the handler's body with its inputs. Row 29's
+    // twin (SPEC 22.6 ¶2): a body `handle` forwarding to an import is that body, which calls the import.
+    [Theory]
+    [InlineData("InterruptHandler", "entry", "", "64", "unsafe => X86.writePort8(0x20, 0x20)", @"call void @__kimi_x86_outb\(i16 32, i8 32\)")]
+    [InlineData("ErrorCodeHandler", "errorCodeEntry", ", code: u64", "14", "unsafe => X86.writePort8(0x20, 0x20)", @"call void @__kimi_x86_outb\(i16 32, i8 32\)")]
+    [InlineData("InterruptHandler", "entry", "", "64", "Native.onTick(frame)", @"call void @on_tick\(ptr %\w+\)")]
+    public void AnInterruptEntryIsItsThunksAddress(string contract, string entry, string code, string vector, string body, string call)
+    {
+        var source = Handler(contract, entry, code, vector, $"\n        {body}\n") + "group Native\n" +
+            "    #LibraryImport(\"codec\", \"on_tick\")\n    public func onTick(frame: ref/X86.InterruptFrame)\n";
+        var ir = CompilationTestHelper.WriteIr(ForeignEmissionTest.AnalyzeAs(TargetProfile.None, source, "static", OutputKind.Library));
+        var thunk = Regex.Match(ir, Thunk(code, @"(__kimi_f\d+)"));
+        Assert.True(thunk.Success, ir);
+        Assert.Matches(@"= ptrtoint ptr @" + thunk.Groups[1].Value + @" to i64\n", ir);
+        var handle = @"\ndefine internal void @" + thunk.Groups[2].Value + @"\(ptr %a0" + (code.Length == 0 ? string.Empty : ", i64 %a1") + @"\) #0 \{\n";
+        Assert.Matches(handle + @"(?:(?!\})[^\n]*\n)*?  " + call + @"\n", ir);
+    }
+
+    // SPEC 22.6 ¶2, 8.6.3, IMPL 21.6 (OSF3b's row 29b, the accepted row R-e; T's ruling 196, the Middle's M1, B's C4): a handler whose
+    // `handle` is a #LibraryImport witness, a receiverless struct Type function, is accepted with no record, and its thunk calls the import
+    // by its C signature through code generation's one target rule, with no InternalInvariant_Kd: one call of the import with the frame
+    // (and the code), the import declared once and its library required.
+    [Theory]
+    [InlineData("InterruptHandler", "entry", "", "64", "on_tick", "ptr")]
+    [InlineData("ErrorCodeHandler", "errorCodeEntry", ", code: u64", "14", "on_fault", "ptr, i64")]
+    public void AnImportHandlersThunkCallsTheImport(string contract, string entry, string code, string vector, string import, string types)
+    {
+        var source = Handler(contract, entry, code, vector, "\n", $"    #LibraryImport(\"codec\", \"{import}\")\n");
+        var c = ForeignEmissionTest.AnalyzeAs(TargetProfile.None, source, "static", OutputKind.Library);
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Matches(Thunk(code, import), ir);
+        Assert.Single(Regex.Matches(ir, $@"\ndeclare void @{import}\({types}\)\n"));
+        Assert.Equal([("codec", "static")], c.Generated.Libraries);
+    }
+
     // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed and
     // the definitions of the body items its generation marks Generated; any record fails (DECISIONS R5-M146).
     internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
@@ -2245,6 +2283,20 @@ public sealed partial class FunctionCodegenTest
 
     // The pointer loads between a value and the slot it was first loaded from: 0 for a slot's own value.
     private static int Loads(IrValue value) => value.Opcode == "load" && value.Operands[0].Opcode == "load" ? 1 + Loads(value.Operands[0]) : 0;
+
+    // A none-row Library's handler Tick of `contract` and its public install, which stores its entry's address in `table[vector]`.
+    private static string Handler(string contract, string entry, string code, string vector, string body, string attribute = "")
+        => $"struct Tick\n    Self is X86.{contract}\n\n{attribute}    public func handle(frame: ref/X86.InterruptFrame{code}){body}\n" +
+            $"public group Interrupts\n    public func install(table: raw/u64)\n        unsafe\n            table[{vector}] = X86.{entry}<Tick>()@u64\n";
+
+    // The pattern of an interrupt entry's thunk (group 1: its symbol) whose one call is of `callee` with the frame and, for a handler
+    // whose `code` parameter is not empty, the code.
+    private static string Thunk(string code, string callee)
+    {
+        var extra = code.Length == 0 ? string.Empty : ", i64 %code";
+        return @"\ndefine internal x86_intrcc void @(__kimi_f\d+)\(ptr byval\(\{ i64, i64, i64, i64, i64 \}\) %frame" + extra +
+            @"\) ""stackrealign"" #0 \{\nentry:\n  call void @" + callee + @"\(ptr %frame" + extra + @"\)\n  ret void\n\}\n";
+    }
 
     private static (string Code, string? Text)[] Records(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text))];

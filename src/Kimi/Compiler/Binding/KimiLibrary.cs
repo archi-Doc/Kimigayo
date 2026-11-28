@@ -488,9 +488,15 @@ public sealed partial class KimiLibrary
         for (var i = 0; i < entries.Length; i++)
         {
             ref readonly var entry = ref entries[i];
-            // SPEC 22.1: a missing required declaration is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
+            // SPEC 22.1: a missing required declaration is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks;
+            // a `Kimi.X86` member's (Entry.X86) is absent from every library where X86.kimi's `arch == "x86_64"` does not hold.
             if (declarations[(int)entry.Id] is not { } declaration)
             {
+                if (entry.X86)
+                {
+                    continue;
+                }
+
                 throw new InvalidOperationException($"The embedded Kimi library has no declaration of {entry.Id}.");
             }
 

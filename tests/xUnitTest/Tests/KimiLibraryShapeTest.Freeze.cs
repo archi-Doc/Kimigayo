@@ -404,6 +404,10 @@ public partial class KimiLibraryShapeTest
         Assert.Empty(library.Where(x => x.Kind is BindingSymbolKind.Function or BindingSymbolKind.Property && x.Declaration is FunctionKoto or PropertyKoto
             && x.QueryState(DeclQueryKind.Signature, pass) != DeclState.Done).Select(static x => x.Name));
         Assert.Empty(library.Where(x => x.Declaration is StructKoto && x.QueryState(DeclQueryKind.InheritedConformances, pass) != DeclState.Done).Select(static x => x.Name));
+        // SPEC 22.1 (T's ruling 197): a `Kimi.X86` catalog entry (Entry.X86) is present exactly where `arch == "x86_64"` holds; every other
+        // entry is present on each target.
+        var x86 = target.StartsWith("x86_64-", StringComparison.Ordinal);
+        Assert.All(KimiLibraryCatalog.Entries.ToArray(), x => Assert.Equal(!x.X86 || x86, c.Library.GetSymbol(x.Id) is not null));
     }
 
     // k4 (B1: E3's effect bounds, E7, R): the library pass completes the facts a later pass would otherwise form lazily on a library

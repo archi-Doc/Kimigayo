@@ -134,7 +134,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
     // A3 E14: an intrinsic serving a library declaration takes its parameters first, so its row's arity covers them, and the operand its
     // row says the result retains is one the builder adds beyond them (RawSlice's backing); a family's row of arity -1 takes each
-    // declaration's shape, which the validator reads (Instruction's alone, design C2).
+    // declaration's shape, which the validator reads (Instruction's, design C2, and InterruptEntry's, C-457 C4).
     [Fact]
     public void AnIntrinsicsRowCoversItsDeclaration()
     {
@@ -146,13 +146,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         {
             _ = c.Types.Signature(declaration!, null, -1, out var count);
             Assert.True(
-                (row.Arity < 0 && declaration!.Definition.Id == IntrinsicId.Instruction) ||
+                (row.Arity < 0 && declaration!.Definition.Id is IntrinsicId.Instruction or IntrinsicId.InterruptEntry) ||
                 (count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity))),
                 declaration!.Name);
         }
 
         Assert.Equal([IntrinsicId.RawSlice], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Retained: >= 0 }));
-        Assert.Equal([IntrinsicId.Instruction], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Arity: < 0 }));
+        Assert.Equal([IntrinsicId.Instruction, IntrinsicId.InterruptEntry], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Arity: < 0 }));
     }
 
     // SPEC 17.4 (A3 E14): the compiler-only $abort is no library declaration, so an Abort call names none; one naming $abort's symbol is
@@ -187,6 +187,21 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             ? terminator with { Callee = terminator.Callee with { Symbol = null }, Source = Broken }
             : terminator with { Start = AddOperands(body, [MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)))]), Count = 1, Source = Broken };
         Assert.Equal([(Enum.Parse<MirViolation>(rule), Broken.Syntax)], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // IMPL 21.6 (OSF3b; design C-457 C4): so has the InterruptEntry family's, so an entry call naming no declaration is a Callee finding at
+    // the call.
+    [Fact]
+    public void AnInterruptEntryCallHasItsDeclarationsShape()
+    {
+        var c = MinimalEmissionTest.Analyze(TargetProfile.None, TimeLibraryTest.Tick + TimeLibraryTest.Install, "Board.kimi", OutputKind.Library);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "install");
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Symbol.Name: "entry" } });
+        var terminator = body.Blocks[call].Terminator;
+        Unsafe.AsRef(in body.Blocks[call]).Terminator = terminator with { Callee = terminator.Callee with { Symbol = null }, Source = Broken };
+        Assert.Equal([(MirViolation.Callee, Broken.Syntax)], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // An rvalue's operands before its Place, the index locals of a Place before it, a destination last; static accesses, pair cases,

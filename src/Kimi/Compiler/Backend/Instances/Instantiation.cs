@@ -27,6 +27,8 @@ internal enum MonoKind : byte
     ObjectDescriptor, // The runtime descriptor of an object payload (IMPL 21.1.3, SPEC 13.6): its erased payload Type.
     VTable, // The virtual table of a struct with a slot (SPEC 6.4, F package 4.2): its erased struct Type.
     Import, // A #LibraryImport function a call runs (SPEC 22.6): the function, never generic; no body, no target, nothing generated.
+    InterruptEntry, // A compiler-generated interrupt thunk (IMPL 21.6): its erased handler Type H and its InterruptEntries variant; no
+    // body, no symbol.
 }
 
 /// <summary>The key of a mono item; the checked set holds one item per key.</summary>
@@ -38,7 +40,7 @@ internal enum MonoKind : byte
 /// Unit for one of an owning handle's release that destroys no payload glue (DECISIONS R5-M60, amended by U11 and G372).</param>
 /// <param name="Symbol">A Builtin's compiler function, a property witness's Field or an Import's function.</param>
 /// <param name="Variant">A property witness's operation; a comparison Builtin item's <see cref="ComparisonMode"/>; 1 for such a DropGlue
-/// item whose release runs the descriptor's finalizer.</param>
+/// item whose release runs the descriptor's finalizer; an InterruptEntry item's InterruptEntries variant.</param>
 /// <param name="Function">A ClosureErasure's or ItemAdapter's erased target Function Type, the one whose erased calls reach its entry
 /// (SPEC 10.7: a Never-result source fits Function Types of other results; DECISIONS R5-M108).</param>
 internal readonly record struct MonoKey(MonoKind Kind, Instantiation Body, BoundType? Type, BindingSymbol? Symbol, byte Variant, BoundType? Function);
