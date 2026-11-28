@@ -55,15 +55,11 @@ public sealed partial class Binding
     private BoundType? LentElement(InvocationKoto? call)
         => call is not null ? this.CallOf(call)?.ReturnType?.SafeReferent : null;
 
-    private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
+    // `core` is the receiver's terminal (BindElement's; SPEC 3.4.3); the synthesized calls acquire the receiver by the ordinary
+    // receiver rows (AdaptInput: TryPairReceiver at a pair top layer, the through-layers row below a concrete one; SPEC 4.7.1, 7.3).
+    private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? core, out BoundType? result)
     {
         result = null;
-        var core = receiver is null ? null : ComparisonReferent(receiver); // SPEC 3.4.3: selection continues at the referent.
-        var layered = core;
-        if (TryPairLayer(core, out _, out _))
-        {
-            core = this.OperandTerminal(source.Left, core!); // SPEC 13.5.5: and past each followable pair layer.
-        }
 
         // SPEC 4.7, 4.7.1: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it
         // takes a Range key; for any other receiver a range reads as the slice that only the concrete sequences offer
@@ -126,11 +122,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!ReferenceEquals(core, layered))
+        if (this.TryPairTopLimit(source, scope, out result))
         {
-            // A user index selected through a pair layer is not implemented (PLAN G179); the key is still bound for its own failures.
-            this.BindNode(source.Right, scope);
-            result = this.Fail(source, BindingFailure.Unsupported);
             return true;
         }
 
@@ -150,6 +143,22 @@ public sealed partial class Binding
         }
 
         result = Complete(source, element);
+        return true;
+    }
+
+    // PLAN G1137 (DECISIONS R7-M72 Left C2, R7-M136): a selection call's receiver below a pair top layer is acquired through further
+    // pair layers alone (TryPairReceiver); with a ref or uniq layer below them no receiver row acquires it yet, so the index expression is
+    // the located limit, never its call's candidate failure, and the key is still bound for its own failures (SPEC 23.1.2). Removal: G1137.
+    private bool TryPairTopLimit(IndexKoto source, BindingScope scope, out BoundType? result)
+    {
+        result = null;
+        if (!TryPairLayer(source.Left.BoundType, out _, out var target) || this.PairTerminal(target, scope)?.SafeReferent is null)
+        {
+            return false;
+        }
+
+        this.BindNode(source.Right, scope);
+        result = this.Fail(source, BindingFailure.Unsupported);
         return true;
     }
 

@@ -288,15 +288,15 @@ public class DiagnosticPrecisionTest
     }
 
     // SPEC 4.7.1, 5.3, 23.1.2: an index key that fits no conformance, Dictionary key or pointer offset is reported once, with
-    // both Types at the key or at the index expression, and a receiver without indexing is a Language error; a user index through
-    // a pair layer is the located limit (PLAN G179).
+    // both Types at the key or at the index expression, including a Dictionary key through two ref layers (3.4.3), and a receiver
+    // without indexing is a Language error.
     [Theory]
-    [InlineData("func g<s/T>(value: s/T, x: s/View)\n    s is owner or uniq\n    let a = x[0]", "Unsupported_Kd", "x[0]", null)]
     [InlineData("let a = v[^1]", "NoApplicableOverload_Kd", "v[^1]", null)]
     [InlineData("let n: i32 = 0\nlet a = v[n]", "NoApplicableOverload_Kd", "v[n]", null)]
     [InlineData("let a = v[0..1]", "NotIndexable_Kd", "v[0..1]", null)]
     [InlineData("let x: i32 = 5\nlet a = x[0]", "NotIndexable_Kd", "x[0]", null)]
     [InlineData("var d: Dictionary<isize, string> = [1: \"x\"]\nlet a = d[^1]", "TypeMismatch_Kd", "^1", "expected isize, found Kimi.FromEnd<i32>")]
+    [InlineData("func f(d: ref/(ref/Dictionary<isize, i32> during c))\n    let a = d[true]", "TypeMismatch_Kd", "true", "expected isize, found bool")]
     [InlineData("func f(p: raw/i32) -> i32\n    unsafe\n        return p[0..4]", "TypeMismatch_Kd", "0..4", "expected isize, found Kimi.Range<i32, i32>")]
     [InlineData("func f(p: ref/raw/i32) -> i32\n    unsafe\n        return p[0]", "NotIndexable_Kd", "p[0]", null)]
     public void IndexKeysReportOneExplainedError(string statement, string code, string text, string? label)

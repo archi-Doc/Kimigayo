@@ -579,6 +579,10 @@ public class PairFollowTest
     [InlineData("func keep<s/T>(a: s/T) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let r: ref/T = a\n    return r.load()")]
     [InlineData("func first<s/T>(o: s/Option<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    match o@follow\n        .Some(let v) => return v\n        .None => return 0")]
     [InlineData("func sum<s/T>(items: s/Array<i32>, marker: s/T) -> i32\n    s is value or valueborrow\n    var total: i32 = 0\n    for x in items@follow\n        total += x\n    return total")]
+    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>) -> i32\n    s is owner or uniq\n    let y = x[0]\n    return y")]
+    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is uniq\n    x[0] = 5")]
+    [InlineData("func g<s/T>(value: s/T, x: uniq/(s/Collection<i32> during b))\n    s is uniq\n    x[0] = 5")]
+    [InlineData("func g<s/T, U>(value: s/T, x: s/U)\n    s is owner or uniq\n    U is Indexable<isize>\n    U.(Indexable<isize>).Element is Copy\n    let y = x[0]")]
     public void PairPositionsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
@@ -629,10 +633,17 @@ public class PairFollowTest
 
     private const string Bump = "contract Bump\n    func bump(self: uniq/Self)\n";
 
+    private const string Reader = "struct Reader\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n" +
+        "    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n";
+
+    private const string Bag = "enum Bag\n    Self is Indexable<isize>\n    associate Element is i32\n    One(i32)\n" +
+        "    public func index(self, key: ref/isize) -> ref/i32 during self\n        return match self\n            .One(let v) => v\n";
+
     // SPEC 13.5.5, 3.4.3: a member selected through a pair layer follows it as @follow does: with owner admitted, a Field inline
     // in the operand needs it exclusively writable (a let binding or an owned parameter is not), no case offers Take, and a uniq
-    // reference stored in the operand still grants Write through it. A user index through a pair layer is the located limit
-    // (PLAN G179), unlike its reference-layer twins. With owner admitted, `@follow` of a newly owned temporary selects its whole
+    // reference stored in the operand still grants Write through it. A user index selects through the layer (3.4.3, 4.7.1), as a
+    // Dictionary or UniqSlice index and a constrained Type-parameter or enum terminal do; below a pair top layer over a ref or uniq layer
+    // it is the located limit (PLAN G1137, DECISIONS R7-M136). With owner admitted, `@follow` of a newly owned temporary selects its whole
     // Temporary Place (P itself, SPEC 3.6: exclusively writable), a valid target no lowering writes whole yet: the located limit, also
     // parenthesized and for an update (D-827); a let local's is not writable, the referent under `s is uniq` is, and a ref case
     // shares it. PLAN G1112 (labels from SPEC 3.5, 13.5.5, 13.7.2): an update of a Property with a custom accessor (`+=`, `++`, `--`)
@@ -703,8 +714,24 @@ public class PairFollowTest
     [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/Box<t/Array<i32> during b>)\n    s is owner or uniq\n    t is uniq\n    for v in x.item\n        v@follow += 1", null)]
     [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/(uniq/P during b) during c>)\n    s is owner or uniq\n    x.item.v = 5", null)]
     [InlineData("func g<s/T>(value: s/T, x: s/Box<uniq/Collection<Node> during b>)\n    s is owner or uniq\n    x.item[0].weight = 5", null)]
-    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is owner or uniq\n    x[0] = 5", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is uniq\n    let y = x[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is owner or uniq\n    x[0] = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is uniq\n    let y = x[0]", null)]
+    [InlineData("func g<s/T>(value: s/T, x: s/Collection<i32>)\n    s is owner or uniq\n    let y = x[0]", null)]
+    [InlineData("func g<s/T>(value: s/T, x: uniq/(s/Collection<i32> during b))\n    s is uniq\n    x[0] = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, x: ref/(s/Collection<i32> during b))\n    s is uniq\n    x[0] = 5", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g<s/T, t/U>(value: s/T, other: t/U, x: s/(t/Collection<i32> during b))\n    s is owner or uniq\n    t is uniq\n    let y = x[0]", null)]
+    [InlineData("func g<s/T, t/U>(value: s/T, other: t/U, x: s/(t/Collection<i32> during b))\n    s is uniq\n    t is ref or uniq\n    x[0] = 5", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: uniq/(s/(uniq/Collection<i32> during b) during c))\n    s is uniq\n    x[0] = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, x: ref/(s/(uniq/Collection<i32> during b) during c))\n    s is uniq\n    x[0] = 5", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: s/(uniq/Collection<i32> during b))\n    s is uniq\n    x[0] = 5", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, d: s/Dictionary<isize, i32>)\n    s is owner or uniq\n    let y = d[1]", null)]
+    [InlineData("func g<s/T>(value: s/T, d: s/Dictionary<isize, i32>)\n    s is owner or uniq\n    let y = d[true]", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func g<s/T>(value: s/T, v: s/UniqSlice<i32>)\n    s is uniq\n    v[0] = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, v: s/UniqSlice<i32>)\n    s is ref or uniq\n    v[0] = 5", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(Reader + "func g<s/T>(value: s/T, x: s/Reader)\n    s is uniq\n    x[0] = 5", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g<s/T, U>(value: s/T, x: s/U)\n    s is owner or uniq\n    U is Indexable<isize>\n    U.(Indexable<isize>).Element is Copy\n    let y = x[0]", null)]
+    [InlineData("func g<s/T, U>(value: s/T, x: s/U, e: U.Element)\n    s is uniq\n    U is UniqIndexable<isize>\n    x[0] = e@move", null)]
+    [InlineData(Bag + "func g<s/T>(value: s/T, x: s/Bag)\n    s is owner or uniq\n    let y = x[0]", null)]
     [InlineData("func g(x: uniq/Collection<i32>)\n    x[0] = 5", null)]
     [InlineData("func g(x: ref/Collection<i32>)\n    let y = x[0]", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    let y = p[0]", DiagnosticCode.NotIndexable_Kd)]
@@ -835,7 +862,7 @@ public class PairFollowTest
         Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
     }
 
-    // PLAN G647 (SPEC 3.4.3, 7.3, 13.5.5): a selection, a `for` Subject, arithmetic and a Case Pattern follow every qualifying pair
+    // PLAN G647 (SPEC 3.4.3, 7.3, 13.5.5): a selection (a user index included: 4.7.1, PLAN G179), a `for` Subject, arithmetic and a Case Pattern follow every qualifying pair
     // layer, past the 16 and 32 layers the walks once counted: the valid form has no record through Binding, HIR and the MIR builder,
     // and its invalid twin the record it has through 2 layers. One form goes past 64: the named Origins of 65 pair layers cost 5 to 8
     // seconds a program (the Origin proof's work, not a layer walk: PLAN G647's design section 7).
@@ -861,6 +888,8 @@ public class PairFollowTest
     [InlineData("lt", 18)]
     [InlineData("borrow", 17)]
     [InlineData("borrow", 33)]
+    [InlineData("index", 17)]
+    [InlineData("index", 33)]
     public void EveryQualifyingPairLayerIsFollowed(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, true, layers);
 
     // Q20 B1 (D-827; SPEC 13.5.5, 3.6): through any number of owner-case `@follow`s of a newly owned temporary, a part of its Temporary

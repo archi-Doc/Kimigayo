@@ -13,18 +13,18 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(node) is IndexKoto { BindingState: BindingState.Resolved } index &&
             this.viewRangeCalls.TryGetValue(index, out var call) && call.BindingState == BindingState.Resolved ? call : null;
 
-    private bool TryBindViewSelection(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
+    // `core` is the receiver's terminal (BindElement's; SPEC 3.4.3, 4.8.4).
+    private bool TryBindViewSelection(IndexKoto source, BindingScope scope, BoundType? core, out BoundType? result)
     {
         result = null;
-        var core = receiver;
-        while (core?.SafeReferent is { } inner)
-        {
-            core = inner;
-        }
-
         if (core?.Symbol?.LibraryDeclaration != KimiDeclarationId.UniqSlice || core.Components is not [var element])
         {
             return false;
+        }
+
+        if (this.TryPairTopLimit(source, scope, out result))
+        {
+            return true;
         }
 
         var key = this.BindPositionKey(source.Right, scope);

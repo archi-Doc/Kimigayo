@@ -47,10 +47,15 @@ public sealed partial class Binding
             // SPEC 3.4.3: the receiver's terminal below every ref, uniq and qualifying pair layer (LayersTerminal after the operand's
             // premises), decided once for the selections below.
             var terminal = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
-            var dictionary = receiver?.SafeReferent is { Kind: BoundTypeKind.Dictionary } referent ? referent : receiver;
-            if (dictionary?.Kind == BoundTypeKind.Dictionary)
+            if (terminal?.Kind == BoundTypeKind.Dictionary)
             {
-                var key = dictionary.Components[0];
+                // Before the key is bound: the limit binds it itself, and TryBindIndexer's own check then finds none (PLAN G1137).
+                if (this.TryPairTopLimit((IndexKoto)source, scope, out var limited))
+                {
+                    return limited;
+                }
+
+                var key = terminal.Components[0];
                 var actual = this.BindNode(source.Right, scope, key);
                 // A lookup borrows K itself, including when K is a reference value. A key whose layers reach K is the index call's
                 // ref/K argument (KeyBelowLayers); it is never read into a key snapshot.
@@ -70,18 +75,18 @@ public sealed partial class Binding
                     return this.FailMismatch(source, source.Right, actual, key, failure);
                 }
 
-                return this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexedDictionary)
+                return this.TryBindIndexer((IndexKoto)source, scope, terminal, out var indexedDictionary)
                     ? indexedDictionary : this.Fail(source, BindingFailure.Internal);
             }
 
-            if (this.TryBindViewSelection((IndexKoto)source, scope, receiver, out var view))
+            if (this.TryBindViewSelection((IndexKoto)source, scope, terminal, out var view))
             {
                 return view;
             }
 
             // SPEC 3.4.3, 4.7.1: a concrete sequence, through every layer, is indexed by position and never through an Indexable
             // conformance (Array states one for generic use); one these arms do not reach yet is the limit below.
-            if (!IsSequence(terminal) && this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
+            if (!IsSequence(terminal) && this.TryBindIndexer((IndexKoto)source, scope, terminal, out var indexed))
             {
                 return indexed; // SPEC 4.7.1: a user Indexable conformance.
             }
@@ -94,10 +99,10 @@ public sealed partial class Binding
                     return this.CompleteDependent(source, source.Left); // The receiver's own failure explains the access.
                 }
 
-                // SPEC 3.4.3, 4.7.1: a sequence reached here, such as through reference or pair layers, is an implementation limit;
-                // any other receiver, including a range key on an Indexable Type, cannot be indexed by the key.
-                var sequence = IsSequence(terminal) || terminal!.Kind == BoundTypeKind.Dictionary;
-                return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
+                // SPEC 3.4.3, 4.7.1: a sequence reached here, such as through reference or pair layers, is an implementation limit
+                // (PLAN G179's sequence slice: Place classification reads one layer); any other receiver, including a range key on an
+                // Indexable Type, cannot be indexed by the key. A Dictionary terminal never reaches here (its arm above).
+                return this.Fail(source, IsSequence(terminal) ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
             }
 
             if (ReferenceEquals(receiver, BoundType.Never))

@@ -19,6 +19,8 @@ public partial class TypeDagScalingTest
         "struct Point\n    Self is Equatable\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
         "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.x == other.x\n" +
         "struct Q\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+        "struct Cells\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
+        "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n" +
         "func g(v: ref/i32) -> i32 => 0\nfunc h(v: i32) -> i32 => v\n";
 
     private const string LayerMain = "public func main()\n    Console.writeLine(\"p\")\n";
@@ -255,7 +257,8 @@ public partial class TypeDagScalingTest
     // 15.1.6; i32 is not iterable); built-in arithmetic and comparison of the terminals (3.5.3, 13.1, 13.4; bool is not numeric or
     // ordered, Q not Equatable); a Case Pattern (14.8.1; i32 has no Case); the shared-reference row at an argument (10.2: layers ending
     // in i32 give one ref/i32; bool does not); a string comparison through safe reference layers (13.4; i32 is no string); a member
-    // Borrow below the layers (15.6.3, PLAN G813: the containment walk meets every layer, one recursion each; Q has no Field).
+    // Borrow below the layers (15.6.3, PLAN G813: the containment walk meets every layer, one recursion each; Q has no Field); a user
+    // index below the layers (3.4.3, 4.7.1, PLAN G179: the prelude's Cells conforms to Indexable<isize>; Q has no conformance).
     internal static string LayeredForm(string form, bool pair, int layers, bool valid)
     {
         var (good, bad, result, body) = form switch
@@ -272,6 +275,7 @@ public partial class TypeDagScalingTest
             "let" => ("i32", "bool", "i32", "    let v: i32 = x\n    return v\n"),
             "argval" => ("i32", "bool", "i32", "    return h(x)\n"),
             "streq" => ("string", "i32", "bool", "    return x == \"a\"\n"),
+            "index" => ("Cells", "Q", "i32", "    let y = x[0]\n    return y\n"),
             _ => throw new ArgumentOutOfRangeException(nameof(form)),
         };
         var terminal = valid ? good : bad;
