@@ -306,9 +306,9 @@ public sealed class CompilationEntryTest
     [InlineData("r4-false-and-I", "NestingLimit_Kd@1:16")]
     [InlineData("r11-stacked-missing-I", "NestingLimit_Kd@1:5 | UnknownCompileTimeName_Kd@2:5")]
     // Pinned, not SPEC's record: SPEC 19.4 lists modifier placement among the source checks, so ProtectedPlacement_Kd@5:20 is owed.
-    // It is lost through a check owned outside the source phase (Binding), removed by the open issue G144-37 opens: "SPEC 19.4 source
-    // checks owned by Binding are skipped in excluded syntax (an invalid program accepted: r1-prot-excl) and in a resting Compilation
-    // (r1-prot)".
+    // It is lost through a check owned outside the source phase (Binding), removed by the open issue PLAN G1511 (G144-37): "SPEC 19.4
+    // source checks owned by Binding are skipped in excluded syntax (an invalid program accepted: r1-prot-excl) and in a resting
+    // Compilation (r1-prot)".
     [InlineData("r1-prot-I", "NestingLimit_Kd@1:5")]
     public void ADirectiveThatCannotCompleteItsSelectionRestsTheCompilation(string row, string records)
         => Assert.Equal(records, CheckedSites(Resting(row)));
@@ -324,7 +324,7 @@ public sealed class CompilationEntryTest
     [InlineData("y-rest-in-excl-member-I", "NestingLimit_Kd@3:13 | UnresolvedBinding_Kd@6:23")]
     [InlineData("c3-ifs-1023-I", "UnresolvedBinding_Kd@10:23")]
     [InlineData("c3-ifs-1024-I", "UnresolvedBinding_Kd@10:23")]
-    // The band open issue (G144-38; PLAN id pending): A.4's limit cuts this Condition, the parser's count does not, so the head
+    // The band open issue (PLAN G1512; G144-38): A.4's limit cuts this Condition, the parser's count does not, so the head
     // selects and keeps the UnresolvedBinding_Kd where IMPL 21.3.2 rests on NestingLimit_Kd alone; a known limit, rejected either way.
     [InlineData("c3-ifs-1025-I", "NestingLimit_Kd@6:1038 | UnresolvedBinding_Kd@10:23")]
     [InlineData("r12-no-target-eof-I", "UnresolvedBinding_Kd@1:23 | NestingLimit_Kd@2:5 | MissingSyntax_Kd@2:24001")]

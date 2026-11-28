@@ -128,8 +128,8 @@ internal static class CompileTimeConditionEvaluator
     }
 
     // The cause rule (G144-23): a failing part with a record (this evaluator's, or the parser's at a recovery or an ErrorKoto) takes
-    // the cause from a skip mark; otherwise the first failing part, in source order, keeps it.
-    private static bool Fail(Koto part, ref Koto? cause)
+    // the cause from a skip mark; otherwise the first failing part, in source order, keeps it. A #switch's Conditions share it.
+    internal static bool Fail(Koto part, ref Koto? cause)
     {
         if (cause is null || (cause is ErrorKoto { IsSkip: true } && part is not ErrorKoto { IsSkip: true }))
         {

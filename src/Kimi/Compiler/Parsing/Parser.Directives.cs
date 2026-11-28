@@ -262,7 +262,7 @@ public static partial class Parser
         scan.Advance(); // The arm list is not a new lookup scope.
         var armCount = 0;
         var selected = -1;
-        var cut = false;
+        Koto? cause = null; // The cause of the Conditions that are an Error.
         var fallback = default(CaseFallbackRule);
         while (scan.CanRead)
         {
@@ -291,12 +291,15 @@ public static partial class Parser
                 continue;
             }
 
-            // SwitchArm := "#" "case" (CompileCondition | "_") IndentedList<Item> (SPEC F.11), part by part. A Condition that is an Error
-            // only through skip marks (G144-23) is cut; any other Error is recorded.
-            var result = ScanCompileTimeCaseCondition(ref scan, ref fallback, marker, out var cause);
-            var isCut = cause is ErrorKoto { IsSkip: true };
-            cut |= isCut;
-            invalid |= result == CompileTimeConditionResult.Error && !isCut;
+            // SwitchArm := "#" "case" (CompileCondition | "_") IndentedList<Item> (SPEC F.11), part by part. The Conditions' cause
+            // follows each Condition's rule (G144-23): a recorded Error's takes it from a skip mark, so it is a skip mark only where
+            // every Condition that is an Error is cut.
+            var result = ScanCompileTimeCaseCondition(ref scan, ref fallback, marker, out var conditionCause);
+            if (result == CompileTimeConditionResult.Error)
+            {
+                _ = CompileTimeConditionEvaluator.Fail(conditionCause!, ref cause);
+            }
+
             invalid |= !ExpectCompileTimeHeaderEnd(ref scan);
             if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
@@ -324,12 +327,12 @@ public static partial class Parser
         }
 
         var partsPresent = !invalid && !fallback.Broken;
-        if (RestOnCutSelection(ref reader, marker, cut, partsPresent))
+        if (RestOnCutSelection(ref reader, marker, cause, partsPresent))
         {
             return new(-1, null); // The marker takes no recovery cause.
         }
 
-        if (!partsPresent || cut)
+        if (!partsPresent || cause is not null)
         {
             return new(-1, scan.Diagnostic.LastError);
         }
@@ -346,16 +349,17 @@ public static partial class Parser
     }
 
     /// <summary>Rests the Compilation on a directive whose selection cannot complete (IMPL 21.3.2): selection happens at it, outside
-    /// excluded syntax, a Condition is an Error only through parts the syntax depth limit cut, and every other part of the directive
+    /// excluded syntax, its Conditions are an Error only through parts the syntax depth limit cut, and every other part of the directive
     /// (SPEC F.11: its header lines, each arm's body, an <c>#if</c>'s target) is present, nothing else of it in error.</summary>
     /// <param name="reader">The token reader at the directive.</param>
     /// <param name="marker">The directive's marker.</param>
-    /// <param name="cut">Whether a Condition is an Error only through cut parts (its cause an <see cref="ErrorKoto.IsSkip"/> mark).</param>
+    /// <param name="cause">The cause of the directive's Conditions that are an Error (G144-23), or <see langword="null"/>: they are
+    /// an Error only through cut parts where it is an <see cref="ErrorKoto.IsSkip"/> mark.</param>
     /// <param name="partsPresent">Whether every other part of the directive is present and in no error.</param>
     /// <returns><see langword="true"/> when the Compilation rests on the directive.</returns>
-    private static bool RestOnCutSelection(ref TokenReader reader, CompileTimeSwitchKoto marker, bool cut, bool partsPresent)
+    private static bool RestOnCutSelection(ref TokenReader reader, CompileTimeSwitchKoto marker, Koto? cause, bool partsPresent)
     {
-        if (!cut || !partsPresent || !reader.InSelectedSyntax)
+        if (cause is not ErrorKoto { IsSkip: true } || !partsPresent || !reader.InSelectedSyntax)
         {
             return false;
         }
@@ -470,7 +474,7 @@ public static partial class Parser
         }
 
         // The parts besides the Condition are the header's line and the target (SPEC F.11).
-        _ = RestOnCutSelection(ref reader, marker, cause is ErrorKoto { IsSkip: true }, !invalidHeader && HasCompileTimeIfTarget(reader));
+        _ = RestOnCutSelection(ref reader, marker, cause, !invalidHeader && HasCompileTimeIfTarget(reader));
         marker.AddSource(condition);
         if (invalidHeader || result != CompileTimeConditionResult.True)
         {
