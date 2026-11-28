@@ -228,7 +228,8 @@ internal sealed partial class InstanceCollector
     // instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its caller's, LaysOutArguments): a
     // reserveDispatch's reserve witness on its Writer (SPEC 22.10.1), a creation's payload descriptor (Descriptor), a DestroyValues'
     // element glue, an interrupt entry's thunk of its handler (Entry). -1 for a row without a target or a Type not formed, whose cause the
-    // caller read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
+    // caller read (In), and for an entry's member without an InterruptEntries row, whose InternalInvariant_Kd Entry records at the call; a
+    // staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
     private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicDisposition disposition, BoundType? argument)
     {
         if (argument is null)

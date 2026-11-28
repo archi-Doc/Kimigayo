@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace Kimi.Compiler.Backend;
 
-// The interrupt entries' signatures of ModuleCodegen (IMPL 21.6; DECISIONS T-M<OSF3b>), whose thunks FunctionCodegen.Entries writes: an
+// The interrupt entries' signatures of ModuleCodegen (IMPL 21.6; DECISIONS T-M65), whose thunks FunctionCodegen.Entries writes: an
 // InterruptEntry item's x86_intrcc function, named __kimi_f<item> (FunctionPrefix, which an entry call's code address spells), its
 // parameters its variant's (InterruptEntries: the frame, then the error code where the processor pushes one), kept across Writes through
 // the per-index cache of ModuleCodegen.Signatures.cs.

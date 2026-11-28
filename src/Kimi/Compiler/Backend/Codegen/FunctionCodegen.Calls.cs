@@ -166,9 +166,10 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 6.4.6, 8.6.3: the call of a target's run a function writes itself around (Witness's run: a comparison shim's leaf, an interrupt
-    // entry's thunk's handler, FunctionCodegen.Entries; a body, a shim or an import by its C signature), each parameter by its kind: the result slot the slot given, a location parameter the site given, any other the input at its logical
-    // index; the call of the callee value its slot, if any, makes (EntryOf); its value into `result` (none for a void callee). False, with
-    // InternalInvariant_Kd, for a parameter the caller does not supply (a witness's signature is its requirement's).
+    // entry's thunk's handler, FunctionCodegen.Entries; a body, a shim or an import by its C signature), each parameter by its kind: the
+    // result slot the slot given, a location parameter the site given, any other the input at its logical index; the call of the callee
+    // value its slot, if any, makes (EntryOf); its value into `result` (none for a void callee). False, with InternalInvariant_Kd, for a
+    // parameter the caller does not supply (a witness's signature is its requirement's).
     private bool CallWitness(Run run, ReadOnlySpan<Value> inputs, Value? slot, Site? site, out Value? result)
     {
         result = null;

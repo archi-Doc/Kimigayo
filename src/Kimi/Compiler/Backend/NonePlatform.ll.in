@@ -9,8 +9,8 @@
 ; report. A release is ordinary (IMPL 21.6.3). Every run of a member sets the flag on entry and restores it directly above each of its
 ; returns, after the result is computed, through the member's own body (__kimi_platform_enter and __kimi_platform_leave, which code
 ; generation calls), so the program's own calls hold it too; the same bracket disables interrupts across the run and restores RFLAGS
-; after it, so no interrupt handler runs while a member does, and the exit disables them for good. No system call, no import and no adapter declaration; the template makes
-; no other call of the program.
+; after it, so no interrupt handler runs while a member does, and the exit disables them for good. No system call, no import and no
+; adapter declaration; the template makes no other call of the program.
 
 @__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
 
@@ -159,10 +159,9 @@ idle:
 
 ; A platform member's run (IMPL 21.6.3: every run of a member, the program's own calls included): code generation calls the enter at
 ; the head of the member's body, which reads RFLAGS and disables interrupts before it reads the flag, then sets the flag, and returns
-; both in one word (RFLAGS's low 32 bits, the flag's value at bit 32; RuntimeAbi.PlatformEnter), and passes that word to the leave
-; directly above each of its returns, which restores the flag, not clears it, then RFLAGS, so a member's call of another member is an
-; ordinary call and no interrupt handler runs while a member does. The empty asm statements keep the member's memory accesses between
-; the flag's set and its restore.
+; both in the bracket's word (RuntimeAbi.PlatformEnter), and passes that word to the leave directly above each of its returns, which
+; restores the flag, not clears it, then RFLAGS, so a member's call of another member is an ordinary call and no interrupt handler runs
+; while a member does. The empty asm statements keep the member's memory accesses between the flag's set and its restore.
 {{__kimi_platform_enter}}
 entry:
   %flags = call i64 asm sideeffect "pushfq\0Apopq $0\0Acli", "=r,~{memory},~{dirflag},~{fpsr},~{flags}"()

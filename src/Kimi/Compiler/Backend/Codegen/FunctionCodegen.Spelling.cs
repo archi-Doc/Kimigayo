@@ -137,9 +137,9 @@ internal sealed partial class FunctionCodegen
     // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
     // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
     // pooled constant @<name> of index Number (Prefix @), the table of adapter item Number (Prefix g), the slot of StaticInit item Number
-    // (Prefix v) and its state (Prefix w), the function of body item Number (Prefix e), the home of local Number, its address (Prefix h),
-    // the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n), the
-    // platform storage @__kimi_platform (Prefix P, IMPL 21.6) or the literal integer Number (Prefix NUL). Internal, so the module frame
-    // names the arguments of its root calls (WriteEntryCall).
+    // (Prefix v) and its state (Prefix w), the function of body item Number or the thunk of InterruptEntry item Number (Prefix e), the home
+    // of local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling),
+    // the null pointer (Prefix n), the platform storage @__kimi_platform (Prefix P, IMPL 21.6) or the literal integer Number (Prefix NUL).
+    // Internal, so the module frame names the arguments of its root calls (WriteEntryCall).
     internal readonly record struct Value(char Prefix, Int128 Number);
 }

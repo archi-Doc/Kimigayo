@@ -4,7 +4,7 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The interrupt entries of FunctionCodegen (IMPL 21.6; design C-457 §6.4, DECISIONS T-M<OSF3b>): an InterruptEntry item's thunk, the
+// The interrupt entries of FunctionCodegen (IMPL 21.6; design C-457 §6.4, DECISIONS T-M65): an InterruptEntry item's thunk, the
 // x86_intrcc function of its entry, whose one call runs its handler, its one target, by code generation's one target rule (Witness: a
 // body, or an import by its C signature, SPEC 22.6) through the one call writer, the frame (and the error code) as the handler's inputs;
 // and an entry call's result, its thunk's code address (EntryAddress).
@@ -15,7 +15,7 @@ internal sealed partial class FunctionCodegen
     /// <param name="collector">The collector of the checked set.</param>
     /// <param name="item">The InterruptEntry item.</param>
     /// <param name="output">The module's buffer.</param>
-    internal void WriteEntry(InstanceCollector collector, int item, TextWriter output)
+    internal void WriteThunk(InstanceCollector collector, int item, TextWriter output)
     {
         (this.collector, this.item, this.output, this.next) = (collector, item, output, 0);
         var thunk = this.module.Thunk(item);
@@ -38,7 +38,7 @@ internal sealed partial class FunctionCodegen
         }
 
         this.abi = thunk; // 'p' 0 spells %frame, 'p' 1 %code.
-        this.WriteEntryHeader(thunk);
+        this.WriteThunkHeader(thunk);
         output.Write("entry:\n");
         ReadOnlySpan<Value> inputs = [new('p', 0), new('p', 1)];
         if (this.CallWitness(run, inputs[..thunk.Parameters.Length], null, null, out var result))
@@ -50,12 +50,13 @@ internal sealed partial class FunctionCodegen
     // IMPL 21.6 (design C-457 §6.4; probe 3): the thunk's header, `define internal x86_intrcc void @<name>(ptr byval(<frame>) %frame[,
     // i64 %code]) "stackrealign" #0 {`: the frame by value where the processor pushed it, its Type X86.InterruptFrame's storage (the
     // catalog's lang item, laid out by Layout), then the error code; the stack realigned to 16 bytes before any call.
-    private void WriteEntryHeader(FunctionAbi thunk)
+    private void WriteThunkHeader(FunctionAbi thunk)
     {
         var (output, parameters) = (this.output, thunk.Parameters);
         output.Write("define internal x86_intrcc void @");
         output.Write(thunk.Name);
         output.Write("(ptr byval(");
+        // X86.InterruptFrame is the catalog's non-generic C-layout struct of five u64 Fields, so its layout is always Ok.
         output.Write(this.module.Layout.Of(this.typeContext.SelfType(KimiDeclarationId.InterruptFrame)).Value!.Layout.StorageType);
         output.Write(") %");
         output.Write(parameters[0].Name);
@@ -70,8 +71,8 @@ internal sealed partial class FunctionCodegen
         output.Write(") \"stackrealign\" #0 {\n");
     }
 
-    // IMPL 21.6 (DECISIONS T-M<OSF3b>): X86.entry's and X86.errorCodeEntry's result, the code address of the call's target, its
-    // InterruptEntry item, whose thunk the module defines (WriteEntry), as a usize. Any other target is a broken contract, recorded at the
+    // IMPL 21.6 (DECISIONS T-M65): X86.entry's and X86.errorCodeEntry's result, the code address of the call's target, its
+    // InterruptEntry item, whose thunk the module defines (WriteThunk), as a usize. Any other target is a broken contract, recorded at the
     // call: the collector targets the entry item of the call's Type argument and variant (InstanceCollector.Edges' Entry).
     private void EntryAddress(in MirTerminator call, int target)
     {
