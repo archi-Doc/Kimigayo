@@ -224,7 +224,7 @@ public static partial class Parser
                     }
                 }
 
-                var nested = new TokenReader(reader.CodeContext, ref tokenizer);
+                var nested = new TokenReader(reader.CodeContext, ref tokenizer) { Depth = reader.Depth + 1 }; // Its expressions' depth.
                 nested.TryConsume(TokenKind.OpenParenthesis);
                 var expression = ParseRequiredExpression(ref nested);
                 nested.TryConsume(TokenKind.CloseParenthesis, out _, true); // The nested source ends at the matching ')'; a failed consume skips to it.
@@ -248,7 +248,9 @@ public static partial class Parser
     private static Koto ParseParenthesizedExpression(ref TokenReader reader)
     {
         var region = reader.EnterRegion();
+        reader.Depth++; // Its operands lie one level below the group (DECISIONS BU-112).
         var grouped = ParseGroupedExpression(ref reader);
+        reader.Depth--;
         reader.RestoreRegion(region);
         return grouped;
     }
@@ -263,7 +265,7 @@ public static partial class Parser
             return new UnitLiteralKoto(ref reader, SourceSpan.FromBounds(openToken.Span.Start, unitEnd.End));
         }
 
-        var operand = ParseRequiredExpression(ref reader);
+        var operand = reader.PastLimit ? reader.SkipPastLimit() : ParseRequiredExpression(ref reader);
 
         var end = Math.Max(openToken.Span.End, operand.Span.End);
         if (reader.TryConsume(TokenKind.Comma))
@@ -295,7 +297,9 @@ public static partial class Parser
     private static Koto ParseCollectionLiteral(ref TokenReader reader)
     {
         var region = reader.EnterRegion();
+        reader.Depth++; // Its elements lie one level below the literal (DECISIONS BU-112).
         var literal = ParseCollectionLiteralCore(ref reader);
+        reader.Depth--;
         reader.RestoreRegion(region);
         return literal;
     }
@@ -322,6 +326,13 @@ public static partial class Parser
             reader.SkipSeparators();
             reader.ExpectCloser(TokenKind.CloseBracket, out var emptyDictionaryClose);
             return new DictionaryLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, emptyDictionaryClose.End)), []);
+        }
+
+        if (reader.PastLimit)
+        {
+            var mark = reader.SkipPastLimit();
+            RecoverItem(ref reader, mark, reader.ExpectCloser(TokenKind.CloseBracket, out var markClose));
+            return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(mark.Span.End, markClose.End)), [mark]);
         }
 
         var first = ParseLiteralElement(ref reader);

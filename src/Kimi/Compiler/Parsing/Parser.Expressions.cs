@@ -592,7 +592,9 @@ Nest:
                     else
                     {
                         var region = reader.EnterRegion();
-                        index = ParseExpression(ref reader);
+                        reader.Depth++; // The index lies one level below its node (DECISIONS BU-112).
+                        index = reader.PastLimit ? reader.SkipPastLimit() : ParseExpression(ref reader);
+                        reader.Depth--;
                         reader.RestoreRegion(region);
                     }
 
@@ -628,7 +630,10 @@ Nest:
     private static Koto[] ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
     {
         var region = reader.EnterRegion();
-        var arguments = ParseArgumentListCore(ref reader, out argumentLabels);
+        reader.Depth++; // The arguments lie one level below their invocation (DECISIONS BU-112).
+        argumentLabels = null;
+        var arguments = reader.PastLimit && reader.CurrentTokenKind != TokenKind.CloseParenthesis ? [reader.SkipPastLimit()] : ParseArgumentListCore(ref reader, out argumentLabels);
+        reader.Depth--;
         reader.RestoreRegion(region);
         return arguments;
     }

@@ -771,7 +771,8 @@ public sealed partial class InstanceCollectorTest
             string.Concat(arguments.Split(' ').Select(x => $"    h<{Text(x)}>(.None)\n")) + "    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        // The collector walks on the compile stack, as its pipeline site does (CompilerThread.Run; DECISIONS R4-M178).
+        CompilerThread.Run((c.Types, c.Layout, program), static s => new InstanceCollector(s.Types, s.Layout).Run(s.program, 1));
         Assert.Equal(
             refused.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (DiagnosticCode.Unsupported_Kd, $"h<{Text(x)}>(.None)")),
             program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));

@@ -64,7 +64,9 @@ public sealed class GroupKoto : DeclarationContainerKoto
     {
         ConsumeBlockStart(ref reader);
         var list = new RootItems(this);
+        reader.Depth++; // The root's items lie at depth 1 (DECISIONS BU-112).
         Parser.ParseItemList(ref reader, ref list, out var markers);
+        reader.Depth--;
         this.AdoptSource(markers);
     }
 
@@ -213,8 +215,8 @@ public sealed class GroupKoto : DeclarationContainerKoto
         }
 
         // A #switch is an item only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the root.
-        public readonly void AddUnselected(ref TokenReader reader, Koto unselected)
-            => this.owner.Container.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, unselected);
+        public readonly void AddMarker(ref TokenReader reader, Koto marker)
+            => this.owner.Container.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, marker);
     }
 
     /// <summary>The source-order state of SourceDocument root items (SPEC 18.2.1, 19.4).</summary>

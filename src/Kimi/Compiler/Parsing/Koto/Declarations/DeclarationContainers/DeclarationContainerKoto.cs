@@ -376,19 +376,27 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         this.fragmentOrdinal = 0;
         this.AttributeChain = null;
         this.HasIncompatibleBindingHeader = false;
+        this.OriginList?.Clear();
+        if (ReferenceEquals(this, this.Kotonoha.RootKoto))
+        {
+            this.Kotonoha.ClearGeneratedFunction();
+        }
+
+        this.ClearChildren();
+    }
+
+    /// <summary>Removes the bases, generic parameters, constraints, members, nested containers and the Source slot, with the lookup of
+    /// nested containers, and keeps the kind, name, modifiers, attributes and Origin names: also how <see cref="SyntaxNesting"/> empties
+    /// a container at depth L in place (DECISIONS BU-112).</summary>
+    internal void ClearChildren()
+    {
         this.kotoList?.Clear();
         this.source = null;
         this.NestedContainerTable?.Clear();
         this.nestedContainers?.Clear();
         this.genericArguments?.Clear();
         this.typeConstraints?.Clear();
-        this.OriginList?.Clear();
         this.bases = null;
-        if (ReferenceEquals(this, this.Kotonoha.RootKoto))
-        {
-            this.Kotonoha.ClearGeneratedFunction();
-        }
-
         this.CodeContext.Compilation.NoteSyntaxEdit(this);
     }
 
@@ -634,7 +642,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 parseTypeConstraints,
                 parseDeclarationContainers,
                 parseTypeConstraints && this.typeConstraints is not { Count: > 0 } && OriginClauses.Get(this).Count == 0));
+        reader.Depth++; // The members lie one level below their container (DECISIONS BU-112).
         Parser.ParseItemList(ref reader, ref list, out var markers);
+        reader.Depth--;
         this.AdoptSource(markers);
     }
 
@@ -1166,7 +1176,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         // A #switch is an item only in selected syntax (Parser.CompileTimeSwitchArms.Unselected), so it goes to the container.
-        public readonly void AddUnselected(ref TokenReader reader, Koto unselected)
-            => this.owner.Container.AddLast(unselected);
+        public readonly void AddMarker(ref TokenReader reader, Koto marker)
+            => this.owner.Container.AddLast(marker);
     }
 }

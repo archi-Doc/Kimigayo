@@ -337,9 +337,14 @@ public sealed partial class InstanceCollectorTest
     // main's module as the roots by a copy of Compilation.Collect's loop, which must stay equal to it (the C-col theory drives the loop
     // itself), copied to observe the first run: the records of both classes and the analyses' problems (Rows), the checked set (Items),
     // the collector's Work after each run, the first run's set version and rows, and the work of a fresh collector's run over the stepped
-    // program (one run's).
+    // program (one run's). It runs on the compile stack, as Compilation.Collect's site does (CompilerThread.Run; DECISIONS R4-M178).
     private static (string[] Rows, string[] Items, int[] Works, ulong First, string[] FirstRows, int Fresh) TwoModule(string root, string lib, int range)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run((root, lib, range), static s => TwoModule(s.root, s.lib, s.range));
+        }
+
         var c = ModuleBindingTest.Create(root, lib);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);

@@ -198,6 +198,15 @@ public ref partial struct TokenReader
 
     internal int DocumentationExcludedStart { get; set; }
 
+    /// <summary>Gets or sets a lower bound of the syntax depth of the node read next, below its module root (DECISIONS BU-112): each
+    /// recursive cycle of the parser raises it once, at a child slot of a node the cycle makes. Past <see cref="SyntaxNesting.Limit"/>
+    /// a delimited construct is read without nodes, as one <see cref="ErrorKoto.IsSkip"/> mark under SyntaxNesting's cut.</summary>
+    internal int Depth { get; set; }
+
+    /// <summary>Gets a value indicating whether the node read next lies past <see cref="SyntaxNesting.Limit"/>: a child slot then reads
+    /// its construct with <see cref="SkipPastLimit"/>.</summary>
+    internal readonly bool PastLimit => this.Depth > SyntaxNesting.Limit;
+
     /// <summary>Gets or sets the number of excluded-syntax regions enclosing the current position (SPEC 19.4).</summary>
     /// <remarks>Excluded syntax is parsed and source-checked, but nothing inside it selects, registers or associates documentation.</remarks>
     internal int ExclusionDepth { get; set; }
@@ -852,20 +861,38 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Skips, without reporting, the rest of one item of a delimited list after the caller blamed it: up to the comma that ends the
-    /// item or the end of the grouping's content (<see cref="ExpectCloser"/>). Groupings, bodies and recognized Type argument lists
-    /// inside the item are skipped whole, so their commas and closers stay theirs.
+    /// Skips, without reporting, the rest of one item: the one item skip, which a blamed item's recovery and every read past
+    /// <see cref="SyntaxNesting.Limit"/> pass through. The item ends at its delimiter balance 0, at the comma that ends it (or a
+    /// parameter list's '!'), the end of the grouping's content (<see cref="ExpectCloser"/>), the '&gt;' that closes a Type argument
+    /// or parameter list, or an <c>else</c> that none of the item's own <c>if</c> and <c>require</c> takes, which is an enclosing
+    /// construct's (SPEC F: an <c>if</c> in a single-item body is grouped entirely). Groupings, bodies and recognized Type argument
+    /// lists inside the item are skipped whole, so their commas, closers and elses stay theirs. An <c>else</c> that begins the item
+    /// is its first token, so every skip makes progress.
     /// </summary>
     /// <param name="typeArguments">Whether the list is a Type argument or parameter list, which a '&gt;' at its level closes.</param>
     internal void SkipListItem(bool typeArguments = false)
     {
+        var start = this.Position;
         var angles = 0;
+        var open = 0; // The item's ifs and requires that may still take an else.
         while (this.CanRead && !this.EndsGroupingContent())
         {
             switch (this.currentToken.Kind)
             {
                 case TokenKind.Comma or TokenKind.Exclamation when angles == 0:
                     return; // A comma ends the item; so does a parameter list's '!' boundary, which is no operator elsewhere.
+
+                case TokenKind.If or TokenKind.Require:
+                    open++;
+                    break;
+
+                case TokenKind.Else when angles == 0 && this.Position > start:
+                    if (open-- == 0)
+                    {
+                        return;
+                    }
+
+                    break;
 
                 case TokenKind.LessThan when this.currentToken.OpensTypeArguments:
                     angles++;
@@ -881,7 +908,13 @@ public ref partial struct TokenReader
                     }
                     else
                     {
-                        angles = Math.Max(0, angles - (this.currentToken.Kind is TokenKind.GreaterThanGreaterThan or TokenKind.GreaterThanGreaterThanEquals ? 2 : 1));
+                        // One '>' closes one open list, split off a packed '>>' as a closer is (TryConsumeTypeClose), so the rest stays
+                        // the next level's: the list's own closer at angles 0. An indivisible '>=' closes one and is skipped whole.
+                        angles--;
+                        if (this.TryConsumeTypeClose(out _, false))
+                        {
+                            continue;
+                        }
                     }
 
                     break;
@@ -889,6 +922,38 @@ public ref partial struct TokenReader
 
             this.SkipOne();
         }
+    }
+
+    /// <summary>
+    /// Reads past <see cref="SyntaxNesting.Limit"/> without nodes (DECISIONS BU-112): the rest of the list, line or grouping content
+    /// the reader is in, through its commas and a parameter list's '!', to the end of its grouping content (<see cref="ExpectCloser"/>)
+    /// or, in a Type argument list, the '&gt;' at its level. The caller then reads what follows, as after any item.
+    /// </summary>
+    /// <param name="typeArguments">Whether the list is a Type argument or parameter list, which a '&gt;' at its level closes.</param>
+    /// <returns>The one mark the construct leaves; the cut of <see cref="SyntaxNesting"/> above it writes the record.</returns>
+    internal ErrorKoto SkipPastLimit(bool typeArguments = false)
+    {
+        var start = this.InsertionSpan.Start;
+        do
+        {
+            this.SkipListItem(typeArguments);
+        }
+        while (this.TryConsume(TokenKind.Comma) || this.TryConsume(TokenKind.Exclamation));
+
+        return this.SkipMark(start);
+    }
+
+    /// <summary>
+    /// Reads an expression body's item past <see cref="SyntaxNesting.Limit"/> without nodes (DECISIONS BU-112): the one item
+    /// (<see cref="SkipListItem"/>), whose end the body's enclosing list, line or construct reads. A '=&gt;' in it continues a construct
+    /// of the item (a function expression, an <c>if</c>), so it ends nothing.
+    /// </summary>
+    /// <returns>The one mark the item leaves; the cut of <see cref="SyntaxNesting"/> above it writes the record.</returns>
+    internal ErrorKoto SkipExpressionPastLimit()
+    {
+        var start = this.InsertionSpan.Start;
+        this.SkipListItem();
+        return this.SkipMark(start);
     }
 
     /// <summary>Records the completed part of a pending exclusion without allocating a stack of directive prefixes.</summary>
@@ -932,6 +997,10 @@ public ref partial struct TokenReader
             TokenKind.Separator => this.PeekKind(1) != TokenKind.StartBlock,
             _ => false,
         };
+
+    // The one mark a read past L leaves, over the tokens it read from `start`.
+    private ErrorKoto SkipMark(int start)
+        => new(ref this, SourceSpan.FromBounds(start, Math.Max(start, this.PreviousEnd))) { IsSkip = true };
 
     // Skips the current token, or the nested grouping or body it opens whole, with the line boundaries around a nested body.
     private void SkipOne()

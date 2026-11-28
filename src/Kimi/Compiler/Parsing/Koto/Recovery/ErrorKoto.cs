@@ -16,6 +16,10 @@ public sealed class ErrorKoto : ExpressionKoto
     /// <summary>Gets or sets the key of the syntax error this recovery stands for; a check that needs the missing syntax names it as its prerequisite.</summary>
     internal DiagnosticKey? Cause { get; set; }
 
+    /// <summary>Gets a value indicating whether this mark stands for a delimited construct the parser read without nodes past the syntax
+    /// nesting limit (DECISIONS BU-112): it lies under a cut of <see cref="SyntaxNesting"/>, the one writer of its record.</summary>
+    internal bool IsSkip { get; init; }
+
     /// <summary>Initializes a new instance of the <see cref="ErrorKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The invalid source span.</param>

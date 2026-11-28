@@ -40,7 +40,9 @@ public static partial class Parser
         var blockContext = reader.TakeContext();
         var list = new ExecutableItems(function, originOwner);
         reader.Advance(); // StartBlock
+        reader.Depth++; // Its items lie one level below the block (DECISIONS BU-112).
         var end = ParseItemList(ref reader, ref list, out var markers);
+        reader.Depth--;
         reader.RestoreContext(blockContext);
         reader.RestoreRegion(region);
         var block = new CodeBlockKoto(
@@ -61,10 +63,11 @@ public static partial class Parser
         /// <param name="reader">The token reader.</param>
         void ParseItem(ref TokenReader reader);
 
-        /// <summary>Adds the marker of a <c>#switch</c> that selected no arm (SPEC 19.3).</summary>
+        /// <summary>Adds a marker in place of items: a <c>#switch</c> that selected no arm (SPEC 19.3), or the skip mark of items past
+        /// the syntax nesting limit (DECISIONS BU-112).</summary>
         /// <param name="reader">The token reader.</param>
-        /// <param name="unselected">The marker.</param>
-        void AddUnselected(ref TokenReader reader, Koto unselected);
+        /// <param name="marker">The marker.</param>
+        void AddMarker(ref TokenReader reader, Koto marker);
     }
 
     /// <summary>Parses one item list after its StartBlock, through its EndBlock, as its own: its items are its own even inside excluded
@@ -128,6 +131,24 @@ public static partial class Parser
                 var end = reader.PreviousSyntaxEnd;
                 reader.Advance();
                 return end;
+            }
+
+            if (reader.PastLimit)
+            {
+                // Past L an item is read without nodes (DECISIONS BU-112); inside excluded syntax its mark is the excluding marker's
+                // part, as any excluded item is (SPEC 19.4).
+                hasSourceItem = true;
+                var mark = reader.SkipPastLimit();
+                if (reader.ExcludingMarker is { } marker)
+                {
+                    marker.AddSource(mark);
+                }
+                else
+                {
+                    list.AddMarker(ref reader, mark);
+                }
+
+                continue;
             }
 
             var unavailableDeclaration = ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true, stopAtCaseGroupBoundary);
@@ -200,7 +221,7 @@ public static partial class Parser
 
             if (arms.Unselected(ref reader) is { } unselected)
             {
-                list.AddUnselected(ref reader, unselected);
+                list.AddMarker(ref reader, unselected);
             }
 
             return;
@@ -231,8 +252,8 @@ public static partial class Parser
         public void ParseItem(ref TokenReader reader)
             => ParseExecutableItem(ref reader, ref this.Items, ref this.state);
 
-        public void AddUnselected(ref TokenReader reader, Koto unselected)
-            => this.Items.Add(unselected);
+        public void AddMarker(ref TokenReader reader, Koto marker)
+            => this.Items.Add(marker);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -672,8 +693,14 @@ public static partial class Parser
         }
 
         var region = reader.EnterSingleBody(ifBody);
+        reader.Depth++; // The item lies one level below its body or function (DECISIONS BU-112).
         try
         {
+            if (reader.PastLimit)
+            {
+                return reader.SkipExpressionPastLimit();
+            }
+
             if (reader.CurrentTokenKind == TokenKind.Dollar ||
                 (reader.CurrentTokenKind == TokenKind.Underscore && reader.PeekKind(1) == TokenKind.Equals))
             {
@@ -703,6 +730,7 @@ public static partial class Parser
         }
         finally
         {
+            reader.Depth--;
             reader.RestoreRegion(region);
         }
     }

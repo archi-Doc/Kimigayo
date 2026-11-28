@@ -110,15 +110,18 @@ public sealed partial class Binding
     }
 
     // One step of a path, with what its publication writes (PublishPath's table). A Head's role names the namespace whose stop it clears.
-    // A Qualifier is a path's left use, published with its end (End) and the step its walk failed at (Failed). An Unsupported step is a
+    // A Qualifier is a path's left use, published with its end (End), the step its walk failed at (Failed) and the container that step
+    // searched (Searched, ResolvedPath's). An Unsupported step is a
     // component the use verdict refused (Supported), its Use the component's Name. A MemberAccess is a selected member of a member access (SPEC 9.6): its role names the
     // namespace of the path that selected it (Value: the value path, a receiver's member; Qualifier: the Type path), its Qualifier the
     // Type path's left to publish, its Selection the member lookup (none for a constructor). Every site writes every field (no optional
     // parameter, CR-R2); a field its kind does not read is null or default.
     private readonly record struct NameStep(
-        NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier, AliasImport Import, LookupRole Role, PathEnd End, MemberSelection? Selection, Koto? Failed);
+        NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier, AliasImport Import, LookupRole Role, PathEnd End, MemberSelection? Selection, Koto? Failed,
+        BindingSymbol? Searched);
 
-    private readonly record struct ResolvedPath(PathEnd End, BindingSymbol? Symbol, Koto Use, QualificationFact Stop = default);
+    // Searched: the container a member step searched where the step ended Unresolved (ResolveMember), the read PublishUse records; every site writes it (CR-R2), null elsewhere.
+    private readonly record struct ResolvedPath(PathEnd End, BindingSymbol? Symbol, Koto Use, BindingSymbol? Searched, QualificationFact Stop = default);
 
     // SPEC 9.2's eligible declarations of each row. Qualifier: groups, Kotonoha references and the Types that qualify members (no pair
     // binder); Requirement: what requirement syntax admits (SPEC 8.2.1: subjects, Contracts and complete Types); Contract Reference: Contracts.
@@ -221,13 +224,21 @@ public sealed partial class Binding
     // Publishes a use's lookup once: a later publication (a path's walk evaluating a published qualifier again) must be equal, and a
     // different end is a broken contract, as a different selection is (the Symbols entry's write, HirTables.WriteSymbol). Every
     // publication of a use is in UseRow's row (NamePath's and the walk's left), so the column stores no row. An Unresolved end carries
-    // the step its walk failed at when that is not the use (`failed`: FailingSteps), which PublishedStep reads back.
-    private void PublishUse(Koto use, PathEnd end, BindingSymbol? symbol, Koto? failed)
+    // the step its walk failed at when that is not the use (`failed`: FailingSteps), which PublishedStep reads back. SPEC 23.1.2: its
+    // lookup read the container its failing step searched (`searched`), so one left unresolved or kept as a recovery (a container
+    // SyntaxNesting emptied, DECISIONS BU-112) is the use's one read at each publication, in FailBaseRule's form, so the frame a later
+    // publication runs in reads it too (RecordRead).
+    private void PublishUse(Koto use, PathEnd end, BindingSymbol? symbol, Koto? failed, BindingSymbol? searched)
     {
         var published = HirTables.LookupOf(use);
         if (published != PathEnd.None && published != end)
         {
             throw new InvalidOperationException($"`{use}` was published as {published}, then as {end} (InternalInvariant; R7-N1e2-1R).");
+        }
+
+        if (end == PathEnd.Unresolved)
+        {
+            this.ReadForFailure(use, searched?.Declaration);
         }
 
         if (end == PathEnd.Selected)
@@ -267,7 +278,7 @@ public sealed partial class Binding
         early = false;
         if (HirTables.LookupOf(use) is var published and not PathEnd.None)
         {
-            return new(published, published == PathEnd.Selected ? use.BoundSymbol : null, published == PathEnd.Unresolved ? this.PublishedStep(use) : use);
+            return new(published, published == PathEnd.Selected ? use.BoundSymbol : null, published == PathEnd.Unresolved ? this.PublishedStep(use) : use, null);
         }
 
         var reads = this.notReadyReads;
@@ -291,7 +302,7 @@ public sealed partial class Binding
         }
 
         var symbol = this.PublishPath(path, mark);
-        this.PublishUse(use, path.End, symbol, path.Use);
+        this.PublishUse(use, path.End, symbol, path.Use, path.Searched);
         return path with { Symbol = symbol };
     }
 
@@ -342,7 +353,7 @@ public sealed partial class Binding
                     this.AddImportCandidates(step.Use, step.Qualifier!, step.Symbol!);
                     break;
                 case NameStepKind.Qualifier:
-                    this.PublishUse(step.Use, step.End, step.Symbol, step.Failed); // The state stays the binder's.
+                    this.PublishUse(step.Use, step.End, step.Symbol, step.Failed, step.Searched); // The state stays the binder's.
                     break;
                 case NameStepKind.Member:
                     var member = (MemberAccessKoto)step.Use;
@@ -440,8 +451,8 @@ public sealed partial class Binding
     private BindingSymbol? PublishMemberAccess(MemberAccessKoto member, BindingSymbol selected, BindingSymbol? qualifier, LookupRole path, MemberSelection? selection)
     {
         var mark = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.MemberAccess, member, selected, qualifier, default, path, default, selection, null));
-        return this.PublishPath(new(PathEnd.Selected, selected, member), mark);
+        this.nameSteps.Add(new(NameStepKind.MemberAccess, member, selected, qualifier, default, path, default, selection, null, null));
+        return this.PublishPath(new(PathEnd.Selected, selected, member, null), mark);
     }
 
     // A projection path's selection (SPEC 8.5.2, 9.6), published by its ProjectionMember step: the associated Type a projection names,
@@ -449,8 +460,8 @@ public sealed partial class Binding
     private void PublishProjectionMember(MemberAccessKoto syntax, BindingSymbol selected)
     {
         var mark = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.ProjectionMember, syntax, selected, null, default, default, default, null, null));
-        this.PublishPath(new(PathEnd.Projection, null, syntax), mark);
+        this.nameSteps.Add(new(NameStepKind.ProjectionMember, syntax, selected, null, default, default, default, null, null, null));
+        this.PublishPath(new(PathEnd.Projection, null, syntax, null), mark);
     }
 
     // SPEC 9.4: a member access whose lookup selected nothing but met an inaccessible member: that member is its failure's evidence,
@@ -458,8 +469,8 @@ public sealed partial class Binding
     private void PublishHiddenMember(MemberAccessKoto member, BindingSymbol hidden)
     {
         var mark = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.HiddenMember, member, hidden, null, default, default, default, null, null));
-        this.PublishPath(new(PathEnd.Unresolved, null, member), mark);
+        this.nameSteps.Add(new(NameStepKind.HiddenMember, member, hidden, null, default, default, default, null, null, null));
+        this.PublishPath(new(PathEnd.Unresolved, null, member, null), mark);
         this.RecordAccess(member, hidden, null);
     }
 
@@ -878,13 +889,13 @@ public sealed partial class Binding
             case MemberAccessKoto member:
                 var left = UseNode(member.Left);
                 var qualifier = this.ResolvePath(member.Left, scope, UseRow(left)); // The left's row is its position's, as NamePath asks it.
-                this.nameSteps.Add(new(NameStepKind.Qualifier, left, qualifier.Symbol, null, default, default, qualifier.End, null, qualifier.Use));
+                this.nameSteps.Add(new(NameStepKind.Qualifier, left, qualifier.Symbol, null, default, default, qualifier.End, null, qualifier.Use, qualifier.Searched));
                 return this.ResolveMember(member, qualifier, scope, role, arity);
             case SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root:
                 var rooted = this.ResolveRootPath(root.Operands[0], this.ModuleScope(root.Operands[0]), role, arity);
                 if (rooted.End == PathEnd.Selected)
                 {
-                    this.nameSteps.Add(new(NameStepKind.RootOperand, root.Operands[0], rooted.Symbol, null, default, default, default, null, null));
+                    this.nameSteps.Add(new(NameStepKind.RootOperand, root.Operands[0], rooted.Symbol, null, default, default, default, null, null, null));
                 }
 
                 return rooted;
@@ -892,7 +903,7 @@ public sealed partial class Binding
 
         if (TypeSpelling(syntax) is not { } name)
         {
-            return new(PathEnd.Unresolved, null, syntax);
+            return new(PathEnd.Unresolved, null, syntax, null);
         }
 
         if (IsAdaptationTarget(syntax))
@@ -908,23 +919,23 @@ public sealed partial class Binding
     {
         if (TypeSpelling(syntax) is not { } name)
         {
-            return new(PathEnd.Unresolved, null, syntax);
+            return new(PathEnd.Unresolved, null, syntax, null);
         }
 
         var target = this.ResolveName(name, scope, syntax, LookupRole.Core, 0);
         var parameter = this.ResolveName(name, scope, syntax, LookupRole.TypeSemantics, 0);
         if (target.End == PathEnd.Ambiguous || parameter.End == PathEnd.Ambiguous)
         {
-            this.nameSteps.Add(new(NameStepKind.AmbiguousRole, syntax, null, null, default, default, default, null, null));
+            this.nameSteps.Add(new(NameStepKind.AmbiguousRole, syntax, null, null, default, default, default, null, null, null));
         }
 
         if (target.Symbol is not null && parameter.Symbol is not null)
         {
-            return new(PathEnd.Ambiguous, null, syntax);
+            return new(PathEnd.Ambiguous, null, syntax, null);
         }
 
         var selected = parameter.Symbol is not null ? parameter : target;
-        this.nameSteps.Add(new(NameStepKind.AdaptationTarget, syntax, selected.Symbol, null, default, default, default, null, null));
+        this.nameSteps.Add(new(NameStepKind.AdaptationTarget, syntax, selected.Symbol, null, default, default, default, null, null, null));
         return selected;
     }
 
@@ -933,7 +944,7 @@ public sealed partial class Binding
     private ResolvedPath ResolveName(string name, BindingScope scope, Koto use, LookupRole role, int arity)
     {
         var step = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.Head, use, null, null, default, role, default, null, null));
+        this.nameSteps.Add(new(NameStepKind.Head, use, null, null, default, role, default, null, null, null));
         for (var current = scope; current is not null; current = current.Parent)
         {
             var stage = InValueNamespace(role) ? this.ValueStage(current, scope, use, name) : this.TypeStage(current, scope, use, name, role, arity, step);
@@ -944,19 +955,19 @@ public sealed partial class Binding
 
             if (this.InheritedStop(current, scope, use, name, role, arity) is { } stop)
             {
-                return new(PathEnd.QualificationStop, null, use, stop);
+                return new(PathEnd.QualificationStop, null, use, null, stop);
             }
         }
 
         // Stage 4, for Type qualifiers only (SPEC 9.5).
         if (role == LookupRole.Qualifier && this.ModuleReference(use, name) is { } reference)
         {
-            return new(PathEnd.Selected, reference, use);
+            return new(PathEnd.Selected, reference, use, null);
         }
 
         if (this.aliasResolutionDepth != 0)
         {
-            return new(PathEnd.Unresolved, null, use);
+            return new(PathEnd.Unresolved, null, use, null);
         }
 
         return InValueNamespace(role) ? this.ResolveImportedValue(name, scope, use, step) : this.ResolveImportedType(name, scope, use, role, arity, step);
@@ -969,7 +980,7 @@ public sealed partial class Binding
         var candidates = default(TypeCandidates);
         this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, role, arity);
         this.AddTypeCandidates(ref candidates, current.Parameters?.Types.GetValueOrDefault(name), scope, role, arity);
-        return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
+        return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use, null);
     }
 
     // SPEC 9.3, 9.5: a stage's first visible, accessible value; a Container stage whose candidates are all Cases or members needing a
@@ -987,13 +998,13 @@ public sealed partial class Binding
 
             if (current.Owner is DeclarationContainerKoto && !this.HasUnqualifiedCandidate(head!, scope))
             {
-                return new(PathEnd.QualificationStop, null, use, new(current, scope, candidate, name, LookupRole.Value, 0));
+                return new(PathEnd.QualificationStop, null, use, null, new(current, scope, candidate, name, LookupRole.Value, 0));
             }
 
-            return new(PathEnd.Selected, candidate, use);
+            return new(PathEnd.Selected, candidate, use, null);
         }
 
-        return current.Parameters?.Values?.GetValueOrDefault(name) is { } slot && this.Accessible(slot, scope) ? new(PathEnd.Selected, slot, use) : new(PathEnd.Unresolved, null, use);
+        return current.Parameters?.Values?.GetValueOrDefault(name) is { } slot && this.Accessible(slot, scope) ? new(PathEnd.Selected, slot, use, null) : new(PathEnd.Unresolved, null, use, null);
     }
 
     // SPEC 9.3, 7.2.3, 15.8.2: whether a value binding is visible at `use`, one row per kind: a local only after its declaration (its
@@ -1013,7 +1024,7 @@ public sealed partial class Binding
     {
         if (candidates.Ambiguous)
         {
-            return new(PathEnd.Ambiguous, null, use);
+            return new(PathEnd.Ambiguous, null, use, null);
         }
 
         // Retain a mismatching declaration for the existing formation/arity diagnostic.
@@ -1024,7 +1035,7 @@ public sealed partial class Binding
             this.nameSteps[step] = this.nameSteps[step] with { Import = candidates.Import };
         }
 
-        return new(PathEnd.Selected, symbol, use);
+        return new(PathEnd.Selected, symbol, use, null);
     }
 
     // SPEC 9.1, 9.6: the later components search the selected target's members; a qualified Type name never selects a generic parameter;
@@ -1040,15 +1051,15 @@ public sealed partial class Binding
         {
             return qualifier.End switch
             {
-                PathEnd.Projection or PathEnd.Unresolved => new(PathEnd.Projection, null, member),
-                PathEnd.Selected => new(IsCore(qualifier.Symbol!) ? PathEnd.Projection : PathEnd.Unresolved, null, member),
+                PathEnd.Projection or PathEnd.Unresolved => new(PathEnd.Projection, null, member, null),
+                PathEnd.Selected => new(IsCore(qualifier.Symbol!) ? PathEnd.Projection : PathEnd.Unresolved, null, member, null),
                 _ => qualifier,
             };
         }
 
         if (qualifier.End == PathEnd.Projection)
         {
-            return new(PathEnd.Projection, null, member); // SPEC 8.5.2: a projection's own associated Type, `T.(C).X`.
+            return new(PathEnd.Projection, null, member, null); // SPEC 8.5.2: a projection's own associated Type, `T.(C).X`.
         }
 
         if (qualifier.End != PathEnd.Selected)
@@ -1059,7 +1070,7 @@ public sealed partial class Binding
         var left = qualifier.Symbol!;
         if (TypeSpelling(member.Right) is not { } name)
         {
-            return new(PathEnd.Unresolved, null, member);
+            return new(PathEnd.Unresolved, null, member, null);
         }
 
         var candidates = default(TypeCandidates);
@@ -1068,28 +1079,28 @@ public sealed partial class Binding
             this.AddTypeCandidates(ref candidates, MemberTypes(members, name), scope, role, arity);
             if (candidates.Ambiguous)
             {
-                return new(PathEnd.Ambiguous, null, member);
+                return new(PathEnd.Ambiguous, null, member, null);
             }
 
             if ((candidates.Match ?? candidates.First) is { } target)
             {
-                this.nameSteps.Add(new(NameStepKind.Member, member, target, left, default, default, default, null, null));
-                return new(PathEnd.Selected, target, member);
+                this.nameSteps.Add(new(NameStepKind.Member, member, target, left, default, default, default, null, null, null));
+                return new(PathEnd.Selected, target, member, null);
             }
         }
 
         if (left.Declaration is StructKoto && this.LookupMember(this.SelfType(left), name, scope, role) is { Member: { } inherited })
         {
-            this.nameSteps.Add(new(NameStepKind.InheritedMember, member, inherited, left, default, default, default, null, null));
+            this.nameSteps.Add(new(NameStepKind.InheritedMember, member, inherited, left, default, default, default, null, null, null));
             candidates = default;
             this.AddTypeCandidates(ref candidates, inherited, scope, role, arity);
             if (candidates.Ambiguous)
             {
-                return new(PathEnd.Ambiguous, null, member);
+                return new(PathEnd.Ambiguous, null, member, null);
             }
 
             var selected = candidates.Match ?? candidates.First;
-            return new(selected is null ? PathEnd.Unresolved : PathEnd.Selected, selected, member);
+            return new(selected is null ? PathEnd.Unresolved : PathEnd.Selected, selected, member, selected is null ? left : null);
         }
 
         // SPEC 8.5.2, 9.6: a Name the Core declares no member Type of is a projection unless the Core is a declared struct or enum whose
@@ -1098,7 +1109,7 @@ public sealed partial class Binding
         // later (an override's selection), so its Name stays a projection. The former decides with evidence.
         var associable = IsCore(left) && (left.Declaration is not (StructKoto or EnumKoto) || left.Kind != BindingSymbolKind.Type || !this.impls.Reached(ImplTable.AdmissionPoint.SelfClauses) ||
             (left.Named.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null, member).Found is not null));
-        return new(associable ? PathEnd.Projection : PathEnd.Unresolved, null, member);
+        return new(associable ? PathEnd.Projection : PathEnd.Unresolved, null, member, associable ? null : left);
     }
 
     // SPEC 9.6: `::A.B` starts at the Compilation root of the use's Kotonoha, ignoring locals and aliases. A component, completed: judged
@@ -1116,7 +1127,7 @@ public sealed partial class Binding
 
         if (TypeSpelling(syntax) == "Kimi")
         {
-            return new(PathEnd.Selected, this.Library.Module, syntax);
+            return new(PathEnd.Selected, this.Library.Module, syntax, null);
         }
 
         if (syntax is MemberAccessKoto member && this.ResolveRootPath(member.Left, root, UseRow(UseNode(member.Left))) is { Symbol: { } qualifier } &&
@@ -1125,13 +1136,13 @@ public sealed partial class Binding
             var candidates = default(TypeCandidates);
             this.AddTypeCandidates(ref candidates, MemberTypes(members, rightName), root, role, arity);
             var selected = candidates.Ambiguous ? null : candidates.Match ?? candidates.First;
-            this.nameSteps.Add(new(NameStepKind.RootMember, member, selected, qualifier, default, default, default, null, null));
+            this.nameSteps.Add(new(NameStepKind.RootMember, member, selected, qualifier, default, default, default, null, null, null));
             if (candidates.Ambiguous)
             {
-                return new(PathEnd.Ambiguous, null, member);
+                return new(PathEnd.Ambiguous, null, member, null);
             }
 
-            return new(selected is null ? PathEnd.Unresolved : PathEnd.Selected, selected, member);
+            return new(selected is null ? PathEnd.Unresolved : PathEnd.Selected, selected, member, null);
         }
 
         if (TypeSpelling(syntax) is { } name)
@@ -1145,9 +1156,9 @@ public sealed partial class Binding
 
             var reference = this.ModuleReference(syntax, name);
             var eligible = reference is not null && HasLookupRole(reference, role) && this.Accessible(reference, root);
-            return new(eligible ? PathEnd.Selected : PathEnd.Unresolved, eligible ? reference : null, syntax);
+            return new(eligible ? PathEnd.Selected : PathEnd.Unresolved, eligible ? reference : null, syntax, null);
         }
 
-        return new(PathEnd.Unresolved, null, syntax);
+        return new(PathEnd.Unresolved, null, syntax, null);
     }
 }

@@ -98,11 +98,7 @@ public sealed partial class Binding
     // record and gains no read: its failure did not read this one.
     private void FailBaseRule(Koto node, Koto? read)
     {
-        if (read is not null && this.RecordedFailure(node) == BindingFailure.None && this.IsUnresolvedPrerequisite(read))
-        {
-            this.RecordRead(node, read);
-        }
-
+        this.ReadForFailure(node, read);
         this.Fail(node, BindingFailure.InvalidTypeFormation);
     }
 
@@ -213,6 +209,9 @@ public sealed partial class Binding
                 return null;
         }
 
+        // SPEC 23.1.2 (G144-8): the Type path reads its left as the value path does (ValueSideMember), so a left that did not resolve
+        // is the access's prerequisite (Consulted's filter).
+        this.Consulted(UseNode(member.Left));
         var qualifier = qualifierPath.Symbol;
         if (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.BindAssociatedProjection(projection, scope) is { } projected)
         {
@@ -383,6 +382,11 @@ public sealed partial class Binding
             else if (restsOn is not null)
             {
                 this.CompleteDependent(member, restsOn); // A failed clause of the bound's supply might give it: the use rests on it.
+            }
+            else
+            {
+                // SPEC 23.1.2 (G144-6): the value lookup read the qualifier's container (a Type path's: PublishUse).
+                this.ReadForFailure(member, qualifier?.Declaration);
             }
 
             return null;

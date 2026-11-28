@@ -91,8 +91,8 @@ public sealed partial class Binding
             return component;
         }
 
-        this.nameSteps.Add(new(NameStepKind.Unsupported, component.Use, null, null, default, default, default, null, null));
-        return new(PathEnd.Unresolved, null, component.Use);
+        this.nameSteps.Add(new(NameStepKind.Unsupported, component.Use, null, null, default, default, default, null, null, null));
+        return new(PathEnd.Unresolved, null, component.Use, null);
     }
 
     // What a walk outside ResolvePath hands a written Name: its selection, unless the verdict refuses it.

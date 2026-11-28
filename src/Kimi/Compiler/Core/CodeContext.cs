@@ -153,7 +153,7 @@ public sealed class CodeContext
             tokenizer.ReadAll();
             // Nodes retain this immutable snapshot context; the source-less entry point can be reused.
             var sourceContext = new CodeContext(this.Kotonoha, diagnostics, sourceDocument) { Documentation = tokenizer.Documentation };
-            var reader = new TokenReader(sourceContext, ref tokenizer);
+            var reader = new TokenReader(sourceContext, ref tokenizer) { Depth = SyntaxNesting.DepthOf(parentKoto) };
             parentKoto.Parse(ref reader);
             SyntaxNesting.Bound(sourceContext);
             sourceContext.Documentation?.SetLocation(this.Kotonoha.LogicalName(sourceDocument), producingModId, additionOrder);
