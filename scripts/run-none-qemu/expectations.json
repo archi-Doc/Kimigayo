@@ -60,6 +60,30 @@
       "sources": [ "Seconds.kimi", "Board.kimi" ],
       "text": "1.5\n",
       "end": { "exit": 0 }
+    },
+    {
+      "row": "B10 16",
+      "label": "IMPL 21.6.9 (an interrupt entry: a timer handler), 21.6.8 (lidt, sti; hlt), SPEC 22.4.1: valid",
+      "level": "O2",
+      "sources": [ "TimerWakes.kimi", "Interrupts.kimi", "TimerTick.kimi", "Board.kimi" ],
+      "text": "1\n2\n3\n",
+      "end": { "exit": 0 }
+    },
+    {
+      "row": "B10 31",
+      "label": "IMPL 21.6.9 (a member that enables interrupts), 21.6.3 (a clock read while a member runs halts), SPEC 22.8.2: valid",
+      "level": "O2",
+      "sources": [ "WaitingHello.kimi", "Interrupts.kimi", "TimerTickClock.kimi", "WaitingBoard.kimi" ],
+      "text": "H",
+      "end": "halts"
+    },
+    {
+      "row": "B10 31 twin",
+      "label": "IMPL 21.6.9 (a member that enables interrupts; a handler without a platform call returns), 21.6.3: valid",
+      "level": "O2",
+      "sources": [ "WaitingHello.kimi", "Interrupts.kimi", "TimerTick.kimi", "WaitingBoard.kimi" ],
+      "text": "Hello\n",
+      "end": { "exit": 0 }
     }
   ]
 }

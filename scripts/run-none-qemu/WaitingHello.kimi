@@ -1,0 +1,8 @@
+// B10 row 31 and its twin: a Stopwatch first, so Kimi.Time's static slot is Initialized before any handler reads the clock
+// (handler rule 2); then the ticks, and "Hello" through WaitingBoard. The TimerTick file the row lists decides the end.
+var warm = Time.Stopwatch.init()
+warm.start()
+warm.stop()
+Interrupts.install()
+X86.enableInterrupts()
+Console.writeLine("Hello")
