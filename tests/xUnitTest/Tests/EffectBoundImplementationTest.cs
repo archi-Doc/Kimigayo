@@ -147,11 +147,11 @@ public partial class EffectBoundImplementationTest
     // intrinsic, and of those Console output and the test temporary directory alone are environment effects (the Storage and Raw
     // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator), with, in the Linux row's
     // library, the platform layer's clock (Time.monotonicNanoseconds, the Tatara plan's B7b6; windows-x64's library, the selection of
-    // the one without a target, declares none), and on every x86-64 row Kimi.X86's pause and readTimestamp, machine instructions (IMPL
-    // 21.6; OSF1a, design C3); a library body is no bodyless category.
+    // the one without a target, declares none), and on every x86-64 row Kimi.X86's pause, readTimestamp and cpuid, machine instructions
+    // (IMPL 21.6; OSF1a, design C3; OSF1b); a library body is no bodyless category.
     [Theory]
-    [InlineData("", "WriteStdout,TestTempDirectory,Instruction,Instruction")]
-    [InlineData("x86_64-unknown-linux-musl", "WriteStdout,TestTempDirectory,MonotonicClock,Instruction,Instruction")]
+    [InlineData("", "WriteStdout,TestTempDirectory,Instruction,Instruction,Instruction")]
+    [InlineData("x86_64-unknown-linux-musl", "WriteStdout,TestTempDirectory,MonotonicClock,Instruction,Instruction,Instruction")]
     public void EveryCompilerFunctionHasOneEffectClass(string target, string intrinsics)
     {
         var compilation = Compilation.CreateForTest();
