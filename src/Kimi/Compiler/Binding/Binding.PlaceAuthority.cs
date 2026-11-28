@@ -13,8 +13,8 @@ namespace Kimi.Compiler;
 //   one diagnostic for a capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority);
 //   whether the path passes a conformance selection (PathPrefix.Conformance, SPEC 4.7.1, 5.4: an address through one has `index`'s
 //   shared authority; the address mark reads it);
-//   whether a Place offers Write (Writable), as a whole Place, the question of an assignment's whole target and of a pair layer's
-//   owner-case operand (WritablePlace), and what a part's owner grants it or lends it (WritableOwner, LendsOwner: the one reading
+//   whether a Place offers Write as a whole Place (Writable, the question of an assignment's whole target; a pair layer's owner-case
+//   operand reads its fold's), and what a part's owner grants it or lends it (WritableOwner, LendsOwner: the one reading
 //   of SPEC 15.1.5's writable roots for a part, a writable temporary's included, WritableTemporary, whose whole Temporary Place no
 //   lowering writes yet, IsTemporaryPlace); whether a receiver can be
 //   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5; its denial,
@@ -350,8 +350,12 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 3.4, 5.2, 13.5.5, 15.6.2: whether a Place offers Write: a writable root or an inline part of one, an exclusive path, a raw
-    // Place, a setter or an indexUniq selection; a shared layer anywhere on the path grants Read only (PathFold, Writes).
+    // SPEC 3.4, 5.2, 13.5.5, 13.7.1, 15.1.5, 15.6.2: whether a whole Place offers Write, the question of an assignment's whole target: a
+    // writable root or an inline part of one, an exclusive path, a raw Place, a setter or an indexUniq selection, each prefix decided
+    // from its owner prefix's and a stored Field by its own permission (PathFold, Writes); a shared layer anywhere on the path grants
+    // Read only. A Temporary Value is none, also parenthesized: it is no Place expression (SPEC 13.7.1, the owner's O-438 (a)). Nor yet
+    // is a writable temporary's whole Temporary Place (IsTemporaryPlace): SPEC grants it Write, but no lowering writes it whole, so
+    // AccessFailure names the write Unsupported.
     private bool Writable(Koto node) => this.PathFold(node, []).Writable;
 
     // Writable's rule for one prefix of a folded path (PathFold): `node`, whose path grants access under the empty assignment, raw when
@@ -384,8 +388,8 @@ public sealed partial class Binding
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
         {
             // SPEC 13.5.5 pair layers: the weakest admitted capability. A shared case, or a shared path to the operand, makes the path
-            // shared (above); the owner case selects P itself, which a write needs to be a whole Place offering Write (WritablePlace).
-            return (this.PairAdmitted(pair) & SemanticsMask.Owner) == 0 || this.WritablePlace(pair.Left, this.Owner(owner, pair.Left));
+            // shared (above); the owner case selects P itself, which a write needs to be a whole Place offering Write (its fold's).
+            return (this.PairAdmitted(pair) & SemanticsMask.Owner) == 0 || this.Owner(owner, pair.Left).Writable;
         }
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
@@ -423,12 +427,6 @@ public sealed partial class Binding
             return this.ExclusiveAccessType(tupleElement.Left, referent)!.Semantics == SemanticsKind.Uniq && this.TryBorrowedTupleElement(tupleElement, out _, out _);
         }
 
-        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
-            this.TryGetAdaptation(throughLayers.Left, out var receiver) && receiver.Kind == ExpectedAdaptationKind.ReferenceRead)
-        {
-            return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.3: a shared layer bounds the path to shared access.
-        }
-
         // SPEC 13.5.5: the receiver's own Type adds no exclusive or shared layer, so the Field lies inline in its storage, past an
         // owning handle or in the owner case of a pair layer too (no member is selected through a raw pointer).
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
@@ -457,18 +455,10 @@ public sealed partial class Binding
     private bool AcquirableByBinding(Koto receiver, in PathPrefix path, ReadOnlySpan<PairCase> assignment)
         => this.LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || this.WritableOwner(receiver, path);
 
-    // SPEC 13.7.1, 13.5.5, 15.1.5: whether a whole Place offers Write by its path and binding, the question of an assignment's whole
-    // target and of a pair layer's owner-case operand (P itself): Writable, or an inline part of a writable root
-    // (WritableRoot; the Property permissions on its path are the binding's: ValidPropertyWritePath, BindReference). A
-    // Temporary Value is none, also parenthesized: it is no Place expression (SPEC 13.7.1, the owner's O-438 (a)). Nor yet is a
-    // writable temporary's whole Temporary Place (IsTemporaryPlace): SPEC grants it Write, but no lowering writes it whole, so
-    // AccessFailure names the write Unsupported. Path is the Place's fold (PathFold).
-    private bool WritablePlace(Koto place, in PathPrefix path) => path.Writable || this.WritableRoot(place) is not null;
-
     // SPEC 15.1.5, 3.4.1, 3.6: whether the owner a standard projection, a member selection or a payload selects from grants the part
-    // Write by its root's permission: a whole Place offering Write (WritablePlace) or a writable temporary, in whose Temporary Place
-    // the part is a Place (WritableTemporary). Path is the owner's fold (PathFold).
-    private bool WritableOwner(Koto owner, in PathPrefix path) => this.WritablePlace(owner, path) || this.WritableTemporary(owner);
+    // Write by its root's permission: a whole Place offering Write (its fold's Writable) or a writable temporary, in whose Temporary
+    // Place the part is a Place (WritableTemporary). Path is the owner's fold (PathFold).
+    private bool WritableOwner(Koto owner, in PathPrefix path) => path.Writable || this.WritableTemporary(owner);
 
     // SPEC 3.6, 11.5, 15.1.5: a newly owned temporary, a writable root: a Temporary Value (no Place, IsBarePlace) that is no getter
     // result, or its whole Temporary Place as a Place expression designates it (IsTemporaryPlace). Its callers pass an owner whose own

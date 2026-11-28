@@ -136,6 +136,14 @@ public class PathCapabilityDiagnosticTest
     private const string MakeObj =
         "func make<s/T>(value: s/T) -> s/(i32, i64)\n    s is obj\n    var x: (i32, i64) = (1, 2)\n    let made = x@s\n    return made@move\n";
 
+    private const string LetFields = "struct Node\n    public var n: i32 = 0\n    public init() => ()\n" +
+        "struct Holder\n    public let h: obj/Node = Node.init()@obj\n    public var vh: obj/Node = Node.init()@obj\n" +
+        "    public let ld: Dictionary<i32, i32> = [:]\n    public var vd: Dictionary<i32, i32> = [:]\n    public init() => ()\n";
+
+    private const string PairBoxes = "struct Point\n    public var n: i32 = 0\n    public init() => ()\n" +
+        "struct Box<T>\n    public let item: T\n    public init(item: T) => self.item = item@move\n" +
+        "struct VBox<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
+
     private const string Statics =
         "struct Point\n    public var x: i32 = 0\n    public computed cx: i32\n        get() -> i32 => self.x\n        set(value: i32) -> () => self.x = value\n" +
         "    public init() => ()\n    public func grow(self: uniq/Self) => self.x = self.x + 1\n" +
@@ -446,8 +454,9 @@ public class PathCapabilityDiagnosticTest
     // where its owner is. So these SPEC-valid writes also move off InvalidAssignment_Kd: a static's (nested element, its Tuple's Array
     // element, the bare static inside its group, `storage`'s element in a static's custom setter;
     // AStaticElementWriteRestsOnTheStaticStorageLimit) and the others (AnOwnedInlineElementWriteIsGenerated). Each invalid counterpart
-    // keeps its error: a `let` static or slot, a `ref/Self` method, `owner or uniq` on a parameter or a `let` copy, a `let` handle. Only
-    // the records after each row's prelude are compared.
+    // keeps its error: a `let` static or slot, a `ref/Self` method, `owner or uniq` on a parameter or a `let` copy, a `let` handle, a
+    // `let` Field below a `var` root or two exclusive layers, through a handle, a user index or a pair layer's owner case (G164; each
+    // `var` Field twin is accepted). Only the records after each row's prelude are compared.
     [Theory]
     [InlineData("lnest", GroupNest, "func f()\n    State.lnest.0.1 = 3\n", "InvalidAssignment_Kd State.lnest.0.1")]
     [InlineData("lta", GroupNest, "func f()\n    State.lta.0[1] = 3\n", "InvalidAssignment_Kd State.lta.0[1]")]
@@ -456,6 +465,14 @@ public class PathCapabilityDiagnosticTest
     [InlineData("pair_param", PairHead + "    s is owner or uniq\n", "    pair@follow.0 = 3\n", "InvalidAssignment_Kd pair@follow.0")]
     [InlineData("pair_let", PairHead + "    s is owner or uniq\n", "    let p = pair\n    p@follow.0 = 3\n", "InvalidAssignment_Kd p@follow.0")]
     [InlineData("obj_let", MakeObj, "func f()\n    let h = make(5@obj)\n    h@follow.0 = 3\n", "InvalidAssignment_Kd h@follow.0")]
+    [InlineData("obj_let_field", LetFields, "func f()\n    var x = Holder.init()\n    x.h.n = 5\n", "InvalidAssignment_Kd x.h.n")]
+    [InlineData("obj_var_field", LetFields, "func f()\n    var x = Holder.init()\n    x.vh.n = 5\n", "")]
+    [InlineData("dict_let_field", LetFields, "func f()\n    var x = Holder.init()\n    x.ld[1] = 5\n", "InvalidAssignment_Kd x.ld[1]")]
+    [InlineData("dict_var_field", LetFields, "func f()\n    var x = Holder.init()\n    x.vd[1] = 5\n", "")]
+    [InlineData("layers_let_field", LetFields, "func f(r: uniq/(uniq/Holder during a))\n    r.h.n = 5\n", "InvalidAssignment_Kd r.h.n")]
+    [InlineData("layers_var_field", LetFields, "func f(r: uniq/(uniq/Holder during a))\n    r.vh.n = 5\n", "")]
+    [InlineData("pair_let_field", PairBoxes, "func g<s/T>(value: s/T, p: s/Point)\n    s is owner or uniq\n    var b = Box.init(p@move)\n    b.item.n = 5\n", "InvalidAssignment_Kd b.item.n")]
+    [InlineData("pair_var_field", PairBoxes, "func g<s/T>(value: s/T, p: s/Point)\n    s is owner or uniq\n    var b = VBox.init(p@move)\n    b.item.n = 5\n", "")]
     public void AnOwnedInlineElementIsWritableWhereItsOwnerIs(string form, string prelude, string body, string records)
     {
         var source = prelude + body + "public func main() => ()\n";

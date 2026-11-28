@@ -297,7 +297,7 @@ public sealed partial class Binding
         }
 
         var write = operation is BinaryKoto { Akind: KotoKind.Equals };
-        if (!this.WritablePlace(target, this.PathFold(target, [])) &&
+        if (!this.Writable(target) &&
             !(write && (CanInitializeLocal(target, scope) || (IsSpecialField(target, out var constructor) && constructor.IsConstructor))))
         {
             this.FailWrite(operation, target);

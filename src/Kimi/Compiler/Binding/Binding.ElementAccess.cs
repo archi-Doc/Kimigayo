@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 // Element access (SPEC 3.4.3, 4.6-4.8, 13.4, 15.1.3, 15.6): what a selection is as an element or a Place read in place.
 // - Responsibility: the element-access predicates that Binding's Place classification and the HIR publisher read (a raw Place is
 //   Binding.PlaceAuthority.Raw's): shared and exclusive elements, borrowed receivers, built-in steps and user indexes, slicing, static
-//   selectors and constant indexes, the access Type of a Place read in place, and a path's owned and writable roots.
+//   selectors and constant indexes, the access Type of a Place read in place, and a path's owned root.
 // - Inputs: a node, its published Type, symbol and plan (HirTables), and this Binding's facts: recorded adaptations, selected index
 //   and view-range calls, resolved slices, path and referent authority, object cases and pair-layer borrows (BorrowsInEveryCase), a
 //   node's constraint scope, an operand's terminal Type (OperandTerminal) and the Binding's TyCtxt (Types.Reference,
@@ -48,14 +48,12 @@ public sealed partial class Binding
             (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && this.ReachesThroughBorrow(element.Left)));
 
     // SPEC 3.4.3: the referent of an exclusive array reference offers element replacement, without requiring a mutable
-    // binding for the reference itself. Shared layers on its path are checked separately by Binding.
-    // An owned Array or fixed array stored below exclusive references only (`b.items[i]` with `b: uniq/Bank`) offers the same, whose
-    // path authority (receiverPath, the access its receiver's path grants: PathFold) decides it rather than the stored Type (PLAN G59).
+    // binding for the reference itself. Shared layers on its path are checked separately by Binding. An owned Array or fixed array
+    // stored below exclusive references (`b.items[i]` with `b: uniq/Bank`) is an inline part of its owner's path instead (Writes'
+    // inline-part row), which its Field's own permission decides (PLAN G59).
     private bool IsExclusiveArrayElement(IndexKoto element, SemanticsKind receiverPath) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
-        ((this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiverPath)) is { Semantics: SemanticsKind.Uniq } receiver &&
-            receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
-        (receiverPath == SemanticsKind.Uniq && HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray &&
-            this.ReachesThroughBorrow(element.Left)));
+        this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiverPath)) is { Semantics: SemanticsKind.Uniq } receiver &&
+        receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary };
 
     // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
@@ -127,30 +125,6 @@ public sealed partial class Binding
     private int ConstantIndex(IndexKoto index)
         => Literal(index.Right) is >= 0 and var element && HirTables.TypeOf(index.Left) is { } receiver &&
             this.OperandTerminal(index.Left, receiver).Kind == BoundTypeKind.FixedArray ? element : -1;
-
-    private IdentifierNameKoto? WritableRoot(Koto source)
-    {
-        source = KotoHelper.UnwrapParentheses(source);
-        if (!this.IsSyntax(source))
-        {
-            return null;
-        }
-
-        while (source is BinaryKoto element && this.IsInlinePart(element))
-        {
-            source = KotoHelper.UnwrapParentheses(element.Left);
-        }
-
-        // Pattern body bindings have their own local identity; a var pattern
-        // permits writes to its acquired value just like a var declaration.
-        // Guard candidates remain excluded by their distinct symbol kind.
-        if (source is not IdentifierNameKoto root || HirTables.Symbol(root) is not { Kind: BindingSymbolKind.Local or BindingSymbolKind.Capture } symbol)
-        {
-            return null;
-        }
-
-        return Reassignable(symbol) ? root : null;
-    }
 
     /// <summary>
     /// SPEC 3.4.3, 13.4: the Type through which a Place expression read in place, a receiver or a string comparison

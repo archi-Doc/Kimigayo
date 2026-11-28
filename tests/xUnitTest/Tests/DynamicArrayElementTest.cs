@@ -146,8 +146,8 @@ public class DynamicArrayElementTest
     }
 
     // D-941 (SPEC 3.4.3, 15.6.2; the Front's C4): a shared borrow of a k-deep Tuple chain below a `let` root (`let u = x.0..0@ref`), a
-    // query that writes nothing: its fold decides every prefix's writability too (each through WritableRoot's syntax walk to the let
-    // root, no fold), in path steps linear in k.
+    // query that writes nothing: its fold decides every prefix's writability too (each from its owner prefix's), in path steps
+    // linear in k.
     [Fact]
     public void ASharedBorrowOfALetTupleChainTakesWorkLinearInItsDepth()
     {
