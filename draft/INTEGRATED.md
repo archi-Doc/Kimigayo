@@ -1512,6 +1512,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 125 (2026-11-28, plan §14; the Middle's D-1363, the owner's O-554 (a)): §5.1's Z13 row's "no spec variant" reads
   SPEC 14.10.3's second block, the case `14.10.3-abandoned-comparison`. SPEC 14.10.3 gains an example block (D-1363); no rule
   text changes. Nothing frozen.
+- Revision 126 (2026-11-28, plan §14; the Back's D-1373, R7-P8's census on dev ea330577d, the Front's rulings F 14:05 (2) and P8-F1 (c), R7-P8a's
+  landing in W-398): §5.1's P8 row drops G396 (9) (closed on dev by 5ab3f441e and 8d743e1ce8), takes G356 (P8b) and G343
+  (P8a) without E, and marks P8a landed (Q-855, DECISIONS R7-M135); I3, §4.1, §4.3 and the absorbed-issue table drop G356
+  from I3 (the table moves it to P2–P11 and drops G396 (9)), and the table drops G343's adapter from E; §5.6's N3 and E2–E4
+  row drops P8. No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
