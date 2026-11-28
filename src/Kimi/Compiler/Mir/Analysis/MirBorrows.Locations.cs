@@ -7,8 +7,8 @@ namespace Kimi.Compiler.Mir;
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
 // borrowed roots (MirBorrows.Accesses) with the check sets they take, a Call's or Drop's effect access after them, and the reservations it
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
-// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), W's undecided store
-// (MirWrites.Limit, R4-M147, MirBorrows.Calls), a located Unsupported_Kd, a borrowed root's destruction past the destruction walk's
+// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)) and W's undecided store
+// (MirWrites.Limit, R4-M147, MirBorrows.Calls), each a located Unsupported_Kd, a borrowed root's destruction past the destruction walk's
 // bound, a call's retention Limit or Deep part (R4-M51; CallRetention.IsDeep, beside its rows), a store undecided past a walk's bound
 // (MirBorrows.Calls) and a store the storing rule refuses on a body's Deep own contract (MirBorrows.Storing), each
 // OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract is broken (G136, MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
