@@ -35054,7 +35054,7 @@ Closure row of `MirCases.Branch`).
 
 ## Tatara (adopted 2026-11-19)
 
-Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
+Entries of the [Tatara Implementation Plan](../../draft/Changes/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
 holds the owner's decisions 1–17). Units of the Tatara lane record their entries here as T-M*.
 
 - **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
